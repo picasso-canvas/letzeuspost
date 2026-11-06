@@ -1,7 +1,6 @@
 # Section 10: Images (Approved 2026-11-06)
 
-> **Stack details pending §13.** The worker, storage and model choices are assumptions collected in
-> [13-architecture.md](13-architecture.md).
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
 **Goal:** where the images in posts come from, how they are picked, cropped and cleaned up, and how licences,
 consent and credits are kept, at launch and right after.
@@ -67,7 +66,7 @@ consent and credits are kept, at launch and right after.
 
 ### Processing every image
 
-Converted to sRGB, stored at most 4096 px, **location and camera data (EXIF) removed**, HEIC turned into JPEG, a
+Converted to sRGB, stored at most 4096 px, **location and camera data (EXIF) removed**, HEIC turned into JPEG (decoded with libheif + libde265, §13 A14), a
 thumbnail made, duplicates detected (perceptual hash). Storage counts against the workspace's plan (§02).
 
 ### Licences, consent and credits

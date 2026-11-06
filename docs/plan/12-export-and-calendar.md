@@ -1,7 +1,6 @@
 # Section 12: Export and calendar (Approved 2026-11-06)
 
-> **Stack details pending §13.** Storage, worker and link details are assumptions collected in
-> [13-architecture.md](13-architecture.md).
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
 **Goal:** get approved posts out of LetZeusPost ready to schedule (image files, LinkedIn PDFs, a Metricool CSV),
 show every post on a calendar, and outline direct scheduling for v2.

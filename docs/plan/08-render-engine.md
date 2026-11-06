@@ -1,7 +1,6 @@
 # Section 8: Render engine (Approved 2026-11-06)
 
-> **Stack details pending §13.** Folder names, the worker and storage are assumptions collected in
-> [13-architecture.md](13-architecture.md); this section adds A12–A15 there.
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
 **Goal:** turn a post (§07's post.json) into pixel-exact slides in every size its networks need: one HTML builder
 shared by the editor preview and the final render, Chrome in Docker, fonts (Bangla included), the fit check that drives
@@ -218,9 +217,9 @@ milestone, and §14 sizes the server from it.
 ## Found while planning (for §10, §13, §14, §20)
 
 - **Image library licences:** the usual Node image library (sharp) is Apache-2.0, but its built-in libvips is
-  LGPL-3.0. The licence allowlist (§20) needs an explicit exception for it, or another encoder. Zeus decides at build.
+  LGPL-3.0. The licence allowlist (§20) needs an explicit exception for it. **Zeus allowed it on 2026-11-06** (§13, A14).
 - **HEIC (§10):** sharp's ready-made builds are expected not to decode iPhone HEIC photos (HEVC patents); a custom
-  build or a separate decoder is needed. To confirm at build time; §10's promise stays.
+  build or a separate decoder is needed. **Confirmed**; the worker decodes HEIC with libheif + libde265 (§13, A14).
 - **Copying Bangla text out of a PDF** often comes out garbled, because conjuncts don't map one-to-one to letters.
   The PDF still looks sharp; whether copying works is tested before launch (§12's "selectable text").
 

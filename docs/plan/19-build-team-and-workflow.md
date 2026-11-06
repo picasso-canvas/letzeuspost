@@ -1,7 +1,6 @@
 # Section 19: Build team and workflow (Approved 2026-11-06, revised 2026-11-06)
 
-> **Stack details pending §13.** Folder names, libraries and hosting mentioned here are assumptions, collected in
-> [13-architecture.md](13-architecture.md). Section 13 decides them, and its answers override this doc.
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
 **Goal:** who builds LetZeusPost, how a task goes from an approved section to merged code, and how Zeus stays in control.
 
@@ -72,7 +71,7 @@ skill is added only when a task needs it or a review finds the same problem twic
 
 | For | Skill | Source |
 |---|---|---|
-| Daedalus | `conventions`: stack, folders, commands, patterns (written once §13 is approved) | ours |
+| Daedalus | `conventions`: stack, folders, commands, patterns (written from §13) | ours |
 | Daedalus | `tdd`: failing test first, smallest change, no "done" without fresh `pnpm check` output, test anti-patterns | ours, adapted from superpowers `test-driven-development` + `verification-before-completion` and mattpocock `tdd` |
 | Daedalus | `systematic-debugging`: root cause before any fix | superpowers (MIT), copied |
 | Daedalus | `security-best-practices` (Next.js + React references only) | OpenAI (Apache-2.0) |

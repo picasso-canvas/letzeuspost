@@ -1,7 +1,7 @@
 # Section 9: AI pipeline (Approved 2026-11-06)
 
-> **Stack details pending §13.** File paths (`config/models.ts`, `packages/ai/…`) are assumptions collected in
-> [13-architecture.md](13-architecture.md). Claude API facts were checked against Anthropic's current docs on 2026-11-06.
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
+> Claude API facts were checked against Anthropic's current docs on 2026-11-06.
 
 **Goal:** every AI task in LetZeusPost (what goes in, what comes out, which model, how it's checked and what it
 costs), so posts come out on-brand, in native English and Bangla, safely and at a known cost.

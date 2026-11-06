@@ -45,16 +45,16 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 10 | Images | C Engine | ✋ | **Approved** 2026-11-06 | [10-images.md](10-images.md) | [#10](https://github.com/picasso-canvas/letzeuspost/issues/10) |
 | 11 | Review, editing and approvals | D Collaboration & output | ✋ | **Approved** 2026-11-06 | [11-review-and-approvals.md](11-review-and-approvals.md) | [#11](https://github.com/picasso-canvas/letzeuspost/issues/11) |
 | 12 | Export and calendar | D Collaboration & output | | **Approved** 2026-11-06 | [12-export-and-calendar.md](12-export-and-calendar.md) | [#12](https://github.com/picasso-canvas/letzeuspost/issues/12) |
-| 13 | Technical architecture | E Platform | | Draft (waiting for Zeus) | [13-architecture.md](13-architecture.md) | [#13](https://github.com/picasso-canvas/letzeuspost/issues/13) |
+| 13 | Technical architecture | E Platform | | **Approved** 2026-11-06 | [13-architecture.md](13-architecture.md) | [#13](https://github.com/picasso-canvas/letzeuspost/issues/13) |
 | 14 | Infrastructure and operations | E Platform | | Not started | 14-infrastructure.md | [#14](https://github.com/picasso-canvas/letzeuspost/issues/14) |
 | 15 | Accounts, team and owner admin | E Platform | ✋ | Not started | 15-accounts-and-admin.md | [#15](https://github.com/picasso-canvas/letzeuspost/issues/15) |
 | 16 | Legal and trust | E Platform | ✋ | Not started | 16-legal-and-trust.md | [#16](https://github.com/picasso-canvas/letzeuspost/issues/16) |
 | 17 | Testing and quality | E Platform | | Not started | 17-testing.md | [#17](https://github.com/picasso-canvas/letzeuspost/issues/17) |
 | 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md | [#18](https://github.com/picasso-canvas/letzeuspost/issues/18) |
-| 19 | Build team and workflow | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [19-build-team-and-workflow.md](19-build-team-and-workflow.md) | [#19](https://github.com/picasso-canvas/letzeuspost/issues/19) |
-| 20 | Builder guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [20-builder-guardrails.md](20-builder-guardrails.md) | [#20](https://github.com/picasso-canvas/letzeuspost/issues/20) |
-| 21 | AI design workflow | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [21-ai-design-workflow.md](21-ai-design-workflow.md) | [#21](https://github.com/picasso-canvas/letzeuspost/issues/21) |
-| 22 | Product AI guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [22-product-ai-guardrails.md](22-product-ai-guardrails.md) | [#22](https://github.com/picasso-canvas/letzeuspost/issues/22) |
+| 19 | Build team and workflow | F Building with AI | ✋ | **Approved** 2026-11-06 | [19-build-team-and-workflow.md](19-build-team-and-workflow.md) | [#19](https://github.com/picasso-canvas/letzeuspost/issues/19) |
+| 20 | Builder guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 | [20-builder-guardrails.md](20-builder-guardrails.md) | [#20](https://github.com/picasso-canvas/letzeuspost/issues/20) |
+| 21 | AI design workflow | F Building with AI | ✋ | **Approved** 2026-11-06 | [21-ai-design-workflow.md](21-ai-design-workflow.md) | [#21](https://github.com/picasso-canvas/letzeuspost/issues/21) |
+| 22 | Product AI guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 | [22-product-ai-guardrails.md](22-product-ai-guardrails.md) | [#22](https://github.com/picasso-canvas/letzeuspost/issues/22) |
 | 23 | Onboarding | B Experience | ✋ | **Approved** 2026-11-06 | [23-onboarding.md](23-onboarding.md) | [#23](https://github.com/picasso-canvas/letzeuspost/issues/23) |
 
 What each section decides:

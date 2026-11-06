@@ -1,7 +1,6 @@
 # Section 6: Brand kits (Approved 2026-11-06)
 
-> **Stack details pending §13.** Mentions of the Chrome worker, `safe-fetch` and storage are assumptions collected in
-> [13-architecture.md](13-architecture.md).
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
 **Goal:** what a brand kit holds, every way to create one (**including brands with no website**), the brand editor,
 the asset library, and how the kit feeds writing, design and checks.

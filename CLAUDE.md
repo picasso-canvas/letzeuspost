@@ -7,9 +7,9 @@ edit and approve, and that are exported ready to schedule. The owner is **Zeus**
 ## Source of truth
 
 - `docs/plan/` is the plan: one doc per section. The roadmap lists every section and its status.
-- Build only from sections whose status is **Approved**. `docs/plan/drafts/`, `docs/plan/research/` and the
-  assumptions in `docs/plan/13-architecture.md` are input for planning, never a spec. Stack details in sections 19–22
-  are pending §13.
+- Build only from sections whose status is **Approved**. `docs/plan/drafts/` and `docs/plan/research/` are input
+  for planning, never a spec. The stack, repo layout, data model and sensitive paths are in
+  [§13](docs/plan/13-architecture.md); where another section differs, §13 wins.
 - The [GitHub Project **LetZeusPost**](https://github.com/users/picasso-canvas/projects/2) tracks every section
   (issues #1–#23, issue number = section number) and build task in its **Status** field (the stage).
   Its IDs are in `.claude/board-ids.json`. Athena updates it with the `board` skill (`.claude/skills/board/`);

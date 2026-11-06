@@ -1,7 +1,6 @@
 # Section 22: Product AI guardrails (Approved 2026-11-06, revised 2026-11-06)
 
-> **Stack details pending §13.** Folder names, libraries and tools mentioned here are assumptions, collected in
-> [13-architecture.md](13-architecture.md). Section 13 decides them, and its answers override this doc.
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
 **Goal:** LetZeusPost's own AI stays safe, on-brand and affordable, even when fed hostile input.
 

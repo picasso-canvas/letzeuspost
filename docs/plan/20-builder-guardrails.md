@@ -1,7 +1,6 @@
 # Section 20: Builder guardrails (Approved 2026-11-06, revised 2026-11-06)
 
-> **Stack details pending §13.** Folder names, libraries and tools mentioned here are assumptions, collected in
-> [13-architecture.md](13-architecture.md). Section 13 decides them, and its answers override this doc.
+> **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
 **Goal:** agents build safely: they can't change the rules or CI, leak secrets, merge anything, or run up costs.
 
@@ -71,7 +70,7 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
 ### 4. Checks (`pnpm check` locally = the CI job `ci`)
 
 **H0 (minimum):** frozen-lockfile install · TypeScript strict · ESLint · format · unit tests · **gitleaks** CLI ·
-`pnpm audit` + OSV-Scanner · **zizmor** on workflows.
+`pnpm audit` + OSV-Scanner · **zizmor** on workflows · a **dependency licence check** (below).
 
 **Added when the work needs it:** squawk with the first migration · Playwright end-to-end with the first journey ·
 visual tests, axe and `design.md lint` with the first UI ([21](21-ai-design-workflow.md)) · golden renders with the
@@ -88,7 +87,7 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
 - **Sensitive areas** (`.github/sensitive-paths.txt`): auth/permissions/billing code · database schema and migrations ·
   `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, Dockerfiles · AI prompts, AI policy, model/provider/plan
   config · `.github/**`, `.claude/**`, every `CLAUDE.md`, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` ·
-  baselines of **approved** screens and look presets. Exact folders come from §13.
+  baselines of **approved** screens and look presets. The exact paths are listed in [§13](13-architecture.md).
 - **`ai-review`**: `anthropics/claude-code-action@v1` with Zeus's `claude_code_oauth_token` and the code-review plugin
   posts inline comments on every PR. It is advice for Zeus, not a gate.
 - **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`)
@@ -119,6 +118,12 @@ Athena only adds a second or third when the weekly report shows room. Any headle
   telemetry, **no hooks, and no plugins that add hooks** (no exceptions). Skills that run `npx …@latest` are pinned
   or rewritten. Run SkillSpector or Sentry's `skill-scanner` once on each skill before it lands.
 - Adding or updating a skill is a `sensitive` change, recorded in `skills-lock.json`.
+
+### Dependency licences
+
+Allowed: MIT, Apache-2.0, BSD, ISC, the PostgreSQL licence, and OFL for fonts. **Named exception (Zeus, 2026-11-06,
+§13 A14):** LGPL libraries used unchanged as separate shared libraries: libvips (inside sharp), and libheif with
+libde265 for decoding HEIC. Anything else that isn't on the list fails the check until Zeus adds it.
 
 ## Not in the MVP
 

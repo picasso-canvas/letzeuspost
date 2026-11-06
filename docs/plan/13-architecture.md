@@ -1,4 +1,4 @@
-# Section 13: Technical architecture (Draft, waiting for Zeus)
+# Section 13: Technical architecture (Approved 2026-11-06)
 
 **Goal:** the stack, the processes that run, the repo layout, the data model, how workspaces are kept apart, auth,
 the job queue, file storage, the API and security, so the builders have one settled answer for each. Where it runs
@@ -246,20 +246,20 @@ as integers. Post content is JSONB, checked by the zod schema on every write.
 | A10 | One headless-Chrome worker | **Replaced** by A15: renders in the worker, website reading in the fetcher |
 | A11 | Docker on Hetzner, Caddy, R2, Sentry, Resend | Caddy, R2, Sentry and Resend **decided** here; servers, sizes and region are §14 |
 | A12, A13 | Playwright in Docker; React layouts | **Decided** in §08 |
-| A14 | sharp's LGPL libvips; HEIC | **Zeus decides** (below) |
+| A14 | sharp's LGPL libvips; HEIC | **Decided**: LGPL exception, HEIC decoded on the server (below) |
 | A15 | Two separate browsers | **Decided**: the fetcher process |
 
-### For Zeus to decide: LGPL libraries and iPhone photos (A14)
+### Decided by Zeus (2026-11-06): LGPL libraries and iPhone photos (A14)
 
 sharp's ready-made builds include libvips under the LGPL and **can't read HEIC** (confirmed). iPhones usually convert
 photos to JPEG when they're uploaded from a phone's browser (to test), but HEIC files still arrive from Macs and file
 shares.
 
-- **Recommended:** allow LGPL libraries used unchanged as separate shared libraries (libvips; for HEIC also libheif and
+- **Chosen:** allow LGPL libraries used unchanged as separate shared libraries (libvips; for HEIC also libheif and
   libde265, decoding only) as a named exception to §20's licence rule. The worker image builds libvips with HEIC
   decoding. §16 notes that HEVC (the format inside HEIC) is covered by patents; decoding-only use is common, but it's on
   the legal checklist.
-- **Or:** no HEIC on the server. A HEIC upload gets "Please send this photo as a JPEG" with how-to steps, and §10
+- **Not chosen:** no HEIC on the server. A HEIC upload gets "Please send this photo as a JPEG" with how-to steps, and §10
   changes.
 
 ### Found for §14
