@@ -11,7 +11,8 @@ description: Update the LetZeusPost GitHub Project board. Use when a planning se
   there and don't look them up again. If an ID fails, rebuild the file with
   `gh project field-list 2 --owner picasso-canvas --format json`.
 - Keep calls small: one `gh` call per change, `--jq` to keep only what you need, never print the whole board.
-- Building agents act as `letzeuspost-bot`, never as Zeus's account (section 20).
+- Building agents use Zeus's `gh` login. They never merge with `--admin` and never set the `zeus-only` /
+  `auto-merge` labels (section 20).
 
 ## Fields
 
@@ -33,7 +34,8 @@ Set the Section number: `--number <n>` instead of `--single-select-option-id`. S
 ## Labels
 
 `section` · `build-task` · `needs-zeus` (waiting on Zeus) · `blocked` (something else is missing) · `zeus-only` /
-`auto-merge` (the PR's risk tier, set by the CI `risk-gate`; agents never set or remove these) · `audit` (weekly audit).
+`auto-merge` (the PR's risk tier, set by the CI `risk-gate`; agents never set or remove these; a zeus-only PR is merged
+by Zeus himself) · `audit` (weekly audit).
 
 ## Sections (label `section`, issues #1–#22: issue number = section number)
 

@@ -19,14 +19,15 @@ edit and approve, and that are exported ready to schedule. The owner is **Zeus**
 ## Harness first
 
 No product code is written until every section is approved. The first build milestone is **H0 Harness**: the
-guardrails in section 20 (bot account, sandbox, settings, hooks, CI gates, rulesets, CODEOWNERS, agent files,
+guardrails in section 20 (sandbox, settings, hooks, CI gates, the ruleset, the zeus-only risk gate, agent files,
 skills). It must pass its red-team checklist before any other milestone starts.
 
 ## Building
 
 1. Take only issues labelled `build-task` whose Status is **Ready to build**. Move the issue to **In progress**.
-2. Work in your own worktree, as `letzeuspost-bot`. Read the issue, the section doc(s) it links, and the sections
-   those depend on. Post a 3–5 line approach comment.
+2. Work in your own worktree. Read the issue, the section doc(s) it links, and the sections those depend on. Post a
+   3–5 line approach comment. You work through Zeus's GitHub account: end every commit with a `Co-Authored-By:
+   Claude` line and put `Agent: <your name>` in every PR, so your work can be told apart from his.
 3. Tests first for logic. Run `pnpm check` until it is green. Every item in the issue's **Done when** list must pass.
 4. Local reviews: Argus (code) always; Cerberus (security) when the diff touches a risky area; Iris (design) when it
    touches UI. Fix blocking findings; after 3 rounds, add `needs-zeus` and stop.
@@ -38,7 +39,9 @@ skills). It must pass its red-team checklist before any other milestone starts.
 
 - Agents merge their own PRs: GitHub merges an **`auto-merge`** PR when `ci`, `ai-review`, `risk-gate` and
   `guardrail-integrity` are all green. Zeus audits the week's merges every Friday (an `audit` issue).
-- A **`zeus-only`** PR waits for Zeus's code-owner approval. Zeus-only areas: auth, permissions and billing ·
+- A **`zeus-only`** PR can't merge itself (`risk-gate` fails on purpose); Zeus reads it and merges it himself. Never
+  merge with `--admin`, and never touch the `zeus-only` / `auto-merge` labels, rulesets, settings, secrets or
+  variables, even though the account would allow it. Zeus-only areas: auth, permissions and billing ·
   database schema and migrations · dependencies and lockfiles · AI prompts, model/provider config and product AI
   rules · the guardrails themselves (`.github/`, `.claude/`, every `CLAUDE.md`, lint/TS/test configs, `DESIGN.md`,
   approved visual baselines, `docs/plan/`).

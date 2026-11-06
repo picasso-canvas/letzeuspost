@@ -31,7 +31,7 @@
   The client review page and the phone views also run at 390 px. Seeded sample data ("Northwind Social" and 3
   brands). Gallery components get screenshot tests too.
 - They run in the CI Docker image (same fonts every time). Baselines are committed under `tests/visual/`.
-- **Approved baselines are zeus-only** (CODEOWNERS), and so is the first baseline of a new screen, because it
+- **Approved baselines are zeus-only** (listed for `risk-gate`), and so is the first baseline of a new screen, because it
   defines the approved look. The PR shows before/after/diff images.
 - Accessibility on every screen: axe with no serious or critical issues, keyboard paths through the main journeys,
   visible focus, reduced motion respected, WCAG 2.2 AA contrast.

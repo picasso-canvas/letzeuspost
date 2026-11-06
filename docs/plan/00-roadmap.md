@@ -24,7 +24,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | Builder | Claude Code, from this repo and the GitHub Project board |
 | Merging | Agents merge their own PRs when every gate passes; Zeus audits weekly ([19](19-build-team-and-workflow.md)) |
 | Zeus-only changes | Auth / permissions / billing, database migrations, dependencies, AI prompts and rules, the guardrails and CI themselves ([20](20-builder-guardrails.md)) |
-| Agent identity | A bot account `letzeuspost-bot` with write (not admin) access |
+| Agent identity | Zeus's own account (a bot account was tried and suspended by GitHub; kept simple) |
 | Outside skills | About 100 rated ([research/skills.md](research/skills.md)); MIT/Apache + CC-BY-SA text; pinned copies only |
 
 ## The sections
@@ -77,7 +77,7 @@ What each section decides:
 17. **Testing and quality:** unit, golden renders, end-to-end, AI evals, load and security tests.
 18. **Design-partner launch:** onboarding, feedback loop, success tracking, support, the build milestones in final order.
 19. **Build team and workflow:** the agents (Daedalus builds; Argus, Cerberus and Iris review), a task's life from issue to merge, the weekly audit, skills per agent.
-20. **Builder guardrails:** bot identity, sandbox, deny rules, hooks, checks, GitHub rulesets and CODEOWNERS, secrets, build cost caps, rules for outside skills.
+20. **Builder guardrails:** identity, sandbox, deny rules, hooks, checks, GitHub rulesets and the zeus-only risk gate, secrets, build cost caps, rules for outside skills.
 21. **AI design workflow:** mockups → `DESIGN.md` tokens → component gallery → visual tests, Iris's review, the chosen design skills.
 22. **Product AI guardrails:** prompt-injection defences, the content policy, output checks, cost caps, audit, evals.
 

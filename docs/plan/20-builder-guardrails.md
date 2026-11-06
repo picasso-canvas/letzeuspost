@@ -4,26 +4,35 @@
 changes without Zeus, or run up costs.
 
 Permission rules and hooks are a first line of defense only; Claude Code's own docs say they are **not a security
-boundary**. The real boundaries are the **sandbox** (filesystem and network) and **GitHub** (bot identity,
-rulesets, CODEOWNERS, required checks). (Checked against code.claude.com on 2026-11-06.)
+boundary**. The hard boundaries are the **sandbox** (filesystem and network) and **GitHub** (rulesets and required
+checks). (Checked against code.claude.com on 2026-11-06.)
+
+**Changed 2026-11-06 (Zeus): no bot account.** A separate `letzeuspost-bot` account was tried and GitHub suspended
+it, so Zeus chose the simpler setup: agents use Zeus's own account. The trade-off: the agents' token has Zeus's admin
+rights, so "agents can't change protections or merge zeus-only PRs" rests on the sandbox, deny rules and hooks plus
+the weekly audit, not on GitHub permissions alone.
 
 ## Questions for Zeus (answered 2026-11-06)
 
 | Question | Answer |
 |---|---|
 | Which changes must wait for Zeus? | Auth / permissions / billing · database migrations · new or upgraded dependencies · AI prompts and product AI rules · and, **fixed**, the guardrails, CI and harness themselves |
-| Which GitHub identity do agents use? | Their **own bot account** (write, not admin) |
+| Which GitHub identity do agents use? | **Zeus's own account** (`picasso-canvas`). A bot account was tried and suspended by GitHub; Zeus chose to keep it simple |
 | Cost limits? | Caps for building and for the product |
 | Outside skill licences? | MIT/Apache; CC-BY-SA-4.0 text with attribution; no copying from repos without a licence |
 
 ## Spec
 
-### 1. Identity and access (the strongest layer)
+### 1. Identity and access
 
-- A machine account **`letzeuspost-bot`**, created by Zeus, with **write** (not admin) access to this repo only, and
-  added to project #2. All agent git and `gh` actions run as the bot (its own `GH_CONFIG_DIR`, set in the builder
-  environment; the token is never committed). Agents never use Zeus's admin account.
-- The bot can't change rulesets, settings, secrets or collaborators, and can't approve its own PRs. GitHub enforces all of that.
+- Agents use Zeus's existing `gh` login (`picasso-canvas`). Nothing extra to set up.
+- Every agent commit ends with a `Co-Authored-By: Claude …` line, and agent PRs carry an `Agent: <name>` line, so
+  the weekly audit can tell agent work from Zeus's own.
+- Because that login is an admin, the agents are **forbidden** (deny rules + hooks, section 2–3) from: merging with
+  `--admin` (bypassing the rules) · changing rulesets, branch protection, repo settings, collaborators, secrets or
+  Actions variables (`gh ruleset`, `gh secret`, `gh variable`, `gh repo edit`, `gh repo delete`, and any `gh api`
+  write call to those endpoints) · adding or removing the `zeus-only` / `auto-merge` labels. Every settings change
+  also shows in GitHub's audit log, which the weekly audit checks.
 
 ### 2. Claude Code settings (`.claude/settings.json`, committed, zeus-only)
 
@@ -33,7 +42,9 @@ rulesets, CODEOWNERS, required checks). (Checked against code.claude.com on 2026
 - **Deny rules:** `Read(**/.env*)`; `Edit` of `/.github/**`, `/.claude/**`, `/CLAUDE.md`, `**/CLAUDE.md`,
   `/docs/plan/**`, `/DESIGN.md`, lint/TypeScript/test configs and approved visual baselines. Bash: `git push --force*`,
   pushes to `main`, `git commit --no-verify*`, `curl * | sh`, `npm publish*`, `gh repo delete*`, `gh api -X DELETE*`,
-  `gh ruleset*`, `gh secret*`, and any `gh pr merge` except `gh pr merge --auto --squash`.
+  `gh ruleset*`, `gh secret*`, `gh variable*`, `gh repo edit*`, `gh pr merge --admin*`, any other `gh pr merge` except
+  `gh pr merge --auto --squash`, `gh api` with `-X PUT/PATCH/POST/DELETE` on settings, rulesets, protection,
+  collaborators, secrets and variables, and `gh pr edit` / `gh issue edit` touching the `zeus-only` or `auto-merge` labels.
 - `permissions.disableBypassPermissionsMode: "disable"`, also set by Zeus in **managed settings** on the Mac so a
   project file can't undo it.
 
@@ -58,16 +69,17 @@ SQL · **gitleaks** CLI · **Semgrep** (free rules + our own) · `pnpm audit` + 
 
 ### 5. GitHub enforcement (the merge boundary)
 
-- **Ruleset on `main`:** PR required; required checks `ci`, `ai-review`, `risk-gate`, `guardrail-integrity`;
-  code-owner review required; no force pushes or deletion; linear history; all conversations resolved. Zeus is the
-  only bypass actor, for emergencies (logged).
-- **CODEOWNERS → @picasso-canvas** on every zeus-only area: auth/permissions/billing code · `packages/db/**`
-  (schema, migrations) · `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, Dockerfiles · `packages/ai/prompts/**`,
-  `packages/ai/policy/**`, `config/models.ts`, `config/providers.ts`, `config/plans.ts` · `.github/**`, `.claude/**`,
-  all `CLAUDE.md` files, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` · approved visual baselines and look
-  presets. The exact folders come from §13, and a CI check makes sure every zeus-only area has a CODEOWNERS line.
-- **`risk-gate`:** sorts the changed paths and labels the PR `zeus-only` or `auto-merge`. For zeus-only PRs it posts
-  a plain summary for Zeus. It also fails while `AGENTS_PAUSED` is true.
+- **Ruleset on `main`:** PR required; required checks `ci`, `ai-review`, `risk-gate`, `guardrail-integrity`; no
+  force pushes or deletion; linear history; all conversations resolved. Zeus (repo admin) is the only one who may
+  bypass it. (No code-owner review: GitHub never lets an account approve its own PR, and agents use Zeus's account.)
+- **Zeus-only areas** are listed in `.github/zeus-only-paths.txt` (itself zeus-only): auth/permissions/billing code ·
+  `packages/db/**` (schema, migrations) · `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, Dockerfiles ·
+  `packages/ai/prompts/**`, `packages/ai/policy/**`, `config/models.ts`, `config/providers.ts`, `config/plans.ts` ·
+  `.github/**`, `.claude/**`, all `CLAUDE.md` files, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` · approved
+  visual baselines and look presets. The exact folders come from §13.
+- **`risk-gate`:** sorts the changed paths against that list and labels the PR `zeus-only` or `auto-merge`. On a
+  **zeus-only PR the check fails on purpose**, so the PR can never merge itself: it posts a plain summary for Zeus,
+  and **Zeus merges it himself** with the bypass button after reading it. It also fails while `AGENTS_PAUSED` is true.
 - **`ai-review`:** `anthropics/claude-code-action@v1` with `claude_code_oauth_token` (Zeus runs `claude setup-token`
   and saves it as a secret), the code-review plugin, and a prompt with the issue's Done-when, the section doc and
   `CLAUDE.md`. It posts inline comments, and the job **fails on blocking findings**, so it works as a gate. The
@@ -107,7 +119,8 @@ limit Zeus sets (suggested $50) with alerts. The weekly audit reports usage.
 
 ## Not in the MVP
 
-Hardware security keys for the bot, signed commits, a self-hosted CI runner.
+A separate identity for agents (a bot account or a GitHub App, which would let GitHub itself enforce the zeus-only
+rule); signed commits; a self-hosted CI runner.
 
 ## Done when (milestone H0)
 
@@ -117,7 +130,8 @@ A red-team checklist passes. An agent tries each item and it is shown blocked:
 - [ ] editing `.github/` · reading `.env`
 - [ ] `curl … | sh` · a network call outside the allowlist
 - [ ] committing a fake secret
-- [ ] the bot merging a zeus-only PR
+- [ ] a zeus-only PR merging itself · an agent merging with `--admin`
+- [ ] an agent changing a ruleset, setting, secret or the `zeus-only` label
 - [ ] a PR that removes a deny rule
 - [ ] `.only` in a test · finishing without a green check
 - [ ] working while frozen

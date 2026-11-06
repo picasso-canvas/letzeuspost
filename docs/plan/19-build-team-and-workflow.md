@@ -42,10 +42,11 @@ Reviewers never review their own work and always start from a fresh context. The
    comment, writes tests first for logic, implements, and runs `pnpm check` (the same gates as CI) until it is green.
 5. **Local review.** Athena runs Argus; Cerberus when the diff touches a risky area; Iris when it touches UI. Blocking
    findings go back to the builder. At most 3 rounds, then `needs-zeus` with a summary.
-6. **PR.** The bot opens the PR (`Closes #n`, the Done-when checklist with evidence, screenshots for UI) and turns on
-   auto-merge (`gh pr merge --auto --squash`). Status → In review.
+6. **PR.** The builder opens the PR (from Zeus's account; `Closes #n`, an `Agent: <name>` line, the Done-when
+   checklist with evidence, screenshots for UI) and turns on auto-merge (`gh pr merge --auto --squash`). Status → In review.
 7. **GitHub gates** ([20](20-builder-guardrails.md)): `ci`, `ai-review`, `risk-gate`, `guardrail-integrity`. An
-   **auto**-tier PR merges itself when all are green. A **zeus-only**-tier PR waits for Zeus's code-owner approval.
+   **auto**-tier PR merges itself when all are green. On a **zeus-only**-tier PR, `risk-gate` fails on purpose, so it
+   can't merge itself: Zeus reads it and merges it himself.
 8. **Done.** The merge closes the issue (Status → Done), and the worktree is removed.
 9. **Failures.** A red check gets up to 3 fix attempts; after that, `blocked` plus a comment saying what's wrong.
 
