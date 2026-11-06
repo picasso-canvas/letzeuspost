@@ -96,6 +96,9 @@ edits → resend (the client sees only what changed) → approved.
   @mention · posts due in 48 h not approved. Clients get the review email and one reminder after 2 days (the agency
   can turn it off).
 
+Onboarding (the checklist after the first run, team members joining, onboarding emails, the design-partner
+playbook) is specified in [Section 23](23-onboarding.md).
+
 ## Not in the MVP
 
 Network mockups (a post shown inside an Instagram frame), comments pinned to a spot on a slide, drag-and-drop

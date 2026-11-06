@@ -55,6 +55,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 20 | Builder guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [20-builder-guardrails.md](20-builder-guardrails.md) | [#20](https://github.com/picasso-canvas/letzeuspost/issues/20) |
 | 21 | AI design workflow | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [21-ai-design-workflow.md](21-ai-design-workflow.md) | [#21](https://github.com/picasso-canvas/letzeuspost/issues/21) |
 | 22 | Product AI guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [22-product-ai-guardrails.md](22-product-ai-guardrails.md) | [#22](https://github.com/picasso-canvas/letzeuspost/issues/22) |
+| 23 | Onboarding | B Experience | ✋ | Draft (waiting for Zeus) | [23-onboarding.md](23-onboarding.md) | [#23](https://github.com/picasso-canvas/letzeuspost/issues/23) |
 
 What each section decides:
 
@@ -80,6 +81,7 @@ What each section decides:
 20. **Builder guardrails:** the repo-only token, sandbox, deny rules, hooks, checks, the risk gate, Zeus merging, secrets, usage caps, rules for outside skills.
 21. **AI design workflow:** mockups → `DESIGN.md` tokens → component gallery → visual tests, Iris's review, the chosen design skills.
 22. **Product AI guardrails:** prompt-injection defences, the content policy, output checks, cost caps, audit, evals.
+23. **Onboarding:** the agency's first run, the getting-started checklist, team members joining, the client's first review, onboarding emails, the design-partner playbook, onboarding measures.
 
 ## Planning order
 
