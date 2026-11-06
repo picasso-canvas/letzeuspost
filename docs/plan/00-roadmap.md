@@ -34,7 +34,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | # | Section | Part | ✋ | Status | Doc | Issue |
 |---|---|---|---|---|---|---|
 | 1 | Product spec | A Product & business | ✋ | **Approved** 2026-11-06 | [01-product-spec.md](01-product-spec.md) | [#1](https://github.com/picasso-canvas/letzeuspost/issues/1) |
-| 2 | Pricing, plans and billing | A Product & business | ✋ | Not started | 02-pricing-and-billing.md | [#2](https://github.com/picasso-canvas/letzeuspost/issues/2) |
+| 2 | Pricing, plans and billing | A Product & business | ✋ | Interview | 02-pricing-and-billing.md | [#2](https://github.com/picasso-canvas/letzeuspost/issues/2) |
 | 3 | LetZeusPost brand | A Product & business | ✋ | Not started | 03-letzeuspost-brand.md | [#3](https://github.com/picasso-canvas/letzeuspost/issues/3) |
 | 4 | User flows and screens | B Experience | ✋ | **Approved** 2026-11-06 | [04-flows-and-screens.md](04-flows-and-screens.md) | [#4](https://github.com/picasso-canvas/letzeuspost/issues/4) |
 | 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) | [#5](https://github.com/picasso-canvas/letzeuspost/issues/5) |
@@ -47,7 +47,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 12 | Export and calendar | D Collaboration & output | | **Approved** 2026-11-06 | [12-export-and-calendar.md](12-export-and-calendar.md) | [#12](https://github.com/picasso-canvas/letzeuspost/issues/12) |
 | 13 | Technical architecture | E Platform | | **Approved** 2026-11-06 | [13-architecture.md](13-architecture.md) | [#13](https://github.com/picasso-canvas/letzeuspost/issues/13) |
 | 14 | Infrastructure and operations | E Platform | | Not started | 14-infrastructure.md | [#14](https://github.com/picasso-canvas/letzeuspost/issues/14) |
-| 15 | Accounts, team and owner admin | E Platform | ✋ | Draft (waiting for Zeus) | [15-accounts-and-admin.md](15-accounts-and-admin.md) | [#15](https://github.com/picasso-canvas/letzeuspost/issues/15) |
+| 15 | Accounts, team and owner admin | E Platform | ✋ | **Approved** 2026-11-06 | [15-accounts-and-admin.md](15-accounts-and-admin.md) | [#15](https://github.com/picasso-canvas/letzeuspost/issues/15) |
 | 16 | Legal and trust | E Platform | ✋ | Not started | 16-legal-and-trust.md | [#16](https://github.com/picasso-canvas/letzeuspost/issues/16) |
 | 17 | Testing and quality | E Platform | | Not started | 17-testing.md | [#17](https://github.com/picasso-canvas/letzeuspost/issues/17) |
 | 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md | [#18](https://github.com/picasso-canvas/letzeuspost/issues/18) |

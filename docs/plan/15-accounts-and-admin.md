@@ -1,4 +1,4 @@
-# Section 15: Accounts, team and owner admin (Draft, waiting for Zeus)
+# Section 15: Accounts, team and owner admin (Approved 2026-11-06)
 
 **Goal:** workspaces and the people in them, who can do what (the permission matrix), invites and seats, usage
 meters, each person's account, and Zeus's admin panel.
