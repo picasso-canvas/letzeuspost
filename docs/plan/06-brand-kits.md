@@ -1,4 +1,4 @@
-# Section 6: Brand kits (Draft, waiting for Zeus)
+# Section 6: Brand kits (Approved 2026-11-06)
 
 > **Stack details pending §13.** Mentions of the Chrome worker, `safe-fetch` and storage are assumptions collected in
 > [13-architecture.md](13-architecture.md).
@@ -11,9 +11,9 @@ the asset library, and how the kit feeds writing, design and checks.
 | Question | Answer |
 |---|---|
 | Brands without a website? | **Must work from day one** (Zeus, 2026-11-06). Many brands, especially in Bangladesh, have only a Facebook Page or nothing online |
-| Read Facebook / Instagram pages automatically? | **Proposed: no.** Store the link for captions; ask for screenshots of recent posts instead (social pages sit behind log-ins, and the networks' terms forbid scraping) |
-| Brands without a logo? | **Proposed:** a temporary wordmark (the name in the brand's heading font and color), clearly marked and replaceable. Real logo design is a separate studio service |
-| Who fills in the 8 questions? | **Proposed:** the agency, at launch (on a call with the client, or from what they know). A link the client fills in comes after launch |
+| Read Facebook / Instagram pages automatically? | **No.** Save the link for captions; the agency uploads screenshots of recent posts instead (social pages sit behind log-ins, and the networks' terms forbid scraping) |
+| Brands without a logo? | **A temporary wordmark** (the name in the brand's heading font and color), clearly marked and replaceable. Real logo design is a separate studio service |
+| Who fills in the 8 questions? | **The agency**, at launch (on a call with the client, or from what they know). A link the client fills in comes after launch |
 
 ## Spec
 
