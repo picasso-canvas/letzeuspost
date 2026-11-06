@@ -36,7 +36,7 @@ Mockups (version 12): https://claude.ai/artifact/L47yVDF9nHEdrnYKaPHiDe (screens
 | **Smallest size** | Mark 16 px; full logo 96 px wide |
 | **Don't** | Gold text on white (1.9:1, §05) · recolor the bolt · rotate, stretch, add shadows or gradients · put the mark on a busy photo without a solid backing · split the name |
 
-**Final files** (made 2026-11-06, in `docs/design/logos/letzeuspost/`; outlining waits for Zeus's OK on a font tool): the mark and both lockups as SVG with the wordmark **converted
+**Final files** (made 2026-11-06, in `docs/design/logos/letzeuspost/`; the wordmark was converted to outlines with fontTools the same day and matches the approved logo): the mark and both lockups as SVG with the wordmark **converted
 to outlines** (no font needed to display them; needs a font tool, installed only with Zeus's OK), plus PNGs, a favicon
 set (16, 32, 48 px and SVG), an Apple touch icon (180 px), app icons (192 and 512 px), a social share image (1200 ×
 630), an email header logo (PNG, since many email apps don't show SVG), the Paddle checkout logo, and square avatars
