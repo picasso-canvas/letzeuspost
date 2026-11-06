@@ -52,8 +52,14 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .app { max-width: 1440px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 760px; overflow: hidden; }
 .side { border-right: 1px solid var(--border); background: var(--surface-2); padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 4px 8px 14px; letter-spacing: -.01em; }
-.logo .bolt { width: 26px; height: 26px; border-radius: 7px; background: var(--gold); display: grid; place-items: center; }
-.logo .bolt svg { width: 15px; height: 15px; fill: var(--on-gold); }
+.logo .wm { font-weight: 500; letter-spacing: -.02em; } .logo .wm b { font-weight: 700; }
+.brandlogo svg { width: 1.3em; height: 1.3em; flex: none; }
+.logo-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; gap: 12px; padding: 14px; align-items: center; }
+.logo-bg { border-radius: 10px; padding: 18px 20px; border: 1px solid var(--border); }
+.logo-bg.light { background: #FFFFFF; } .logo-bg.dark { background: #11100E; }
+.logo-bg svg { width: 100%; max-width: 300px; height: auto; display: block; }
+.logo-sizes { display: flex; gap: 10px; align-items: flex-end; }
+@media (max-width: 900px) { .logo-row { grid-template-columns: minmax(0,1fr); } }
 .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-ctl); color: var(--muted); text-decoration: none; border: 0; background: none; width: 100%; text-align: left; cursor: pointer; font-weight: 500; }
 .nav:hover { background: var(--surface); color: var(--ink); }
 .nav[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: inset 2px 0 0 var(--ink); }
@@ -366,15 +372,15 @@ table.t td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
 
 <div class="app" id="app">
   <aside class="side" aria-label="Main">
-    <div class="logo"><span class="bolt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.2L9 22l11-12.6h-6.6L13.5 2z"/></svg></span>LetZeusPost</div>
+    <div class="logo"><span data-mark="lzp" data-size="26" style="display:inline-flex"></span><span class="wm">Let<b>Zeus</b>Post</span></div>
     <button class="nav" data-go="inbox"><i data-lucide="inbox"></i>Inbox<span class="count">9</span></button>
     <button class="nav" data-go="calendar"><i data-lucide="calendar-days"></i>Calendar</button>
     <button class="nav" data-go="brands"><i data-lucide="layers"></i>Brands</button>
     <div class="group brandnav" style="display:grid;gap:2px">
       <span class="eyebrow" style="padding:4px 10px">Pinned brands</span>
-      <button class="nav" data-go="kit"><span class="dot" style="background:#1F5C45"></span>Golpo Café</button>
-      <button class="nav" data-go="posts" data-brand="ironline"><span class="dot" style="background:#FF4D2E"></span>Ironline Studio</button>
-      <button class="nav" data-go="posts" data-brand="brightwell"><span class="dot" style="background:#0F766E"></span>Brightwell Dental</button>
+      <button class="nav" data-go="kit"><span data-mark="golpo" data-size="18" style="display:inline-flex"></span>Golpo Café</button>
+      <button class="nav" data-go="posts" data-brand="ironline"><span data-mark="ironline" data-size="18" style="display:inline-flex"></span>Ironline Studio</button>
+      <button class="nav" data-go="posts" data-brand="brightwell"><span data-mark="brightwell" data-size="18" style="display:inline-flex"></span>Brightwell Dental</button>
     </div>
     <button class="nav" data-go="plan-usage" style="margin-top:14px"><i data-lucide="settings"></i>Settings</button>
     <div class="usage">
@@ -416,6 +422,23 @@ const ILL = {
   tooth: '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#CCF0EA"/><path d="M30 24c10-6 30-6 40 0 8 6 6 20 2 30-3 8-4 28-10 30-5 2-6-16-12-16s-7 18-12 16c-6-2-7-22-10-30-4-10-6-24 2-30z" fill="#FFFFFF" stroke="#0F766E" stroke-width="3"/></svg>',
 };
 const fmtBn = n => String(n).replace(/[0-9]/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+
+/* logos: the same drawings as docs/design/logos/ in the repo */
+const MARK = {
+  lzp: '<rect x="2" y="2" width="60" height="60" rx="15" fill="#F5B301"/><path d="M37 9 L17 37 H30 L26 55 L47 25 H34 Z" fill="#1C1A17" stroke="#1C1A17" stroke-width="2" stroke-linejoin="round"/>',
+  golpo: '<circle cx="32" cy="32" r="30" fill="#FFB627"/><path d="M28 11 H36 A7 7 0 0 1 43 18 A7 7 0 0 1 36 25 H31.5 L25 30 L27 25 H28 A7 7 0 0 1 21 18 A7 7 0 0 1 28 11 Z" fill="#FFF1D6" stroke="#1F5C45" stroke-width="2.5" stroke-linejoin="round"/><circle cx="27.5" cy="18" r="1.7" fill="#1F5C45"/><circle cx="32" cy="18" r="1.7" fill="#1F5C45"/><circle cx="36.5" cy="18" r="1.7" fill="#1F5C45"/><path d="M15 31 H45 V36 A15 13 0 0 1 30 49 A15 13 0 0 1 15 36 Z" fill="#1F5C45"/><path d="M45 34 H47.5 A5 5 0 0 1 47.5 44 H43.5" fill="none" stroke="#1F5C45" stroke-width="3.5" stroke-linecap="round"/><rect x="12" y="50.5" width="36" height="3.5" rx="1.75" fill="#1F5C45"/>',
+  ironline: '<rect width="64" height="64" rx="8" fill="#121212"/><g transform="translate(10.5 0) skewX(-12)"><rect x="14" y="13" width="8" height="38" fill="#FFFFFF"/><rect x="27" y="13" width="8" height="38" fill="#FFFFFF"/><rect x="27" y="43" width="22" height="8" fill="#FF4D2E"/></g>',
+  brightwell: '<circle cx="32" cy="32" r="30" fill="#CCF0EA"/><path d="M24 16 C28 14 30 16 32 17 C34 16 36 14 40 16 C46 19 46 27 44 33 C42 39 42 48 38 49 C35 50 35 41 32 41 C29 41 29 50 26 49 C22 48 22 39 20 33 C18 27 18 19 24 16 Z" fill="#FFFFFF" stroke="#0F766E" stroke-width="3" stroke-linejoin="round"/><path d="M48 9 L49.6 13.4 L54 15 L49.6 16.6 L48 21 L46.4 16.6 L42 15 L46.4 13.4 Z" fill="#0F766E"/>',
+};
+const markSvg = (k, size) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true" style="flex:none">${MARK[k]}</svg>`;
+const LOCKUP = {
+  lzp: ["LetZeusPost", 300, i => `<text x="78" y="43" font-family="Inter, sans-serif" font-size="31" letter-spacing="-0.6" fill="${i[0]}"><tspan font-weight="500">Let</tspan><tspan font-weight="700">Zeus</tspan><tspan font-weight="500">Post</tspan></text>`, [["#1C1A17"], ["#F3F1EC"]]],
+  golpo: ["Golpo Café", 250, i => `<text x="76" y="34" font-family="'Baloo Da 2', sans-serif" font-size="30" font-weight="800" fill="${i[0]}">Golpo Café</text><text x="77" y="56" font-family="'Hind Siliguri', sans-serif" font-size="15" font-weight="600" fill="${i[0]}" lang="bn">গল্প ক্যাফে</text>`, [["#1F5C45"], ["#FFF1D6"]]],
+  ironline: ["Ironline Studio", 230, i => `<text x="76" y="40" font-family="Anton, Impact, sans-serif" font-size="34" letter-spacing="1" fill="${i[0]}">IRONLINE</text><text x="77" y="57" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="700" letter-spacing="5" fill="${i[1]}">STUDIO</text>`, [["#121212", "#C9381E"], ["#FFFFFF", "#FF4D2E"]]],
+  brightwell: ["Brightwell Dental", 250, i => `<text x="76" y="37" font-family="Manrope, sans-serif" font-size="29" font-weight="800" letter-spacing="-0.6" fill="${i[0]}">Brightwell</text><text x="77" y="55" font-family="Manrope, sans-serif" font-size="10.5" font-weight="700" letter-spacing="4.5" fill="${i[1]}">DENTAL</text>`, [["#0F3D3A", "#0F766E"], ["#E6FFFA", "#5EEAD4"]]],
+};
+const lockup = (k, theme) => { const [n, w, f, c] = LOCKUP[k]; return `<svg viewBox="0 0 ${w} 64" role="img" aria-label="${n} logo, ${theme} background">${MARK[k]}${f(c[theme === "dark" ? 1 : 0])}</svg>`; };
+const MARK_BY_COLOR = { "#1F5C45": "golpo", "#FFB627": "golpo", "#FF4D2E": "ironline", "#0F766E": "brightwell" };
 
 /* posts in the December batch (Golpo Café) and a few for other brands */
 const POSTS = [
@@ -482,7 +505,7 @@ const ic = n => `<i data-lucide="${n}"></i>`;
 const badge = (k, map = ST) => { const [c, i, l] = map[k]; return `<span class="badge ${c}">${ic(i)}${l}</span>`; };
 const nets = list => list.map(n => `<span class="net" title="${({ IG: "Instagram", FB: "Facebook", in: "LinkedIn", TT: "TikTok", X: "X" })[n]}">${n}</span>`).join("");
 const langs = list => list.map(l => `<span class="lang ${l === "BN" ? "bn" : ""}">${l === "BN" ? "বাং" : l}</span>`).join("");
-const brandLogo = (b, color) => `<span class="brandlogo"><i style="background:${color}"></i>${b}</span>`;
+const brandLogo = (b, color) => `<span class="brandlogo">${MARK_BY_COLOR[color] ? `<svg viewBox="0 0 64 64" aria-hidden="true">${MARK[MARK_BY_COLOR[color]]}</svg>` : `<i style="background:${color}"></i>`}${b}</span>`;
 
 function art({ brand = "golpo", lang = "en", slide = 0, size = "portrait", look, kind } = {}) {
   const lk = look || LOOK[brand];
@@ -556,7 +579,7 @@ function calCells() {
 
 V.brands = () => `<div class="page-head"><div><h1>Brands</h1><p class="sub">3 of 10 brands on your plan</p></div><button class="btn btn-gold" data-go="brand-new">${ic("plus")}New brand</button></div>
   <div class="grid-tiles">${Object.entries(BRANDS).map(([k, b]) => `<button class="tile" data-go="${k === "golpo" ? "kit" : "posts"}" data-brand="${k}">
-    <div class="row" style="gap:12px;flex-wrap:nowrap"><span class="mono" style="background:${b.color};${k === "golpo" ? "font-family:'Baloo Da 2'" : ""}">${b.mono}</span><div style="min-width:0"><h3>${b.name}</h3><div class="muted" style="font-size:12.5px">${b.where}</div></div></div>
+    <div class="row" style="gap:12px;flex-wrap:nowrap">${markSvg(k, 40)}<div style="min-width:0"><h3>${b.name}</h3><div class="muted" style="font-size:12.5px">${b.where}</div></div></div>
     <div class="row" style="flex-wrap:nowrap;gap:12px;align-items:center"><div style="width:92px;flex:none">${art({ brand: k, size: "square", kind: k === "golpo" ? "quiz" : undefined })}</div>
       <div style="display:grid;gap:6px;font-size:12.5px" class="muted"><span>${b.langs} · ${b.nets.join(" + ")}</span><span>${b.look} look</span></div></div>
     <div class="stats"><span><b>${b.month}</b> posts this month</span><span><b>${b.waiting}</b> waiting</span></div></button>`).join("")}
@@ -602,7 +625,7 @@ V.kit = () => {
     publishing: `<dl class="kv"><dt>Networks</dt><dd class="row">${nets(["IG", "FB"])} Instagram, Facebook</dd><dt>Sizes</dt><dd>4:5 feed, 9:16 story</dd><dt>Timezone</dt><dd>Asia/Dhaka</dd><dt>Usual times</dt><dd class="num">12:30 and 17:30</dd><dt>Approval</dt><dd>Agency, then client · <b>Rafiq Ahmed</b> (owner) reviews by link</dd></dl>`,
     holidays: `<p class="muted" style="margin-bottom:10px">Country: Bangladesh. Switch off any day you don't post for.</p>${[["16 Dec", "Victory Day", "Public holiday", true], ["25 Dec", "Christmas Day", "Public holiday", true], ["31 Dec", "New Year's Eve", "Observance", true], ["21 Feb", "International Mother Language Day", "Public holiday", true], ["3 Mar", "Golpo's 5th birthday", "Custom date", true], ["14 Apr", "Pohela Boishakh", "Public holiday", true]].map(([d, n, k, on], i) => `<div class="row" style="justify-content:space-between;padding:8px 0;border-top:${i ? "1px solid var(--border)" : "0"};flex-wrap:nowrap"><div><b class="num" style="display:inline-block;width:56px">${d}</b>${n} <span class="faint">· ${k}</span></div><button class="toggle" role="switch" aria-checked="${on}" aria-label="Post for ${n}" data-act="switch"></button></div>`).join("")}<button class="btn btn-sm" style="margin-top:10px" data-act="toast" data-msg="Mockup: add a custom date">${ic("plus")}Add a date</button>`,
   };
-  return `<div class="page-head"><div class="row" style="gap:12px;flex-wrap:nowrap"><span class="mono" style="background:#1F5C45;font-family:'Baloo Da 2'">গ</span><div><h1>Golpo Café</h1><p class="sub">Brand kit · Dhaka · EN + বাংলা</p></div></div>
+  return `<div class="page-head"><div class="row" style="gap:12px;flex-wrap:nowrap">${markSvg("golpo", 40)}<div><h1>Golpo Café</h1><p class="sub">Brand kit · Dhaka · EN + বাংলা</p></div></div>
     <div class="row"><button class="btn" data-go="posts">${ic("layout-grid")}Posts</button><button class="btn btn-gold" id="kit-create">${ic("plus")}New calendar</button></div></div>
     <div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${S.kitTab === t}" data-act="kittab" data-v="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
     <div class="two" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)"><div>${P[S.kitTab]}</div>
@@ -744,10 +767,18 @@ V.welcome = () => {
         <div class="field"><label>Networks</label><div class="row">${["Instagram", "Facebook", "LinkedIn", "X", "Threads", "TikTok", "Pinterest"].map((n, i) => `<button class="chip" aria-pressed="${i < 2}" data-act="press">${n}</button>`).join("")}</div></div>
         <div class="field"><label>Languages</label><div class="row"><button class="chip" aria-pressed="true" data-act="press">English</button><button class="chip" aria-pressed="true" data-act="press" style="font-family:'Hind Siliguri'">বাংলা</button></div></div>`,
   }[st];
-  return `<div class="welcome"><div class="row" style="justify-content:space-between"><div class="logo" style="padding:0"><span class="bolt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.2L9 22l11-12.6h-6.6L13.5 2z"/></svg></span>LetZeusPost</div><button class="btn btn-ghost btn-sm" data-go="inbox">Skip for now</button></div>
+  return `<div class="welcome"><div class="row" style="justify-content:space-between"><div class="logo" style="padding:0">${markSvg("lzp", 26)}<span class="wm">Let<b>Zeus</b>Post</span></div><button class="btn btn-ghost btn-sm" data-go="inbox">Skip for now</button></div>
     <div class="wsteps">${steps.map((s, i) => `<span class="${i + 1 < st ? "done" : i + 1 === st ? "now" : ""}">${i + 1 < st ? ic("circle-check") : `${i + 1}`} ${s}</span>`).join('<span class="faint">·</span>')}</div>
     <div class="wcard">${body}<div class="row" style="justify-content:space-between">${st > 1 ? `<button class="btn" data-act="wback">${ic("arrow-left")}Back</button>` : "<span></span>"}
       ${st < 4 ? `<button class="btn btn-gold" data-act="wnext">${st === 2 ? "Read the site" : st === 3 ? "Looks right" : "Continue"}${ic("arrow-right")}</button>` : `<button class="btn btn-gold" data-go="posts">${ic("zap")}Make my sample week</button>`}</div></div></div>`;
+};
+
+V.logos = () => {
+  const items = [["lzp", "LetZeusPost", "Draft for Section 3, not approved"], ["golpo", "Golpo Café", "Sample brand · Dhaka · Playful look"], ["ironline", "Ironline Studio", "Sample brand · Austin · Bold look"], ["brightwell", "Brightwell Dental", "Sample brand · Leeds · Clean look"]];
+  return `<div class="page-head"><div><h1>Logos</h1><p class="sub">The draft LetZeusPost logo and the three sample brands in these mockups. All drawn in code; the brands are fictional.</p></div></div>
+  <div class="stack">${items.map(([k, n, d]) => `<section class="panel"><div class="panel-head"><h2>${n}</h2><span class="faint" style="font-size:12.5px">${d}</span></div>
+    <div class="logo-row"><div class="logo-bg light">${lockup(k, "light")}</div><div class="logo-bg dark">${lockup(k, "dark")}</div><div class="logo-sizes" title="Mark at 16, 32 and 64 px">${[16, 32, 64].map(s => markSvg(k, s)).join("")}</div></div></section>`).join("")}</div>
+  <p class="faint" style="margin-top:12px;font-size:12.5px">Files are in the repo under docs/design/logos (SVG and transparent PNG). The wordmarks use free Google Fonts and get converted to outlines once a logo is approved.</p>`;
 };
 
 /* ---------- export dialog & create menu ---------- */
@@ -780,8 +811,9 @@ function openCreate(btn) {
 function closeLayer() { $("#layer").innerHTML = ""; const c = $("#create-btn"); c && c.setAttribute("aria-expanded", "false"); }
 
 /* ---------- router & render ---------- */
-const ROUTES = [["welcome", "Welcome (first run)"], ["inbox", "Inbox"], ["calendar", "Calendar"], ["brands", "Brands"], ["brand-new", "New brand"], ["kit", "Brand kit"], ["ideas", "Batch: ideas"], ["posts", "Batch: posts"], ["editor", "Post editor"], ["export", "Export dialog"], ["review", "Client review (phone)"], ["plan-usage", "Settings: plan & usage"]];
+const ROUTES = [["welcome", "Welcome (first run)"], ["inbox", "Inbox"], ["calendar", "Calendar"], ["brands", "Brands"], ["brand-new", "New brand"], ["kit", "Brand kit"], ["ideas", "Batch: ideas"], ["posts", "Batch: posts"], ["editor", "Post editor"], ["export", "Export dialog"], ["review", "Client review (phone)"], ["plan-usage", "Settings: plan & usage"], ["logos", "Logos (sample)"]];
 $("#screen-pick").innerHTML = ROUTES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+document.querySelectorAll("[data-mark]").forEach(el => { el.innerHTML = markSvg(el.dataset.mark, +el.dataset.size || 18); });
 function icons() {
   try { if (!window.lucide) return; const o = { attrs: { "aria-hidden": "true" } }; if (lucide.icons) o.icons = lucide.icons; lucide.createIcons(o); } catch (e) {}
 }
