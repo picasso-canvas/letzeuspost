@@ -135,7 +135,7 @@ merchandise · filing outside Bangladesh before selling there.
 - letzeuspost.com is bought and the handles claimed (Zeus).
 - The clearance search is back and the decision recorded here; the Bangladesh filing is made if it's clear.
 - The public page is built (a build task, after §16's terms) and approved by Zeus.
-- The studio brand kit exists in `brands/letzeuspost/`.
+- The studio brand kit exists in `brands/letzeuspost/` (done 2026-11-06 in the editz repo, with a posts theme; a test carousel rendered).
 
 ## Depends on
 
