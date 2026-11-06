@@ -1,0 +1,94 @@
+# LetZeusPost: planning roadmap
+
+**Rule from Zeus (2026-11-06):** plan every section properly before writing a single line of code. Each section gets
+its own detailed plan, and Zeus approves it. Building starts only from approved sections.
+
+## Decided in the first interview (2026-11-06)
+
+| Topic | Decision |
+|---|---|
+| Product | Social posts generator (one narrow tool first; video later) |
+| Buyer | Agencies / marketing teams with many client brands |
+| Market / languages | Global, English first; English + Bangla at launch |
+| First users | 1–3 agencies Zeus knows, invite-only design partners |
+| First build | Working MVP |
+| Brand setup | From the client's website, then the agency adjusts |
+| Images | Brand library + stock search + AI generation + type-only layouts |
+| Editing | Form edit + live preview + AI rewrite |
+| Approval | Set per brand: none / agency / agency + client |
+| Publishing | Export first (ZIP, PDF, CSV); direct scheduling in v2 |
+| Models / providers | Config files, swappable per task |
+| Hosting | Athena decides in Section 14 (draft: one Hetzner VPS + Cloudflare R2) |
+| Payouts | Not decided yet (Section 2) |
+| Name | LetZeusPost (letzeuspost.com and .ai were free on 2026-11-06) |
+| Builder | Claude Code, from this repo and the GitHub Project board |
+
+## The sections
+
+✋ = needs Zeus's answers in an interview round. The others Athena drafts and Zeus approves.
+
+| # | Section | Part | ✋ | Status | Doc |
+|---|---|---|---|---|---|
+| 1 | Product spec | A Product & business | ✋ | **Approved** 2026-11-06 | [01-product-spec.md](01-product-spec.md) |
+| 2 | Pricing, plans and billing | A Product & business | ✋ | Not started | 02-pricing-and-billing.md |
+| 3 | LetZeusPost brand | A Product & business | ✋ | Not started | 03-letzeuspost-brand.md |
+| 4 | User flows and screens | B Experience | ✋ | **Approved** 2026-11-06 | [04-flows-and-screens.md](04-flows-and-screens.md) |
+| 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) |
+| 6 | Brand kits | C Engine | | Not started | 06-brand-kits.md |
+| 7 | Posts: types, layouts, sizes, looks | C Engine | ✋ | Not started | 07-posts.md |
+| 8 | Render engine | C Engine | | Not started | 08-render-engine.md |
+| 9 | AI pipeline | C Engine | ✋ | Not started | 09-ai-pipeline.md |
+| 10 | Images | C Engine | ✋ | Not started | 10-images.md |
+| 11 | Review, editing and approvals | D Collaboration & output | ✋ | Not started | 11-review-and-approvals.md |
+| 12 | Export and calendar | D Collaboration & output | | Not started | 12-export-and-calendar.md |
+| 13 | Technical architecture | E Platform | | Not started | 13-architecture.md |
+| 14 | Infrastructure and operations | E Platform | | Not started | 14-infrastructure.md |
+| 15 | Accounts, team and owner admin | E Platform | ✋ | Not started | 15-accounts-and-admin.md |
+| 16 | Legal and trust | E Platform | ✋ | Not started | 16-legal-and-trust.md |
+| 17 | Testing and quality | E Platform | | Not started | 17-testing.md |
+| 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md |
+
+What each section decides:
+
+1. **Product spec:** users and roles, the four jobs, networks, principles, what waits for v2, success measures.
+2. **Pricing, plans and billing:** tiers, quotas, what counts as a post, trial, design-partner terms, the billing provider (decided by how Zeus gets paid), invoices and tax.
+3. **LetZeusPost brand:** logo, colors, voice, tagline, domain purchase and trademark check (a studio brand kit).
+4. **User flows and screens:** sitemap, every screen, journeys, empty, loading and error states, notifications.
+5. **App design:** the app's design system, then clickable mockups Zeus approves.
+6. **Brand kits:** what a kit holds, website extraction step by step, the brand editor, the asset library.
+7. **Posts:** post types and layouts, sizes per network and caption limits, the 4 look presets, the post content schema.
+8. **Render engine:** port of the studio renderer, the HTML builder shared by preview and final render, Chrome in Docker, fonts (Bangla included), the fit report and auto-shortening.
+9. **AI pipeline:** every AI task (brand profile, plan, write, rewrite, fit fix, QC, asset tagging), prompts, quality rules, the model and provider config files, cost logging, AI quality tests.
+10. **Images:** brand library, stock search, AI image generation, the synthetic label, licences and credits.
+11. **Review, editing and approvals:** the post editor, versions, the three approval modes, the client link, comments, emails.
+12. **Export and calendar:** ZIP, LinkedIn PDF, Buffer / Hootsuite / Metricool CSV, the calendar, the v2 scheduling outline.
+13. **Technical architecture:** stack, repo layout, data model, auth and workspaces, the job queue, storage, API, security.
+14. **Infrastructure and operations:** hosting, environments, deploys, backups and restore, monitoring, secrets, monthly cost.
+15. **Accounts, team and owner admin:** workspaces, the permission matrix, invites, usage meters, Zeus's admin panel.
+16. **Legal and trust:** terms, privacy, the data agreement agencies need (GDPR), AI disclosure, content and licence rules.
+17. **Testing and quality:** unit, golden renders, end-to-end, AI evals, load and security tests.
+18. **Design-partner launch:** onboarding, feedback loop, success tracking, support, the build milestones in final order.
+
+## Planning order
+
+1 → 4 → 5 → 7 → 6 → 9 → 10 → 11 → 12 → 8 → 13 → 15 → 2 → 3 → 16 → 14 → 17 → 18
+
+The product first, then what users see, then the engine that serves it, then the platform under it, then the launch.
+[drafts/first-proposal.md](drafts/first-proposal.md) holds the first, unapproved draft of the architecture, hosting,
+pricing and milestones, as a starting point for Sections 2, 6, 8, 9, 12, 13, 14 and 18.
+
+## How work moves on the board
+
+Each section is one issue (label `section`). Its **Status** moves:
+
+**Not started → Interview → Draft → Approved**
+
+Every section doc follows [_section-template.md](_section-template.md): Goal · Questions for Zeus · Spec · Not in the
+MVP · Done when · Depends on.
+
+When the sections a build milestone needs are approved, Athena breaks them into **build-task** issues (label
+`build-task`, with a Milestone M0–M7 and a "Done when" checklist). Zeus moves them to **Ready to build**. Then:
+
+**Ready to build → In progress → In review → Done**
+
+`needs-zeus` = waiting on Zeus's answer or approval. `blocked` = something else is missing (the comment says what).

@@ -1,0 +1,62 @@
+# Section 5: App design (Draft: direction approved 2026-11-06, mockups next)
+
+**Goal:** the look of the LetZeusPost app itself, shown as clickable mockups that Zeus approves before any product code.
+
+## Questions for Zeus (answered 2026-11-06)
+
+| Question | Answer |
+|---|---|
+| How should the app feel? | A **calm pro tool** (Linear/Notion-like: neutral surfaces, lots of space; the clients' posts are the stars) |
+| Accent color? | **Thunderbolt gold** |
+| Light or dark? | **Both**, following the system, with a switch in Account settings |
+| How much Zeus personality? | A **subtle bolt + witty copy**: humor only in loading and empty states; errors and actions stay plain |
+| How to review the designs? | **Clickable HTML mockups** with sample data |
+
+## Spec
+
+### Design system
+
+- **Color:** neutral stone/zinc scale for surfaces, borders and text; near-black ink. Gold (around `#F5B301`) as a
+  *fill* for primary buttons (near-black text on gold), the selected state, focus rings, the logo and progress. Gold
+  text on white fails contrast, so text accents in light mode use a deep amber (around `#9A6700`); dark mode uses gold
+  directly. Every color pair is checked against WCAG AA.
+- **Status colors:** Generating (slate, animated) · Needs fix (red) · In review (gold) · With client (violet) ·
+  Approved (green) · Exported (gray). QC: pass (green) / warn (amber) / fail (red). Each status also has an icon, not
+  only a color.
+- **Brand colors in the app:** each client brand appears with its own primary color (calendar chips, tiles).
+- **Type:** Inter for the interface (OFL; 14 px base, 13 px meta, tabular numbers in meters and counters). Post
+  previews use each brand's own fonts.
+- **Shape and space:** 8 px grid, radius 8 (controls) / 12 (cards), borders instead of heavy shadows, comfortable density.
+- **Components** (shadcn/ui + Lucide icons): sidebar, top bar, ⌘K command menu, buttons (primary gold / secondary /
+  ghost / destructive), inputs, tabs, dialog, side sheet, dropdown, toast, status badge, avatar, month/week calendar,
+  post card, slide thumbnail, batch stepper, live progress row, usage meter, empty state, skeleton, comment thread,
+  caption box with character counter, image picker, color and font pickers, size tabs.
+- **Motion:** 150–200 ms, a shimmer on generating cards, and nothing moves when the system asks for reduced motion.
+- **Voice of the interface:** short and plain. Witty lines only while waiting or when a screen is empty, e.g.
+  "Zeus is writing your captions…", "Forging slides…", "Nothing waiting. Even gods take breaks."
+- **Logo:** a placeholder wordmark with a small bolt until Section 3 finalizes it.
+
+### The mockups (not product code; thrown away once approved)
+
+A private, clickable web page with sample data, built on the [Section 4](04-flows-and-screens.md) screens:
+- **Sample agency** "Northwind Social" with 3 fictional client brands in different looks: a Dhaka café (EN + BN),
+  a US fitness studio, and a UK dental clinic.
+- **Screens:** Welcome (guided first batch) · Inbox · Brands · New brand (URL → reading the site → check the kit) ·
+  Brand kit (Voice, Look) · Batch ideas stage (calendar with holiday chips) · Batch posts stage (calendar ⇄ grid, live
+  progress) · Post editor (slides, size tabs, Slide / Captions / Checks / History / Comments, EN ⇄ BN, AI rewrite) ·
+  Export dialog · Client review in a phone frame · Settings: Plan & usage.
+- A light/dark toggle, and real-looking post previews (Bangla included) in the brands' looks.
+- Zeus clicks through, comments, and we iterate until it's approved. Approved screenshots and notes are then added
+  to this doc.
+
+## Not in the MVP
+
+A marketing website, the email designs (they follow this system and are planned in Section 11), and a Bangla interface.
+
+## Done when
+
+- Zeus approves the mockups, and their link and screenshots are recorded here.
+
+## Depends on
+
+[Section 1](01-product-spec.md), [Section 4](04-flows-and-screens.md); the logo comes from Section 3.
