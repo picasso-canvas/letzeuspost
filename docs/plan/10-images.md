@@ -1,4 +1,4 @@
-# Section 10: Images (Draft, waiting for Zeus)
+# Section 10: Images (Approved 2026-11-06)
 
 > **Stack details pending §13.** The worker, storage and model choices are assumptions collected in
 > [13-architecture.md](13-architecture.md).

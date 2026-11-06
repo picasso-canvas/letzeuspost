@@ -42,7 +42,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 7 | Posts: types, layouts, sizes, looks | C Engine | ✋ | **Approved** 2026-11-06 | [07-posts.md](07-posts.md) | [#7](https://github.com/picasso-canvas/letzeuspost/issues/7) |
 | 8 | Render engine | C Engine | | Not started | 08-render-engine.md | [#8](https://github.com/picasso-canvas/letzeuspost/issues/8) |
 | 9 | AI pipeline | C Engine | ✋ | **Approved** 2026-11-06 | [09-ai-pipeline.md](09-ai-pipeline.md) | [#9](https://github.com/picasso-canvas/letzeuspost/issues/9) |
-| 10 | Images | C Engine | ✋ | Draft (waiting for Zeus) | [10-images.md](10-images.md) | [#10](https://github.com/picasso-canvas/letzeuspost/issues/10) |
+| 10 | Images | C Engine | ✋ | **Approved** 2026-11-06 | [10-images.md](10-images.md) | [#10](https://github.com/picasso-canvas/letzeuspost/issues/10) |
 | 11 | Review, editing and approvals | D Collaboration & output | ✋ | Not started | 11-review-and-approvals.md | [#11](https://github.com/picasso-canvas/letzeuspost/issues/11) |
 | 12 | Export and calendar | D Collaboration & output | | Not started | 12-export-and-calendar.md | [#12](https://github.com/picasso-canvas/letzeuspost/issues/12) |
 | 13 | Technical architecture | E Platform | | Draft (assumptions only) | [13-architecture.md](13-architecture.md) | [#13](https://github.com/picasso-canvas/letzeuspost/issues/13) |
