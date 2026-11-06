@@ -22,6 +22,10 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | Payouts | Not decided yet (Section 2) |
 | Name | LetZeusPost (letzeuspost.com and .ai were free on 2026-11-06) |
 | Builder | Claude Code, from this repo and the GitHub Project board |
+| Merging | Agents merge their own PRs when every gate passes; Zeus audits weekly ([19](19-build-team-and-workflow.md)) |
+| Zeus-only changes | Auth / permissions / billing, database migrations, dependencies, AI prompts and rules, the guardrails and CI themselves ([20](20-builder-guardrails.md)) |
+| Agent identity | A bot account `letzeuspost-bot` with write (not admin) access |
+| Outside skills | About 100 rated ([research/skills.md](research/skills.md)); MIT/Apache + CC-BY-SA text; pinned copies only |
 
 ## The sections
 
@@ -47,6 +51,10 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 16 | Legal and trust | E Platform | ✋ | Not started | 16-legal-and-trust.md | [#16](https://github.com/picasso-canvas/letzeuspost/issues/16) |
 | 17 | Testing and quality | E Platform | | Not started | 17-testing.md | [#17](https://github.com/picasso-canvas/letzeuspost/issues/17) |
 | 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md | [#18](https://github.com/picasso-canvas/letzeuspost/issues/18) |
+| 19 | Build team and workflow | F Building with AI | ✋ | **Approved** 2026-11-06 | [19-build-team-and-workflow.md](19-build-team-and-workflow.md) | [#19](https://github.com/picasso-canvas/letzeuspost/issues/19) |
+| 20 | Builder guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 | [20-builder-guardrails.md](20-builder-guardrails.md) | [#20](https://github.com/picasso-canvas/letzeuspost/issues/20) |
+| 21 | AI design workflow | F Building with AI | ✋ | **Approved** 2026-11-06 | [21-ai-design-workflow.md](21-ai-design-workflow.md) | [#21](https://github.com/picasso-canvas/letzeuspost/issues/21) |
+| 22 | Product AI guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 | [22-product-ai-guardrails.md](22-product-ai-guardrails.md) | [#22](https://github.com/picasso-canvas/letzeuspost/issues/22) |
 
 What each section decides:
 
@@ -68,10 +76,16 @@ What each section decides:
 16. **Legal and trust:** terms, privacy, the data agreement agencies need (GDPR), AI disclosure, content and licence rules.
 17. **Testing and quality:** unit, golden renders, end-to-end, AI evals, load and security tests.
 18. **Design-partner launch:** onboarding, feedback loop, success tracking, support, the build milestones in final order.
+19. **Build team and workflow:** the agents (Daedalus builds; Argus, Cerberus and Iris review), a task's life from issue to merge, the weekly audit, skills per agent.
+20. **Builder guardrails:** bot identity, sandbox, deny rules, hooks, checks, GitHub rulesets and CODEOWNERS, secrets, build cost caps, rules for outside skills.
+21. **AI design workflow:** mockups → `DESIGN.md` tokens → component gallery → visual tests, Iris's review, the chosen design skills.
+22. **Product AI guardrails:** prompt-injection defences, the content policy, output checks, cost caps, audit, evals.
 
 ## Planning order
 
 1 → 4 → 5 → 7 → 6 → 9 → 10 → 11 → 12 → 8 → 13 → 15 → 2 → 3 → 16 → 14 → 17 → 18
+
+Part F (19–22) was planned out of order on 2026-11-06, at Zeus's request, so the building rules exist before any code.
 
 The product first, then what users see, then the engine that serves it, then the platform under it, then the launch.
 [drafts/first-proposal.md](drafts/first-proposal.md) holds the first, unapproved draft of the architecture, hosting,
@@ -87,8 +101,10 @@ Every section doc follows [_section-template.md](_section-template.md): Goal · 
 MVP · Done when · Depends on.
 
 When the sections a build milestone needs are approved, Athena breaks them into **build-task** issues (label
-`build-task`, a repo milestone M0–M7 and a "Done when" checklist). Zeus moves them to **Ready to build**. Then:
+`build-task`, a repo milestone and a "Done when" checklist) and moves them to **Ready to build** (Zeus can pull any
+back). The first milestone is **H0 Harness**: the guardrails are built before any product code. Then:
 
 **Ready to build → In progress → In review → Done**
 
 `needs-zeus` = waiting on Zeus's answer or approval. `blocked` = something else is missing (the comment says what).
+`zeus-only` / `auto-merge` = the risk tier the CI risk gate gives a PR. `audit` = the weekly audit issue.

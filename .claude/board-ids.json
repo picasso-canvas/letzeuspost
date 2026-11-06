@@ -30,11 +30,12 @@
     "Part": {
       "id": "PVTSSF_lAHOEC_CF84Bqbsizhoy2xo",
       "options": {
-        "A Product & business": "5b803920",
-        "B Experience": "590578fa",
-        "C Engine": "5a2625ee",
-        "D Collaboration & output": "ddc7fe0b",
-        "E Platform": "9b80b506"
+        "A Product & business": "0f850aa8",
+        "B Experience": "d5753c93",
+        "C Engine": "036bc2da",
+        "D Collaboration & output": "f56bfae1",
+        "E Platform": "4bd30b5b",
+        "F Building with AI": "bfc3389b"
       }
     },
     "Section": {
@@ -46,6 +47,7 @@
     }
   },
   "milestones": {
+    "H0 Harness": 9,
     "M0": 1,
     "M1": 2,
     "M2": 3,
@@ -127,6 +129,22 @@
     "18": {
       "issue": 18,
       "item": "PVTI_lAHOEC_CF84BqbsizhGfIgQ"
+    },
+    "19": {
+      "issue": 19,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGf1Ww"
+    },
+    "20": {
+      "issue": 20,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGf1go"
+    },
+    "21": {
+      "issue": 21,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGf1o0"
+    },
+    "22": {
+      "issue": 22,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGf1wk"
     }
   }
 }
