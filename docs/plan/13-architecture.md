@@ -20,8 +20,12 @@ storage, the API, and security.
 | A7 | Vitest (unit), Playwright (end-to-end, visual), Storybook (component gallery) | 20, 21 | first proposal | test tools (with §17) |
 | A8 | `DESIGN.md` (google-labs-code format) as the design token spec | 21 | skills research | confirm with §05 |
 | A9 | Anthropic SDK with structured outputs; model and provider config files | 22 | interview + first proposal | with §09 |
-| A10 | A headless-Chrome worker for brand extraction and post renders | 20, 22 | studio renderer | with §08 |
+| A10 | A headless-Chrome worker for brand extraction and post renders (split in A15) | 20, 22 | studio renderer | with §08 |
 | A11 | Docker on one Hetzner VPS, Caddy, Cloudflare R2, Sentry, Resend | skills lists in 19 | first proposal | §14 |
+| A12 | Playwright driving a pinned Chromium, in one Docker image shared by production renders and the visual tests | 08, 17, 21 | [§08](08-render-engine.md) draft | with §08's approval |
+| A13 | Post layouts as React components rendered to static HTML (one builder for the editor preview and the worker) | 08 | §08 draft | with §08's approval |
+| A14 | Image encoding with sharp (libvips is LGPL-3.0: needs a licence-allowlist exception, or another encoder); HEIC needs a custom build or a separate decoder | 08, 10, 20 | §08 draft | §13 + Zeus (licence) |
+| A15 | Two separate browsers: the render browser with no internet, and the website-reading browser (`safe-fetch`) | 06, 08, 22 | §08 draft | §13 / §14 (containers) |
 
 Everything else in [drafts/first-proposal.md](drafts/first-proposal.md) is also undecided.
 
