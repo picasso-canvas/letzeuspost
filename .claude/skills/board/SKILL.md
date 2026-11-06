@@ -38,7 +38,7 @@ Set the Section number: `--number <n>` instead of `--single-select-option-id`. S
 `section` · `build-task` · `needs-zeus` (waiting on Zeus) · `blocked` (something else is missing) · `sensitive` /
 `routine` (the PR's tier, set by the CI `risk-gate`; nobody sets them by hand) · `audit` (weekly report).
 
-## Sections (label `section`, issues #1–#22: issue number = section number)
+## Sections (label `section`, issues #1–#23: issue number = section number)
 
 | When | Do |
 |---|---|

@@ -11,7 +11,7 @@ edit and approve, and that are exported ready to schedule. The owner is **Zeus**
   assumptions in `docs/plan/13-architecture.md` are input for planning, never a spec. Stack details in sections 19–22
   are pending §13.
 - The [GitHub Project **LetZeusPost**](https://github.com/users/picasso-canvas/projects/2) tracks every section
-  (issues #1–#22, issue number = section number) and build task in its **Status** field (the stage).
+  (issues #1–#23, issue number = section number) and build task in its **Status** field (the stage).
   Its IDs are in `.claude/board-ids.json`. Athena updates it with the `board` skill (`.claude/skills/board/`);
   builder agents can't reach it.
 - How building works is planned in Part F: [19 team and workflow](docs/plan/19-build-team-and-workflow.md),
