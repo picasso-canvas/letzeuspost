@@ -1,4 +1,4 @@
-# Section 7: Posts: types, layouts, sizes, looks (Draft, waiting for Zeus)
+# Section 7: Posts: types, layouts, sizes, looks (Approved 2026-11-06)
 
 **Goal:** define what a post is, which layouts exist, which sizes each network gets, the four looks, and the post
 content format, in enough detail to build the renderer (§08), the AI writer (§09) and the editor (§11).
