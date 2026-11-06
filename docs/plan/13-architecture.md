@@ -204,7 +204,7 @@ as integers. Post content is JSONB, checked by the zod schema on every write.
 - Every input is checked with zod at the edge. Every handler starts with the same guard: session, workspace, permission.
 - Routes: `/app/…` (signed in) · `/r/[token]` (client review: noindex, no referrer, rate-limited) ·
   `/api/uploads` (signed upload links) · `/api/health` · `/api/webhooks/…` (the email provider's bounce reports;
-  billing later).
+  Paddle and the local taka gateway, §02).
 - **Rate limits** live in a Postgres table (one server at launch): sign-in, review links, uploads, and anything that starts AI work.
 - Client replies to emails go straight to the batch owner (Reply-To, §11), so there is no inbound email to handle.
 

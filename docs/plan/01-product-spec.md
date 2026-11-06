@@ -65,8 +65,8 @@ Every job ends the same way: **review and edit → approval (by the brand's mode
 ### Languages
 
 Posts are English or Bangla. A brand that uses both gets **linked EN + BN versions** of a post: same idea and design,
-each written natively (never translated), reviewed and exported together. Whether each language version counts as a
-separate post against the quota is decided in Section 2.
+each written natively (never translated), reviewed and exported together. Each language version counts as a
+separate post against the quota ([Section 2](02-pricing-and-billing.md)).
 
 ### Networks
 
@@ -113,12 +113,13 @@ The app records these events from day one, and Zeus's admin panel (Section 15) s
 | Jobs | **All 4**: J1 calendar, J2 one-off, J3 link → posts, J4 holidays: confirmed. J4 starts with hand-curated lists for the partners' countries (the option as described); worldwide holiday data follows | worldwide holiday data |
 | Images | **Brand library + type-only layouts + photos the client sends through the review link + product cutouts** (updated 2026-11-06, §10) | stock search (Pexels/Unsplash), then AI image generation |
 | Export | ZIP + **Metricool** CSV (the partners' scheduler) + LinkedIn PDF | Buffer and Hootsuite CSVs |
+| Public website | **One page**: what LetZeusPost is, pricing, terms, privacy, refunds (Paddle's review needs it; §02, added 2026-11-06) | the full marketing site |
 
 ## Not in the MVP
 
 Video (Reels, Shorts); direct scheduling and publishing; stock search and AI image generation (right after launch); Buffer and Hootsuite CSVs; analytics; a free canvas editor; client accounts and
 post requests; a white-label custom domain; a mobile app; languages beyond EN/BN; public self-serve
-sign-up and a marketing site; YouTube transcripts; A/B variants for testing.
+sign-up and a full marketing site (one public page is in, §02); YouTube transcripts; A/B variants for testing.
 
 ## Done when
 

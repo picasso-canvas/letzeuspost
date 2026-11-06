@@ -1,4 +1,4 @@
-# Section 2: Pricing, plans and billing (Draft, waiting for Zeus)
+# Section 2: Pricing, plans and billing (Approved 2026-11-06)
 
 **Goal:** the plans and what they include, what counts as a post, the design-partner terms, how agencies abroad and in
 Bangladesh pay, invoices and tax, and what happens when a payment fails or someone cancels.
@@ -148,7 +148,7 @@ Add Paddle's or the gateway's fee (about 3–7%) and the servers (§14). Most ag
 measured cost is higher, the first levers are moving some tasks to a cheaper model in `config/models.ts` (§09) and
 adjusting the post amounts.
 
-### Changes to other sections (on approval)
+### Changes to other sections (made on approval)
 
 - **§01:** a **one-page public website** (what LetZeusPost is, pricing, terms, privacy, refunds) is needed for
   Paddle's review before the first payment. The full marketing site stays out of the MVP.

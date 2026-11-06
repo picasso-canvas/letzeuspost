@@ -42,10 +42,11 @@ harmful or off-brand output · unsupported claims · likeness and IP problems ·
 6. **Model refusals:** server-side fallbacks are on. A final refusal marks the post failed with a plain reason.
 7. **Isolation:** every AI call is scoped to one workspace and brand. No other brand's data enters a prompt, and
    cache keys include the workspace. (Cloudflare's guidance: "a guardrail prompt is not a security boundary.")
-8. **Cost caps:** each workspace has a monthly AI cost ceiling tied to its plan (amounts in §02), with a warning at
+8. **Cost caps:** each workspace has a monthly AI cost ceiling tied to its plan ($20 / $75 / $250, taka plans $15 / $50 /
+   $125, [§02](02-pricing-and-billing.md)), with a warning at
    80% and generation paused at 100% ("contact us"; Zeus can raise it). Limits on max tokens per call, posts per
    batch and concurrent jobs per workspace; retries are bounded (fit fix ≤ 2, regenerations rate-limited). A
-   **global daily cap** pauses all generation and alerts Zeus. (Our `ai-cost-caps` skill; nothing outside covers this.)
+   **global daily cap** ($100 a day in the partner phase, §02) pauses all generation and alerts Zeus. (Our `ai-cost-caps` skill; nothing outside covers this.)
 9. **Audit:** every AI call (`ai_usage`) and every policy event (`policy_events`: flag, refusal, cap hit) is logged
    and shown in Zeus's admin panel (§15).
 

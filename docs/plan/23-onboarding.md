@@ -76,7 +76,7 @@ The other emails (batch ready, comments, mentions, due soon) are planned in §11
 
 | When | What |
 |---|---|
-| **Before** | Zeus picks the 1–3 agencies and sends a personal note. A short partner agreement: free until the date in §02, a weekly check-in, honest feedback, data stays theirs (§16). Zeus creates an invite code in the admin panel (§15) |
+| **Before** | Zeus picks the 1–3 agencies and sends a personal note. A short partner agreement: free for 3 months, then 50% off for a year (§02), a weekly check-in, honest feedback, data stays theirs (§16). Zeus creates an invite code in the admin panel (§15) |
 | **Kickoff, week 0** (45 min, screen share) | Their goals and how they make posts today (to measure "time saved" against); pick 1–2 real client brands; do the first run together; invite their team; confirm their scheduler (Metricool) and how approvals work with their clients; agree the success measures from §01 |
 | **Week 1** | First real calendar together. Athena watches generation and QC for their posts and keeps a fix list |
 | **Weekly** (20 min) | Look at their numbers (time to export, edit rate, weekly use), their top 3 problems, what changed since last week. Fixes land within a week or get an honest "not yet, because…" |
