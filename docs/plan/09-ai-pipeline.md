@@ -1,4 +1,4 @@
-# Section 9: AI pipeline (Draft, waiting for Zeus)
+# Section 9: AI pipeline (Approved 2026-11-06)
 
 > **Stack details pending §13.** File paths (`config/models.ts`, `packages/ai/…`) are assumptions collected in
 > [13-architecture.md](13-architecture.md). Claude API facts were checked against Anthropic's current docs on 2026-11-06.
