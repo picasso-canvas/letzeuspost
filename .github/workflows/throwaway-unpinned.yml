@@ -1,0 +1,12 @@
+# Throwaway (#25 proof d): an unpinned action. zizmor must fail. Never runs (manual trigger only).
+name: throwaway-unpinned
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  noop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
