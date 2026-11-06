@@ -44,7 +44,7 @@ lockfile; these are the lines to start on.
 | Jobs | **pg-boss** | 12 | MIT | Runs on Postgres; built-in **per-group concurrency** gives the 4-posts-per-workspace limit |
 | AI | **Anthropic SDK** (`@anthropic-ai/sdk`) | current | MIT | §09 |
 | Rendering | **Playwright** + its Chromium, image `mcr.microsoft.com/playwright:v1.65.0-noble` | 1.65 | Apache-2.0 | §08; `page.pdf()` has `tagged` and `outline` |
-| Images | **sharp** | 0.35.5 or later (an image-optimisation security fix) | Apache-2.0; its libvips is LGPL | HEIC decision below |
+| Images | **sharp** | 0.35.5 or later (an image-optimisation security fix) | Apache-2.0; its libvips is LGPL | HEIC: converted by Cloudflare Images (§16) |
 | Email | **Resend** + React Email | current | MIT (SDKs) | Mailpit catches emails in development |
 | Errors | **Sentry** | current SDK | MIT (SDK) | Personal data scrubbed |
 | File store | **Cloudflare R2** through the S3 API | – | – | No egress fees, which matters for export and Metricool links |
@@ -247,7 +247,7 @@ as integers. Post content is JSONB, checked by the zod schema on every write.
 | A10 | One headless-Chrome worker | **Replaced** by A15: renders in the worker, website reading in the fetcher |
 | A11 | Docker on Hetzner, Caddy, R2, Sentry, Resend | Caddy, R2, Sentry and Resend **decided** here; servers, sizes and region are §14 |
 | A12, A13 | Playwright in Docker; React layouts | **Decided** in §08 |
-| A14 | sharp's LGPL libvips; HEIC | **Decided**: LGPL exception, HEIC decoded on the server (below) |
+| A14 | sharp's LGPL libvips; HEIC | **Decided**: LGPL exception for libvips; HEIC converted by **Cloudflare Images** (§16 changed this, below) |
 | A15 | Two separate browsers | **Decided**: the fetcher process |
 
 ### Decided by Zeus (2026-11-06): LGPL libraries and iPhone photos (A14)
@@ -262,6 +262,9 @@ shares.
   the legal checklist.
 - **Not chosen:** no HEIC on the server. A HEIC upload gets "Please send this photo as a JPEG" with how-to steps, and §10
   changes.
+- **Changed by §16 (Zeus, 2026-11-06):** the HEVC patent pool (Access Advance) licenses decoders run "through
+  cloud-based services", so our servers **don't decode HEIC**. The worker sends HEIC uploads to **Cloudflare Images**,
+  which converts them to JPEG; libheif and libde265 are out. The LGPL exception stays for libvips only.
 
 ### Found for §14
 

@@ -44,6 +44,10 @@ golpo-cafe_december_2026-12-14/
 File and folder names are ASCII: a slug of the English hook, or the post id, never Bangla, since some tools break on
 it. Text files are UTF-8, so Bangla captions are intact.
 
+**Provenance (§16, EU AI Act Art. 50):** every exported image carries metadata saying how it was made (C2PA where
+supported, otherwise XMP/IPTC): "AI-assisted" for designs with real photos and AI-written text, "synthetic" for AI
+images (after launch). The README lists the platforms' own AI-label rules.
+
 ### LinkedIn carousel PDF
 
 One PDF per LinkedIn document post. Pages are the slides at the post's size, all the same size (LinkedIn requires it),

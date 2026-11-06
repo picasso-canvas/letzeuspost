@@ -37,6 +37,8 @@ harmful or off-brand output · unsupported claims · likeness and IP problems ·
      industry, with each network's rules applied; refused otherwise.
    - **Real people:** AI images never show a real person's likeness, a celebrity or a public figure. Named people are
      stripped from image prompts, and photos of real people come only from the brand's library with a consent tick.
+   - **No ID documents or sensitive personal data** in uploads (§16); national ID, passport, tax-ID or biometric
+     data is never asked for.
 5. **The QC task** checks each post against the policy and the brand rules (pass / warn / fail). Generated images get
    a vision check and carry the synthetic flag through to export.
 6. **Model refusals:** server-side fallbacks are on. A final refusal marks the post failed with a plain reason.

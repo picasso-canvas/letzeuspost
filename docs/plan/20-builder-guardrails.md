@@ -122,8 +122,8 @@ Athena only adds a second or third when the weekly report shows room. Any headle
 ### Dependency licences
 
 Allowed: MIT, Apache-2.0, BSD, ISC, the PostgreSQL licence, and OFL for fonts. **Named exception (Zeus, 2026-11-06,
-§13 A14):** LGPL libraries used unchanged as separate shared libraries: libvips (inside sharp), and libheif with
-libde265 for decoding HEIC. Anything else that isn't on the list fails the check until Zeus adds it.
+§13 A14):** LGPL libraries used unchanged as separate shared libraries: libvips (inside sharp). (HEIC is converted by
+Cloudflare Images, §16, so libheif and libde265 aren't used.) Anything else that isn't on the list fails the check until Zeus adds it.
 
 ## Not in the MVP
 

@@ -219,7 +219,7 @@ milestone, and §14 sizes the server from it.
 - **Image library licences:** the usual Node image library (sharp) is Apache-2.0, but its built-in libvips is
   LGPL-3.0. The licence allowlist (§20) needs an explicit exception for it. **Zeus allowed it on 2026-11-06** (§13, A14).
 - **HEIC (§10):** sharp's ready-made builds are expected not to decode iPhone HEIC photos (HEVC patents); a custom
-  build or a separate decoder is needed. **Confirmed**; the worker decodes HEIC with libheif + libde265 (§13, A14).
+  build or a separate decoder is needed. **Confirmed**; HEIC is converted by Cloudflare Images instead, because of the HEVC patents (§16, §13 A14).
 - **Copying Bangla text out of a PDF** often comes out garbled, because conjuncts don't map one-to-one to letters.
   The PDF still looks sharp; whether copying works is tested before launch (§12's "selectable text").
 

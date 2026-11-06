@@ -66,7 +66,7 @@ consent and credits are kept, at launch and right after.
 
 ### Processing every image
 
-Converted to sRGB, stored at most 4096 px, **location and camera data (EXIF) removed**, HEIC turned into JPEG (decoded with libheif + libde265, §13 A14), a
+Converted to sRGB, stored at most 4096 px, **location and camera data (EXIF) removed**, HEIC turned into JPEG (by Cloudflare Images, so our servers never decode HEIC; §16), a
 thumbnail made, duplicates detected (perceptual hash). Storage counts against the workspace's plan (§02).
 
 ### Licences, consent and credits

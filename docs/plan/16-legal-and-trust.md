@@ -1,4 +1,4 @@
-# Section 16: Legal and trust (Draft, waiting for Zeus)
+# Section 16: Legal and trust (Approved 2026-11-06)
 
 **Goal:** the legal documents, who is responsible for which data, where data lives and for how long, the data laws
 that apply (GDPR, UK GDPR, Bangladesh's 2026 Act, the EU AI Act), the rules customers agree to about content and AI,
@@ -131,7 +131,7 @@ requests, security, breaches and impact assessments, deletes or returns data at 
 4. The sub-processor list and the licence page are published.
 5. Before the first EU or UK agency: the two representatives are appointed.
 
-### Changes to other sections (on approval)
+### Changes to other sections (made on approval)
 
 - **§13 (A14) and §10:** HEIC is converted by **Cloudflare Images**, not decoded on our servers; libheif and libde265
   leave the plan. **§20:** the LGPL exception covers libvips only. **§08:** its HEIC note points here.
