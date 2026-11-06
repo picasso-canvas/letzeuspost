@@ -1,0 +1,10 @@
+# Plan and prose: Markdown is written by hand, tables included.
+**/*.md
+# Plan, research and archived design files (mockups are kept as published).
+docs/
+pnpm-lock.yaml
+.claude/
+node_modules/
+dist/
+.next/
+coverage/
