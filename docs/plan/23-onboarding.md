@@ -1,4 +1,4 @@
-# Section 23: Onboarding (Draft, waiting for Zeus)
+# Section 23: Onboarding (Approved 2026-11-06)
 
 **Goal:** everyone who meets LetZeusPost gets to their first useful result fast: the agency owner, a team member who
 joins, the agency's client, and the design-partner agencies that Zeus onboards in person.
@@ -12,9 +12,9 @@ and §18 (the partner launch) in one place. Mockups: https://claude.ai/artifact/
 | Question | Answer |
 |---|---|
 | Which onboarding pieces to plan now? | All four: the getting-started checklist, team members joining, onboarding emails, the design-partner playbook (2026-11-06) |
-| Where do partners talk to you day to day? | **Open.** Default: a WhatsApp group per agency; Slack or email if they prefer |
-| Does the welcome email come from Zeus personally? | **Open.** Default: yes, signed by Zeus, and replies go to him |
-| Email language? | **Open.** Default: English, like the app; Bangla emails later |
+| Where do partners talk to you day to day? | **Email only**, plus the in-app Report a problem button |
+| Does the welcome email come from Zeus personally? | **Yes**, signed by Zeus; replies go to him |
+| Email language? | **English** for now, like the app; Bangla emails later |
 
 ## Spec
 
@@ -63,7 +63,7 @@ plain-text version.
 
 | Email | To | When | Notes |
 |---|---|---|---|
-| Welcome | new agency owner | right after sign-up | from Zeus (open question); replies go to him |
+| Welcome | new agency owner | right after sign-up | signed by Zeus; replies go to him |
 | Sample week ready | owner | when the sample week finishes, **only if they left the page** | 3 thumbnails |
 | Finish-setup reminder | owner | 2 days after sign-up if the sample week isn't reviewed | at most 2 reminders, then stop; can be switched off |
 | Team invite | invited member | on invite | role in one line, expiry date |
@@ -80,7 +80,7 @@ The other emails (batch ready, comments, mentions, due soon) are planned in §11
 | **Kickoff, week 0** (45 min, screen share) | Their goals and how they make posts today (to measure "time saved" against); pick 1–2 real client brands; do the first run together; invite their team; confirm their scheduler (Metricool) and how approvals work with their clients; agree the success measures from §01 |
 | **Week 1** | First real calendar together. Athena watches generation and QC for their posts and keeps a fix list |
 | **Weekly** (20 min) | Look at their numbers (time to export, edit rate, weekly use), their top 3 problems, what changed since last week. Fixes land within a week or get an honest "not yet, because…" |
-| **Every day** | A partner channel (open question: WhatsApp group by default) and an in-app **Report a problem** button that sends Zeus the screen, the post and a note |
+| **Every day** | **Email** with Zeus, and an in-app **Report a problem** button that sends Zeus the screen, the post and a note |
 | **End of the free period** | Review the success measures together, offer a plan (§02), and ask for a testimonial (with consent) |
 
 ### 7. Measuring onboarding
