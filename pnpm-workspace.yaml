@@ -3,3 +3,8 @@ packages:
   - packages/*
 
 engineStrict: true
+
+# Security overrides: each names the advisory it fixes. Remove when the parent package updates.
+overrides:
+  # GHSA-g3hv-75wg-m249 (medium, ReDoS-style DoS), via eslint → @eslint/config-array.
+  minimatch@>=7.0.0 <11.0.1: 11.0.1
