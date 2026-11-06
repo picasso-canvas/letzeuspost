@@ -57,8 +57,8 @@ requests, security, breaches and impact assessments, deletes or returns data at 
 | **Hetzner** | Servers, database, backups | EU (Germany or Finland; §14 picks) |
 | **Cloudflare** | Files (R2 **EU jurisdiction** buckets), DNS, **HEIC conversion** (Images) | EU storage; conversion on Cloudflare's network |
 | **Anthropic** | AI processing of prompts | **US or global** (no EU-only option); inputs and outputs deleted within 30 days; **never used for training**; its DPA includes the EU clauses and UK Addendum |
-| **Resend** | Email | EU region if offered (checked at build) |
-| **Sentry** | Error reports, scrubbed of personal data | EU region if offered (checked at build) |
+| **Resend** | Email | Sends from the EU; **stores email data in the US** (no EU storage option; checked 2026-11-06) |
+| **Sentry** | Error reports, scrubbed of personal data | **EU** (Frankfurt; chosen when the account is created) |
 | **Paddle** | Payments abroad (merchant of record) | Paddle's own terms |
 | **Local gateway** | Taka payments | Bangladesh |
 | **Google** | Sign-in only | — |
