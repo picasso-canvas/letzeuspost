@@ -27,7 +27,7 @@ writes, designs and checks them; people edit and approve; and the agency exports
 | Admin | ops / account lead | brands, members, settings; no billing |
 | Editor | content person | make batches and posts, edit, approve for the agency, export |
 | Viewer | account manager, intern | look and comment only |
-| Client reviewer | the brand's owner | through a share link (no account): see the posts sent to them, approve or comment on each |
+| Client reviewer | the brand's owner | through a share link (no account): see the posts sent to them, approve or comment on each, and send photos (§10) |
 | Zeus | platform owner | owner admin panel (Section 15) |
 
 The full permission matrix is in Section 15.
@@ -111,13 +111,13 @@ The app records these events from day one, and Zeus's admin panel (Section 15) s
 |---|---|---|
 | Networks | **All 7** (Instagram, Facebook, LinkedIn, X, Threads, TikTok, Pinterest): confirmed | — |
 | Jobs | **All 4**: J1 calendar, J2 one-off, J3 link → posts, J4 holidays: confirmed. J4 starts with hand-curated lists for the partners' countries (the option as described); worldwide holiday data follows | worldwide holiday data |
-| Images | **Brand library + type-only layouts** | stock search (Pexels/Unsplash), then AI image generation |
+| Images | **Brand library + type-only layouts + photos the client sends through the review link + product cutouts** (updated 2026-11-06, §10) | stock search (Pexels/Unsplash), then AI image generation |
 | Export | ZIP + **Metricool** CSV (the partners' scheduler) + LinkedIn PDF | Buffer and Hootsuite CSVs |
 
 ## Not in the MVP
 
-Video (Reels, Shorts); direct scheduling and publishing; stock search and AI image generation (right after launch); Buffer and Hootsuite CSVs; analytics; a free canvas editor; client accounts, client
-uploads and post requests; a white-label custom domain; a mobile app; languages beyond EN/BN; public self-serve
+Video (Reels, Shorts); direct scheduling and publishing; stock search and AI image generation (right after launch); Buffer and Hootsuite CSVs; analytics; a free canvas editor; client accounts and
+post requests; a white-label custom domain; a mobile app; languages beyond EN/BN; public self-serve
 sign-up and a marketing site; YouTube transcripts; A/B variants for testing.
 
 ## Done when
