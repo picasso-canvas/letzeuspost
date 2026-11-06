@@ -1,7 +1,7 @@
 # LetZeusPost
 
 A SaaS for agencies: on-brand social posts (English + Bangla) that AI plans, writes, designs and checks, that people
-edit and approve, and that are exported ready to schedule. The owner is **Zeus**. Status: **every section approved** (2026-11-07); **H0 Harness** build tasks are #24–#36, then the
+edit and approve, and that are exported ready to schedule. The owner is **Zeus**. Status: **every section approved** (2026-11-07); **H0 Harness** build tasks are #24–#35 and #37 (merge gate), then the
 **Picasso first** track ([§18](docs/plan/18-launch.md#picasso-first-zeus-2026-11-07)). See [docs/plan/00-roadmap.md](docs/plan/00-roadmap.md).
 
 ## Source of truth

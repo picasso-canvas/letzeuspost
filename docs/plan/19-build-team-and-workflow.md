@@ -53,7 +53,8 @@ Reviewers never review their own work and always start from a fresh context. The
 ### The merge gate
 
 Zeus handed merging to Athena on 2026-11-07, on one condition: the harness and safety stay intact. Athena merges only
-through `scripts/merge-gate.mjs <pr>`, which checks each item with `gh` and refuses the merge if any fails. Builders
+through `scripts/merge-gate.mjs <pr>` (H0 task #37), which checks each item with `gh` and refuses the merge if any
+fails. Builders
 can't merge at all (deny rules, hooks and the red-team list in [20](20-builder-guardrails.md) still block it).
 
 A PR merges only when all of these hold:
