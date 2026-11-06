@@ -1,0 +1,881 @@
+<title>LetZeusPost App Mockups</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Baloo+Da+2:wght@500;700;800&family=Hind+Siliguri:wght@400;600&family=Anton&family=Manrope:wght@500;700;800&display=swap">
+<style>
+/* Layout: a calm pro tool. Neutral stone surfaces, one gold accent used as a fill; clients' posts carry the color. */
+:root {
+  --bg: #F7F6F4; --surface: #FFFFFF; --surface-2: #F1F0EC; --border: #E4E2DD; --border-strong: #D3D0C9;
+  --ink: #1C1A17; --muted: #5B5750; --faint: #8E8A82;
+  --gold: #F5B301; --on-gold: #1C1A17; --accent-text: #8A5D00; --focus: #1C1A17;
+  --st-gen: #5C6B7E; --st-fix: #C2261F; --st-review: #8A5D00; --st-client: #6D3FD1; --st-ok: #13773D; --st-done: #6F6A62;
+  --qc-pass: #13773D; --qc-warn: #A15C00; --qc-fail: #C2261F;
+  --shadow: 0 1px 2px rgba(28,26,23,.06), 0 8px 24px rgba(28,26,23,.08);
+  --ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --r-ctl: 8px; --r-card: 12px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11100E; --surface: #191815; --surface-2: #22201C; --border: #2F2C27; --border-strong: #3E3A33;
+  --ink: #F3F1EC; --muted: #B3AEA4; --faint: #847F76;
+  --gold: #F5B301; --on-gold: #1C1A17; --accent-text: #F5B301; --focus: #F5B301;
+  --st-gen: #94A3B8; --st-fix: #F87171; --st-review: #F5B301; --st-client: #B39DFA; --st-ok: #4ADE80; --st-done: #A8A29E;
+  --qc-pass: #4ADE80; --qc-warn: #FBBF24; --qc-fail: #F87171;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #11100E; --surface: #191815; --surface-2: #22201C; --border: #2F2C27; --border-strong: #3E3A33;
+  --ink: #F3F1EC; --muted: #B3AEA4; --faint: #847F76;
+  --gold: #F5B301; --on-gold: #1C1A17; --accent-text: #F5B301; --focus: #F5B301;
+  --st-gen: #94A3B8; --st-fix: #F87171; --st-review: #F5B301; --st-client: #B39DFA; --st-ok: #4ADE80; --st-done: #A8A29E;
+  --qc-pass: #4ADE80; --qc-warn: #FBBF24; --qc-fail: #F87171;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35); color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--ui); padding-block: 12px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 22px; font-weight: 650; } h2 { font-size: 16px; font-weight: 650; } h3 { font-size: 14px; font-weight: 600; }
+p { margin: 0; }
+.muted { color: var(--muted); } .faint { color: var(--faint); } .num { font-variant-numeric: tabular-nums; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
+
+/* mockup bar */
+.mockbar { max-width: 1440px; margin: 0 auto 10px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; color: var(--muted); font-size: 13px; }
+.mockbar .left { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.mocktag { background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+.mockbar select { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-ctl); padding: 5px 8px; max-width: 100%; }
+
+/* app frame */
+.app { max-width: 1440px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: 760px; overflow: hidden; }
+.side { border-right: 1px solid var(--border); background: var(--surface-2); padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 4px 8px 14px; letter-spacing: -.01em; }
+.logo .bolt { width: 26px; height: 26px; border-radius: 7px; background: var(--gold); display: grid; place-items: center; }
+.logo .bolt svg { width: 15px; height: 15px; fill: var(--on-gold); }
+.nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-ctl); color: var(--muted); text-decoration: none; border: 0; background: none; width: 100%; text-align: left; cursor: pointer; font-weight: 500; }
+.nav:hover { background: var(--surface); color: var(--ink); }
+.nav[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: inset 2px 0 0 var(--ink); }
+.nav .count { margin-left: auto; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.side .group { margin-top: 14px; }
+.dot { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+.usage { margin-top: auto; padding: 12px 10px 4px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); display: grid; gap: 6px; }
+.bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+:root[data-theme="dark"] .bar > i { background: var(--gold); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bar > i { background: var(--gold); } }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.top { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.ws { font-weight: 600; display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--r-ctl); padding: 6px 10px; color: var(--faint); min-width: 0; width: 260px; max-width: 100%; }
+.kbd { margin-left: auto; font-size: 11px; border: 1px solid var(--border-strong); border-radius: 4px; padding: 0 5px; color: var(--muted); }
+.avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--surface-2); border: 1px solid var(--border); flex: none; }
+.view { padding: 20px 22px 28px; min-width: 0; flex: 1; }
+
+/* buttons, chips, badges */
+.btn { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--r-ctl); padding: 7px 12px; border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer; font-weight: 550; white-space: nowrap; text-decoration: none; color: var(--ink); }
+.btn:hover { background: var(--surface-2); }
+.btn-gold { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }
+.btn-gold:hover { background: #E0A400; border-color: #E0A400; }
+.btn-ghost { border-color: transparent; background: transparent; }
+.btn-sm { padding: 4px 9px; font-size: 13px; }
+.icon-btn { border: 1px solid transparent; background: none; border-radius: var(--r-ctl); padding: 6px; cursor: pointer; color: var(--muted); display: inline-grid; place-items: center; }
+.icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; background: var(--surface); cursor: pointer; color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 550; padding: 2px 8px 2px 6px; border-radius: 6px; border: 1px solid currentColor; white-space: nowrap; background: var(--surface); }
+.badge svg.lucide { width: 13px; height: 13px; }
+.st-gen { color: var(--st-gen); } .st-fix { color: var(--st-fix); } .st-review { color: var(--st-review); }
+.st-client { color: var(--st-client); } .st-ok { color: var(--st-ok); } .st-done { color: var(--st-done); }
+.qc-pass { color: var(--qc-pass); } .qc-warn { color: var(--qc-warn); } .qc-fail { color: var(--qc-fail); }
+.net { display: inline-grid; place-items: center; font-size: 10px; font-weight: 700; width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
+.lang { font-size: 11px; font-weight: 650; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; color: var(--muted); }
+.lang.bn { font-family: "Hind Siliguri", var(--ui); }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-ctl); padding: 2px; background: var(--surface-2); gap: 2px; }
+.seg button { border: 0; background: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 550; display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+/* page headers & sections */
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 18px; }
+.page-head .sub { color: var(--muted); margin-top: 4px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.stack { display: grid; gap: 12px; }
+.panel { border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface); }
+.panel-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.panel-head .n { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/* inbox */
+.irow { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); }
+.irow:first-of-type { border-top: 0; }
+.irow .title { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.irow .meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.thumb { width: 44px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+.quote { font-size: 13px; color: var(--muted); border-left: 2px solid var(--border-strong); padding-left: 8px; margin-top: 3px; }
+.progress-line { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.empty { text-align: center; padding: 48px 16px; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
+.empty .big { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); }
+
+/* brands */
+.grid-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.tile { border: 1px solid var(--border); border-radius: var(--r-card); padding: 14px; display: grid; gap: 12px; background: var(--surface); cursor: pointer; text-align: left; }
+.tile:hover { border-color: var(--border-strong); }
+.mono { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; font-size: 16px; color: #fff; flex: none; }
+.tile .stats { display: flex; gap: 16px; font-size: 12.5px; color: var(--muted); }
+.tile .stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.tile.new { border-style: dashed; place-items: center; color: var(--muted); min-height: 150px; }
+
+/* tabs */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
+.tabs button { border: 0; background: none; padding: 8px 12px; cursor: pointer; color: var(--muted); font-weight: 550; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* forms */
+.field { display: grid; gap: 5px; }
+.field label { font-size: 12.5px; font-weight: 550; color: var(--muted); }
+.input, .textarea, .select { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--r-ctl); background: var(--surface); padding: 7px 10px; min-width: 0; }
+.textarea { min-height: 70px; resize: vertical; }
+.tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
+.kv { display: grid; grid-template-columns: 140px minmax(0,1fr); gap: 10px 16px; font-size: 13.5px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; }
+.swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,0,0,.12); display: inline-block; vertical-align: middle; }
+.toggle { width: 34px; height: 20px; border-radius: 999px; background: var(--border-strong); position: relative; border: 0; cursor: pointer; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); transition: left .15s; }
+.toggle[aria-checked="true"] { background: var(--ink); }
+.toggle[aria-checked="true"]::after { left: 17px; }
+
+/* calendar */
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; }
+.cal .dow { font-size: 11.5px; font-weight: 600; color: var(--faint); padding: 6px 8px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.cal .day { min-height: 104px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal .day:nth-child(7n) { border-right: 0; }
+.cal .day .d { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cal .day.out .d { color: var(--faint); opacity: .6; }
+.cal .day.today .d { color: var(--on-gold); background: var(--gold); border-radius: 4px; padding: 0 5px; align-self: flex-start; font-weight: 650; }
+.idea { border: 1px solid var(--border); border-radius: 7px; padding: 5px 7px; font-size: 12px; background: var(--surface); cursor: pointer; text-align: left; display: grid; gap: 3px; min-width: 0; }
+.idea:hover, .idea[aria-pressed="true"] { border-color: var(--ink); }
+.idea .t { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idea .m { display: flex; gap: 4px; align-items: center; color: var(--faint); font-size: 11px; }
+.hol { border: 1px dashed var(--st-review); color: var(--st-review); border-radius: 7px; padding: 4px 7px; font-size: 11.5px; background: transparent; cursor: pointer; text-align: left; display: grid; gap: 1px; }
+.hol b { font-weight: 600; }
+.chip-cal { font-size: 11.5px; border-radius: 5px; padding: 2px 6px; color: var(--ink); background: var(--surface-2); border-left: 3px solid var(--c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ideas layout */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; }
+.side-panel { border: 1px solid var(--border); border-radius: var(--r-card); padding: 14px; display: grid; gap: 12px; align-content: start; }
+.genbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--r-card); padding: 10px 14px; margin-top: 14px; background: var(--surface-2); }
+
+/* stepper */
+.stepper { display: flex; gap: 0; align-items: center; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 16px; row-gap: 6px; }
+.stepper .s { display: inline-flex; gap: 6px; align-items: center; color: var(--faint); }
+.stepper .s.done { color: var(--muted); } .stepper .s.now { color: var(--ink); font-weight: 650; }
+.stepper .sep { width: 22px; height: 1px; background: var(--border-strong); margin: 0 8px; }
+.stepper .s .n { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; border: 1px solid currentColor; }
+.stepper .s.now .n { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+
+/* posts grid */
+.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.pcard { border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden; background: var(--surface); display: grid; position: relative; }
+.pcard[aria-selected="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.pcard .art-wrap { padding: 10px 10px 0; cursor: pointer; background: none; border: 0; text-align: left; }
+.pcard .body { padding: 10px; display: grid; gap: 8px; }
+.pcard .t { font-weight: 550; font-size: 13.5px; line-height: 1.35; }
+.pcard .sel { position: absolute; top: 16px; left: 16px; width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid #fff; background: rgba(0,0,0,.35); cursor: pointer; display: grid; place-items: center; color: #fff; }
+.pcard[aria-selected="true"] .sel { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }
+.selbar { position: sticky; bottom: 12px; margin-top: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; background: var(--ink); color: var(--surface); border-radius: var(--r-card); padding: 8px 10px 8px 14px; box-shadow: var(--shadow); }
+.selbar .btn { background: transparent; color: var(--surface); border-color: rgba(255,255,255,.25); }
+.selbar .btn-gold { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+.shimmer { position: relative; overflow: hidden; }
+.shimmer::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); animation: sh 1.6s infinite; }
+@keyframes sh { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skel { aspect-ratio: 4 / 5; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); display: grid; place-items: center; color: var(--faint); font-size: 12px; text-align: center; padding: 12px; }
+.steps-mini { display: flex; gap: 4px; flex-wrap: wrap; font-size: 11.5px; }
+.steps-mini span { color: var(--faint); } .steps-mini span.on { color: var(--ink); font-weight: 600; } .steps-mini span.ok { color: var(--st-ok); }
+
+/* editor */
+.editor { display: grid; grid-template-columns: 150px minmax(0, 1fr) 340px; gap: 16px; }
+.ed-top { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.crumbs { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
+.crumbs b { color: var(--ink); font-weight: 600; }
+.slides { display: grid; gap: 10px; align-content: start; }
+.slide-btn { border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: var(--surface); cursor: pointer; display: grid; gap: 4px; text-align: left; font-size: 11.5px; color: var(--muted); }
+.slide-btn[aria-current="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); color: var(--ink); }
+.stage { border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface-2); padding: 16px; display: grid; gap: 14px; justify-items: center; align-content: start; min-width: 0; }
+.stage-tools { display: flex; gap: 8px; justify-content: space-between; width: 100%; flex-wrap: wrap; }
+.stage .art-holder { width: min(100%, 380px); position: relative; }
+.stage .art-holder.story { width: min(100%, 270px); }
+.stage .art-holder.square { width: min(100%, 400px); }
+.safe-ov { position: absolute; inset: 0; pointer-events: none; border-radius: 6px; }
+.safe-ov::before { content: "Platform buttons"; position: absolute; left: 0; right: 0; bottom: 0; height: 20%; background: repeating-linear-gradient(45deg, rgba(194,38,31,.18) 0 6px, rgba(194,38,31,.08) 6px 12px); color: #fff; font-size: 10px; display: grid; place-items: center; font-family: var(--ui); }
+.safe-ov::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 12%; background: repeating-linear-gradient(45deg, rgba(194,38,31,.18) 0 6px, rgba(194,38,31,.08) 6px 12px); }
+.rewrite { display: flex; gap: 8px; width: 100%; max-width: 520px; }
+.rewrite .input { flex: 1; }
+.right { border: 1px solid var(--border); border-radius: var(--r-card); padding: 0 14px 14px; min-width: 0; align-self: start; }
+.right .tabs { margin: 0 -14px 14px; padding: 0 8px; }
+.check { display: grid; grid-template-columns: 18px minmax(0,1fr); gap: 8px; font-size: 13px; padding: 8px 0; border-top: 1px solid var(--border); }
+.check:first-child { border-top: 0; }
+.counter { font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.counter.over { color: var(--qc-fail); }
+.cmt { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.cmt:first-child { border-top: 0; }
+.cmt .who { font-weight: 600; } .cmt .who span { font-weight: 400; color: var(--faint); font-size: 12px; }
+.pill-client { font-size: 11px; color: var(--st-client); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+.imgpick { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
+.imgpick button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 8px 4px; cursor: pointer; display: grid; gap: 4px; justify-items: center; font-size: 11.5px; color: var(--muted); }
+.imgpick button[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
+
+/* dialog */
+.scrim { position: fixed; inset: 0; background: rgba(17,16,14,.45); display: grid; place-items: center; padding: 16px; z-index: 20; }
+.dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: min(560px, 100%); max-height: calc(100% - 32px); overflow: auto; box-shadow: var(--shadow); }
+.dialog header, .dialog footer { padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
+.dialog header { border-bottom: 1px solid var(--border); justify-content: space-between; }
+.dialog footer { border-top: 1px solid var(--border); justify-content: flex-end; flex-wrap: wrap; }
+.dialog .content { padding: 16px 18px; display: grid; gap: 16px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.opt input { margin-top: 3px; accent-color: var(--ink); }
+.opt small { display: block; color: var(--muted); font-size: 12.5px; }
+.menu { position: absolute; z-index: 15; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 240px; display: grid; }
+.menu button { display: grid; grid-template-columns: 18px minmax(0,1fr); gap: 2px 10px; text-align: left; border: 0; background: none; padding: 8px; border-radius: 7px; cursor: pointer; }
+.menu button:hover { background: var(--surface-2); }
+.menu small { grid-column: 2; color: var(--muted); font-size: 12px; }
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 9px 14px; border-radius: 10px; font-size: 13.5px; z-index: 30; box-shadow: var(--shadow); max-width: calc(100% - 32px); }
+
+/* client review (phone) */
+.review-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 28px; align-items: start; justify-content: center; padding: 8px 0; }
+.review-note { display: grid; gap: 10px; color: var(--muted); max-width: 420px; justify-self: end; padding-top: 24px; }
+.phone { width: 100%; max-width: 360px; border: 10px solid #1C1A17; border-radius: 36px; overflow: hidden; background: #FAFAF8; color: #1C1A17; box-shadow: var(--shadow); }
+.phone .scr { height: 700px; overflow-y: auto; }
+.rv-head { padding: 18px 16px 12px; background: #FFFFFF; border-bottom: 1px solid #E7E5E0; display: grid; gap: 8px; }
+.rv-agency { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #5B5750; }
+.rv-agency .lg { width: 22px; height: 22px; border-radius: 6px; background: #23395B; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.rv-progress { font-size: 12.5px; color: #5B5750; display: grid; gap: 5px; }
+.rv-progress .bar { background: #E7E5E0; } .rv-progress .bar > i { background: #13773D; }
+.rv-card { background: #fff; margin: 12px; border: 1px solid #E7E5E0; border-radius: 14px; overflow: hidden; }
+.rv-card .meta { padding: 10px 12px 0; display: flex; justify-content: space-between; font-size: 12px; color: #5B5750; }
+.swipe { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 10px 12px; }
+.swipe > * { flex: 0 0 86%; scroll-snap-align: center; }
+.rv-card details { padding: 0 12px 10px; font-size: 13px; color: #3A3732; }
+.rv-card summary { cursor: pointer; color: #5B5750; font-size: 12.5px; padding: 4px 0; }
+.rv-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px 12px; }
+.rv-actions button { border-radius: 10px; padding: 10px; font-weight: 600; border: 1px solid #D3D0C9; background: #fff; cursor: pointer; color: #1C1A17; display: inline-flex; gap: 6px; justify-content: center; align-items: center; }
+.rv-actions .ok { background: #13773D; border-color: #13773D; color: #fff; }
+.rv-done { padding: 10px 12px 12px; color: #13773D; font-weight: 600; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.rv-hello { margin: 12px; padding: 12px; border-radius: 12px; background: #FFF8E1; border: 1px solid #F3D78A; display: grid; gap: 8px; font-size: 13px; }
+.rv-hello input { border: 1px solid #D3D0C9; border-radius: 8px; padding: 8px; background: #fff; color: #1C1A17; }
+.rv-cr { padding: 0 12px 12px; display: grid; gap: 8px; }
+.rv-cr textarea { border: 1px solid #D3D0C9; border-radius: 8px; padding: 8px; min-height: 64px; background: #fff; color: #1C1A17; }
+
+/* welcome */
+.welcome { max-width: 860px; margin: 0 auto; display: grid; gap: 22px; padding: 10px 0 20px; }
+.wsteps { display: flex; gap: 10px; flex-wrap: wrap; }
+.wsteps span { font-size: 12.5px; color: var(--faint); display: inline-flex; gap: 6px; align-items: center; }
+.wsteps span.now { color: var(--ink); font-weight: 600; } .wsteps span.done { color: var(--st-ok); }
+.wcard { border: 1px solid var(--border); border-radius: 16px; padding: 22px; display: grid; gap: 16px; }
+.found { display: grid; gap: 8px; }
+.found div { display: grid; grid-template-columns: 18px 120px minmax(0,1fr); gap: 10px; font-size: 13.5px; align-items: center; }
+.looks { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+.look-opt { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: var(--surface); cursor: pointer; display: grid; gap: 6px; text-align: left; font-size: 12.5px; }
+.look-opt[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.three { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.two { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 18px; }
+
+/* meters */
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.meter { border: 1px solid var(--border); border-radius: var(--r-card); padding: 14px; display: grid; gap: 8px; }
+.meter .v { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.meter .v small { font-size: 13px; color: var(--muted); font-weight: 500; }
+.settings-layout { display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 22px; }
+.settings-nav { display: grid; gap: 2px; align-content: start; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.t th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+table.t td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+
+/* ===== client post looks (each brand's own design, rendered as the product would) ===== */
+.art { aspect-ratio: 4 / 5; position: relative; overflow: hidden; border-radius: 6px; container-type: inline-size; display: flex; flex-direction: column; padding: 7cqw 7cqw 6cqw; gap: 3cqw; }
+.art.square { aspect-ratio: 1 / 1; } .art.story { aspect-ratio: 9 / 16; padding-top: 14cqw; padding-bottom: 26cqw; }
+.art .kick { font-size: 4.2cqw; font-weight: 700; letter-spacing: .02em; }
+.art .ttl { font-size: 10.5cqw; line-height: 1.06; }
+.art .bd { font-size: 4.6cqw; line-height: 1.4; }
+.art .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; font-size: 3.6cqw; }
+.art .ill { flex: 1; min-height: 0; display: grid; place-items: center; }
+.art .ill svg { width: 62%; height: auto; max-height: 100%; }
+.art mark { padding: 0 1.2cqw; border-radius: 1.5cqw; }
+.art .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 2.4cqw; }
+.art .opts span { border-radius: 3cqw; padding: 2.6cqw; font-size: 4.6cqw; font-weight: 700; display: flex; gap: 2cqw; align-items: center; }
+.art .opts b { width: 6cqw; height: 6cqw; border-radius: 50%; display: inline-grid; place-items: center; font-size: 3.6cqw; flex: none; }
+.art.bn .ttl { line-height: 1.32; } .art.bn .bd { line-height: 1.75; }
+/* Playful (Golpo Café, Dhaka) */
+.look-playful { background: #FFF1D6; color: #1F3A2E; font-family: "Baloo Da 2", "Hind Siliguri", var(--ui); }
+.look-playful .ttl { font-weight: 800; } .look-playful mark { background: #FFB627; color: #1F3A2E; }
+.look-playful .kick { color: #1F5C45; } .look-playful .bd { font-family: "Hind Siliguri", "Baloo Da 2", var(--ui); }
+.look-playful .opts span { background: #fff; border: .6cqw solid #1F3A2E; } .look-playful .opts b { background: #FFB627; }
+/* Bold (Ironline Studio, Austin) */
+.look-bold { background: #121212; color: #FFFFFF; font-family: "Anton", "Impact", var(--ui); background-image: repeating-linear-gradient(-45deg, transparent 0 18cqw, rgba(255,77,46,.10) 18cqw 21cqw); }
+.look-bold .ttl { text-transform: uppercase; font-size: 13cqw; line-height: 1; letter-spacing: .01em; }
+.look-bold mark { background: #FF4D2E; color: #121212; } .look-bold .kick { color: #FF4D2E; font-family: var(--ui); text-transform: uppercase; letter-spacing: .1em; }
+.look-bold .bd, .look-bold .foot { font-family: var(--ui); color: #E5E5E5; }
+/* Clean (Brightwell Dental, Leeds) */
+.look-clean { background: #F0FAF8; color: #0F3D3A; font-family: "Manrope", var(--ui); }
+.look-clean .ttl { font-weight: 800; letter-spacing: -.02em; } .look-clean mark { background: none; color: #0F766E; padding: 0; text-decoration: underline; text-decoration-thickness: 1cqw; text-underline-offset: 1.6cqw; }
+.look-clean .kick { color: #0F766E; text-transform: uppercase; letter-spacing: .12em; font-size: 3.6cqw; }
+/* Editorial (look picker sample) */
+.look-editorial { background: #FFFFFF; color: #141414; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; border: 1px solid #E4E2DD; }
+.look-editorial .ttl { font-weight: 600; font-style: italic; } .look-editorial mark { background: none; color: #141414; border-bottom: .8cqw solid #141414; border-radius: 0; padding: 0; }
+.look-editorial .kick { font-family: var(--ui); text-transform: uppercase; letter-spacing: .14em; font-size: 3.4cqw; }
+.brandlogo { font-weight: 800; display: inline-flex; gap: 1.5cqw; align-items: center; }
+.brandlogo i { width: 4.4cqw; height: 4.4cqw; border-radius: 1.2cqw; display: inline-block; }
+
+/* responsive */
+@media (max-width: 1180px) { .editor { grid-template-columns: 120px minmax(0,1fr); } .editor .right { grid-column: 1 / -1; } .split { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0,1fr); }
+  .side { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px; gap: 2px; }
+  .side .logo { padding: 4px 8px; } .side .group, .side .usage, .side .eyebrow, .side .brandnav { display: none; }
+  .nav { width: auto; white-space: nowrap; margin-top: 0 !important; } .nav[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--ink); }
+  .search { width: auto; flex: 1; } .ws { width: 100%; }
+  .editor { grid-template-columns: minmax(0,1fr); } .slides { grid-auto-flow: column; grid-auto-columns: 92px; overflow-x: auto; }
+  .review-stage { grid-template-columns: minmax(0,1fr); justify-items: center; } .review-note { justify-self: center; padding-top: 0; }
+  .two, .three { grid-template-columns: minmax(0,1fr); } .looks { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .settings-layout { grid-template-columns: minmax(0,1fr); } .settings-nav { grid-auto-flow: column; overflow-x: auto; }
+  .cal .day { min-height: 76px; padding: 4px; } .cal .idea .m, .hol span { display: none; }
+  .kv { grid-template-columns: minmax(0,1fr); gap: 2px 0; } .kv dd { margin-bottom: 8px; }
+}
+@media (max-width: 520px) {
+  .view { padding: 14px 12px 22px; } .top { padding: 8px 12px; } .pgrid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+  .cal .dow { padding: 4px; font-size: 10.5px; } .cal .day .idea, .cal .day .hol, .cal .chip-cal { font-size: 10px; padding: 2px 3px; }
+  .phone { border-width: 6px; border-radius: 26px; } .phone .scr { height: 620px; } .found div { grid-template-columns: 18px minmax(0,1fr); } .found div span:last-child { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) { .shimmer::after { animation: none; } .toggle::after { transition: none; } }
+.route-review .app, .route-welcome .app { grid-template-columns: minmax(0,1fr); }
+.route-review .side, .route-review .top, .route-welcome .side, .route-welcome .top { display: none; }
+</style>
+
+<div class="mockbar">
+  <div class="left">
+    <span class="mocktag">Mockup · sample data · nothing is saved</span>
+    <label for="screen-pick" class="faint">Screen</label>
+    <select id="screen-pick" aria-label="Jump to a screen"></select>
+  </div>
+  <div class="seg" role="group" aria-label="Theme">
+    <button type="button" data-theme-set="system" aria-pressed="true">System</button>
+    <button type="button" data-theme-set="light" aria-pressed="false">Light</button>
+    <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <aside class="side" aria-label="Main">
+    <div class="logo"><span class="bolt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.2L9 22l11-12.6h-6.6L13.5 2z"/></svg></span>LetZeusPost</div>
+    <button class="nav" data-go="inbox"><i data-lucide="inbox"></i>Inbox<span class="count">9</span></button>
+    <button class="nav" data-go="calendar"><i data-lucide="calendar-days"></i>Calendar</button>
+    <button class="nav" data-go="brands"><i data-lucide="layers"></i>Brands</button>
+    <div class="group brandnav" style="display:grid;gap:2px">
+      <span class="eyebrow" style="padding:4px 10px">Pinned brands</span>
+      <button class="nav" data-go="kit"><span class="dot" style="background:#1F5C45"></span>Golpo Café</button>
+      <button class="nav" data-go="posts" data-brand="ironline"><span class="dot" style="background:#FF4D2E"></span>Ironline Studio</button>
+      <button class="nav" data-go="posts" data-brand="brightwell"><span class="dot" style="background:#0F766E"></span>Brightwell Dental</button>
+    </div>
+    <button class="nav" data-go="plan-usage" style="margin-top:14px"><i data-lucide="settings"></i>Settings</button>
+    <div class="usage">
+      <div class="row" style="justify-content:space-between"><span>Posts this month</span><span class="num">62 / 300</span></div>
+      <div class="bar"><i style="width:20.6%"></i></div>
+      <div class="faint">Resets 1 December</div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <div class="ws"><span class="avatar" style="background:#23395B;color:#fff;border:0">NS</span>Northwind Social</div>
+      <div class="search" role="search"><i data-lucide="search"></i><span>Search brands and posts</span><span class="kbd">⌘K</span></div>
+      <div style="position:relative">
+        <button class="btn btn-gold" id="create-btn" aria-haspopup="menu" aria-expanded="false"><i data-lucide="plus"></i>Create</button>
+      </div>
+      <button class="icon-btn" aria-label="Notifications" data-act="toast" data-msg="3 new: Rafiq requested changes, Dr Hart approved 4 posts, December calendar is 7 of 12 ready"><i data-lucide="bell"></i></button>
+      <span class="avatar" title="Nadia Karim (Editor)">NK</span>
+    </header>
+    <main class="view" id="view" tabindex="-1"></main>
+  </div>
+</div>
+<div id="layer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script>
+(() => {
+/* ---------- sample data (fictional agency and brands) ---------- */
+const BRANDS = {
+  golpo: { name: "Golpo Café", where: "Dhaka, Bangladesh", color: "#1F5C45", mono: "গ", look: "Playful", langs: "EN + বাংলা", month: 24, waiting: 3, nets: ["IG","FB"] },
+  ironline: { name: "Ironline Studio", where: "Austin, US", color: "#E8452A", mono: "IL", look: "Bold", langs: "EN", month: 16, waiting: 1, nets: ["IG","TT"] },
+  brightwell: { name: "Brightwell Dental", where: "Leeds, UK", color: "#0F766E", mono: "B", look: "Clean", langs: "EN", month: 12, waiting: 2, nets: ["FB","in"] },
+};
+const LOOK = { golpo: "playful", ironline: "bold", brightwell: "clean" };
+const ILL = {
+  cup: '<svg viewBox="0 0 100 80" aria-hidden="true"><path d="M30 18c0-6 6-6 6-12M44 18c0-6 6-6 6-12M58 18c0-6 6-6 6-12" fill="none" stroke="#1F5C45" stroke-width="4" stroke-linecap="round"/><path d="M18 28h60v20a22 22 0 0 1-22 22H40a22 22 0 0 1-22-22z" fill="#1F5C45"/><path d="M78 34h6a9 9 0 0 1 0 18h-7" fill="none" stroke="#1F5C45" stroke-width="5"/><rect x="10" y="72" width="76" height="5" rx="2.5" fill="#FFB627"/></svg>',
+  pitha: '<svg viewBox="0 0 100 80" aria-hidden="true"><ellipse cx="50" cy="60" rx="44" ry="12" fill="#1F5C45"/><ellipse cx="36" cy="46" rx="20" ry="13" fill="#FFFFFF" stroke="#1F3A2E" stroke-width="2.5"/><ellipse cx="64" cy="44" rx="20" ry="13" fill="#FFFFFF" stroke="#1F3A2E" stroke-width="2.5"/><ellipse cx="50" cy="32" rx="20" ry="13" fill="#FFFFFF" stroke="#1F3A2E" stroke-width="2.5"/><circle cx="50" cy="30" r="4" fill="#8B5A2B"/><circle cx="36" cy="44" r="4" fill="#8B5A2B"/><circle cx="64" cy="42" r="4" fill="#8B5A2B"/></svg>',
+  bowls: '<svg viewBox="0 0 100 80" aria-hidden="true"><path d="M6 40h28a14 14 0 0 1-28 0z" fill="#C0392B"/><path d="M36 40h28a14 14 0 0 1-28 0z" fill="#E67E22"/><path d="M66 40h28a14 14 0 0 1-28 0z" fill="#27AE60"/><ellipse cx="50" cy="66" rx="30" ry="9" fill="#FFFFFF" stroke="#1F3A2E" stroke-width="2.5"/></svg>',
+  dumbbell: '<svg viewBox="0 0 100 60" aria-hidden="true"><rect x="8" y="14" width="12" height="32" rx="3" fill="#FF4D2E"/><rect x="22" y="8" width="10" height="44" rx="3" fill="#FFFFFF"/><rect x="32" y="26" width="36" height="8" rx="2" fill="#BDBDBD"/><rect x="68" y="8" width="10" height="44" rx="3" fill="#FFFFFF"/><rect x="80" y="14" width="12" height="32" rx="3" fill="#FF4D2E"/></svg>',
+  tooth: '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="44" fill="#CCF0EA"/><path d="M30 24c10-6 30-6 40 0 8 6 6 20 2 30-3 8-4 28-10 30-5 2-6-16-12-16s-7 18-12 16c-6-2-7-22-10-30-4-10-6-24 2-30z" fill="#FFFFFF" stroke="#0F766E" stroke-width="3"/></svg>',
+};
+const fmtBn = n => String(n).replace(/[0-9]/g, d => "০১২৩৪৫৬৭৮৯"[d]);
+
+/* posts in the December batch (Golpo Café) and a few for other brands */
+const POSTS = [
+  { id: "pitha", brand: "golpo", type: "Carousel", title: "Pitha week is back", date: "Mon 14 Dec", st: "review", qc: "pass", langs: ["EN","BN"], nets: ["IG","FB"], cm: 2 },
+  { id: "victory", brand: "golpo", type: "Image", title: "Victory Day: open from 3 pm", date: "Wed 16 Dec", st: "ok", qc: "pass", langs: ["BN"], nets: ["FB"], cm: 0 },
+  { id: "teamaster", brand: "golpo", type: "Carousel", title: "Meet Shafiq, our tea master", date: "Sat 5 Dec", st: "client", qc: "pass", langs: ["EN"], nets: ["IG","FB"], cm: 1 },
+  { id: "cake", brand: "golpo", type: "Image", title: "Christmas cake pre-orders", date: "Tue 22 Dec", st: "fix", qc: "fail", langs: ["EN"], nets: ["IG","FB"], cm: 1 },
+  { id: "quiz", brand: "golpo", type: "Question", title: "Which pitha is your favourite?", date: "Tue 8 Dec", st: "review", qc: "warn", langs: ["BN","EN"], nets: ["FB","IG"], cm: 0 },
+  { id: "cha", brand: "golpo", type: "Image", title: "Cha + golpo evenings", date: "Thu 10 Dec", st: "gen", step: 2, langs: ["BN"], nets: ["FB"], cm: 0 },
+  { id: "nye", brand: "golpo", type: "Story", title: "New Year's Eve countdown", date: "Thu 31 Dec", st: "gen", step: 0, langs: ["EN"], nets: ["IG"], cm: 0 },
+  { id: "counter", brand: "golpo", type: "Photo card", title: "Behind the counter at 7 am", date: "Sat 19 Dec", st: "done", qc: "pass", langs: ["EN"], nets: ["IG"], cm: 0 },
+];
+const ST = {
+  gen: ["st-gen", "loader", "Generating"], fix: ["st-fix", "triangle-alert", "Needs a fix"], review: ["st-review", "eye", "In review"],
+  client: ["st-client", "send", "With client"], ok: ["st-ok", "circle-check", "Approved"], done: ["st-done", "download", "Exported"],
+};
+const QC = { pass: ["qc-pass", "shield-check", "QC pass"], warn: ["qc-warn", "shield-alert", "QC warn"], fail: ["qc-fail", "shield-x", "QC fail"] };
+
+const SLIDES = {
+  en: [
+    { k: "Winter at Golpo", t: "Pitha week is <mark>back</mark>", b: "14–20 December, every morning", ill: "pitha" },
+    { k: "Every morning", t: "Hot bhapa pitha from <mark>8 am</mark>", b: "Steamed rice cake with date-palm jaggery and coconut.", ill: "pitha" },
+    { k: "All day", t: "Chitoi with three <mark>bhortas</mark>", b: "Mustard, shutki and tomato. Pick your favourite.", ill: "bowls" },
+    { k: "14–20 December", t: "Come <mark>hungry</mark>", b: "Road 27, Dhanmondi. No booking needed.", ill: "cup" },
+  ],
+  bn: [
+    { k: "শীতের গল্প", t: "ফিরে এল <mark>পিঠা</mark> সপ্তাহ", b: "১৪–২০ ডিসেম্বর, প্রতিদিন সকালে", ill: "pitha" },
+    { k: "প্রতিদিন সকালে", t: "সকাল <mark>৮টা</mark> থেকে গরম ভাপা পিঠা", b: "খেজুরের গুড় আর নারকেল দিয়ে।", ill: "pitha" },
+    { k: "সারা দিন", t: "তিন রকম <mark>ভর্তার</mark> সাথে চিতই পিঠা", b: "সরিষা, শুঁটকি আর টমেটো। কোনটা আগে?", ill: "bowls" },
+    { k: "১৪–২০ ডিসেম্বর", t: "খিদে নিয়ে <mark>চলে আসুন</mark>", b: "রোড ২৭, ধানমন্ডি। বুকিং লাগবে না।", ill: "cup" },
+  ],
+};
+const CAPTIONS = {
+  en: { IG: "Winter smells like pitha at Golpo. From 14 to 20 December: hot bhapa pitha every morning from 8 am, and chitoi with three bhortas all day. Which one are you having first?\n\n#GolpoCafe #PithaWeek #DhakaFood", FB: "Pitha week is back at Golpo Café! From 14 to 20 December we're steaming bhapa pitha every morning from 8 am, and serving chitoi with mustard, shutki and tomato bhorta all day. No booking needed. Road 27, Dhanmondi." },
+  bn: { IG: "শীত এলেই গল্প ক্যাফেতে পিঠার গন্ধ। ১৪ থেকে ২০ ডিসেম্বর প্রতিদিন সকাল ৮টা থেকে গরম ভাপা পিঠা, আর সারা দিন তিন রকম ভর্তার সাথে চিতই। কোনটা আগে খাবেন?\n\n#গল্পক্যাফে #পিঠাসপ্তাহ #ঢাকা", FB: "গল্প ক্যাফেতে ফিরে এল পিঠা সপ্তাহ! ১৪ থেকে ২০ ডিসেম্বর প্রতিদিন সকাল ৮টা থেকে ভাপা পিঠা, আর সারা দিন সরিষা, শুঁটকি ও টমেটো ভর্তার সাথে চিতই। বুকিং লাগবে না। রোড ২৭, ধানমন্ডি।" },
+};
+const LIMITS = { IG: 2200, FB: 63206 };
+
+/* December 2026: the 1st is a Tuesday. Today in the mockup: Mon 30 Nov. */
+const IDEAS = [
+  { d: 2, t: "Pitha week teaser", type: "Image", lang: "BN", time: "17:30", pillar: "Seasonal" },
+  { d: 5, t: "Meet Shafiq, our tea master", type: "Carousel", lang: "EN", time: "12:30", pillar: "People" },
+  { d: 8, t: "Which pitha is your favourite?", type: "Question", lang: "BN + EN", time: "17:30", pillar: "Community" },
+  { d: 10, t: "Cha + golpo evenings", type: "Image", lang: "BN", time: "17:30", pillar: "Everyday" },
+  { d: 14, t: "Pitha week is back", type: "Carousel", lang: "EN + BN", time: "12:30", pillar: "Seasonal" },
+  { d: 16, t: "Victory Day: open from 3 pm", type: "Image", lang: "BN", time: "09:00", pillar: "Holiday" },
+  { d: 19, t: "Behind the counter at 7 am", type: "Photo card", lang: "EN", time: "12:30", pillar: "People" },
+  { d: 22, t: "Christmas cake pre-orders", type: "Image", lang: "EN", time: "17:30", pillar: "Offer" },
+  { d: 28, t: "Our year in cups", type: "Carousel", lang: "EN + BN", time: "12:30", pillar: "Story" },
+  { d: 31, t: "New Year's Eve countdown", type: "Story", lang: "EN", time: "20:00", pillar: "Holiday" },
+];
+const HOLIDAYS = { 16: ["Victory Day", "Public holiday · BD"], 25: ["Christmas Day", "Public holiday · BD"], 31: ["New Year's Eve", "Observance"] };
+const OTHER_CAL = { 3: [["ironline", "20-minute EMOM"]], 8: [["ironline", "No excuses Tuesday"]], 10: [["brightwell", "3 signs you brush too hard"]], 15: [["brightwell", "Meet Dr Hart"]], 18: [["ironline", "Holiday hours"]], 23: [["brightwell", "Closed 25–28 Dec"]] };
+
+/* ---------- state ---------- */
+const S = { route: "inbox", inboxEmpty: false, filter: "all", postsView: "grid", sel: new Set(["pitha", "quiz"]),
+  slide: 0, lang: "en", size: "portrait", tab: "slide", safe: false, kitTab: "voice", look: "playful", wstep: 1,
+  idea: 14, extraIdeas: [], postsBrand: "golpo", rv: {}, rvName: "", rvCr: null, img: "library" };
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ic = n => `<i data-lucide="${n}"></i>`;
+const badge = (k, map = ST) => { const [c, i, l] = map[k]; return `<span class="badge ${c}">${ic(i)}${l}</span>`; };
+const nets = list => list.map(n => `<span class="net" title="${({ IG: "Instagram", FB: "Facebook", in: "LinkedIn", TT: "TikTok", X: "X" })[n]}">${n}</span>`).join("");
+const langs = list => list.map(l => `<span class="lang ${l === "BN" ? "bn" : ""}">${l === "BN" ? "বাং" : l}</span>`).join("");
+const brandLogo = (b, color) => `<span class="brandlogo"><i style="background:${color}"></i>${b}</span>`;
+
+function art({ brand = "golpo", lang = "en", slide = 0, size = "portrait", look, kind } = {}) {
+  const lk = look || LOOK[brand];
+  if (brand === "golpo" && kind !== "quiz" && kind !== "cake" && kind !== "victory" && kind !== "teamaster" && kind !== "counter") {
+    const s = SLIDES[lang][slide];
+    return `<div class="art look-${lk} ${size} ${lang === "bn" ? "bn" : ""}" lang="${lang}"><div class="kick">${s.k}</div><div class="ttl">${s.t}</div><div class="ill">${ILL[s.ill]}</div><div class="bd">${s.b}</div><div class="foot">${brandLogo(lang === "bn" ? "গল্প ক্যাফে" : "Golpo Café", "#1F5C45")}<span>${lang === "bn" ? fmtBn(slide + 1) + "/" + fmtBn(4) : (slide + 1) + "/4"}</span></div></div>`;
+  }
+  if (kind === "quiz") return `<div class="art look-playful ${size} bn" lang="bn"><div class="kick">প্রশ্ন</div><div class="ttl">আপনার প্রিয় <mark>পিঠা</mark> কোনটা?</div><div class="ill">${ILL.pitha}</div><div class="opts"><span><b>ক</b>ভাপা</span><span><b>খ</b>চিতই</span><span><b>গ</b>পাটিসাপটা</span><span><b>ঘ</b>নকশি</span></div><div class="foot">${brandLogo("গল্প ক্যাফে", "#1F5C45")}<span>কমেন্টে লিখুন</span></div></div>`;
+  if (kind === "victory") return `<div class="art look-playful ${size} bn" lang="bn"><div class="kick">১৬ ডিসেম্বর</div><div class="ttl">বিজয় দিবসে আমরা খোলা <mark>বিকেল ৩টা</mark> থেকে</div><div class="ill">${ILL.cup}</div><div class="foot">${brandLogo("গল্প ক্যাফে", "#1F5C45")}<span></span></div></div>`;
+  if (kind === "cake") return `<div class="art look-playful ${size}"><div class="kick">Pre-order by 20 December</div><div class="ttl">Christmas plum cake, baked here, <mark>1,200 taka</mark> for a whole one, slices at the counter all week long</div><div class="ill">${ILL.cup}</div><div class="foot">${brandLogo("Golpo Café", "#1F5C45")}<span></span></div></div>`;
+  if (kind === "teamaster") return `<div class="art look-playful ${size}"><div class="kick">The people of Golpo</div><div class="ttl">Meet Shafiq, our <mark>tea master</mark></div><div class="ill">${ILL.cup}</div><div class="bd">22 years of brewing, one rule: never rush the leaves.</div><div class="foot">${brandLogo("Golpo Café", "#1F5C45")}<span>1/5</span></div></div>`;
+  if (kind === "counter") return `<div class="art look-playful ${size}"><div class="kick">7:00 am, Road 27</div><div class="ttl">Before the first <mark>cup</mark></div><div class="ill">${ILL.cup}</div><div class="foot">${brandLogo("Golpo Café", "#1F5C45")}<span></span></div></div>`;
+  if (brand === "ironline") return `<div class="art look-bold ${size}"><div class="kick">Tuesday · 6 am class</div><div class="ttl">No excuses. <mark>20 min</mark> EMOM</div><div class="ill">${ILL.dumbbell}</div><div class="foot">${brandLogo("IRONLINE", "#FF4D2E")}<span>Book in app</span></div></div>`;
+  return `<div class="art look-clean ${size}"><div class="kick">Brightwell Dental</div><div class="ttl">3 signs you're brushing <mark>too hard</mark></div><div class="ill">${ILL.tooth}</div><div class="bd">Gums that bleed, worn enamel, splayed bristles.</div><div class="foot">${brandLogo("Brightwell", "#0F766E")}<span>1/4</span></div></div>`;
+}
+const lookSample = lk => {
+  const t = { playful: ["Golpo Café", "Pitha week is <mark>back</mark>", "pitha"], bold: ["Golpo Café", "Pitha week <mark>is back</mark>", "pitha"], clean: ["Golpo Café", "Pitha week is <mark>back</mark>", "pitha"], editorial: ["Golpo Café", "Pitha week is <mark>back</mark>", "pitha"] }[lk];
+  return `<div class="art look-${lk} square"><div class="kick">${t[0]}</div><div class="ttl" style="font-size:11cqw">${t[1]}</div><div class="ill">${ILL[t[2]]}</div></div>`;
+};
+const graphemes = s => { try { return [...new Intl.Segmenter("bn", { granularity: "grapheme" }).segment(s)].length; } catch (e) { return [...s].length; } };
+
+function toast(msg) {
+  const el = document.createElement("div"); el.className = "toast"; el.setAttribute("role", "status"); el.textContent = msg;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 2600);
+}
+
+/* ---------- views ---------- */
+const V = {};
+
+V.inbox = () => {
+  const head = `<div class="page-head"><div><h1>Inbox</h1><p class="sub">What needs you now, across all brands</p></div>
+    <div class="row">${["all", "golpo", "ironline", "brightwell"].map(f => `<button class="chip" data-act="filter" data-v="${f}" aria-pressed="${S.filter === f}">${f === "all" ? "All brands" : BRANDS[f].name}</button>`).join("")}
+    <button class="chip" data-act="empty" aria-pressed="${S.inboxEmpty}">${ic("eye")}Show empty state</button></div></div>`;
+  if (S.inboxEmpty) return head + `<div class="panel"><div class="empty"><div class="big">${ic("coffee")}</div><h2>Nothing waiting. Even gods take breaks.</h2><p>Make next month's calendar for Golpo Café while it's quiet.</p><button class="btn btn-gold" data-go="ideas">${ic("calendar-plus")}New calendar</button></div></div>`;
+  const ok = b => S.filter === "all" || S.filter === b;
+  const row = (b, thumb, title, meta, actions) => ok(b) ? `<div class="irow"><div class="thumb">${thumb}</div><div style="min-width:0"><div class="title">${title}</div><div class="meta">${meta}</div></div><div class="row">${actions}</div></div>` : "";
+  const bn = b => `<span class="row" style="gap:6px"><span class="dot" style="background:${BRANDS[b].color}"></span>${BRANDS[b].name}</span>`;
+  const sec = (icon, name, n, rows) => rows ? `<section class="panel"><div class="panel-head">${ic(icon)}<h2>${name}</h2><span class="n">${n}</span></div>${rows}</section>` : "";
+  return head + `<div class="stack">
+  ${sec("eye", "Needs your review", 3,
+    row("golpo", art({ slide: 0 }), "Pitha week is back", `${bn("golpo")} · Carousel · Mon 14 Dec ${nets(["IG", "FB"])} ${langs(["EN", "BN"])} ${badge("pass", QC)}`, `<button class="btn btn-sm" data-go="editor">Open</button><button class="btn btn-sm btn-gold" data-act="toast" data-msg="Approved: Pitha week is back">Approve</button>`) +
+    row("ironline", art({ brand: "ironline" }), "No excuses: 20-minute EMOM", `${bn("ironline")} · Image · Tue 8 Dec ${nets(["IG"])} ${badge("pass", QC)}`, `<button class="btn btn-sm" data-go="editor">Open</button><button class="btn btn-sm btn-gold" data-act="toast" data-msg="Approved: No excuses">Approve</button>`) +
+    row("brightwell", art({ brand: "brightwell" }), "3 signs you're brushing too hard", `${bn("brightwell")} · Carousel · Thu 10 Dec ${nets(["FB", "in"])} ${badge("warn", QC)} <span class="qc-warn">Health claim: an editor must confirm the source</span>`, `<button class="btn btn-sm" data-go="editor">Open</button>`))}
+  ${sec("message-square", "Client feedback", 2,
+    row("golpo", art({ kind: "cake" }), "Rafiq Ahmed requested changes on “Christmas cake pre-orders”", `${bn("golpo")} · 12 min ago<div class="quote" style="width:100%">“The price is 1,200 taka, not 1,100. And can we say pre-order by the 20th?”</div>`, `<button class="btn btn-sm" data-go="editor">Open</button>`) +
+    row("brightwell", art({ brand: "brightwell" }), "Dr Emma Hart approved 4 posts", `${bn("brightwell")} · 1 h ago · December week 2`, `<button class="btn btn-sm" data-go="posts" data-brand="brightwell">View batch</button>`))}
+  ${sec("triangle-alert", "Needs a fix", 1,
+    row("golpo", art({ kind: "cake" }), "Christmas cake pre-orders: text doesn't fit on 9:16", `${bn("golpo")} · Slide 1 · still too long after 2 shortening tries ${badge("fail", QC)}`, `<button class="btn btn-sm" data-go="editor">Fix</button><button class="btn btn-sm btn-ghost" data-act="toast" data-msg="Retrying with a shorter headline">${ic("rotate-ccw")}Retry</button>`))}
+  ${sec("clock", "Due soon", 1,
+    row("ironline", art({ brand: "ironline" }), "2 posts on Sat 5 Dec aren't approved yet", `${bn("ironline")} · Due in 5 days`, `<button class="btn btn-sm" data-go="posts" data-brand="ironline">Review</button>`))}
+  ${sec("loader", "Generating now", 1,
+    row("golpo", `<div class="skel shimmer" style="aspect-ratio:4/5;padding:4px">${ic("zap")}</div>`, "December calendar · 7 of 12 ready", `${bn("golpo")} <span class="progress-line">Forging slides… <span class="bar" style="width:120px;display:inline-block"><i style="width:58%"></i></span></span>`, `<button class="btn btn-sm" data-go="posts">Watch</button>`))}
+  </div>`;
+};
+
+V.calendar = () => {
+  const cells = calCells();
+  return `<div class="page-head"><div><h1>Calendar</h1><p class="sub">December 2026 · all brands</p></div><div class="row">${Object.entries(BRANDS).map(([k, b]) => `<span class="chip" aria-pressed="true"><span class="dot" style="background:${b.color}"></span>${b.name}</span>`).join("")}</div></div>
+  <div class="cal" role="grid" aria-label="December 2026">${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => `<div class="dow">${d}</div>`).join("")}
+  ${cells.map(c => `<div class="day ${c.out ? "out" : ""} ${c.today ? "today" : ""}"><span class="d">${c.n}</span>${c.out ? "" : [
+    ...(HOLIDAYS[c.n] ? [`<span class="hol"><b>${HOLIDAYS[c.n][0]}</b></span>`] : []),
+    ...IDEAS.filter(i => i.d === c.n).map(i => `<button class="chip-cal" style="--c:${BRANDS.golpo.color}" data-go="editor">${esc(i.t)}</button>`),
+    ...(OTHER_CAL[c.n] || []).map(([b, t]) => `<span class="chip-cal" style="--c:${BRANDS[b].color}">${t}</span>`)].join("")}</div>`).join("")}</div>`;
+};
+function calCells() {
+  const out = [{ n: 30, out: true, today: false }];
+  for (let d = 1; d <= 31; d++) out.push({ n: d });
+  for (let d = 1; d <= 3; d++) out.push({ n: d, out: true });
+  out[0].today = true; return out;
+}
+
+V.brands = () => `<div class="page-head"><div><h1>Brands</h1><p class="sub">3 of 10 brands on your plan</p></div><button class="btn btn-gold" data-go="brand-new">${ic("plus")}New brand</button></div>
+  <div class="grid-tiles">${Object.entries(BRANDS).map(([k, b]) => `<button class="tile" data-go="${k === "golpo" ? "kit" : "posts"}" data-brand="${k}">
+    <div class="row" style="gap:12px;flex-wrap:nowrap"><span class="mono" style="background:${b.color};${k === "golpo" ? "font-family:'Baloo Da 2'" : ""}">${b.mono}</span><div style="min-width:0"><h3>${b.name}</h3><div class="muted" style="font-size:12.5px">${b.where}</div></div></div>
+    <div class="row" style="flex-wrap:nowrap;gap:12px;align-items:center"><div style="width:92px;flex:none">${art({ brand: k, size: "square", kind: k === "golpo" ? "quiz" : undefined })}</div>
+      <div style="display:grid;gap:6px;font-size:12.5px" class="muted"><span>${b.langs} · ${b.nets.join(" + ")}</span><span>${b.look} look</span></div></div>
+    <div class="stats"><span><b>${b.month}</b> posts this month</span><span><b>${b.waiting}</b> waiting</span></div></button>`).join("")}
+    <button class="tile new" data-go="brand-new">${ic("plus")}<span>New brand from a website</span></button></div>`;
+
+V["brand-new"] = () => `<div class="page-head"><div><h1>New brand</h1><p class="sub">Paste the client's website. We read it and draft the brand kit; you fix anything wrong.</p></div></div>
+  <div class="wsteps" style="margin-bottom:16px"><span class="done">${ic("circle-check")}1 Website</span><span class="done">${ic("circle-check")}2 Reading the site</span><span class="now">3 Check the kit</span><span>4 Languages and networks</span></div>
+  <div class="two">
+    <section class="panel" style="padding:16px;display:grid;gap:14px;align-content:start">
+      <div class="field"><label for="nb-url">Website</label><div class="row" style="flex-wrap:nowrap"><input id="nb-url" class="input" value="https://golpocafe.com.bd"><button class="btn" data-act="toast" data-msg="Read again">Read again</button></div></div>
+      <p class="muted" style="font-size:13px">Read 6 pages in 14 seconds. Here's what we found:</p>
+      <div class="found">
+        <div>${ic("circle-check")}<span class="muted">Logo</span><span class="row">${brandLogo("Golpo Café", "#1F5C45")}<span class="faint">from the site header (SVG)</span></span></div>
+        <div>${ic("circle-check")}<span class="muted">Colors</span><span class="row"><span class="swatch" style="background:#1F5C45"></span><span class="swatch" style="background:#FFB627"></span><span class="swatch" style="background:#FFF1D6"></span><span class="faint num">#1F5C45 · #FFB627 · #FFF1D6</span></span></div>
+        <div>${ic("circle-check")}<span class="muted">Fonts</span><span>Baloo Da 2 (EN + বাংলা) · Hind Siliguri for body text</span></div>
+        <div>${ic("triangle-alert")}<span class="muted">Font licence</span><span class="qc-warn">The menu uses a paid font. We matched it to Baloo Da 2 (free). Upload the licensed file if you have it.</span></div>
+        <div>${ic("circle-check")}<span class="muted">Voice</span><span>Warm, neighbourly, a little playful. Talks about “our” street and regulars by name.</span></div>
+        <div>${ic("circle-check")}<span class="muted">Languages</span><span>English and Bangla both used on the site</span></div>
+      </div>
+    </section>
+    <section class="panel" style="padding:16px;display:grid;gap:14px;align-content:start">
+      <div class="row" style="justify-content:space-between"><h2>Sample slides</h2><span class="faint" style="font-size:12.5px">Pick a look</span></div>
+      <div class="three">${art({ slide: 0 })}${art({ slide: 0, lang: "bn" })}${art({ kind: "quiz" })}</div>
+      <div class="looks">${["playful", "bold", "clean", "editorial"].map(l => `<button class="look-opt" data-act="look" data-v="${l}" aria-pressed="${S.look === l}">${lookSample(l)}<span>${l[0].toUpperCase() + l.slice(1)}</span></button>`).join("")}</div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-go="brands">Cancel</button><button class="btn btn-gold" data-go="kit">Looks right: continue</button></div>
+    </section>
+  </div>`;
+
+V.kit = () => {
+  const tabs = ["identity", "voice", "look", "rules", "publishing", "holidays"];
+  const P = {
+    identity: `<dl class="kv"><dt>Name</dt><dd>Golpo Café · গল্প ক্যাফে</dd><dt>Logos</dt><dd class="row">${brandLogo("Golpo Café", "#1F5C45")} <span class="faint">light</span> <span style="background:#1F3A2E;color:#fff;padding:2px 8px;border-radius:6px">${brandLogo("Golpo Café", "#FFB627")}</span> <span class="faint">dark</span></dd><dt>Colors</dt><dd class="row"><span class="swatch" style="background:#1F5C45"></span> Leaf green <span class="swatch" style="background:#FFB627"></span> Mango <span class="swatch" style="background:#FFF1D6"></span> Cream</dd><dt>Fonts</dt><dd>Headlines: Baloo Da 2 (EN + বাংলা) · Body: Hind Siliguri</dd></dl>`,
+    voice: `<div class="stack" style="gap:16px"><dl class="kv"><dt>Tone</dt><dd class="row"><span class="tag">Warm</span><span class="tag">Neighbourly</span><span class="tag">A little playful</span></dd>
+      <dt>Audience</dt><dd>Dhanmondi regulars, students and young families; Bangla first on Facebook, English on Instagram</dd>
+      <dt>Pillars</dt><dd class="row"><span class="tag">Seasonal food</span><span class="tag">People of Golpo</span><span class="tag">Community questions</span><span class="tag">Everyday cha</span></dd>
+      <dt>Say</dt><dd class="row"><span class="tag">our street</span><span class="tag">regulars</span><span class="tag">fresh every morning</span><span class="tag">আড্ডা</span></dd>
+      <dt>Never say</dt><dd class="row"><span class="tag">cheap</span><span class="tag">best in Dhaka</span><span class="tag">limited time only</span></dd>
+      <dt>Calls to action</dt><dd>“Come hungry.” · “চলে আসুন।” · “Tell us in the comments.”</dd>
+      <dt>Hashtags</dt><dd class="row"><span class="tag">#GolpoCafe</span><span class="tag">#গল্পক্যাফে</span><span class="tag">#DhakaFood</span></dd></dl>
+      <div class="field"><label for="kit-notes">Notes for the writer</label><textarea id="kit-notes" class="textarea">Bangla is written natively, never translated. Prices in taka, written as “1,200 taka” in English and “১,২০০ টাকা” in Bangla.</textarea></div></div>`,
+    look: `<p class="muted" style="margin-bottom:12px">Every post uses the brand's colors and fonts inside one of four looks.</p><div class="looks">${["playful", "bold", "clean", "editorial"].map(l => `<button class="look-opt" data-act="look" data-v="${l}" aria-pressed="${S.look === l}">${lookSample(l)}<span>${l[0].toUpperCase() + l.slice(1)}${l === "playful" ? " · current" : ""}</span></button>`).join("")}</div>`,
+    rules: `<dl class="kv"><dt>Claims to avoid</dt><dd>Health benefits of food or tea · “organic” (not certified)</dd><dt>Required lines</dt><dd>None</dd><dt>Restricted industry</dt><dd>No (food and drink)</dd><dt>Topics to skip</dt><dd>Politics, competitors</dd></dl>`,
+    publishing: `<dl class="kv"><dt>Networks</dt><dd class="row">${nets(["IG", "FB"])} Instagram, Facebook</dd><dt>Sizes</dt><dd>4:5 feed, 9:16 story</dd><dt>Timezone</dt><dd>Asia/Dhaka</dd><dt>Usual times</dt><dd class="num">12:30 and 17:30</dd><dt>Approval</dt><dd>Agency, then client · <b>Rafiq Ahmed</b> (owner) reviews by link</dd></dl>`,
+    holidays: `<p class="muted" style="margin-bottom:10px">Country: Bangladesh. Switch off any day you don't post for.</p>${[["16 Dec", "Victory Day", "Public holiday", true], ["25 Dec", "Christmas Day", "Public holiday", true], ["31 Dec", "New Year's Eve", "Observance", true], ["21 Feb", "International Mother Language Day", "Public holiday", true], ["3 Mar", "Golpo's 5th birthday", "Custom date", true], ["14 Apr", "Pohela Boishakh", "Public holiday", true]].map(([d, n, k, on], i) => `<div class="row" style="justify-content:space-between;padding:8px 0;border-top:${i ? "1px solid var(--border)" : "0"};flex-wrap:nowrap"><div><b class="num" style="display:inline-block;width:56px">${d}</b>${n} <span class="faint">· ${k}</span></div><button class="toggle" role="switch" aria-checked="${on}" aria-label="Post for ${n}" data-act="switch"></button></div>`).join("")}<button class="btn btn-sm" style="margin-top:10px" data-act="toast" data-msg="Mockup: add a custom date">${ic("plus")}Add a date</button>`,
+  };
+  return `<div class="page-head"><div class="row" style="gap:12px;flex-wrap:nowrap"><span class="mono" style="background:#1F5C45;font-family:'Baloo Da 2'">গ</span><div><h1>Golpo Café</h1><p class="sub">Brand kit · Dhaka · EN + বাংলা</p></div></div>
+    <div class="row"><button class="btn" data-go="posts">${ic("layout-grid")}Posts</button><button class="btn btn-gold" id="kit-create">${ic("plus")}New calendar</button></div></div>
+    <div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${S.kitTab === t}" data-act="kittab" data-v="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
+    <div class="two" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)"><div>${P[S.kitTab]}</div>
+    <aside class="side-panel"><span class="eyebrow">Live sample</span>${art({ slide: 0, look: S.look })}<p class="faint" style="font-size:12.5px">Updates as you edit the kit.</p></aside></div>`;
+};
+
+V.ideas = () => {
+  const cells = calCells();
+  const all = [...IDEAS, ...S.extraIdeas];
+  const cur = all.find(i => i.d === S.idea) || all[0];
+  return `<div class="page-head"><div><div class="crumbs"><span>Golpo Café</span>${ic("chevron-right")}<b>December calendar</b></div><h1 style="margin-top:4px">Plan the month</h1><p class="sub">12 posts · 3 a week · Instagram + Facebook · EN + বাংলা · owner: Nadia</p></div>
+    <div class="row"><button class="btn" data-act="toast" data-msg="Zeus is rethinking the month…">${ic("rotate-ccw")}Re-plan with a note</button></div></div>
+  <div class="stepper">${["Ideas", "Generating", "Review", "Client", "Approved", "Exported"].map((s, i) => `${i ? '<span class="sep"></span>' : ""}<span class="s ${i === 0 ? "now" : ""}"><span class="n">${i + 1}</span>${s}</span>`).join("")}</div>
+  <div class="split"><div style="min-width:0"><div class="cal" role="grid" aria-label="December 2026">${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => `<div class="dow">${d}</div>`).join("")}
+  ${cells.map(c => `<div class="day ${c.out ? "out" : ""} ${c.today ? "today" : ""}"><span class="d">${c.n}</span>${c.out ? "" : [
+    ...all.filter(i => i.d === c.n).map(i => `<button class="idea" data-act="idea" data-v="${i.d}" aria-pressed="${S.idea === i.d}"><span class="t">${esc(i.t)}</span><span class="m">${i.type} · ${i.lang}</span></button>`),
+    ...(HOLIDAYS[c.n] && !all.some(i => i.d === c.n && i.pillar === "Holiday") ? [`<button class="hol" data-act="addhol" data-v="${c.n}"><b>${HOLIDAYS[c.n][0]}</b><span>+ make a post</span></button>`] : HOLIDAYS[c.n] ? [`<span class="hol" style="cursor:default"><b>${HOLIDAYS[c.n][0]}</b></span>`] : [])].join("")}</div>`).join("")}</div>
+    <div class="genbar"><div><b>${all.length} ideas</b> <span class="muted">· uses ${all.length} of your 238 posts left this month</span></div><div class="row"><button class="btn" data-act="toast" data-msg="Mockup: add an idea">${ic("plus")}Add idea</button><button class="btn btn-gold" data-go="posts">${ic("zap")}Generate ${all.length} posts</button></div></div></div>
+  <aside class="side-panel"><span class="eyebrow">Idea · ${cur.d} December</span>
+    <div class="field"><label for="idea-hook">Hook</label><input id="idea-hook" class="input" value="${esc(cur.t)}"></div>
+    <div class="two" style="gap:10px"><div class="field"><label for="idea-type">Type</label><select id="idea-type" class="select"><option>${cur.type}</option><option>Carousel</option><option>Image</option><option>Question</option><option>Story</option><option>Photo card</option></select></div><div class="field"><label for="idea-time">Time</label><input id="idea-time" class="input num" value="${cur.time}"></div></div>
+    <div class="field"><label>Pillar</label><span class="tag" style="justify-self:start">${cur.pillar}</span></div>
+    <div class="field"><label>Language</label><div class="row">${langs(cur.lang.split(" + ").map(x => x.trim()))}<span class="faint" style="font-size:12px">${cur.lang.includes("+") ? "Linked versions, each written natively" : ""}</span></div></div>
+    <div class="field"><label>Networks</label><div class="row">${nets(["IG", "FB"])}</div></div>
+    <div class="row" style="justify-content:space-between"><button class="btn btn-sm btn-ghost" data-act="toast" data-msg="Idea dropped">${ic("trash-2")}Drop</button><span class="faint" style="font-size:12px">Drag a card to move its date</span></div>
+  </aside></div>`;
+};
+
+V.posts = () => {
+  const b = S.postsBrand;
+  const list = b === "golpo" ? POSTS : POSTS.slice(0, 4).map((p, i) => ({ ...p, id: p.id + b, brand: b, title: b === "ironline" ? ["No excuses: 20-minute EMOM", "Holiday class times", "Member of the month", "New kettlebell zone"][i] : ["3 signs you're brushing too hard", "Meet Dr Emma Hart", "Closed 25–28 December", "Whitening: what to expect"][i], langs: ["EN"] }));
+  const selN = list.filter(p => S.sel.has(p.id)).length;
+  const card = p => {
+    if (p.st === "gen") return `<div class="pcard"><div class="art-wrap"><div class="skel shimmer">${ic("zap")}<span>${p.step === 0 ? "Zeus is writing your captions…" : "Forging slides…"}</span></div></div><div class="body"><div class="t">${p.title}</div><div class="steps-mini">${["Writing", "Images", "Rendering", "Checking"].map((s, i) => `<span class="${i < p.step ? "ok" : i === p.step ? "on" : ""}">${i < p.step ? "✓ " : ""}${s}</span>`).join("<span>›</span>")}</div></div></div>`;
+    const kind = p.brand === "golpo" ? ({ quiz: "quiz", cake: "cake", victory: "victory", teamaster: "teamaster", counter: "counter", cha: "victory", nye: "counter" })[p.id] : undefined;
+    return `<div class="pcard" aria-selected="${S.sel.has(p.id)}"><button class="sel" data-act="sel" data-v="${p.id}" aria-label="Select ${esc(p.title)}">${S.sel.has(p.id) ? ic("check") : ""}</button>
+      <button class="art-wrap" data-go="editor" aria-label="Open ${esc(p.title)}">${art({ brand: p.brand, kind })}</button>
+      <div class="body"><div class="t">${p.title}</div><div class="row" style="gap:6px">${badge(p.st)}${p.qc ? badge(p.qc, QC) : ""}</div>
+      <div class="row muted" style="font-size:12px;justify-content:space-between"><span>${p.date} · ${p.type}</span><span class="row" style="gap:4px">${langs(p.langs)}${nets(p.nets)}${p.cm ? `<span class="row" style="gap:2px">${ic("message-square")}${p.cm}</span>` : ""}</span></div></div></div>`;
+  };
+  const view = S.postsView === "grid" ? `<div class="pgrid">${list.map(card).join("")}</div>` :
+    `<div class="cal">${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => `<div class="dow">${d}</div>`).join("")}${calCells().map(c => `<div class="day ${c.out ? "out" : ""}"><span class="d">${c.n}</span>${c.out ? "" : list.filter(p => +p.date.split(" ")[1] === c.n).map(p => `<button class="chip-cal" style="--c:${({ gen: "var(--st-gen)", fix: "var(--st-fix)", review: "var(--st-review)", client: "var(--st-client)", ok: "var(--st-ok)", done: "var(--st-done)" })[p.st]}" data-go="editor">${p.title}</button>`).join("")}</div>`).join("")}</div>`;
+  return `<div class="page-head"><div><div class="crumbs"><span>${BRANDS[b].name}</span>${ic("chevron-right")}<b>December calendar</b></div><h1 style="margin-top:4px">Posts</h1><p class="sub">${b === "golpo" ? "12 posts · 7 ready · 2 still generating · 3 not started" : "4 posts this batch"}</p></div>
+    <div class="row"><div class="seg" role="group" aria-label="View"><button data-act="pview" data-v="grid" aria-pressed="${S.postsView === "grid"}">${ic("layout-grid")}Grid</button><button data-act="pview" data-v="cal" aria-pressed="${S.postsView === "cal"}">${ic("calendar-days")}Calendar</button></div>
+    <button class="btn" data-act="export">${ic("download")}Export</button></div></div>
+  <div class="stepper">${["Ideas", "Generating", "Review", "Client", "Approved", "Exported"].map((s, i) => `${i ? '<span class="sep"></span>' : ""}<span class="s ${i < 1 ? "done" : i === 2 ? "now" : ""}"><span class="n">${i < 1 ? "✓" : i + 1}</span>${s}</span>`).join("")}</div>
+  ${view}
+  ${selN ? `<div class="selbar"><span>${selN} selected</span><div class="row"><button class="btn btn-sm" data-act="clearsel">Clear</button><button class="btn btn-sm" data-act="export">${ic("download")}Export</button><button class="btn btn-sm" data-go="review">${ic("send")}Send to client</button><button class="btn btn-sm btn-gold" data-act="toast" data-msg="Approved ${selN} posts">${ic("check")}Approve</button></div></div>` : ""}`;
+};
+
+V.editor = () => {
+  const L = S.lang, sl = SLIDES[L];
+  const capTabs = ["IG", "FB"];
+  const tabs = { slide: "Slide", captions: "Captions", checks: "Checks", history: "History", comments: "Comments" };
+  const s = sl[S.slide];
+  const plain = h => h.replace(/<\/?mark>/g, "*");
+  const panes = {
+    slide: `<div class="stack"><div class="field"><label for="ed-layout">Layout</label><select id="ed-layout" class="select"><option>${S.slide === 3 ? "Call to action" : S.slide === 0 ? "Cover" : "Step"}</option><option>Cover</option><option>Fact</option><option>Step</option><option>Quote</option><option>Call to action</option></select></div>
+      <div class="field"><label for="ed-kick">Kicker</label><input id="ed-kick" class="input" lang="${L}" value="${esc(s.k)}"></div>
+      <div class="field"><label for="ed-title">Title <span class="faint">(wrap a word in *stars* to highlight it)</span></label><textarea id="ed-title" class="textarea" lang="${L}" style="min-height:56px">${esc(plain(s.t))}</textarea></div>
+      <div class="field"><label for="ed-body">Body</label><textarea id="ed-body" class="textarea" lang="${L}" style="min-height:56px">${esc(s.b)}</textarea></div>
+      <div class="field"><label>Image</label><div class="imgpick">${[["library", "image", "Library"], ["none", "type", "Type only"], ["stock", "search", "Stock"], ["generate", "sparkles", "Generate"]].map(([k, i, l]) => `<button data-act="img" data-v="${k}" aria-pressed="${S.img === k}">${ic(i)}${l}${["stock", "generate"].includes(k) ? '<span class="faint" style="font-size:10.5px">After launch</span>' : ""}</button>`).join("")}</div>
+      <p class="faint" style="font-size:12px">${({ library: "From Golpo's library: pitha-tray-03.jpg (uploaded by Rafiq)", stock: "After launch: search Pexels and Unsplash; the credit is recorded", generate: "After launch: AI images, counted against the plan and marked as AI-generated on export", none: "A type-only layout with the brand's colors" })[S.img]}</p></div></div>`,
+    captions: `<div class="stack">${capTabs.map(n => { const t = CAPTIONS[L][n]; const c = graphemes(t); return `<div class="field"><label for="cap-${n}" class="row" style="justify-content:space-between"><span class="row" style="gap:6px">${nets([n])}${n === "IG" ? "Instagram" : "Facebook"}</span></label><textarea id="cap-${n}" class="textarea" lang="${L}" style="min-height:${n === "IG" ? 120 : 110}px">${esc(t)}</textarea><div class="counter ${c > LIMITS[n] ? "over" : ""}">${c.toLocaleString("en")} / ${LIMITS[n].toLocaleString("en")} characters</div></div>`; }).join("")}
+      <div class="field"><label for="cap-alt">Alt text (slide ${S.slide + 1})</label><textarea id="cap-alt" class="textarea" style="min-height:52px">A tray of steamed bhapa pitha with dark jaggery centres on a cream background, with the words “${esc(plain(sl[S.slide].t).replace(/\*/g, ""))}”.</textarea></div></div>`,
+    checks: `<div>${[
+      ["pass", "Text fits every size at 100%", "4:5 and 9:16, EN and বাংলা"],
+      ["pass", "Contrast 9.8:1 (title), 7.1:1 (body)", "WCAG AA needs 4.5:1"],
+      ["pass", "Nothing in the platform-button zones on 9:16", "Bottom 20%, right 12%"],
+      ["pass", "Bangla spelling: no issues", "Checked against the brand's word list"],
+      ["pass", "“8 am” matches the brand kit", "Rafiq confirmed opening times on 28 Nov"],
+      ["warn", "#PithaWeek isn't in the brand's hashtag list", "Add it to the kit or remove it"],
+    ].map(([k, t, d]) => `<div class="check"><span class="qc-${k}">${ic(k === "pass" ? "circle-check" : "triangle-alert")}</span><div><div>${t}</div><div class="faint" style="font-size:12px">${d}</div>${k === "warn" ? `<button class="btn btn-sm" style="margin-top:6px" data-act="toast" data-msg="Removed #PithaWeek from both captions">${ic("sparkles")}Fix with AI</button>` : ""}</div></div>`).join("")}</div>`,
+    history: `<div>${[["v4", "Now", "Nadia", "Changed slide 2 to “from 8 am”"], ["v3", "10:42", "Nadia", "AI rewrite on the whole post: “warmer”"], ["v2", "10:31", "Nadia", "Edited slide 3 title"], ["v1", "09:58", "LetZeusPost", "Generated from the December plan"]].map(([v, t, w, d]) => `<div class="check"><span class="faint num">${v}</span><div><div>${d}</div><div class="faint" style="font-size:12px">${w} · ${t}</div></div></div>`).join("")}<button class="btn btn-sm" style="margin-top:8px" data-act="toast" data-msg="Restored v3">${ic("undo-2")}Restore v3</button></div>`,
+    comments: `<div><div class="cmt"><div class="who">Rafiq Ahmed<span class="pill-client">Client</span> <span>· yesterday, slide 2</span></div><div>Can we say “from 8 am”? People ask every winter.</div></div>
+      <div class="cmt"><div class="who">Nadia Karim <span>· 10:44</span></div><div>Done on slide 2, in both languages.</div></div>
+      <div class="field" style="margin-top:8px"><label for="cmt-new">Add a comment</label><textarea id="cmt-new" class="textarea" style="min-height:52px" placeholder="Use @ to mention someone"></textarea></div></div>`,
+  };
+  return `<div class="ed-top"><div class="crumbs"><span>Golpo Café</span>${ic("chevron-right")}<span>December calendar</span>${ic("chevron-right")}<b>Pitha week is back</b></div>
+    <span class="row" style="gap:6px">${badge("review")}${badge("pass", QC)}</span><span class="muted num" style="font-size:13px">Mon 14 Dec · 12:30</span>${nets(["IG", "FB"])}
+    <div class="row" style="margin-left:auto"><button class="btn btn-sm" data-act="toast" data-msg="Changes requested">${ic("message-square")}Request changes</button><button class="btn btn-sm" data-go="review">${ic("send")}Send to client</button><button class="btn btn-sm btn-gold" data-act="toast" data-msg="Approved: Pitha week is back">${ic("check")}Approve</button></div></div>
+  <div class="editor">
+    <div class="slides"><div class="seg" role="group" aria-label="Language version" style="justify-self:start"><button data-act="lang" data-v="en" aria-pressed="${L === "en"}">EN</button><button data-act="lang" data-v="bn" aria-pressed="${L === "bn"}" style="font-family:'Hind Siliguri'">বাংলা</button></div>
+      ${sl.map((x, i) => `<button class="slide-btn" data-act="slide" data-v="${i}" aria-current="${S.slide === i}">${art({ slide: i, lang: L })}<span>Slide ${i + 1}</span></button>`).join("")}
+      <button class="btn btn-sm" data-act="toast" data-msg="Slide added">${ic("plus")}Slide</button></div>
+    <div class="stage"><div class="stage-tools"><div class="seg" role="group" aria-label="Size">${[["portrait", "4:5 feed"], ["story", "9:16 story"]].map(([k, l]) => `<button data-act="size" data-v="${k}" aria-pressed="${S.size === k}">${l}</button>`).join("")}</div>
+      <button class="chip" data-act="safe" aria-pressed="${S.safe}">${ic("smartphone")}Safe areas</button></div>
+      <div class="art-holder ${S.size}">${art({ slide: S.slide, lang: L, size: S.size })}${S.safe && S.size === "story" ? '<div class="safe-ov" aria-hidden="true"></div>' : ""}</div>
+      <form class="rewrite" data-form="rewrite"><input class="input" id="rewrite-in" aria-label="Ask the AI to rewrite" placeholder="Rewrite this slide: “shorter”, “warmer”, “add the price”"><button class="btn" type="submit">${ic("sparkles")}Rewrite</button></form>
+      <p class="faint" style="font-size:12px">Rewrites stay on-brand and keep the layout. Text that doesn't fit gets shorter words, never smaller type.</p></div>
+    <div class="right"><div class="tabs" role="tablist">${Object.entries(tabs).map(([k, l]) => `<button role="tab" aria-selected="${S.tab === k}" data-act="tab" data-v="${k}">${l}${k === "comments" ? " 2" : ""}</button>`).join("")}</div>${panes[S.tab]}</div>
+  </div>`;
+};
+
+V.review = () => {
+  const posts = [{ id: "pitha", t: "Pitha week is back", d: "Mon 14 Dec", slides: [0, 1, 2, 3], lang: "bn" }, { id: "quiz", t: "Which pitha is your favourite?", d: "Tue 8 Dec", kind: "quiz" }, { id: "victory", t: "Victory Day: open from 3 pm", d: "Wed 16 Dec", kind: "victory" }];
+  const done = 8 + Object.values(S.rv).filter(v => v === "ok").length;
+  return `<div class="review-stage">
+    <div class="review-note"><span class="eyebrow">Client review link</span><h1>What Rafiq sees on his phone</h1><p>No account needed. He opens the link from the email, approves or comments on each post, and the agency sees his answers in the Inbox.</p>
+      <p class="faint" style="font-size:13px">Shown in the agency's name and logo. The link expires after 30 days and can be revoked.</p><div class="row"><button class="btn" data-go="inbox">${ic("arrow-left")}Back to the agency view</button></div></div>
+    <div class="phone" role="region" aria-label="Phone preview"><div class="scr">
+      <div class="rv-head"><div class="rv-agency"><span class="lg">NS</span>Northwind Social</div><h2 style="font-size:18px">Posts for Golpo Café · December</h2>
+        <p style="font-size:13px;color:#3A3732">Hi Rafiq, here's the first half of December. Pitha week has both languages. Thanks! Nadia</p>
+        <div class="rv-progress"><span class="num">${done} of 12 approved</span><div class="bar"><i style="width:${done / 12 * 100}%"></i></div></div></div>
+      ${S.rvName ? "" : `<form class="rv-hello" data-form="hello"><b>Before you start</b><label for="rv-name" style="font-size:12.5px">Your name, so the agency knows who approved</label><input id="rv-name" value="Rafiq Ahmed"><button class="btn btn-sm" type="submit" style="justify-self:start">Continue</button></form>`}
+      ${posts.map(p => `<div class="rv-card"><div class="meta"><b style="color:#1C1A17">${p.t}</b><span class="num">${p.d}</span></div>
+        <div class="swipe">${(p.slides || [0]).map(i => art({ slide: i, lang: p.lang || "en", kind: p.kind })).join("")}</div>
+        <details><summary>Captions for Instagram and Facebook</summary><p lang="bn" style="font-family:'Hind Siliguri';white-space:pre-line">${esc(CAPTIONS.bn.IG)}</p></details>
+        ${S.rv[p.id] === "ok" ? `<div class="rv-done">${ic("circle-check")}Approved. Thank you!</div>` : S.rv[p.id] === "cr" ? `<div class="rv-done" style="color:#8A5D00">${ic("message-square")}Changes sent to Nadia</div>` : S.rvCr === p.id ? `<form class="rv-cr" data-form="cr" data-v="${p.id}"><label for="cr-${p.id}" style="font-size:12.5px">What should change? (required)</label><textarea id="cr-${p.id}" required placeholder="e.g. say pre-order by the 20th"></textarea><button class="btn btn-sm" type="submit" style="justify-self:start">Send</button></form>` :
+        `<div class="rv-actions"><button data-act="rvcr" data-v="${p.id}">${ic("message-square")}Request changes</button><button class="ok" data-act="rvok" data-v="${p.id}">${ic("check")}Approve</button></div>`}</div>`).join("")}
+      <div style="padding:4px 12px 20px"><button class="btn" style="width:100%;justify-content:center;background:#fff;color:#1C1A17;border-color:#D3D0C9" data-act="rvall">Approve all remaining (4)</button></div>
+    </div></div></div>`;
+};
+
+V["plan-usage"] = () => `<div class="page-head"><div><h1>Settings</h1><p class="sub">Northwind Social</p></div></div>
+  <div class="settings-layout"><nav class="settings-nav" aria-label="Settings">${["Workspace", "Members", "Plan & usage", "Notifications", "Review page", "Account"].map(n => `<button class="nav" ${n === "Plan & usage" ? 'aria-current="page"' : `data-act="toast" data-msg="Mockup: ${n} isn't drawn yet"`}>${n}</button>`).join("")}</nav>
+  <div class="stack" style="gap:18px">
+    <section class="panel" style="padding:16px;display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;align-items:center"><div><span class="eyebrow">Your plan</span><h2 style="margin-top:4px">Design partner</h2><p class="muted">Free until 28 February 2027 · Agency limits · weekly feedback call with the LetZeusPost team</p></div><button class="btn" data-act="toast" data-msg="Mockup: plans open in Section 2">See plans</button></section>
+    <div class="meters">${[["Posts this month", 62, 300], ["AI images", 14, 100], ["Brands", 3, 10], ["Seats", 3, 5]].map(([n, v, m]) => `<div class="meter"><span class="muted">${n}</span><span class="v">${v}<small> / ${m}</small></span><div class="bar"><i style="width:${v / m * 100}%"></i></div></div>`).join("")}</div>
+    <p class="faint" style="font-size:12.5px">Posts and AI images reset on 1 December. A post counts once for all its sizes; edits and AI rewrites are free.</p>
+    <section class="panel"><div class="panel-head">${ic("receipt")}<h2>Invoices</h2></div><div class="empty" style="padding:28px 16px"><p>No invoices yet. You're a design partner until 28 February 2027.</p></div></section>
+  </div></div>`;
+
+V.welcome = () => {
+  const st = S.wstep;
+  const steps = ["Your workspace", "First client", "Check the kit", "Sample week"];
+  const body = {
+    1: `<h2>Welcome to LetZeusPost</h2><p class="muted">Let's make a week of posts for one of your clients. It takes about 5 minutes.</p>
+        <div class="two" style="gap:12px"><div class="field"><label for="w-ws">Agency name</label><input id="w-ws" class="input" value="Northwind Social"></div><div class="field"><label for="w-role">Your role</label><select id="w-role" class="select"><option>Content lead</option><option>Founder</option><option>Account manager</option></select></div></div>`,
+    2: `<h2>Paste your first client's website</h2><p class="muted">We read it and draft their logo, colors, fonts and voice.</p>
+        <div class="field"><label for="w-url">Website</label><input id="w-url" class="input" value="https://golpocafe.com.bd"></div><button class="btn btn-ghost btn-sm" style="justify-self:start" data-act="toast" data-msg="Mockup: a demo brand would load">No client handy? Try a demo brand</button>`,
+    3: `<h2>Does this look like Golpo Café?</h2><div class="two"><div class="found">
+        <div>${ic("circle-check")}<span class="muted">Logo</span><span>${brandLogo("Golpo Café", "#1F5C45")}</span></div>
+        <div>${ic("circle-check")}<span class="muted">Colors</span><span class="row"><span class="swatch" style="background:#1F5C45"></span><span class="swatch" style="background:#FFB627"></span><span class="swatch" style="background:#FFF1D6"></span></span></div>
+        <div>${ic("circle-check")}<span class="muted">Voice</span><span>Warm, neighbourly, a little playful</span></div>
+        <div>${ic("circle-check")}<span class="muted">Languages</span><span>English and বাংলা</span></div></div>
+        <div class="three">${art({ slide: 0 })}${art({ slide: 0, lang: "bn" })}${art({ kind: "quiz" })}</div></div>`,
+    4: `<h2>Your sample week</h2><p class="muted">5 posts, free. They don't count against your plan.</p>
+        <div class="field"><label>Networks</label><div class="row">${["Instagram", "Facebook", "LinkedIn", "X", "Threads", "TikTok", "Pinterest"].map((n, i) => `<button class="chip" aria-pressed="${i < 2}" data-act="press">${n}</button>`).join("")}</div></div>
+        <div class="field"><label>Languages</label><div class="row"><button class="chip" aria-pressed="true" data-act="press">English</button><button class="chip" aria-pressed="true" data-act="press" style="font-family:'Hind Siliguri'">বাংলা</button></div></div>`,
+  }[st];
+  return `<div class="welcome"><div class="row" style="justify-content:space-between"><div class="logo" style="padding:0"><span class="bolt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2 4 13.5h6.2L9 22l11-12.6h-6.6L13.5 2z"/></svg></span>LetZeusPost</div><button class="btn btn-ghost btn-sm" data-go="inbox">Skip for now</button></div>
+    <div class="wsteps">${steps.map((s, i) => `<span class="${i + 1 < st ? "done" : i + 1 === st ? "now" : ""}">${i + 1 < st ? ic("circle-check") : `${i + 1}`} ${s}</span>`).join('<span class="faint">·</span>')}</div>
+    <div class="wcard">${body}<div class="row" style="justify-content:space-between">${st > 1 ? `<button class="btn" data-act="wback">${ic("arrow-left")}Back</button>` : "<span></span>"}
+      ${st < 4 ? `<button class="btn btn-gold" data-act="wnext">${st === 2 ? "Read the site" : st === 3 ? "Looks right" : "Continue"}${ic("arrow-right")}</button>` : `<button class="btn btn-gold" data-go="posts">${ic("zap")}Make my sample week</button>`}</div></div></div>`;
+};
+
+/* ---------- export dialog & create menu ---------- */
+function openExport() {
+  const n = POSTS.filter(p => S.sel.has(p.id)).length || 1;
+  $("#layer").innerHTML = `<div class="scrim" data-act="close-layer"><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="ex-h" data-stop>
+    <header><h2 id="ex-h">Export ${n} post${n > 1 ? "s" : ""}</h2><button class="icon-btn" data-act="close-layer" aria-label="Close">${ic("x")}</button></header>
+    <div class="content">
+      <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="eyebrow" style="margin-bottom:6px">What</legend>
+        <label class="opt"><input type="radio" name="ex-scope" id="ex-sel" checked><span>Selected posts<small>${n} post${n > 1 ? "s" : ""}, all sizes and both languages</small></span></label>
+        <label class="opt"><input type="radio" name="ex-scope" id="ex-approved"><span>Every approved post in this batch<small>4 posts</small></span></label></fieldset>
+      <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="eyebrow" style="margin-bottom:6px">Formats</legend>
+        <label class="opt"><input type="checkbox" id="ex-zip" checked><span>ZIP of images<small>PNG per size and slide, a captions file per network, alt text</small></span></label>
+        <label class="opt"><input type="checkbox" id="ex-pdf"><span>LinkedIn carousel PDF<small>One PDF per carousel</small></span></label>
+        <label class="opt"><input type="checkbox" id="ex-csv" checked><span>Bulk-upload CSV<small>Times in Asia/Dhaka. Images are linked for 30 days.</small></span></label>
+        <div class="field" style="padding-left:28px"><label for="ex-tool">For</label><select id="ex-tool" class="select" style="max-width:240px"><option>Buffer</option><option>Hootsuite</option><option>Metricool</option></select></div></fieldset>
+      <div><span class="eyebrow">Earlier exports</span><div class="faint" style="font-size:13px;margin-top:6px">27 Nov · 6 posts · ZIP + Metricool CSV · Nadia</div></div>
+    </div>
+    <footer><button class="btn" data-act="close-layer">Cancel</button><button class="btn btn-gold" data-act="download">${ic("download")}Download</button></footer></div></div>`;
+  icons(); $("#ex-sel").focus();
+}
+function openCreate(btn) {
+  const r = btn.getBoundingClientRect();
+  $("#layer").innerHTML = `<div style="position:fixed;inset:0;z-index:14" data-act="close-layer"></div><div class="menu" role="menu" style="top:${r.bottom + 6}px;left:${Math.max(16, Math.min(r.left, innerWidth - 260))}px;position:fixed">
+    <button role="menuitem" data-go="ideas">${ic("calendar-plus")}New calendar<small>Plan a week or a month for one brand</small></button>
+    <button role="menuitem" data-go="editor">${ic("pen-line")}One-off post<small>From a short brief</small></button>
+    <button role="menuitem" data-go="ideas">${ic("link")}From a link<small>A blog post, product page or video</small></button></div>`;
+  icons(); btn.setAttribute("aria-expanded", "true"); $(".menu button").focus();
+}
+function closeLayer() { $("#layer").innerHTML = ""; const c = $("#create-btn"); c && c.setAttribute("aria-expanded", "false"); }
+
+/* ---------- router & render ---------- */
+const ROUTES = [["welcome", "Welcome (first run)"], ["inbox", "Inbox"], ["calendar", "Calendar"], ["brands", "Brands"], ["brand-new", "New brand"], ["kit", "Brand kit"], ["ideas", "Batch: ideas"], ["posts", "Batch: posts"], ["editor", "Post editor"], ["export", "Export dialog"], ["review", "Client review (phone)"], ["plan-usage", "Settings: plan & usage"]];
+$("#screen-pick").innerHTML = ROUTES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+function icons() {
+  try { if (!window.lucide) return; const o = { attrs: { "aria-hidden": "true" } }; if (lucide.icons) o.icons = lucide.icons; lucide.createIcons(o); } catch (e) {}
+}
+function navKey(r) {
+  if (r === "posts" || r === "export") return S.postsBrand === "golpo" ? "brand:golpo" : "brand:" + S.postsBrand;
+  if (["kit", "ideas", "editor"].includes(r)) return "brand:golpo";
+  if (r === "brand-new") return "brands";
+  return r;
+}
+function render() {
+  const r = S.route === "export" ? "posts" : S.route;
+  document.body.classList.toggle("route-review", r === "review");
+  document.body.classList.toggle("route-welcome", r === "welcome");
+  $("#view").innerHTML = (V[r] || V.inbox)();
+  const cur = navKey(S.route);
+  document.querySelectorAll(".side .nav").forEach(n => {
+    const k = n.dataset.brand ? "brand:" + n.dataset.brand : n.dataset.go === "kit" ? "brand:golpo" : n.dataset.go;
+    if (k === cur) n.setAttribute("aria-current", "page"); else n.removeAttribute("aria-current");
+  });
+  $("#screen-pick").value = S.route;
+  icons();
+  if (S.route === "export") openExport();
+}
+function go(route, brand) {
+  if (route === "posts" || route === "export") S.postsBrand = brand || "golpo";
+  closeLayer(); S.route = route;
+  try { if (location.hash.slice(1) !== route) history.replaceState(null, "", "#" + route); } catch (e) {}
+  render(); $("#view").focus({ preventScroll: true }); scrollTo({ top: 0 });
+}
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (ROUTES.some(r => r[0] === h)) { S.route = h; closeLayer(); render(); } });
+$("#screen-pick").addEventListener("change", e => go(e.target.value, e.target.value === "posts" ? "golpo" : undefined));
+
+/* theme */
+function setTheme(t) {
+  if (t === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+  document.querySelectorAll("[data-theme-set]").forEach(b => b.setAttribute("aria-pressed", b.dataset.themeSet === t));
+  try { localStorage.setItem("lzp-mock-theme", t); } catch (e) {}
+}
+try { const t = localStorage.getItem("lzp-mock-theme"); if (t) setTheme(t); } catch (e) {}
+
+/* events */
+document.addEventListener("click", e => {
+  const th = e.target.closest("[data-theme-set]"); if (th) return setTheme(th.dataset.themeSet);
+  if (e.target.closest("#create-btn")) return openCreate($("#create-btn"));
+  if (e.target.closest("#kit-create")) return go("ideas");
+  const el = e.target.closest("[data-go],[data-act]"); if (!el) return;
+  if (el.dataset.act === "close-layer" && e.target.closest("[data-stop]") && !e.target.closest("button[data-act='close-layer']")) return;
+  if (el.dataset.go) return go(el.dataset.go, el.dataset.brand);
+  const v = el.dataset.v;
+  switch (el.dataset.act) {
+    case "toast": toast(el.dataset.msg); break;
+    case "filter": S.filter = v; render(); break;
+    case "empty": S.inboxEmpty = !S.inboxEmpty; render(); break;
+    case "look": S.look = v; render(); break;
+    case "kittab": S.kitTab = v; render(); break;
+    case "switch": el.setAttribute("aria-checked", el.getAttribute("aria-checked") !== "true"); break;
+    case "press": el.setAttribute("aria-pressed", el.getAttribute("aria-pressed") !== "true"); break;
+    case "idea": S.idea = +v; render(); break;
+    case "addhol": S.extraIdeas.push({ d: +v, t: HOLIDAYS[v][0] + " post", type: "Image", lang: "EN + BN", time: "12:30", pillar: "Holiday" }); S.idea = +v; render(); toast("Idea added for " + HOLIDAYS[v][0]); break;
+    case "pview": S.postsView = v; render(); break;
+    case "sel": S.sel.has(v) ? S.sel.delete(v) : S.sel.add(v); render(); break;
+    case "clearsel": S.sel.clear(); render(); break;
+    case "export": openExport(); break;
+    case "close-layer": closeLayer(); if (S.route === "export") go("posts"); break;
+    case "download": closeLayer(); toast("Mockup: nothing downloads. The real export makes a ZIP and a CSV."); break;
+    case "lang": S.lang = v; render(); break;
+    case "slide": S.slide = +v; render(); break;
+    case "size": S.size = v; render(); break;
+    case "safe": S.safe = !S.safe; if (S.safe) S.size = "story"; render(); break;
+    case "tab": S.tab = v; render(); break;
+    case "img": S.img = v; render(); break;
+    case "wnext": S.wstep = Math.min(4, S.wstep + 1); render(); break;
+    case "wback": S.wstep = Math.max(1, S.wstep - 1); render(); break;
+    case "rvok": S.rv[v] = "ok"; render(); break;
+    case "rvcr": S.rvCr = v; render(); const t = document.getElementById("cr-" + v); t && t.focus(); break;
+    case "rvall": ["pitha", "quiz", "victory"].forEach(id => { if (!S.rv[id]) S.rv[id] = "ok"; }); render(); toast("Approved all remaining posts"); break;
+  }
+});
+document.addEventListener("submit", e => {
+  const f = e.target.closest("[data-form]"); if (!f) return; e.preventDefault();
+  if (f.dataset.form === "rewrite") { const q = $("#rewrite-in").value.trim() || "warmer"; toast(`Rewriting slide ${S.slide + 1}: “${q}”…`); }
+  if (f.dataset.form === "hello") { S.rvName = $("#rv-name").value || "Rafiq"; render(); }
+  if (f.dataset.form === "cr") { S.rv[f.dataset.v] = "cr"; S.rvCr = null; render(); toast("Sent to Nadia"); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && $("#layer").innerHTML) { closeLayer(); if (S.route === "export") go("posts"); }
+  if (S.route === "editor" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+    if (e.key === "ArrowRight") { S.slide = Math.min(3, S.slide + 1); render(); }
+    if (e.key === "ArrowLeft") { S.slide = Math.max(0, S.slide - 1); render(); }
+  }
+});
+
+const start = location.hash.slice(1);
+S.route = ROUTES.some(r => r[0] === start) ? start : "inbox";
+render();
+})();
+</script>
