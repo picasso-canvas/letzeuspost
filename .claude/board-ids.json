@@ -1,0 +1,132 @@
+{
+  "owner": "picasso-canvas",
+  "repo": "picasso-canvas/letzeuspost",
+  "project": {
+    "number": 2,
+    "id": "PVT_kwHOEC_CF84Bqbsi",
+    "url": "https://github.com/users/picasso-canvas/projects/2"
+  },
+  "fields": {
+    "Status": {
+      "id": "PVTSSF_lAHOEC_CF84Bqbsizhoy2m0",
+      "options": {
+        "Not started": "d322099e",
+        "Interview": "3e64eba6",
+        "Draft": "7b72a486",
+        "Approved": "52cbeb3d",
+        "Ready to build": "896a11db",
+        "In progress": "8bdd9a53",
+        "In review": "9f923aa8",
+        "Done": "bde4c140"
+      }
+    },
+    "Kind": {
+      "id": "PVTSSF_lAHOEC_CF84Bqbsizhoy25c",
+      "options": {
+        "Section": "f925962e",
+        "Build task": "39ccdbc1"
+      }
+    },
+    "Part": {
+      "id": "PVTSSF_lAHOEC_CF84Bqbsizhoy2xo",
+      "options": {
+        "A Product & business": "5b803920",
+        "B Experience": "590578fa",
+        "C Engine": "5a2625ee",
+        "D Collaboration & output": "ddc7fe0b",
+        "E Platform": "9b80b506"
+      }
+    },
+    "Section": {
+      "id": "PVTF_lAHOEC_CF84Bqbsizhoy2yk",
+      "type": "number"
+    },
+    "Milestone": {
+      "note": "built-in field: shows the repo milestone set on the issue (gh issue edit <n> --milestone M0)"
+    }
+  },
+  "milestones": {
+    "M0": 1,
+    "M1": 2,
+    "M2": 3,
+    "M3": 4,
+    "M4": 5,
+    "M5": 6,
+    "M6": 7,
+    "M7": 8
+  },
+  "sections": {
+    "01": {
+      "issue": 1,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfGY0"
+    },
+    "02": {
+      "issue": 2,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfGhs"
+    },
+    "03": {
+      "issue": 3,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfGqc"
+    },
+    "04": {
+      "issue": 4,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfGxs"
+    },
+    "05": {
+      "issue": 5,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfG5o"
+    },
+    "06": {
+      "issue": 6,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfHBw"
+    },
+    "07": {
+      "issue": 7,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfHIo"
+    },
+    "08": {
+      "issue": 8,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfHPs"
+    },
+    "09": {
+      "issue": 9,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfHW8"
+    },
+    "10": {
+      "issue": 10,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfHeY"
+    },
+    "11": {
+      "issue": 11,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfHlw"
+    },
+    "12": {
+      "issue": 12,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfHs4"
+    },
+    "13": {
+      "issue": 13,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfH2A"
+    },
+    "14": {
+      "issue": 14,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfIAs"
+    },
+    "15": {
+      "issue": 15,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfILQ"
+    },
+    "16": {
+      "issue": 16,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfIRw"
+    },
+    "17": {
+      "issue": 17,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfIY0"
+    },
+    "18": {
+      "issue": 18,
+      "item": "PVTI_lAHOEC_CF84BqbsizhGfIgQ"
+    }
+  }
+}

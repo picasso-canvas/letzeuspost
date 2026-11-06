@@ -5,9 +5,11 @@ description: Update the LetZeusPost GitHub Project board. Use when a planning se
 
 # LetZeusPost board (GitHub Projects)
 
-- Repo `picasso-canvas/letzeuspost`. Project **LetZeusPost** (owner `picasso-canvas`).
-- Every ID (project, fields, options, section items) is in `.claude/board-ids.json`. Read the IDs from there and
-  don't look them up again. If an ID fails, rebuild the file with `gh project field-list <number> --owner picasso-canvas --format json`.
+- Repo `picasso-canvas/letzeuspost`. Project **LetZeusPost** #2 (owner `picasso-canvas`):
+  https://github.com/users/picasso-canvas/projects/2
+- Every ID (project, fields, options, section items, milestones) is in `.claude/board-ids.json`. Read the IDs from
+  there and don't look them up again. If an ID fails, rebuild the file with
+  `gh project field-list 2 --owner picasso-canvas --format json`.
 - Keep calls small: one `gh` call per change, `--jq` to keep only what you need, never print the whole board.
 
 ## Fields
@@ -15,18 +17,19 @@ description: Update the LetZeusPost GitHub Project board. Use when a planning se
 | Field | Values |
 |---|---|
 | Status | Not started · Interview · Draft · Approved (sections) · Ready to build · In progress · In review · Done (build tasks) |
-| Type | Section · Build task |
+| Kind | Section · Build task |
 | Part | A Product & business · B Experience · C Engine · D Collaboration & output · E Platform |
 | Section | the section number (build tasks: the main section they implement) |
-| Milestone | M0 … M7 (build tasks) |
+| Milestone | built-in field: the repo milestone (M0 … M7) set on the issue |
 
 Set a single-select field:
 ```sh
 gh project item-edit --project-id $PROJECT --id $ITEM --field-id $FIELD --single-select-option-id $OPTION
 ```
-Set the Section number: `--number <n>` instead of `--single-select-option-id`.
+Set the Section number: `--number <n>` instead of `--single-select-option-id`. Set a milestone on the issue itself:
+`gh issue edit <n> -R picasso-canvas/letzeuspost --milestone M3`.
 
-## Sections (label `section`, issues §01–§18)
+## Sections (label `section`, issues #1–#18: issue number = section number)
 
 | When | Do |
 |---|---|
@@ -39,7 +42,8 @@ Set the Section number: `--number <n>` instead of `--single-select-option-id`.
 Created by Athena only after the sections they need are approved.
 - Title: `[M<n>] <what gets built>`.
 - Body: Goal (one line) · Section doc links · Spec excerpt · **Done when** checklist · Not in this task · Depends on (issue numbers).
-- Add to the project with Type = Build task, Section, Milestone, Status = Not started. **Zeus** moves it to Ready to build.
+- Label `build-task`, repo milestone M0–M7. Add to the project with Kind = Build task, Section, Status = Not started.
+  **Zeus** moves it to Ready to build.
 
 The building agent:
 | When | Do |

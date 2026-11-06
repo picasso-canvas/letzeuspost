@@ -8,7 +8,8 @@ edit and approve, and that are exported ready to schedule. The owner is **Zeus**
 
 - `docs/plan/` is the plan: one doc per section. The roadmap lists every section and its status.
 - Build only from sections whose status is **Approved**. `docs/plan/drafts/` is input for planning, never a spec.
-- The GitHub Project **LetZeusPost** tracks every section and build task in its **Status** field (the stage).
+- The [GitHub Project **LetZeusPost**](https://github.com/users/picasso-canvas/projects/2) tracks every section
+  (issues #1–#18, issue number = section number) and build task in its **Status** field (the stage).
   Its IDs are in `.claude/board-ids.json`. Update the board with the `board` skill (`.claude/skills/board/`).
 
 ## Building

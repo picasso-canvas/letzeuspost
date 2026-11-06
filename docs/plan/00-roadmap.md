@@ -27,26 +27,26 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 
 ✋ = needs Zeus's answers in an interview round. The others Athena drafts and Zeus approves.
 
-| # | Section | Part | ✋ | Status | Doc |
-|---|---|---|---|---|---|
-| 1 | Product spec | A Product & business | ✋ | **Approved** 2026-11-06 | [01-product-spec.md](01-product-spec.md) |
-| 2 | Pricing, plans and billing | A Product & business | ✋ | Not started | 02-pricing-and-billing.md |
-| 3 | LetZeusPost brand | A Product & business | ✋ | Not started | 03-letzeuspost-brand.md |
-| 4 | User flows and screens | B Experience | ✋ | **Approved** 2026-11-06 | [04-flows-and-screens.md](04-flows-and-screens.md) |
-| 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) |
-| 6 | Brand kits | C Engine | | Not started | 06-brand-kits.md |
-| 7 | Posts: types, layouts, sizes, looks | C Engine | ✋ | Not started | 07-posts.md |
-| 8 | Render engine | C Engine | | Not started | 08-render-engine.md |
-| 9 | AI pipeline | C Engine | ✋ | Not started | 09-ai-pipeline.md |
-| 10 | Images | C Engine | ✋ | Not started | 10-images.md |
-| 11 | Review, editing and approvals | D Collaboration & output | ✋ | Not started | 11-review-and-approvals.md |
-| 12 | Export and calendar | D Collaboration & output | | Not started | 12-export-and-calendar.md |
-| 13 | Technical architecture | E Platform | | Not started | 13-architecture.md |
-| 14 | Infrastructure and operations | E Platform | | Not started | 14-infrastructure.md |
-| 15 | Accounts, team and owner admin | E Platform | ✋ | Not started | 15-accounts-and-admin.md |
-| 16 | Legal and trust | E Platform | ✋ | Not started | 16-legal-and-trust.md |
-| 17 | Testing and quality | E Platform | | Not started | 17-testing.md |
-| 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md |
+| # | Section | Part | ✋ | Status | Doc | Issue |
+|---|---|---|---|---|---|---|
+| 1 | Product spec | A Product & business | ✋ | **Approved** 2026-11-06 | [01-product-spec.md](01-product-spec.md) | [#1](https://github.com/picasso-canvas/letzeuspost/issues/1) |
+| 2 | Pricing, plans and billing | A Product & business | ✋ | Not started | 02-pricing-and-billing.md | [#2](https://github.com/picasso-canvas/letzeuspost/issues/2) |
+| 3 | LetZeusPost brand | A Product & business | ✋ | Not started | 03-letzeuspost-brand.md | [#3](https://github.com/picasso-canvas/letzeuspost/issues/3) |
+| 4 | User flows and screens | B Experience | ✋ | **Approved** 2026-11-06 | [04-flows-and-screens.md](04-flows-and-screens.md) | [#4](https://github.com/picasso-canvas/letzeuspost/issues/4) |
+| 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) | [#5](https://github.com/picasso-canvas/letzeuspost/issues/5) |
+| 6 | Brand kits | C Engine | | Not started | 06-brand-kits.md | [#6](https://github.com/picasso-canvas/letzeuspost/issues/6) |
+| 7 | Posts: types, layouts, sizes, looks | C Engine | ✋ | Not started | 07-posts.md | [#7](https://github.com/picasso-canvas/letzeuspost/issues/7) |
+| 8 | Render engine | C Engine | | Not started | 08-render-engine.md | [#8](https://github.com/picasso-canvas/letzeuspost/issues/8) |
+| 9 | AI pipeline | C Engine | ✋ | Not started | 09-ai-pipeline.md | [#9](https://github.com/picasso-canvas/letzeuspost/issues/9) |
+| 10 | Images | C Engine | ✋ | Not started | 10-images.md | [#10](https://github.com/picasso-canvas/letzeuspost/issues/10) |
+| 11 | Review, editing and approvals | D Collaboration & output | ✋ | Not started | 11-review-and-approvals.md | [#11](https://github.com/picasso-canvas/letzeuspost/issues/11) |
+| 12 | Export and calendar | D Collaboration & output | | Not started | 12-export-and-calendar.md | [#12](https://github.com/picasso-canvas/letzeuspost/issues/12) |
+| 13 | Technical architecture | E Platform | | Not started | 13-architecture.md | [#13](https://github.com/picasso-canvas/letzeuspost/issues/13) |
+| 14 | Infrastructure and operations | E Platform | | Not started | 14-infrastructure.md | [#14](https://github.com/picasso-canvas/letzeuspost/issues/14) |
+| 15 | Accounts, team and owner admin | E Platform | ✋ | Not started | 15-accounts-and-admin.md | [#15](https://github.com/picasso-canvas/letzeuspost/issues/15) |
+| 16 | Legal and trust | E Platform | ✋ | Not started | 16-legal-and-trust.md | [#16](https://github.com/picasso-canvas/letzeuspost/issues/16) |
+| 17 | Testing and quality | E Platform | | Not started | 17-testing.md | [#17](https://github.com/picasso-canvas/letzeuspost/issues/17) |
+| 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md | [#18](https://github.com/picasso-canvas/letzeuspost/issues/18) |
 
 What each section decides:
 
@@ -87,7 +87,7 @@ Every section doc follows [_section-template.md](_section-template.md): Goal · 
 MVP · Done when · Depends on.
 
 When the sections a build milestone needs are approved, Athena breaks them into **build-task** issues (label
-`build-task`, with a Milestone M0–M7 and a "Done when" checklist). Zeus moves them to **Ready to build**. Then:
+`build-task`, a repo milestone M0–M7 and a "Done when" checklist). Zeus moves them to **Ready to build**. Then:
 
 **Ready to build → In progress → In review → Done**
 

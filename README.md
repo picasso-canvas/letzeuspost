@@ -10,7 +10,7 @@ owner) before building starts.
 | | |
 |---|---|
 | The plan | [docs/plan/00-roadmap.md](docs/plan/00-roadmap.md): all 18 sections, their status and links |
-| The board | GitHub Project **LetZeusPost** (owner `picasso-canvas`): one issue per section, and build tasks later |
+| The board | [GitHub Project **LetZeusPost**](https://github.com/users/picasso-canvas/projects/2): one issue per section (#1–#18), and build tasks later |
 | Rules for the building agent | [CLAUDE.md](CLAUDE.md) |
 
 Made by the editz studio.
