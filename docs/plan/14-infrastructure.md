@@ -184,8 +184,8 @@ call; partners are told that problems are handled during Dhaka daytime, faster f
 | Uptime | UptimeRobot | $0 |
 | Code, CI, images | GitHub Free | $0 ($12 of Actions compute included, about 2,000 Linux minutes; if heavy test runs exceed it, a self-hosted runner on its own small server, about €6) |
 | Domain | letzeuspost.com | about $1 (yearly) |
-| Staging and eval AI | Anthropic, separate key | at most $50 (the limit, §20) |
-| **Total** | | **about €29 + $0–25, plus at most $50 of test AI** (fallback servers: about €60 + the same) |
+| Staging and eval AI | Anthropic, separate key | at most $75 (the limit, raised in §17) |
+| **Total** | | **about €29 + $0–25, plus at most $75 of test AI** (fallback servers: about €60 + the same) |
 
 Later, when an EU or UK agency joins: the two representatives, about €70 a month together (§16).
 

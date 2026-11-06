@@ -1,4 +1,4 @@
-# Section 17: Testing and quality (Draft, waiting for Zeus)
+# Section 17: Testing and quality (Approved 2026-11-06)
 
 **Goal:** one plan for every test the other sections promised: what kinds of tests exist, what each covers, when
 they run, which ones block a merge, the test data, and how quality is watched once real agencies use the product.
@@ -64,7 +64,7 @@ subscribe, upgrade, downgrade, failed payment → read-only → paid, cancel, re
   the **full suite weekly** and on any model or prompt change. Results go into the weekly report.
 - **Cost:** about $10 a full run and $1–2 a smoke run through the Batches API (half price), so **about $55–60 a
   month**. That's a little over the $50 limit §20 suggested for the eval key; **this section raises it to $75**
-  (Zeus to confirm), measured after the first month.
+  (Zeus, 2026-11-06), shared by the evals and staging, and checked after the first month.
 - Eval data uses the fictional sample brands only, never customer content (§16).
 
 ### Security tests
