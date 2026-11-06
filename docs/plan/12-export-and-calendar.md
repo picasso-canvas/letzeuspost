@@ -1,4 +1,4 @@
-# Section 12: Export and calendar (Draft, waiting for Zeus)
+# Section 12: Export and calendar (Approved 2026-11-06)
 
 > **Stack details pending §13.** Storage, worker and link details are assumptions collected in
 > [13-architecture.md](13-architecture.md).
