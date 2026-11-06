@@ -76,7 +76,7 @@ What each section decides:
 16. **Legal and trust:** terms, privacy, the data agreement agencies need (GDPR), AI disclosure, content and licence rules.
 17. **Testing and quality:** unit, golden renders, end-to-end, AI evals, load and security tests.
 18. **Design-partner launch:** onboarding, feedback loop, success tracking, support, the build milestones in final order.
-19. **Build team and workflow:** the agents (Daedalus builds; Argus, Cerberus and Iris review), a task's life from issue to merge, the weekly audit, skills per agent.
+19. **Build team and workflow:** the agents (Daedalus builds; Argus, Cerberus and Iris review), a task's life from issue to a PR Zeus merges, the weekly report, skills per agent.
 20. **Builder guardrails:** the repo-only token, sandbox, deny rules, hooks, checks, the risk gate, Zeus merging, secrets, usage caps, rules for outside skills.
 21. **AI design workflow:** mockups → `DESIGN.md` tokens → component gallery → visual tests, Iris's review, the chosen design skills.
 22. **Product AI guardrails:** prompt-injection defences, the content policy, output checks, cost caps, audit, evals.
