@@ -12,7 +12,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | Market / languages | Global, English first; English + Bangla at launch |
 | First users | 1–3 agencies Zeus knows, invite-only design partners |
 | First build | Working MVP |
-| Brand setup | From the client's website, then the agency adjusts |
+| Brand setup | From the client's website, **or files (logo + recent posts) or 8 quick answers for brands without a website**; the agency adjusts |
 | Images | At launch: brand library + type-only layouts; stock search and AI generation right after (scope check 2026-11-06) |
 | Editing | Form edit + live preview + AI rewrite |
 | Approval | Set per brand: none / agency / agency + client |
@@ -38,7 +38,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 3 | LetZeusPost brand | A Product & business | ✋ | Not started | 03-letzeuspost-brand.md | [#3](https://github.com/picasso-canvas/letzeuspost/issues/3) |
 | 4 | User flows and screens | B Experience | ✋ | **Approved** 2026-11-06 | [04-flows-and-screens.md](04-flows-and-screens.md) | [#4](https://github.com/picasso-canvas/letzeuspost/issues/4) |
 | 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) | [#5](https://github.com/picasso-canvas/letzeuspost/issues/5) |
-| 6 | Brand kits | C Engine | | Not started | 06-brand-kits.md | [#6](https://github.com/picasso-canvas/letzeuspost/issues/6) |
+| 6 | Brand kits | C Engine | | Draft (waiting for Zeus) | [06-brand-kits.md](06-brand-kits.md) | [#6](https://github.com/picasso-canvas/letzeuspost/issues/6) |
 | 7 | Posts: types, layouts, sizes, looks | C Engine | ✋ | **Approved** 2026-11-06 | [07-posts.md](07-posts.md) | [#7](https://github.com/picasso-canvas/letzeuspost/issues/7) |
 | 8 | Render engine | C Engine | | Not started | 08-render-engine.md | [#8](https://github.com/picasso-canvas/letzeuspost/issues/8) |
 | 9 | AI pipeline | C Engine | ✋ | Not started | 09-ai-pipeline.md | [#9](https://github.com/picasso-canvas/letzeuspost/issues/9) |

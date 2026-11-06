@@ -20,7 +20,7 @@ and §18 (the partner launch) in one place. Mockups: https://claude.ai/artifact/
 
 ### 1. Agency first run (already in §04)
 
-Invite code → sign in → workspace name and role → paste the first client's website → check the kit and pick a look →
+Invite code → sign in → workspace name and role → the first client's **website, or their files (logo + 3–10 recent posts), or 8 quick answers** (§06; brands without a website are fine) → check the kit and pick a look →
 choose networks and languages → **a free sample week of 5 posts**. Target: the sample week is generating within
 **10 minutes** of sign-up.
 

@@ -48,9 +48,9 @@ notifications bell, avatar).
 | **Inbox** | Grouped across all brands: *Needs your review* · *Client feedback* (approved, comments, changes requested) · *Needs a fix* (failed checks, generation errors) · *Due soon* (posts in the next 7 days not yet approved or exported) · *Generating now* (progress). Each row: brand logo, first-slide thumbnail, hook, date, networks. Filter by brand and "my batches". | Open, approve, send to client, retry |
 | **Calendar** | Month/week; posts as chips colored by brand; holidays shown on their dates | Open post, filter brands |
 | **Brands** | Tile per brand: logo, look, posts this month, items waiting | Open, new brand |
-| **New brand** | 1 URL (or "set up by hand") → 2 reading the site (screenshot, logo, colors, fonts, voice appear as found) → 3 check the kit next to 3 sample slides, pick a look → 4 languages, country/timezone, networks, approval mode | Save brand |
+| **New brand** | 1 "What do you have?": a website, files (logo, recent posts, menu; no website needed), or 8 quick answers, in any mix → 2 reading (logo, colors, fonts, voice and facts appear as found) → 3 check the kit next to 3 sample slides, pick a look → 4 languages, country/timezone, networks, approval mode | Save brand |
 | **Brand home** | That brand's calendar (all batches), upcoming holidays, recent batches with status | New calendar / One-off / From a link |
-| **Brand kit** | Tabs: Identity (name, logos light/dark, colors, fonts per language) · Voice (tone, audience, pillars, do/don't words, CTAs, hashtags, example posts) · Look (preset + live sample) · Rules (claims to avoid, required legal lines, banned topics) · Publishing (networks, sizes, timezone, usual posting times, approval mode, client reviewer emails) · Holidays (country, days on/off, custom dates like the brand's anniversary) | Edit, preview |
+| **Brand kit** | Tabs: Identity (name, logos light/dark, colors, fonts per language) · Voice (tone, audience, pillars, do/don't words, CTAs, hashtags, example posts) · Facts (what the brand sells, prices, hours, places; each with its source) · Look (preset + live sample) · Rules (claims to avoid, required legal lines, banned topics) · Publishing (networks, sizes, timezone, usual posting times, approval mode, client reviewer emails) · Holidays (country, days on/off, custom dates like the brand's anniversary) | Edit, preview |
 | **Asset library** | Grid with filters (logo, photo, product, people, generated), AI description and tags, licence/credit, "used in N posts" | Upload, edit tags/licence, delete |
 | **New batch** | J1: period, posts per week, networks, languages, themes/notes · J2: brief, date, networks, type (auto), language, photos · J3: URL → summary + 3–5 suggested posts to tick | Plan ideas / Generate |
 | **Batch: ideas stage** | Calendar with idea cards (type, pillar, hook, networks, language, time) and holiday chips ("+ make a post"); list panel beside it | Edit, drag to another date, drop, add, "re-plan with a note"; **Generate N posts** (shows the quota it uses) |
@@ -65,7 +65,7 @@ On a phone, agency staff get: Inbox, the batch grid, a read-only post view, appr
 ### Journeys
 
 **First run (guided first batch, about 5 minutes):** sign in from the invite → workspace name and "your role" →
-paste the first client's website (or "try a demo brand") → reading the site → confirm logo, colors, voice; pick a
+the first client's website, or their files (logo + recent posts), or 8 quick answers (or "try a demo brand") → reading → confirm logo, colors, voice; pick a
 look → choose networks and language → **generate a sample week (5 posts, free, not counted)** → land in the batch
 review while it generates → a checklist afterwards: invite your team, set the approval mode, try a client link.
 
@@ -95,6 +95,8 @@ edits → resend (the client sees only what changed) → approved.
 - **Notifications** (bell + email, set per person): batch ready · client approved / commented / requested changes ·
   @mention · posts due in 48 h not approved. Clients get the review email and one reminder after 2 days (the agency
   can turn it off).
+
+**Updated 2026-11-06 (Zeus):** brands without a website are supported everywhere a website was assumed (files or answers instead; [Section 6](06-brand-kits.md)), and the brand kit gains a Facts tab.
 
 Onboarding (the checklist after the first run, team members joining, onboarding emails, the design-partner
 playbook) is specified in [Section 23](23-onboarding.md).

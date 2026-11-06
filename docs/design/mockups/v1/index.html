@@ -123,6 +123,7 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .empty { text-align: center; padding: 48px 16px; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
 .empty .big { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); }
 
+.drop { border: 1.5px dashed var(--border-strong); border-radius: 10px; padding: 18px; display: grid; gap: 4px; justify-items: center; text-align: center; color: var(--muted); }
 /* onboarding */
 .checklist { list-style: none; margin: 0; padding: 2px 14px 8px; }
 .checklist li { display: grid; grid-template-columns: 22px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--border); }
@@ -516,7 +517,7 @@ const OTHER_CAL = { 3: [["ironline", "20-minute EMOM"]], 8: [["ironline", "No ex
 const S = { route: "inbox", inboxEmpty: false, filter: "all", postsView: "grid", sel: new Set(["pitha", "quiz"]),
   slide: 0, lang: "en", size: "portrait", tab: "slide", safe: false, kitTab: "voice", look: "playful", wstep: 1,
   idea: 14, extraIdeas: [], postsBrand: "golpo", rv: {}, rvName: "", rvCr: null, img: "library",
-  checklistHidden: false, inviteStep: 1, mail: 0 };
+  checklistHidden: false, inviteStep: 1, mail: 0, nb: "web" };
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -612,23 +613,43 @@ V.brands = () => `<div class="page-head"><div><h1>Brands</h1><p class="sub">3 of
     <div class="row" style="gap:12px;flex-wrap:nowrap">${markSvg(k, 40)}<div style="min-width:0"><h3>${b.name}</h3><div class="muted" style="font-size:12.5px">${b.where}</div></div></div>
     <div class="row" style="flex-wrap:nowrap;gap:12px;align-items:center"><div style="width:92px;flex:none">${art({ brand: k, size: "square", kind: k === "golpo" ? "quiz" : undefined })}</div>
       <div style="display:grid;gap:6px;font-size:12.5px" class="muted"><span>${b.langs} · ${b.nets.join(" + ")}</span><span>${b.look} look</span></div></div>
-    <div class="stats"><span><b>${b.month}</b> posts this month</span><span><b>${b.waiting}</b> waiting</span></div></button>`).join("")}
+    <div class="stats"><span><b>${b.month}</b> posts this month</span><span><b>${b.waiting}</b> waiting</span><span>Kit <b>${({ golpo: 92, ironline: 78, brightwell: 85 })[k]}%</b></span></div></button>`).join("")}
     <button class="tile new" data-go="brand-new">${ic("plus")}<span>New brand from a website</span></button></div>`;
 
-V["brand-new"] = () => `<div class="page-head"><div><h1>New brand</h1><p class="sub">Paste the client's website. We read it and draft the brand kit; you fix anything wrong.</p></div></div>
-  <div class="wsteps" style="margin-bottom:16px"><span class="done">${ic("circle-check")}1 Website</span><span class="done">${ic("circle-check")}2 Reading the site</span><span class="now">3 Check the kit</span><span>4 Languages and networks</span></div>
+const SOURCES = [["web", "globe", "A website"], ["files", "upload", "No website: files"], ["questions", "list", "Only answers"]];
+const srcPick = act => `<div class="seg" role="group" aria-label="Start from" style="flex-wrap:wrap;justify-self:start">${SOURCES.map(([k, i, l]) => `<button data-act="${act}" data-v="${k}" aria-pressed="${S.nb === k}">${ic(i)}${l}</button>`).join("")}</div>`;
+const SWATCHES = `<span class="row"><span class="swatch" style="background:#1F5C45"></span><span class="swatch" style="background:#FFB627"></span><span class="swatch" style="background:#FFF1D6"></span><span class="faint num">#1F5C45 · #FFB627 · #FFF1D6</span></span>`;
+const foundList = rows => `<div class="found">${rows.map(([ok, k, v]) => `<div>${ic(ok ? "circle-check" : "triangle-alert")}<span class="muted">${k}</span><span class="${ok ? "" : "qc-warn"}">${v}</span></div>`).join("")}</div>`;
+V["brand-new"] = () => {
+  const left = {
+    web: `<div class="field"><label for="nb-url">Website</label><div class="row" style="flex-wrap:nowrap"><input id="nb-url" class="input" value="https://golpocafe.com.bd"><button class="btn" data-act="toast" data-msg="Read again">Read again</button></div></div>
+      <p class="muted" style="font-size:13px">Read 6 pages in 14 seconds. Here's what we found:</p>` + foundList([
+      [1, "Logo", `<span class="row">${brandLogo("Golpo Café", "#1F5C45")}<span class="faint">from the site header (SVG)</span></span>`],
+      [1, "Colors", SWATCHES],
+      [1, "Fonts", "Baloo Da 2 (EN + বাংলা) · Hind Siliguri for body text"],
+      [0, "Font licence", "The menu uses a paid font. We matched it to Baloo Da 2 (free). Upload the licensed file if you have it."],
+      [1, "Voice", "Warm, neighbourly, a little playful. Talks about “our” street and regulars by name."],
+      [1, "Facts", "Opening hours, address and menu prices, each with the page it came from"]]),
+    files: `<div class="field"><label>Upload what the brand has</label><div class="drop">${ic("upload")}<span><b>Drop files here</b> or choose them</span><span class="faint" style="font-size:12px">Logo, 3–10 recent posts (screenshots are fine), photos, a menu or price list, a brand guide. PNG, JPG, SVG or PDF.</span></div>
+      <div class="row" style="gap:6px">${["golpo-logo.png", "post-1.jpg", "post-2.jpg", "post-3.jpg", "post-4.jpg", "post-5.jpg", "post-6.jpg", "menu.pdf"].map(f => `<span class="tag">${ic(f.endsWith(".pdf") ? "file-text" : "image")}${f}</span>`).join("")}</div></div>
+      <div class="field"><label for="nb-fb">Facebook Page or Instagram (optional)</label><input id="nb-fb" class="input" value="facebook.com/golpocafe"><span class="faint" style="font-size:12px">Saved for captions and links. We don't read social pages automatically; the post screenshots do that job.</span></div>
+      <p class="muted" style="font-size:13px">Read 8 files. Here's what we found:</p>` + foundList([
+      [1, "Logo", "From golpo-logo.png (background removed)"],
+      [1, "Colors", SWATCHES.replace("</span></span>", " · from the logo and 6 posts</span></span>")],
+      [1, "Fonts", "Closest free match to their posts: Baloo Da 2 for headlines, Hind Siliguri for body text"],
+      [1, "Voice", "From 6 recent posts, mostly Bangla: warm, chatty, often asks followers a question"],
+      [1, "Facts", "Opening hours and 24 menu prices from menu.pdf"],
+      [0, "Website", "None. Links in captions go to the Facebook Page"]]),
+    questions: `<p class="muted" style="font-size:13px">8 questions, about 3 minutes. Ask the client on a call, or fill in what you know.</p>
+      <div class="stack" style="gap:10px">${[["What do they sell?", "Tea, pitha and snacks; a small café"], ["Who are their customers?", "Dhanmondi regulars, students, young families"], ["City and country", "Dhaka, Bangladesh"], ["Languages", "Bangla first, English on Instagram"], ["Three words for their tone", "Warm, neighbourly, playful"], ["Words they never use", "cheap, best in Dhaka"], ["What should posts achieve?", "More morning visitors; pre-orders for seasonal food"], ["Colors they like", "Leaf green and mango yellow (or “pick for me”)"]].map(([q, a], i) => `<div class="field"><label for="nq-${i}">${q}</label><input id="nq-${i}" class="input" value="${esc(a)}"></div>`).join("")}</div>`,
+  }[S.nb];
+  return `<div class="page-head"><div><h1>New brand</h1><p class="sub">Start from a website, from files the brand already has, or from a few answers. We draft the kit; you fix anything wrong.</p></div></div>
+  <div class="wsteps" style="margin-bottom:16px"><span class="done">${ic("circle-check")}1 Start</span><span class="done">${ic("circle-check")}2 Reading</span><span class="now">3 Check the kit</span><span>4 Languages and networks</span></div>
   <div class="two">
     <section class="panel" style="padding:16px;display:grid;gap:14px;align-content:start">
-      <div class="field"><label for="nb-url">Website</label><div class="row" style="flex-wrap:nowrap"><input id="nb-url" class="input" value="https://golpocafe.com.bd"><button class="btn" data-act="toast" data-msg="Read again">Read again</button></div></div>
-      <p class="muted" style="font-size:13px">Read 6 pages in 14 seconds. Here's what we found:</p>
-      <div class="found">
-        <div>${ic("circle-check")}<span class="muted">Logo</span><span class="row">${brandLogo("Golpo Café", "#1F5C45")}<span class="faint">from the site header (SVG)</span></span></div>
-        <div>${ic("circle-check")}<span class="muted">Colors</span><span class="row"><span class="swatch" style="background:#1F5C45"></span><span class="swatch" style="background:#FFB627"></span><span class="swatch" style="background:#FFF1D6"></span><span class="faint num">#1F5C45 · #FFB627 · #FFF1D6</span></span></div>
-        <div>${ic("circle-check")}<span class="muted">Fonts</span><span>Baloo Da 2 (EN + বাংলা) · Hind Siliguri for body text</span></div>
-        <div>${ic("triangle-alert")}<span class="muted">Font licence</span><span class="qc-warn">The menu uses a paid font. We matched it to Baloo Da 2 (free). Upload the licensed file if you have it.</span></div>
-        <div>${ic("circle-check")}<span class="muted">Voice</span><span>Warm, neighbourly, a little playful. Talks about “our” street and regulars by name.</span></div>
-        <div>${ic("circle-check")}<span class="muted">Languages</span><span>English and Bangla both used on the site</span></div>
-      </div>
+      <div class="field"><label>What do you have for this brand?</label>${srcPick("nb")}<span class="faint" style="font-size:12px">You can mix them: add files or answers to a website kit later.</span></div>
+      ${left}
+      ${S.nb === "questions" ? `<div class="panel" style="padding:10px 12px;display:flex;gap:10px;align-items:center;background:var(--surface-2)">${ic("info")}<span style="font-size:13px">No logo yet. Posts use a temporary wordmark, <b style="font-family:'Baloo Da 2';color:#1F5C45">Golpo Café</b>, until you upload one.</span></div>` : ""}
     </section>
     <section class="panel" style="padding:16px;display:grid;gap:14px;align-content:start">
       <div class="row" style="justify-content:space-between"><h2>Sample slides</h2><span class="faint" style="font-size:12.5px">Pick a look</span></div>
@@ -637,9 +658,10 @@ V["brand-new"] = () => `<div class="page-head"><div><h1>New brand</h1><p class="
       <div class="row" style="justify-content:flex-end"><button class="btn" data-go="brands">Cancel</button><button class="btn btn-gold" data-go="kit">Looks right: continue</button></div>
     </section>
   </div>`;
+};
 
 V.kit = () => {
-  const tabs = ["identity", "voice", "look", "rules", "publishing", "holidays"];
+  const tabs = ["identity", "voice", "facts", "look", "rules", "publishing", "holidays"];
   const P = {
     identity: `<dl class="kv"><dt>Name</dt><dd>Golpo Café · গল্প ক্যাফে</dd><dt>Logos</dt><dd class="row">${brandLogo("Golpo Café", "#1F5C45")} <span class="faint">light</span> <span style="background:#1F3A2E;color:#fff;padding:2px 8px;border-radius:6px">${brandLogo("Golpo Café", "#FFB627")}</span> <span class="faint">dark</span></dd><dt>Colors</dt><dd class="row"><span class="swatch" style="background:#1F5C45"></span> Leaf green <span class="swatch" style="background:#FFB627"></span> Mango <span class="swatch" style="background:#FFF1D6"></span> Cream</dd><dt>Fonts</dt><dd>Headlines: Baloo Da 2 (EN + বাংলা) · Body: Hind Siliguri</dd></dl>`,
     voice: `<div class="stack" style="gap:16px"><dl class="kv"><dt>Tone</dt><dd class="row"><span class="tag">Warm</span><span class="tag">Neighbourly</span><span class="tag">A little playful</span></dd>
@@ -650,6 +672,7 @@ V.kit = () => {
       <dt>Calls to action</dt><dd>“Come hungry.” · “চলে আসুন।” · “Tell us in the comments.”</dd>
       <dt>Hashtags</dt><dd class="row"><span class="tag">#GolpoCafe</span><span class="tag">#গল্পক্যাফে</span><span class="tag">#DhakaFood</span></dd></dl>
       <div class="field"><label for="kit-notes">Notes for the writer</label><textarea id="kit-notes" class="textarea">Bangla is written natively, never translated. Prices in taka, written as “1,200 taka” in English and “১,২০০ টাকা” in Bangla.</textarea></div></div>`,
+    facts: `<p class="muted" style="margin-bottom:12px">What the writer may say about Golpo Café. Claims that aren't here, or in a source, get flagged.</p><div>${[["Sells", "Tea, pitha and snacks", "website · menu page"], ["Prices", "24 menu items, e.g. bhapa pitha 40 taka", "menu.pdf · updated 1 Nov"], ["Hours", "8 am to 11 pm, every day", "website · contact page"], ["Address", "Road 27, Dhanmondi, Dhaka", "website · contact page"], ["Founded", "March 2022", "Rafiq, on the kickoff call"], ["Links", "facebook.com/golpocafe · golpocafe.com.bd", "typed by Nadia"]].map(([k, v, s], i) => `<div class="row" style="justify-content:space-between;padding:8px 0;border-top:${i ? "1px solid var(--border)" : "0"};flex-wrap:nowrap;gap:12px"><div style="min-width:0"><b style="display:inline-block;width:80px">${k}</b>${v}</div><span class="tag" style="flex:none">${ic("file-search")}${s}</span></div>`).join("")}</div><button class="btn btn-sm" style="margin-top:10px" data-act="toast" data-msg="Mockup: add a fact">${ic("plus")}Add a fact</button>`,
     look: `<p class="muted" style="margin-bottom:12px">Every post uses the brand's colors and fonts inside one of four looks.</p><div class="looks">${["playful", "bold", "clean", "editorial"].map(l => `<button class="look-opt" data-act="look" data-v="${l}" aria-pressed="${S.look === l}">${lookSample(l)}<span>${l[0].toUpperCase() + l.slice(1)}${l === "playful" ? " · current" : ""}</span></button>`).join("")}</div>`,
     rules: `<dl class="kv"><dt>Claims to avoid</dt><dd>Health benefits of food or tea · “organic” (not certified)</dd><dt>Required lines</dt><dd>None</dd><dt>Restricted industry</dt><dd>No (food and drink)</dd><dt>Topics to skip</dt><dd>Politics, competitors</dd></dl>`,
     publishing: `<dl class="kv"><dt>Networks</dt><dd class="row">${nets(["IG", "FB"])} Instagram, Facebook</dd><dt>Sizes</dt><dd>4:5 feed, 9:16 story</dd><dt>Timezone</dt><dd>Asia/Dhaka</dd><dt>Usual times</dt><dd class="num">12:30 and 17:30</dd><dt>Approval</dt><dd>Agency, then client · <b>Rafiq Ahmed</b> (owner) reviews by link</dd></dl>`,
@@ -785,8 +808,10 @@ V.welcome = () => {
   const body = {
     1: `<h2>Welcome to LetZeusPost</h2><p class="muted">Let's make a week of posts for one of your clients. It takes about 5 minutes.</p>
         <div class="two" style="gap:12px"><div class="field"><label for="w-ws">Agency name</label><input id="w-ws" class="input" value="Northwind Social"></div><div class="field"><label for="w-role">Your role</label><select id="w-role" class="select"><option>Content lead</option><option>Founder</option><option>Account manager</option></select></div></div>`,
-    2: `<h2>Paste your first client's website</h2><p class="muted">We read it and draft their logo, colors, fonts and voice.</p>
-        <div class="field"><label for="w-url">Website</label><input id="w-url" class="input" value="https://golpocafe.com.bd"></div><button class="btn btn-ghost btn-sm" style="justify-self:start" data-act="toast" data-msg="Mockup: a demo brand would load">No client handy? Try a demo brand</button>`,
+    2: `<h2>Tell us about your first client</h2><p class="muted">A website is quickest. No website? Upload their logo and a few recent posts, or answer 8 quick questions.</p>
+        ${srcPick("nb")}
+        ${S.nb === "web" ? `<div class="field"><label for="w-url">Website</label><input id="w-url" class="input" value="https://golpocafe.com.bd"></div>` : S.nb === "files" ? `<div class="drop">${ic("upload")}<span><b>Drop the logo and 3–10 recent posts</b></span><span class="faint" style="font-size:12px">Screenshots of their Facebook posts are fine. PNG, JPG, SVG or PDF.</span></div>` : `<p class="muted">Next you'll answer 8 questions: what they sell, who for, tone, languages and colors.</p>`}
+        <button class="btn btn-ghost btn-sm" style="justify-self:start" data-act="toast" data-msg="Mockup: a demo brand would load">No client handy? Try a demo brand</button>`,
     3: `<h2>Does this look like Golpo Café?</h2><div class="two"><div class="found">
         <div>${ic("circle-check")}<span class="muted">Logo</span><span>${brandLogo("Golpo Café", "#1F5C45")}</span></div>
         <div>${ic("circle-check")}<span class="muted">Colors</span><span class="row"><span class="swatch" style="background:#1F5C45"></span><span class="swatch" style="background:#FFB627"></span><span class="swatch" style="background:#FFF1D6"></span></span></div>
@@ -800,7 +825,7 @@ V.welcome = () => {
   return `<div class="welcome"><div class="row" style="justify-content:space-between"><div class="logo" style="padding:0">${markSvg("lzp", 26)}<span class="wm">Let<b>Zeus</b>Post</span></div><button class="btn btn-ghost btn-sm" data-go="inbox">Skip for now</button></div>
     <div class="wsteps">${steps.map((s, i) => `<span class="${i + 1 < st ? "done" : i + 1 === st ? "now" : ""}">${i + 1 < st ? ic("circle-check") : `${i + 1}`} ${s}</span>`).join('<span class="faint">·</span>')}</div>
     <div class="wcard">${body}<div class="row" style="justify-content:space-between">${st > 1 ? `<button class="btn" data-act="wback">${ic("arrow-left")}Back</button>` : "<span></span>"}
-      ${st < 4 ? `<button class="btn btn-gold" data-act="wnext">${st === 2 ? "Read the site" : st === 3 ? "Looks right" : "Continue"}${ic("arrow-right")}</button>` : `<button class="btn btn-gold" data-go="posts">${ic("zap")}Make my sample week</button>`}</div></div></div>`;
+      ${st < 4 ? `<button class="btn btn-gold" data-act="wnext">${st === 2 ? ({ web: "Read the site", files: "Read the files", questions: "Continue" })[S.nb] : st === 3 ? "Looks right" : "Continue"}${ic("arrow-right")}</button>` : `<button class="btn btn-gold" data-go="posts">${ic("zap")}Make my sample week</button>`}</div></div></div>`;
 };
 
 V.logos = () => {
@@ -945,6 +970,7 @@ document.addEventListener("click", e => {
     case "ivnext": S.inviteStep = 2; render(); break;
     case "ivback": S.inviteStep = 1; render(); break;
     case "mail": S.mail = +v; render(); break;
+    case "nb": S.nb = v; render(); break;
     case "toast": toast(el.dataset.msg); break;
     case "filter": S.filter = v; render(); break;
     case "empty": S.inboxEmpty = !S.inboxEmpty; render(); break;
