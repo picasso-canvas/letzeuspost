@@ -78,7 +78,7 @@ an hour). A supporting line, where there's room: "On-brand social posts for ever
 
 ### Domain, email and handles
 
-- **letzeuspost.com:** Zeus buys it himself (it was free on 2026-11-06), with DNS at Cloudflare (the files are on R2,
+- **letzeuspost.com:** Zeus buys it (it was free on 2026-11-06), with DNS at Cloudflare (the files are on R2,
   §13). Proposed layout, settled in §14: `letzeuspost.com` the public page · `app.letzeuspost.com` the app and client
   review links · a sending subdomain for email with SPF, DKIM and DMARC.
 - **Addresses:** `zeus@` (the welcome email and partners, §23) · `hello@` (the public page) · a no-reply sender for

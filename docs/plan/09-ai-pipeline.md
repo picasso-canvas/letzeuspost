@@ -13,7 +13,7 @@ costs), so posts come out on-brand, in native English and Bangla, safely and at 
 | Which model to start with? | **Claude Opus 5.5 for every task**; switchable per task in `config/models.ts`. Cheaper models only after measuring |
 | Web search for facts? | **Yes, for fact, stat and photo-card posts only**, every fact with its source link. Claims about the client still come only from the kit's Facts |
 | Learn from the agency's edits? | **Per brand, from approved posts**; never shared across brands or agencies; no model training |
-| Who judges native Bangla? | **An AI judge on every Bangla post + Zeus reads 10 Bangla posts a week**; his verdicts tune the judge |
+| Who judges native Bangla? | **An AI judge on every Bangla post + Zeus reads 10 Bangla posts a week**; Zeus's verdicts tune the judge |
 
 ## Spec
 
@@ -92,8 +92,8 @@ export const prices = { "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.
   common Bangla word exists, unless the brand's examples do it.
 - `banglaJudge` scores naturalness, spelling and grammar, register, cultural fit and clarity (1–5 each). Below 4 on
   any of them → a warning and one automatic rewrite; still below → the editor sees the notes.
-- **Every week Zeus reads 10 Bangla posts** in his admin panel (a mix of random and low-scored ones) and marks each
-  good / needs work, with a note. His verdicts become the judge's test set; when Zeus and the judge disagree on more
+- **Every week Zeus reads 10 Bangla posts** in the admin panel (a mix of random and low-scored ones) and marks each
+  good / needs work, with a note. These verdicts become the judge's test set; when Zeus and the judge disagree on more
   than 2 in 10, the judge's prompt is tuned.
 
 ### Web search (fact, stat and photo-card posts only)

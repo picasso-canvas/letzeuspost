@@ -13,7 +13,7 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
 1. **No bot account.** A separate `letzeuspost-bot` account was suspended by GitHub; Zeus chose to keep it simple.
 2. **Zeus merges every PR.** Zeus's account is on GitHub Free, and GitHub refuses rulesets and auto-merge on a
    private repo on Free ("Upgrade to GitHub Pro or make this repository public"). Zeus chose to stay on Free and merge
-   himself, instead of upgrading or making the repo public.
+   every PR personally, instead of upgrading or making the repo public.
 3. **A repo-only token for agents**, so GitHub itself limits what they can do.
 
 ## Questions for Zeus (answered 2026-11-06)

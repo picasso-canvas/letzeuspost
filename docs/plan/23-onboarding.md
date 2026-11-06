@@ -13,7 +13,7 @@ and §18 (the partner launch) in one place. Mockups: https://claude.ai/artifact/
 |---|---|
 | Which onboarding pieces to plan now? | All four: the getting-started checklist, team members joining, onboarding emails, the design-partner playbook (2026-11-06) |
 | Where do partners talk to you day to day? | **Email only**, plus the in-app Report a problem button |
-| Does the welcome email come from Zeus personally? | **Yes**, signed by Zeus; replies go to him |
+| Does the welcome email come from Zeus personally? | **Yes**, signed by Zeus; replies go to Zeus |
 | Email language? | **English** for now, like the app; Bangla emails later |
 
 ## Spec
@@ -63,7 +63,7 @@ plain-text version.
 
 | Email | To | When | Notes |
 |---|---|---|---|
-| Welcome | new agency owner | right after sign-up | signed by Zeus; replies go to him |
+| Welcome | new agency owner | right after sign-up | signed by Zeus; replies go to Zeus |
 | Sample week ready | owner | when the sample week finishes, **only if they left the page** | 3 thumbnails |
 | Finish-setup reminder | owner | 2 days after sign-up if the sample week isn't reviewed | at most 2 reminders, then stop; can be switched off |
 | Team invite | invited member | on invite | role in one line, expiry date |

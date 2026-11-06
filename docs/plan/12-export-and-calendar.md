@@ -58,7 +58,7 @@ document. It's included in the ZIP and also downloadable on its own.
 ### Metricool CSV
 
 Built for Metricool's **Import CSV** (Planning calendar → ⋯ → Import CSV), checked against Metricool's help center on
-2026-11-06. The template itself sits behind a login, so **at build time Zeus downloads it from his Metricool account
+2026-11-06. The template itself sits behind a login, so **at build time Zeus downloads it from the studio's Metricool account
 and its exact header row is saved in the repo**; LetZeusPost fills that template and never invents columns.
 
 **One row per post per network.** The CSV has one Text column per row, so a post going to Instagram and Facebook
