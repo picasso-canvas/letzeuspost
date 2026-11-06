@@ -1,4 +1,7 @@
-# Section 22: Product AI guardrails (Approved 2026-11-06)
+# Section 22: Product AI guardrails (Approved 2026-11-06, revised 2026-11-06)
+
+> **Stack details pending §13.** Folder names, libraries and tools mentioned here are assumptions, collected in
+> [13-architecture.md](13-architecture.md). Section 13 decides them, and its answers override this doc.
 
 **Goal:** LetZeusPost's own AI stays safe, on-brand and affordable, even when fed hostile input.
 
@@ -8,7 +11,7 @@
 |---|---|
 | What should the AI refuse or flag? | Political/election content · health, money and legal claims · restricted industries · real people in AI images |
 | Cost limits? | A monthly cap per workspace and a global daily cap |
-| Who may change prompts and AI rules? | Zeus only (zeus-only PRs), and the evals must pass |
+| Who may change prompts and AI rules? | Zeus merges every PR; prompt and AI-rule changes are `sensitive`, and the evals must pass |
 
 ## Spec
 
@@ -51,8 +54,8 @@ harmful or off-brand output · unsupported claims · likeness and IP problems ·
 
 `packages/ai/evals/`: cases for each policy rule, injection attacks (a website or link page saying "ignore your
 instructions…", a malicious client comment), brand-rule breaks, sourced facts, native Bangla quality (graded with a
-rubric), and fit. They run in CI on every PR that touches `packages/ai/**` (already zeus-only) and weekly on `main`.
-Thresholds must pass, and the results go into the weekly audit. Built with the `claude-api` skill's `build-eval` and
+rubric), and fit. They run in CI on every PR that touches the AI prompts or policy (a `sensitive` area) and weekly on `main`.
+Thresholds must pass, and the results go into the weekly report. Built with the `claude-api` skill's `build-eval` and
 the evals-skills method (error analysis on real traces, checked judges).
 
 ## Not in the MVP

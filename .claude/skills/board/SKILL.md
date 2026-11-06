@@ -1,18 +1,20 @@
 ---
 name: board
-description: Update the LetZeusPost GitHub Project board. Use when a planning section changes status, when an approved section is broken into build tasks, when starting, finishing or getting stuck on a build task, when a question needs Zeus, or when writing the weekly audit.
+description: Update the LetZeusPost GitHub Project board (Athena only). Use when a planning section changes status, when an approved section is broken into build tasks, when a builder starts or opens a PR, when a question needs Zeus, or when writing the weekly report.
 ---
 
 # LetZeusPost board (GitHub Projects)
 
 - Repo `picasso-canvas/letzeuspost`. Project **LetZeusPost** #2 (owner `picasso-canvas`):
   https://github.com/users/picasso-canvas/projects/2
+- **Athena runs this skill with Zeus's own login.** Builder agents use the repo-only token, which can't reach a board
+  owned by a personal account, so they don't touch the board; they comment on their issue instead.
 - Every ID (project, fields, options, section items, milestones) is in `.claude/board-ids.json`. Read the IDs from
   there and don't look them up again. If an ID fails, rebuild the file with
   `gh project field-list 2 --owner picasso-canvas --format json`.
+- Replacing a single-select field's options (GraphQL `updateProjectV2Field`) **wipes that field on every item**:
+  re-set the values right after.
 - Keep calls small: one `gh` call per change, `--jq` to keep only what you need, never print the whole board.
-- Building agents use Zeus's `gh` login. They never merge with `--admin` and never set the `zeus-only` /
-  `auto-merge` labels (section 20).
 
 ## Fields
 
@@ -33,9 +35,8 @@ Set the Section number: `--number <n>` instead of `--single-select-option-id`. S
 
 ## Labels
 
-`section` · `build-task` · `needs-zeus` (waiting on Zeus) · `blocked` (something else is missing) · `zeus-only` /
-`auto-merge` (the PR's risk tier, set by the CI `risk-gate`; agents never set or remove these; a zeus-only PR is merged
-by Zeus himself) · `audit` (weekly audit).
+`section` · `build-task` · `needs-zeus` (waiting on Zeus) · `blocked` (something else is missing) · `sensitive` /
+`routine` (the PR's tier, set by the CI `risk-gate`; nobody sets them by hand) · `audit` (weekly report).
 
 ## Sections (label `section`, issues #1–#22: issue number = section number)
 
@@ -49,31 +50,24 @@ by Zeus himself) · `audit` (weekly audit).
 
 Created by Athena only after the sections they need are approved. The first milestone is **H0 Harness**.
 - Title: `[<milestone>] <what gets built>`.
-- Body: Goal (one line) · Section doc links · Spec excerpt · **Done when** checklist · predicted risk tier (auto /
-  zeus-only) · **Areas** (paths it may touch) · Not in this task · Depends on (issue numbers).
+- Body: Goal (one line) · Section doc links · Spec excerpt · **Done when** checklist · predicted tier (`routine` /
+  `sensitive`) · **Areas** (paths it may touch) · Not in this task · Depends on (issue numbers).
 - Label `build-task`, repo milestone. Add to the project with Kind = Build task, Section, Status = Not started.
-- **Athena** moves tasks of approved sections to Ready to build. Zeus can pull any back.
+- Athena moves tasks of approved sections to Ready to build (Zeus can pull any back).
 
-The building agent:
-
-| When | Do |
+| When | Athena does |
 |---|---|
-| Start | Status → In progress; worktree + branch `<issue>-<slug>`; a 3–5 line approach comment |
-| PR opened | PR says `Closes #<n>`; auto-merge on (`gh pr merge --auto --squash`); Status → In review |
-| Merged | Status → Done (the issue closes from the PR) |
-| Question for Zeus | Comment with the question and options, add label `needs-zeus`, stop |
-| Blocked by something else | Add label `blocked`, comment what is missing and who can fix it |
+| A builder starts | Status → In progress |
+| The builder opens its PR | Status → In review |
+| The builder adds `needs-zeus` or `blocked` | Tell Zeus in chat |
+| Zeus merges | The issue closes from the PR; the board's built-in workflow sets Done (otherwise Athena does) |
 
-## Weekly audit (Athena, every Friday)
+## Weekly report (Athena, Fridays)
 
-Open an issue titled `Audit <year>-W<week>` with label `audit`, assigned to `picasso-canvas`, covering:
-- PRs merged (tier, reviewers, findings) and zeus-only PRs waiting
-- visual baseline changes, with before/after images
-- the trend in test counts and coverage, and any flaky tests
+Open an issue titled `Week <year>-W<week>` with label `audit`, assigned to `picasso-canvas`:
+- what merged, and which `sensitive` PRs are still waiting
 - guardrail hits (`.claude/logs/guardrail-hits.jsonl`)
-- build AI usage and product eval results
-- suggested reverts
-
-Zeus comments or ticks items; reverts go in as revert PRs.
+- AI usage against Zeus's Claude limits
+- flaky tests and product eval results
 
 Comments are one to three lines: what was done and what comes next. Details live in the docs and the PR.

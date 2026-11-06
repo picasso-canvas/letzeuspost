@@ -22,9 +22,9 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | Payouts | Not decided yet (Section 2) |
 | Name | LetZeusPost (letzeuspost.com and .ai were free on 2026-11-06) |
 | Builder | Claude Code, from this repo and the GitHub Project board |
-| Merging | Agents merge their own PRs when every gate passes; Zeus audits weekly ([19](19-build-team-and-workflow.md)) |
-| Zeus-only changes | Auth / permissions / billing, database migrations, dependencies, AI prompts and rules, the guardrails and CI themselves ([20](20-builder-guardrails.md)) |
-| Agent identity | Zeus's own account (a bot account was tried and suspended by GitHub; kept simple) |
+| Merging | **Zeus merges every PR** (GitHub Free can't enforce merge rules on a private repo); agents only open PRs ([19](19-build-team-and-workflow.md)) |
+| Sensitive areas | Auth / permissions / billing, database migrations, dependencies, AI prompts and rules, the guardrails and CI themselves: CI labels those PRs `sensitive` ([20](20-builder-guardrails.md)) |
+| Agent identity | Zeus's account through a **repo-only token** (no settings, secrets or workflow access); a bot account was tried and suspended |
 | Outside skills | About 100 rated ([research/skills.md](research/skills.md)); MIT/Apache + CC-BY-SA text; pinned copies only |
 
 ## The sections
@@ -45,16 +45,16 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 10 | Images | C Engine | ✋ | Not started | 10-images.md | [#10](https://github.com/picasso-canvas/letzeuspost/issues/10) |
 | 11 | Review, editing and approvals | D Collaboration & output | ✋ | Not started | 11-review-and-approvals.md | [#11](https://github.com/picasso-canvas/letzeuspost/issues/11) |
 | 12 | Export and calendar | D Collaboration & output | | Not started | 12-export-and-calendar.md | [#12](https://github.com/picasso-canvas/letzeuspost/issues/12) |
-| 13 | Technical architecture | E Platform | | Not started | 13-architecture.md | [#13](https://github.com/picasso-canvas/letzeuspost/issues/13) |
+| 13 | Technical architecture | E Platform | | Draft (assumptions only) | [13-architecture.md](13-architecture.md) | [#13](https://github.com/picasso-canvas/letzeuspost/issues/13) |
 | 14 | Infrastructure and operations | E Platform | | Not started | 14-infrastructure.md | [#14](https://github.com/picasso-canvas/letzeuspost/issues/14) |
 | 15 | Accounts, team and owner admin | E Platform | ✋ | Not started | 15-accounts-and-admin.md | [#15](https://github.com/picasso-canvas/letzeuspost/issues/15) |
 | 16 | Legal and trust | E Platform | ✋ | Not started | 16-legal-and-trust.md | [#16](https://github.com/picasso-canvas/letzeuspost/issues/16) |
 | 17 | Testing and quality | E Platform | | Not started | 17-testing.md | [#17](https://github.com/picasso-canvas/letzeuspost/issues/17) |
 | 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md | [#18](https://github.com/picasso-canvas/letzeuspost/issues/18) |
-| 19 | Build team and workflow | F Building with AI | ✋ | **Approved** 2026-11-06 | [19-build-team-and-workflow.md](19-build-team-and-workflow.md) | [#19](https://github.com/picasso-canvas/letzeuspost/issues/19) |
-| 20 | Builder guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 | [20-builder-guardrails.md](20-builder-guardrails.md) | [#20](https://github.com/picasso-canvas/letzeuspost/issues/20) |
-| 21 | AI design workflow | F Building with AI | ✋ | **Approved** 2026-11-06 | [21-ai-design-workflow.md](21-ai-design-workflow.md) | [#21](https://github.com/picasso-canvas/letzeuspost/issues/21) |
-| 22 | Product AI guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 | [22-product-ai-guardrails.md](22-product-ai-guardrails.md) | [#22](https://github.com/picasso-canvas/letzeuspost/issues/22) |
+| 19 | Build team and workflow | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [19-build-team-and-workflow.md](19-build-team-and-workflow.md) | [#19](https://github.com/picasso-canvas/letzeuspost/issues/19) |
+| 20 | Builder guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [20-builder-guardrails.md](20-builder-guardrails.md) | [#20](https://github.com/picasso-canvas/letzeuspost/issues/20) |
+| 21 | AI design workflow | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [21-ai-design-workflow.md](21-ai-design-workflow.md) | [#21](https://github.com/picasso-canvas/letzeuspost/issues/21) |
+| 22 | Product AI guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 (stack details pending §13) | [22-product-ai-guardrails.md](22-product-ai-guardrails.md) | [#22](https://github.com/picasso-canvas/letzeuspost/issues/22) |
 
 What each section decides:
 
@@ -77,7 +77,7 @@ What each section decides:
 17. **Testing and quality:** unit, golden renders, end-to-end, AI evals, load and security tests.
 18. **Design-partner launch:** onboarding, feedback loop, success tracking, support, the build milestones in final order.
 19. **Build team and workflow:** the agents (Daedalus builds; Argus, Cerberus and Iris review), a task's life from issue to merge, the weekly audit, skills per agent.
-20. **Builder guardrails:** identity, sandbox, deny rules, hooks, checks, GitHub rulesets and the zeus-only risk gate, secrets, build cost caps, rules for outside skills.
+20. **Builder guardrails:** the repo-only token, sandbox, deny rules, hooks, checks, the risk gate, Zeus merging, secrets, usage caps, rules for outside skills.
 21. **AI design workflow:** mockups → `DESIGN.md` tokens → component gallery → visual tests, Iris's review, the chosen design skills.
 22. **Product AI guardrails:** prompt-injection defences, the content policy, output checks, cost caps, audit, evals.
 
@@ -107,4 +107,4 @@ back). The first milestone is **H0 Harness**: the guardrails are built before an
 **Ready to build → In progress → In review → Done**
 
 `needs-zeus` = waiting on Zeus's answer or approval. `blocked` = something else is missing (the comment says what).
-`zeus-only` / `auto-merge` = the risk tier the CI risk gate gives a PR. `audit` = the weekly audit issue.
+`sensitive` / `routine` = the tier the CI risk gate gives a PR. `audit` = the weekly report. **Zeus merges every PR.**

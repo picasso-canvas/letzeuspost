@@ -5,6 +5,11 @@ just READMEs) across design, accessibility, security, engineering, platform and 
 pick's repo, licence and last push with the GitHub API. The large star counts are real (skills are popular in 2026).
 ★ = GitHub stars on 2026-11-06. Rating 1–5.
 
+**This is a menu, not an install list.** What is actually used is decided in [19](../19-build-team-and-workflow.md#skills)
+(a core set of 8 for H0; more only when a task needs it). The content claims below (what a skill instructs,
+telemetry, hooks, sizes) come from the research agents; only the repos, stars and licences of the picks were
+re-checked. Every skill is read in full before it is vendored.
+
 **Verdicts:** USE = vendor a pinned copy as it is · ADAPT = vendor a pinned copy with the listed changes ·
 REFERENCE = read it, don't vendor it · SKIP · LATER = when that feature is built. The vendoring rules are in
 [20-builder-guardrails.md](../20-builder-guardrails.md#outside-skills).

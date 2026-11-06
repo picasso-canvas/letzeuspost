@@ -1,4 +1,7 @@
-# Section 21: AI design workflow (Approved 2026-11-06)
+# Section 21: AI design workflow (Approved 2026-11-06, revised 2026-11-06)
+
+> **Stack details pending §13.** Folder names, libraries and tools mentioned here are assumptions, collected in
+> [13-architecture.md](13-architecture.md). Section 13 decides them, and its answers override this doc.
 
 **Goal:** what agents build looks like the approved design, and stays that way.
 
@@ -18,7 +21,7 @@
 2. **Tokens:** the §05 design system is written as **`DESIGN.md`** in the
    [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format (tokens + guidance). CI runs
    `design.md lint` (contrast, broken references) and `diff` (regressions), and `export` produces the Tailwind tokens.
-   Changing `DESIGN.md` is zeus-only. `packages/ui` holds the generated CSS variables (light and dark) and a Tailwind
+   Changing `DESIGN.md` is a `sensitive` change. `packages/ui` holds the generated CSS variables (light and dark) and a Tailwind
    preset. Lint rules ban raw colors and arbitrary values outside the tokens, any icon set other than Lucide, and any
    interface font other than Inter. All interface text lives in `apps/web/messages/en.json`.
 3. **Components:** shadcn/ui in `packages/ui`, each shown in a component gallery (Storybook) in all its states
@@ -31,21 +34,21 @@
   The client review page and the phone views also run at 390 px. Seeded sample data ("Northwind Social" and 3
   brands). Gallery components get screenshot tests too.
 - They run in the CI Docker image (same fonts every time). Baselines are committed under `tests/visual/`.
-- **Approved baselines are zeus-only** (listed for `risk-gate`), and so is the first baseline of a new screen, because it
-  defines the approved look. The PR shows before/after/diff images.
+- Changing the baseline of an **approved** screen is a `sensitive` change (Zeus looks at the before/after/diff images).
+  A new screen's first baseline is `routine`: Iris compares it with the mockup.
 - Accessibility on every screen: axe with no serious or critical issues, keyboard paths through the main journeys,
   visible focus, reduced motion respected, WCAG 2.2 AA contrast.
 
 ### Design review (Iris)
 
-Compares the PR's screenshots with the approved mockups and tokens: layout, spacing, hierarchy, all states present,
+Iris joins at the first UI milestone. She compares the PR's screenshots with the approved mockups and tokens: layout, spacing, hierarchy, all states present,
 contrast, and the interface voice (wit only in loading and empty states). Findings that break the approved design
 block the PR. Iris's skills are listed in [19](19-build-team-and-workflow.md#skills-per-agent).
 
 ### Posts' own design
 
 The look presets and layouts that render clients' posts are approved designs too. Their golden renders (§08, §17) are
-zeus-only to change, and Iris reviews them. Post rules start from the studio's `social-posts` skill, the
+`sensitive` to change, and Iris reviews them. Post rules start from the studio's `social-posts` skill, the
 `ig-carousel` structure rules (6–10 slides, cover ≤ 6 words, ≤ 25 words a slide, type ≥ 32 px at 1080) and our own
 `bangla-typography` skill.
 
@@ -72,7 +75,11 @@ Zeus asks for a change → Athena updates the §05 mockups → Zeus approves →
 | ig-carousel (Jakeschincariol/instagram-agent-skill) | MIT | **Adapt** into the §07 rules and prompts |
 | indic-typography (Siyana158/dev-craft) | MIT | **Adapt** into our `bangla-typography` |
 
-Reference-only and skipped items, and the reasons, are in [research/skills.md](research/skills.md#design-and-ui).
+**Start set (first UI milestone):** DESIGN.md, shadcn, baseline-ui, our `design-system`, Web Interface Guidelines
+(Iris), the adapted design-review agent (Iris), addyosmani accessibility, playwright-cli. The rest of the table is
+added only when a review keeps finding the same problem; ig-carousel and indic-typography feed §07 and our
+`bangla-typography`. Reference-only and skipped items, and the reasons, are in
+[research/skills.md](research/skills.md#design-and-ui).
 
 ### Gaps we fill ourselves
 
