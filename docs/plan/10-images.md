@@ -21,8 +21,8 @@ consent and credits are kept, at launch and right after.
 | Source | When | Notes |
 |---|---|---|
 | **Brand library** (agency uploads) | launch | the asset library in §06 |
-| **Photos from the client** (review link) | launch | land as "waiting" until the agency approves them |
-| **Product cutouts** | launch | made in the app from library photos |
+| **Photos from the client** (review link) | right after launch (§18, M8) | land as "waiting" until the agency approves them |
+| **Product cutouts** | right after launch (§18, M8) | made in the app from library photos |
 | **Type-only layouts** | launch | when no photo fits |
 | Stock search (Pexels, then Unsplash) | right after launch | credit and licence recorded |
 | AI image generation | after launch | provider in `config/providers.ts`, counted against the plan, labelled synthetic; **people policy decided then** |

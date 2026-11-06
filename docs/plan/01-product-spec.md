@@ -111,7 +111,8 @@ The app records these events from day one, and Zeus's admin panel (Section 15) s
 |---|---|---|
 | Networks | **All 7** (Instagram, Facebook, LinkedIn, X, Threads, TikTok, Pinterest): confirmed | — |
 | Jobs | **All 4**: J1 calendar, J2 one-off, J3 link → posts, J4 holidays: confirmed. J4 starts with hand-curated lists for the partners' countries (the option as described); worldwide holiday data follows | worldwide holiday data |
-| Images | **Brand library + type-only layouts + photos the client sends through the review link + product cutouts** (updated 2026-11-06, §10) | stock search (Pexels/Unsplash), then AI image generation |
+| Images | **Brand library + type-only layouts** (photos the client sends and product cutouts move to right after launch, [§18](18-launch.md)) | client photos and cutouts (M8), then stock search (Pexels/Unsplash), then AI image generation |
+| Layouts and looks | **10 core layouts, the Playful and Clean looks** ([§18](18-launch.md)) | testimonial, photo card, meme, before/after; Bold and Editorial (M8) |
 | Export | ZIP + **Metricool** CSV (the partners' scheduler) + LinkedIn PDF | Buffer and Hootsuite CSVs |
 | Public website | **One page**: what LetZeusPost is, pricing, terms, privacy, refunds (Paddle's review needs it; §02, added 2026-11-06) | the full marketing site |
 

@@ -199,7 +199,7 @@ milestone, and §14 sizes the server from it.
 ### Golden renders (with §17)
 
 - Every layout × size × look × language with sample content from the three sample brands: 14 × 5 × 4 × 2 = **560
-  images**, plus hard cases: the longest allowed text in each field, Bangla full of conjuncts, ya-phala and reph, a
+  images** in full (**200 at launch**: 10 layouts × 2 looks, §18), plus hard cases: the longest allowed text in each field, Bangla full of conjuncts, ya-phala and reph, a
   missing image, a font with no Bangla, a brand palette that fails contrast.
 - Run in the Docker image whenever the render code, looks or fonts change: about 5 minutes on one worker, under 2 with
   4 in parallel. Two runs on the same input must give identical pixels.
@@ -230,7 +230,7 @@ AVIF exports · print (CMYK) files · scripts other than Latin and Bangla.
 
 ## Done when
 
-- All 560 golden renders pass in the Docker image, and two runs give identical pixels.
+- All golden renders pass in the Docker image (200 at launch, 560 in full), and two runs give identical pixels.
 - The editor preview (in Chrome) and the worker break lines the same way on the sample set.
 - A too-long slide is caught, named by field with a target length, and `fitFix` + re-render fixes at least 80% of the
   test set's too-long slides within 2 tries.

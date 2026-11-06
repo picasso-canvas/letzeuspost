@@ -62,7 +62,7 @@ The reviewer sees **"Changed after your approval"** with the difference highligh
   agency can revoke or replace it. The page isn't indexed by search engines, sends no referrer, and is rate-limited
   (our `review-links` skill, §20).
 - **The page** shows only the posts sent, by date: slides to swipe, the caption for each network, date and time.
-  Actions: approve · request changes (a comment is required) · comment on a slide · approve all remaining · add photos (§10).
+  Actions: approve · request changes (a comment is required) · comment on a slide · approve all remaining · add photos (§10; right after launch, §18).
 - **Who's reviewing:** the first visit asks for a name and email (filled in from the invite). Any of the brand's listed
   reviewers can act, and **the first approval counts**; the others see "Approved by Rafiq Ahmed".
 - **Changes requested:** after the editor's changes and a resend, the client sees the changed posts first, with what changed highlighted.

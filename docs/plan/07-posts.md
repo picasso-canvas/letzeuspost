@@ -27,6 +27,8 @@ content format, in enough detail to build the renderer (§08), the AI writer (§
 
 ### Layouts
 
+> **At launch (§18):** the 10 core layouts; testimonial, photo card, meme and before/after follow right after launch (M8).
+
 Core layouts come from the studio's renderer (cover, fact, step, question, promo → **offer**, cta, text) plus new
 ones (list, quote, stat); the four extras were chosen by Zeus.
 
@@ -123,6 +125,8 @@ Sources: [Instagram Graph API media](https://developers.facebook.com/docs/instag
 [Pinterest alt text](https://help.pinterest.com/en/business/article/add-alternative-text-to-your-pins)
 
 ### The four looks
+
+> **At launch (§18):** Playful and Clean; Bold and Editorial follow right after launch (M8).
 
 Each look is a set of tokens in the `DESIGN.md` format (§21), filled with the brand's own: primary, accent,
 background, ink, heading and body fonts per language, logo for light and dark backgrounds, and an optional mascot.

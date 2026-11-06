@@ -1,4 +1,4 @@
-# Section 18: Design-partner launch (Draft, waiting for Zeus)
+# Section 18: Design-partner launch (Approved 2026-11-06)
 
 **Goal:** what's in the first launch, the build milestones in their final order, what "ready to launch" means, how
 the design partners are started, supported and listened to, how success is measured, and what follows right after.
@@ -118,7 +118,7 @@ a review of these numbers together, a plan offer (§02) and, if they're happy, a
 | Weeks 4–12 | **M8** features in the order partners ask; the second and third partners |
 | Around month 3 | The first free period ends: billing goes live for that partner; decide what's next (public sign-up, stock photos, AI images, partners abroad) |
 
-### On the board (on approval)
+### On the board (done on approval)
 
 - The repo milestones are renamed to this order (M5 Export and calendar, M6 Launch readiness, M7 Billing and public
   page) and **M8 After-launch features** is created.
