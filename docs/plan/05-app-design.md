@@ -53,6 +53,18 @@ A private, clickable web page with sample data, built on the [Section 4](04-flow
 - Zeus clicks through, comments, and we iterate until it's approved. Approved screenshots and notes are then added
   to this doc.
 
+### Mockups v1 (2026-11-06)
+
+**Link:** https://claude.ai/artifact/L47yVDF9nHEdrnYKaPHiDe (private to Zeus; shared from the page's Share menu).
+Screens: welcome (guided first batch), inbox (with its empty state), all-brands calendar, brands, new brand from a
+website, brand kit (identity, voice, look, rules, publishing, holidays), batch ideas stage with holiday chips,
+batch posts (grid and calendar, live generation progress, multi-select), post editor (slides, EN ⇄ বাংলা, 4:5 and
+9:16 with safe areas, slide / captions / checks / history / comments, AI rewrite), export dialog, client review on a
+phone, settings: plan & usage. Light and dark. Sample agency "Northwind Social" with Golpo Café (Dhaka, Playful),
+Ironline Studio (Austin, Bold) and Brightwell Dental (Leeds, Clean).
+
+Waiting for Zeus's comments. When they're approved, screenshots of each screen go to `docs/design/mockups/`.
+
 ## Not in the MVP
 
 A marketing website, the email designs (they follow this system and are planned in Section 11), and a Bangla interface.
