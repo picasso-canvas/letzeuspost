@@ -26,7 +26,7 @@ the asset library, and how the kit feeds writing, design and checks.
 | **Facts** | What the brand sells, prices (with the date they were checked), opening hours, locations, public contacts, founding date, what makes them different. **The only source the writer may use for claims about the client** (principle 3) |
 | **Look** | One of the 4 looks + switches (§07) |
 | **Rules** | Claims to avoid, required lines ("terms apply"), restricted-industry flag (§22), topics to skip, memes on or off, competitors not to name |
-| **Publishing** | Networks and handles, sizes, timezone, usual posting times, approval mode, client reviewers |
+| **Publishing** | Networks and handles, sizes, timezone, usual posting times, approval mode, client reviewers, Pinterest board (for the Metricool CSV, §12) |
 | **Holidays** | Country, days on or off, custom dates |
 
 Every item records **where it came from** (website page, uploaded file, typed by the agency, "the client said") and
