@@ -8,3 +8,8 @@ engineStrict: true
 strictDepBuilds: true
 # Only install versions published at least a day ago (minutes).
 minimumReleaseAge: 1440
+
+# Security overrides: each names the advisory it fixes. Remove when the parent package updates.
+overrides:
+  # GHSA-g3hv-75wg-m249 (medium, DoS via globparts amplification), via eslint → @eslint/config-array.
+  minimatch@>=7.0.0 <11.0.1: 11.0.1

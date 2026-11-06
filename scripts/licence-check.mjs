@@ -58,7 +58,7 @@ export const EXCEPTIONS = [
   },
   {
     // PROPOSED in #25, needs Zeus's OK: a permissive licence, pulled in by ESLint. Never shipped.
-    names: ['minimatch'],
+    names: ['minimatch', '@isaacs/nonrecursive-glob-match'],
     license: 'BlueOak-1.0.0',
     devOnly: true,
     why: 'lint tooling (eslint), permissive',
