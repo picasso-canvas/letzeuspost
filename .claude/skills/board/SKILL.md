@@ -10,7 +10,7 @@ description: Update the LetZeusPost GitHub Project board (Athena only). Use when
 - **Athena runs this skill with Zeus's own login.** Builder agents use the repo-only token, which can't reach a board
   owned by a personal account, so they don't touch the board; they comment on their issue instead.
 - Every ID (project, fields, options, section items, milestones) is in `.claude/board-ids.json`. Read the IDs from
-  there and don't look them up again. If an ID fails, rebuild the file with
+  there and don't look them up again. Section keys are two-digit strings: `.sections["07"]`, not `["7"]`. If an ID fails, rebuild the file with
   `gh project field-list 2 --owner picasso-canvas --format json`.
 - Replacing a single-select field's options (GraphQL `updateProjectV2Field`) **wipes that field on every item**:
   re-set the values right after.
