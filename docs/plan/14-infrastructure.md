@@ -1,4 +1,4 @@
-# Section 14: Infrastructure and operations (Draft, waiting for Zeus)
+# Section 14: Infrastructure and operations (Approved 2026-11-06)
 
 **Goal:** where LetZeusPost runs, how code gets there, how data is backed up and restored, how problems are noticed
 and handled, where secrets live, and what it costs each month. Built to be run by one person with AI help.
