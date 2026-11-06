@@ -40,7 +40,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) | [#5](https://github.com/picasso-canvas/letzeuspost/issues/5) |
 | 6 | Brand kits | C Engine | | **Approved** 2026-11-06 | [06-brand-kits.md](06-brand-kits.md) | [#6](https://github.com/picasso-canvas/letzeuspost/issues/6) |
 | 7 | Posts: types, layouts, sizes, looks | C Engine | ✋ | **Approved** 2026-11-06 | [07-posts.md](07-posts.md) | [#7](https://github.com/picasso-canvas/letzeuspost/issues/7) |
-| 8 | Render engine | C Engine | | Draft (waiting for Zeus) | [08-render-engine.md](08-render-engine.md) | [#8](https://github.com/picasso-canvas/letzeuspost/issues/8) |
+| 8 | Render engine | C Engine | | **Approved** 2026-11-06 | [08-render-engine.md](08-render-engine.md) | [#8](https://github.com/picasso-canvas/letzeuspost/issues/8) |
 | 9 | AI pipeline | C Engine | ✋ | **Approved** 2026-11-06 | [09-ai-pipeline.md](09-ai-pipeline.md) | [#9](https://github.com/picasso-canvas/letzeuspost/issues/9) |
 | 10 | Images | C Engine | ✋ | **Approved** 2026-11-06 | [10-images.md](10-images.md) | [#10](https://github.com/picasso-canvas/letzeuspost/issues/10) |
 | 11 | Review, editing and approvals | D Collaboration & output | ✋ | **Approved** 2026-11-06 | [11-review-and-approvals.md](11-review-and-approvals.md) | [#11](https://github.com/picasso-canvas/letzeuspost/issues/11) |

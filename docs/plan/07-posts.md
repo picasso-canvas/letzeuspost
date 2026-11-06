@@ -73,7 +73,7 @@ with a source and date each, and are re-checked before launch.
 | Instagram | 4:5 portrait | 4:5, up to 10 | 9:16 | no |
 | Facebook | 4:5 portrait | 4:5 multi-image, up to 10 | 9:16 | yes |
 | LinkedIn | 4:5 portrait | PDF document, 4:5 pages, up to 10 | — | yes |
-| X | 16:9 landscape | up to 4 images, 1:1 | — | yes |
+| X | 16:9 landscape (1:1 if the text doesn't fit at 16:9, §08) | up to 4 images, 1:1 | — | yes |
 | Threads | 4:5 portrait | 4:5, up to 10 | — | yes |
 | TikTok | 9:16 photo | 9:16 photos, up to 10 | — | no |
 | Pinterest | 2:3 pin | 2:3, up to **5** | — | no |
@@ -145,7 +145,8 @@ at render. If the brand's colors fail, the look uses a darker or lighter shade o
 
 - **Shorten, don't shrink** (product principle 2): a headline may auto-fit down to 85% of its size; past that, the AI
   shortens the words (at most 2 tries), then the post is marked "Needs a fix". Body text never goes below **32 px at
-  1080 width** (24 px at 1000 width for pins).
+  1080 width** (24 px at 1000 width for pins, 36 px at 1200 width for 16:9); small print (sources, credits, page
+  numbers) is a fixed 28 px at 1080 (§08). No emoji on slides at launch; captions can have them (§08).
 - **Bangla:** `lang="bn"`; body line-height at least 1.65, headings at least 1.3; no letter-spacing, uppercase or italic
   transforms; Bangla digits (০–৯) in Bangla text; on-slide text length is measured in graphemes (caption limits use
   each network's own counting rule, above). The exact numbers are tested in §08's golden renders.

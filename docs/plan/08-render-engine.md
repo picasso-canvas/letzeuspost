@@ -1,4 +1,4 @@
-# Section 8: Render engine (Draft, waiting for Zeus)
+# Section 8: Render engine (Approved 2026-11-06)
 
 > **Stack details pending §13.** Folder names, the worker and storage are assumptions collected in
 > [13-architecture.md](13-architecture.md); this section adds A12–A15 there.
@@ -68,7 +68,7 @@ shortening on a fair share of posts (§09's cost estimate already counts one fit
 
 - The 64 px feed margin also covers Instagram's profile grid, which shows posts cropped to 3:4 (about 34 px off each side, 3P).
 - Body floor per size: 32 px at 1080 wide, 36 px for landscape (1200 wide), 24 px for pins (§07).
-- **X fallback (new, for Zeus to confirm):** if a single-image post doesn't fit at 16:9 after one shortening try, its X
+- **X fallback (Zeus, 2026-11-06):** if a single-image post doesn't fit at 16:9 after one shortening try, its X
   version uses 1:1 instead (X takes 1:1, §07), so the text for every other network isn't cut just for X.
 
 ### Looks in the renderer
@@ -206,7 +206,7 @@ milestone, and §14 sizes the server from it.
   4 in parallel. Two runs on the same input must give identical pixels.
 - Changing a golden needs Zeus (§21); the PR shows before, after and the difference.
 
-## Decisions in this draft (for Zeus to confirm)
+## Decisions confirmed by Zeus (2026-11-06)
 
 1. **X falls back to 1:1** when a single image doesn't fit at 16:9 (a small change to §07's X default).
 2. **No emoji on slides** at launch; captions can have them.
