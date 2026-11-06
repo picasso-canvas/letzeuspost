@@ -4,7 +4,7 @@ All drawn in code (SVG). Nothing here is approved yet.
 
 | Folder | What | Status |
 |---|---|---|
-| `letzeuspost/` | LetZeusPost: a gold post tile struck by a bolt; wordmark **Let*Zeus*Post** in Inter (Zeus in bold) | **Draft for Section 3** (the LetZeusPost brand). Not approved |
+| `letzeuspost/` | LetZeusPost: a gold post tile struck by a bolt; wordmark **Let*Zeus*Post** in Inter (Zeus in bold) | Section 3: three refinements in `letzeuspost/variants/` (A Crisp strike, B Split tile, C Stack of posts; `sheet.png`). **Zeus picked A** (2026-11-06); the files in `letzeuspost/` are the earlier draft until §03 is approved |
 | `sample-brands/golpo-cafe/` | Golpo Café (Dhaka): a tea cup whose steam is a speech bubble (*golpo* = story, chat); Baloo Da 2 + Hind Siliguri, with the Bangla name গল্প ক্যাফে | Fictional sample brand for mockups and demos |
 | `sample-brands/ironline-studio/` | Ironline Studio (Austin): a slanted IL whose foot is the red "line"; Anton | Fictional sample brand |
 | `sample-brands/brightwell-dental/` | Brightwell Dental (Leeds): a tooth with a small spark on a mint disc; Manrope | Fictional sample brand |

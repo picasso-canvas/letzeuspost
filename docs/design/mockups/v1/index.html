@@ -326,8 +326,9 @@ table.t th { text-align: left; font-weight: 600; color: var(--muted); font-size:
 table.t td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
 
 /* ===== client post looks (each brand's own design, rendered as the product would) ===== */
-.art { aspect-ratio: 4 / 5; position: relative; overflow: hidden; border-radius: 6px; container-type: inline-size; display: flex; flex-direction: column; padding: 7cqw 7cqw 6cqw; gap: 3cqw; }
-.art.square { aspect-ratio: 1 / 1; } .art.story { aspect-ratio: 9 / 16; padding-top: 14cqw; padding-bottom: 26cqw; }
+.art { aspect-ratio: 4 / 5; position: relative; overflow: hidden; border-radius: 6px; container-type: inline-size; display: flex; flex-direction: column; padding: 7% 7% 6%; gap: 2.4%; }
+/* padding and gap in % of the card itself: cqw on .art would measure the window, since .art is the container, not inside one */
+.art.square { aspect-ratio: 1 / 1; gap: 3%; } .art.story { aspect-ratio: 9 / 16; padding-top: 14%; padding-bottom: 26%; gap: 1.7%; }
 .art .kick { font-size: 4.2cqw; font-weight: 700; letter-spacing: .02em; }
 .art .ttl { font-size: 10.5cqw; line-height: 1.06; }
 .art .bd { font-size: 4.6cqw; line-height: 1.4; }
@@ -381,6 +382,23 @@ table.t td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
   .phone { border-width: 6px; border-radius: 26px; } .phone .scr { height: 620px; } .found div { grid-template-columns: 18px minmax(0,1fr); } .found div span:last-child { grid-column: 2; }
 }
 @media (prefers-reduced-motion: reduce) { .shimmer::after { animation: none; } .toggle::after { transition: none; } }
+.site { max-width: 1040px; margin: 0 auto; display: grid; gap: 44px; padding: 6px 0 24px; }
+.site-top { display: flex; align-items: center; gap: 12px; } .site-top svg { height: 34px; width: auto; } .site-top .sp { margin-left: auto; }
+.hero { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 36px; align-items: center; }
+.hero h1 { font-size: 46px; line-height: 1.05; letter-spacing: -0.03em; font-weight: 800; }
+.hero p { font-size: 17px; line-height: 1.55; color: var(--muted); margin-top: 14px; }
+.hero-art { align-self: center; }
+.site-foot a { color: inherit; }
+.steps3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+.steps3 > div { border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: grid; gap: 8px; align-content: start; }
+.steps3 .n { width: 30px; height: 30px; border-radius: 9px; background: var(--gold); color: var(--on-gold); display: grid; place-items: center; font-weight: 750; }
+.tiers { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+.tier { border: 1px solid var(--border); border-radius: 16px; padding: 20px; display: grid; gap: 10px; align-content: start; }
+.tier.pop { border: 2px solid var(--ink); }
+.tier .price { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; } .tier .price small { font-size: 14px; font-weight: 500; color: var(--muted); }
+.tier ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; color: var(--muted); font-size: 14px; }
+.site-foot { border-top: 1px solid var(--border); padding-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); }
+@media (max-width: 760px) { .hero, .steps3, .tiers { grid-template-columns: minmax(0,1fr); } .hero h1 { font-size: 36px; } }
 .route-review .app, .route-welcome .app { grid-template-columns: minmax(0,1fr); }
 .route-review .side, .route-review .top, .route-welcome .side, .route-welcome .top { display: none; }
 </style>
@@ -453,14 +471,16 @@ const fmtBn = n => String(n).replace(/[0-9]/g, d => "০১২৩৪৫৬৭৮
 
 /* logos: the same drawings as docs/design/logos/ in the repo */
 const MARK = {
-  lzp: '<rect x="2" y="2" width="60" height="60" rx="15" fill="#F5B301"/><path d="M37 9 L17 37 H30 L26 55 L47 25 H34 Z" fill="#1C1A17" stroke="#1C1A17" stroke-width="2" stroke-linejoin="round"/>',
+  lzp: '<rect x="2" y="2" width="60" height="60" rx="16" fill="#F5B301"/><path d="M39.5 6.5 L18.5 36 H31 L25 57.5 L46.5 27 H34.5 Z" fill="#1C1A17"/>',
+  lzp0: '<rect x="2" y="2" width="60" height="60" rx="15" fill="#F5B301"/><path d="M37 9 L17 37 H30 L26 55 L47 25 H34 Z" fill="#1C1A17" stroke="#1C1A17" stroke-width="2" stroke-linejoin="round"/>',
   golpo: '<circle cx="32" cy="32" r="30" fill="#FFB627"/><path d="M28 11 H36 A7 7 0 0 1 43 18 A7 7 0 0 1 36 25 H31.5 L25 30 L27 25 H28 A7 7 0 0 1 21 18 A7 7 0 0 1 28 11 Z" fill="#FFF1D6" stroke="#1F5C45" stroke-width="2.5" stroke-linejoin="round"/><circle cx="27.5" cy="18" r="1.7" fill="#1F5C45"/><circle cx="32" cy="18" r="1.7" fill="#1F5C45"/><circle cx="36.5" cy="18" r="1.7" fill="#1F5C45"/><path d="M15 31 H45 V36 A15 13 0 0 1 30 49 A15 13 0 0 1 15 36 Z" fill="#1F5C45"/><path d="M45 34 H47.5 A5 5 0 0 1 47.5 44 H43.5" fill="none" stroke="#1F5C45" stroke-width="3.5" stroke-linecap="round"/><rect x="12" y="50.5" width="36" height="3.5" rx="1.75" fill="#1F5C45"/>',
   ironline: '<rect width="64" height="64" rx="8" fill="#121212"/><g transform="translate(10.5 0) skewX(-12)"><rect x="14" y="13" width="8" height="38" fill="#FFFFFF"/><rect x="27" y="13" width="8" height="38" fill="#FFFFFF"/><rect x="27" y="43" width="22" height="8" fill="#FF4D2E"/></g>',
   brightwell: '<circle cx="32" cy="32" r="30" fill="#CCF0EA"/><path d="M24 16 C28 14 30 16 32 17 C34 16 36 14 40 16 C46 19 46 27 44 33 C42 39 42 48 38 49 C35 50 35 41 32 41 C29 41 29 50 26 49 C22 48 22 39 20 33 C18 27 18 19 24 16 Z" fill="#FFFFFF" stroke="#0F766E" stroke-width="3" stroke-linejoin="round"/><path d="M48 9 L49.6 13.4 L54 15 L49.6 16.6 L48 21 L46.4 16.6 L42 15 L46.4 13.4 Z" fill="#0F766E"/>',
 };
 const markSvg = (k, size) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true" style="flex:none">${MARK[k]}</svg>`;
 const LOCKUP = {
-  lzp: ["LetZeusPost", 300, i => `<text x="78" y="43" font-family="Inter, sans-serif" font-size="31" letter-spacing="-0.6" fill="${i[0]}"><tspan font-weight="500">Let</tspan><tspan font-weight="700">Zeus</tspan><tspan font-weight="500">Post</tspan></text>`, [["#1C1A17"], ["#F3F1EC"]]],
+  lzp: ["LetZeusPost", 300, i => `<text x="80" y="43.5" font-family="Inter, sans-serif" font-size="31" letter-spacing="-0.9" fill="${i[0]}"><tspan font-weight="600">Let</tspan><tspan font-weight="800">Zeus</tspan><tspan font-weight="600">Post</tspan></text>`, [["#1C1A17"], ["#F3F1EC"]]],
+  lzp0: ["LetZeusPost", 300, i => `<text x="78" y="43" font-family="Inter, sans-serif" font-size="31" letter-spacing="-0.6" fill="${i[0]}"><tspan font-weight="500">Let</tspan><tspan font-weight="700">Zeus</tspan><tspan font-weight="500">Post</tspan></text>`, [["#1C1A17"], ["#F3F1EC"]]],
   golpo: ["Golpo Café", 250, i => `<text x="76" y="34" font-family="'Baloo Da 2', sans-serif" font-size="30" font-weight="800" fill="${i[0]}">Golpo Café</text><text x="77" y="56" font-family="'Hind Siliguri', sans-serif" font-size="15" font-weight="600" fill="${i[0]}" lang="bn">গল্প ক্যাফে</text>`, [["#1F5C45"], ["#FFF1D6"]]],
   ironline: ["Ironline Studio", 230, i => `<text x="76" y="40" font-family="Anton, Impact, sans-serif" font-size="34" letter-spacing="1" fill="${i[0]}">IRONLINE</text><text x="77" y="57" font-family="Inter, Arial, sans-serif" font-size="10.5" font-weight="700" letter-spacing="5" fill="${i[1]}">STUDIO</text>`, [["#121212", "#C9381E"], ["#FFFFFF", "#FF4D2E"]]],
   brightwell: ["Brightwell Dental", 250, i => `<text x="76" y="37" font-family="Manrope, sans-serif" font-size="29" font-weight="800" letter-spacing="-0.6" fill="${i[0]}">Brightwell</text><text x="77" y="55" font-family="Manrope, sans-serif" font-size="10.5" font-weight="700" letter-spacing="4.5" fill="${i[1]}">DENTAL</text>`, [["#0F3D3A", "#0F766E"], ["#E6FFFA", "#5EEAD4"]]],
@@ -786,7 +806,7 @@ V.review = () => {
   const posts = [{ id: "pitha", t: "Pitha week is back", d: "Mon 14 Dec", slides: [0, 1, 2, 3], lang: "bn" }, { id: "quiz", t: "Which pitha is your favourite?", d: "Tue 8 Dec", kind: "quiz" }, { id: "victory", t: "Victory Day: open from 3 pm", d: "Wed 16 Dec", kind: "victory" }];
   const done = 8 + Object.values(S.rv).filter(v => v === "ok").length;
   return `<div class="review-stage">
-    <div class="review-note"><span class="eyebrow">Client review link</span><h1>What Rafiq sees on his phone</h1><p>No account needed. He opens the link from the email, approves or comments on each post, and the agency sees his answers in the Inbox.</p>
+    <div class="review-note"><span class="eyebrow">Client review link</span><h1>What Rafiq sees on the phone</h1><p>No account needed. Rafiq opens the link from the email and approves or comments on each post; the agency sees the answers in the Inbox.</p>
       <p class="faint" style="font-size:13px">Shown in the agency's name and logo. The link expires after 30 days and can be revoked.</p><div class="row"><button class="btn" data-go="inbox">${ic("arrow-left")}Back to the agency view</button></div></div>
     <div class="phone" role="region" aria-label="Phone preview"><div class="scr">
       <div class="rv-head"><div class="rv-agency"><span class="lg">NS</span>Northwind Social</div><h2 style="font-size:18px">Posts for Golpo Café · December</h2>
@@ -843,9 +863,20 @@ V.welcome = () => {
       ${st < 4 ? `<button class="btn btn-gold" data-act="wnext">${st === 2 ? ({ web: "Read the site", files: "Read the files", questions: "Continue" })[S.nb] : st === 3 ? "Looks right" : "Continue"}${ic("arrow-right")}</button>` : `<button class="btn btn-gold" data-go="posts">${ic("zap")}Make my sample week</button>`}</div></div></div>`;
 };
 
+const LZV = [
+  ["A · Crisp strike", "The draft, tightened: a sharper bolt, softer corners, a heavier wordmark.", id => `<rect x="2" y="2" width="60" height="60" rx="16" fill="#F5B301"/><path d="M39.5 6.5 L18.5 36 H31 L25 57.5 L46.5 27 H34.5 Z" fill="#1C1A17"/>`, [600, 800, 600]],
+  ["B · Split tile", "The bolt is cut out of the tile: one colour, works on any background and as a stamp.", id => `<defs><mask id="lzv${id}"><rect width="64" height="64" fill="#fff"/><path d="M40.5 3 L17 37 H30.5 L23.5 61 L48 26 H34.5 Z" fill="#000"/></mask></defs><rect x="2" y="2" width="60" height="60" rx="16" fill="#F5B301" mask="url(#lzv${id})"/>`, [400, 800, 400]],
+  ["C · Stack of posts", "A second tile behind the first: a batch of posts, a month of posts.", id => `<rect x="12" y="2" width="50" height="50" rx="13" fill="#C98A00"/><rect x="2" y="12" width="50" height="50" rx="13" fill="#F5B301"/><path d="M32.5 17 L15.5 41 H25.5 L20.5 58 L38 33.5 H28.5 Z" fill="#1C1A17"/>`, [500, 700, 500]],
+];
+let lzvN = 0;
+const lzvMark = (v, size) => `<svg viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true" style="flex:none">${v[2](++lzvN)}</svg>`;
+const lzvLock = (v, theme) => `<svg viewBox="0 0 300 64" role="img" aria-label="LetZeusPost logo ${v[0][0]}, ${theme} background">${v[2](++lzvN)}<text x="80" y="43.5" font-family="Inter, sans-serif" font-size="31" letter-spacing="-0.9" fill="${theme === "dark" ? "#F3F1EC" : "#1C1A17"}"><tspan font-weight="${v[3][0]}">Let</tspan><tspan font-weight="${v[3][1]}">Zeus</tspan><tspan font-weight="${v[3][2]}">Post</tspan></text></svg>`;
 V.logos = () => {
-  const items = [["lzp", "LetZeusPost", "Draft for Section 3, not approved"], ["golpo", "Golpo Café", "Sample brand · Dhaka · Playful look"], ["ironline", "Ironline Studio", "Sample brand · Austin · Bold look"], ["brightwell", "Brightwell Dental", "Sample brand · Leeds · Clean look"]];
+  const items = [["lzp0", "LetZeusPost: the original draft", "For comparison; A is now used across the mockups"], ["golpo", "Golpo Café", "Sample brand · Dhaka · Playful look"], ["ironline", "Ironline Studio", "Sample brand · Austin · Bold look"], ["brightwell", "Brightwell Dental", "Sample brand · Leeds · Clean look"]];
   return `<div class="page-head"><div><h1>Logos</h1><p class="sub">The draft LetZeusPost logo and the three sample brands in these mockups. All drawn in code; the brands are fictional.</p></div></div>
+  <section class="panel" style="margin-bottom:16px"><div class="panel-head"><h2>LetZeusPost: three refinements</h2><span class="faint" style="font-size:12.5px">Section 3 · Zeus picked <b>A</b> (2026-11-06), used across the mockups now</span></div>
+    <div class="stack" style="padding:12px 16px 16px;gap:14px">${LZV.map(v => `<div><div style="margin-bottom:8px"><b>${v[0]}</b> <span class="muted" style="font-size:13px">${v[1]}</span></div>
+      <div class="logo-row"><div class="logo-bg light">${lzvLock(v, "light")}</div><div class="logo-bg dark">${lzvLock(v, "dark")}</div><div class="logo-sizes" title="Mark at 16, 32 and 64 px">${[16, 32, 64].map(sz => lzvMark(v, sz)).join("")}</div></div></div>`).join("")}</div></section>
   <div class="stack">${items.map(([k, n, d]) => `<section class="panel"><div class="panel-head"><h2>${n}</h2><span class="faint" style="font-size:12.5px">${d}</span></div>
     <div class="logo-row"><div class="logo-bg light">${lockup(k, "light")}</div><div class="logo-bg dark">${lockup(k, "dark")}</div><div class="logo-sizes" title="Mark at 16, 32 and 64 px">${[16, 32, 64].map(s => markSvg(k, s)).join("")}</div></div></section>`).join("")}</div>
   <p class="faint" style="margin-top:12px;font-size:12.5px">Files are in the repo under docs/design/logos (SVG and transparent PNG). The wordmarks use free Google Fonts and get converted to outlines once a logo is approved.</p>`;
@@ -921,6 +952,26 @@ function openWs(btn) {
   icons(); btn.setAttribute("aria-expanded", "true"); $(".menu button").focus();
 }
 
+const TIERS = { usd: [["Starter", "$49", "3 brands", "80 posts a month", "2 seats"], ["Agency", "$129", "10 brands", "300 posts a month", "5 seats"], ["Scale", "$299", "30 brands", "1,000 posts a month", "15 seats"]],
+  bdt: [["Starter", "৳2,900", "3 brands", "60 posts a month", "2 seats"], ["Agency", "৳7,900", "10 brands", "200 posts a month", "5 seats"], ["Scale", "৳17,900", "30 brands", "500 posts a month", "15 seats"]] };
+V.site = () => {
+  const cur = S.cur || "usd";
+  return `<div class="site">
+  <div class="site-top">${lockup("lzp", document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light")}<span class="sp"></span><button class="btn btn-ghost btn-sm" data-act="toast" data-msg="Mockup: the sign-in page (Google or an emailed link)">Sign in</button><button class="btn btn-gold btn-sm" data-act="toast" data-msg="Mockup: opens an email to Zeus. Sign-up is invite-only for now.">Ask for an invite</button></div>
+  <section class="hero"><div><h1>A month of posts, before lunch.</h1>
+    <p>LetZeusPost plans, writes, designs and checks on-brand social posts for every client your agency has, in English and <span lang="bn" style="font-family:'Hind Siliguri'">বাংলা</span>. Your team edits and approves, clients approve from their phone, and you export to Metricool.</p>
+    <div class="row" style="margin-top:20px;gap:10px"><button class="btn btn-gold" data-act="toast" data-msg="Mockup: opens an email to Zeus. Sign-up is invite-only for now.">${ic("zap")}Ask for an invite</button><a class="btn" href="#site-pricing">See pricing</a></div></div>
+    <div class="three hero-art">${art({ brand: "golpo", slide: 0 })}${art({ brand: "ironline" })}${art({ brand: "golpo", slide: 0, lang: "bn" })}</div></section>
+  <section><h2 style="font-size:24px;letter-spacing:-0.02em;margin-bottom:14px">How it works</h2><div class="steps3">
+    ${[["A kit for each client", "From their website, or a few files and screenshots if they don't have one. Colors, fonts, voice and facts, checked by you."], ["A month, written and designed", "Ideas on a calendar with local holidays, then every post written natively, designed in the brand's look and checked."], ["Approve and export", "Your team edits, the client approves from a link, and you export images, captions and a Metricool file."]].map(([t, d], i) => `<div><span class="n">${i + 1}</span><h3>${t}</h3><p class="muted" style="font-size:14px">${d}</p></div>`).join("")}</div></section>
+  <section id="site-pricing"><div class="row" style="justify-content:space-between;margin-bottom:14px"><h2 style="font-size:24px;letter-spacing:-0.02em">Pricing</h2>
+    <div class="seg" role="group" aria-label="Currency"><button type="button" aria-pressed="${cur === "usd"}" data-act="cur" data-v="usd">US dollars</button><button type="button" aria-pressed="${cur === "bdt"}" data-act="cur" data-v="bdt">Taka (Bangladesh)</button></div></div>
+    <div class="tiers">${TIERS[cur].map(([n, p, b, posts, seats], i) => `<div class="tier${i === 1 ? " pop" : ""}"><span class="eyebrow">${n}${i === 1 ? " · most agencies" : ""}</span><div class="price">${p}<small> / month${cur === "bdt" ? " + VAT" : ""}</small></div><ul><li>${b}</li><li>${posts}</li><li>${seats}; viewers are free</li><li>All 7 networks, English and বাংলা, client approval links, exports</li></ul></div>`).join("")}</div>
+    <p class="faint" style="font-size:13px;margin-top:12px">Annual plans: 2 months free. A linked English + Bangla pair counts as 2 posts. A full refund within 14 days of your first payment. ${cur === "usd" ? "Payments are handled by Paddle, which adds VAT or sales tax where it applies." : "Billed monthly in taka by our Bangladeshi company; pay by card, bKash or Nagad."}</p></section>
+  <footer class="site-foot"><span>© 2026 ‹Zeus's company›, Dhaka, Bangladesh</span><a href="#site">Terms</a><a href="#site">Privacy</a><a href="#site">Refunds</a><a href="#site">hello@letzeuspost.com</a></footer>
+  </div>`;
+};
+
 const EMAILS = [
   { k: "Welcome", who: "New agency owner · right after sign-up", from: "Zeus at LetZeusPost <hello@letzeuspost.com>", to: "nadia@northwind.social", subj: "Welcome to LetZeusPost, Nadia",
     body: "<p>Hi Nadia,</p><p>Thanks for being one of our first agencies. LetZeusPost plans, writes and designs on-brand posts for each of your clients, and you and your clients stay in charge of what goes out.</p><p>Start with one client's website. You'll have a sample week in about five minutes.</p>", cta: "Make my sample week", fine: "Something feels off? Reply to this email; it comes straight to me. Zeus" },
@@ -983,7 +1034,7 @@ function openCreate(btn) {
 function closeLayer() { $("#layer").innerHTML = ""; const c = $("#create-btn"); c && c.setAttribute("aria-expanded", "false"); const w = $("#ws-btn"); w && w.setAttribute("aria-expanded", "false"); }
 
 /* ---------- router & render ---------- */
-const ROUTES = [["welcome", "Welcome (first run)"], ["invite", "Team member joining"], ["inbox", "Inbox"], ["calendar", "Calendar"], ["brands", "Brands"], ["brand-new", "New brand"], ["kit", "Brand kit"], ["ideas", "Batch: ideas"], ["posts", "Batch: posts"], ["editor", "Post editor"], ["export", "Export dialog"], ["review", "Client review (phone)"], ["plan-usage", "Settings: plan & usage"], ["members", "Settings: members and seats"], ["admin", "Zeus's admin panel"], ["emails", "Onboarding emails"], ["logos", "Logos (sample)"]];
+const ROUTES = [["welcome", "Welcome (first run)"], ["invite", "Team member joining"], ["inbox", "Inbox"], ["calendar", "Calendar"], ["brands", "Brands"], ["brand-new", "New brand"], ["kit", "Brand kit"], ["ideas", "Batch: ideas"], ["posts", "Batch: posts"], ["editor", "Post editor"], ["export", "Export dialog"], ["review", "Client review (phone)"], ["plan-usage", "Settings: plan & usage"], ["members", "Settings: members and seats"], ["admin", "Zeus's admin panel"], ["emails", "Onboarding emails"], ["site", "Public page (letzeuspost.com)"], ["logos", "Logos (sample)"]];
 $("#screen-pick").innerHTML = ROUTES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
 document.querySelectorAll("[data-mark]").forEach(el => { el.innerHTML = markSvg(el.dataset.mark, +el.dataset.size || 18); });
 function icons() {
@@ -999,7 +1050,7 @@ function navKey(r) {
 function render() {
   const r = S.route === "export" ? "posts" : S.route;
   document.body.classList.toggle("route-review", r === "review");
-  document.body.classList.toggle("route-welcome", r === "welcome" || r === "invite");
+  document.body.classList.toggle("route-welcome", r === "welcome" || r === "invite" || r === "site");
   $("#view").innerHTML = (V[r] || V.inbox)();
   const cur = navKey(S.route);
   document.querySelectorAll(".side .nav").forEach(n => {
@@ -1046,6 +1097,7 @@ document.addEventListener("click", e => {
     case "mail": S.mail = +v; render(); break;
     case "nb": S.nb = v; render(); break;
     case "toast": toast(el.dataset.msg); break;
+    case "cur": S.cur = v; render(); break;
     case "filter": S.filter = v; render(); break;
     case "empty": S.inboxEmpty = !S.inboxEmpty; render(); break;
     case "look": S.look = v; render(); break;

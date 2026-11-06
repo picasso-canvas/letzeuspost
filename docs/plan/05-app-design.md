@@ -22,7 +22,7 @@
   directly. Every color pair is checked against WCAG AA.
 - **Gold contrast (finding, 2026-11-06, [§21](21-ai-design-workflow.md)):** gold `#F5B301` on white is about
   **1.9:1**, which fails even the 3:1 minimum for UI parts. In light mode, **focus rings, borders and selected
-  outlines use ink or deep amber**; gold is only a fill with near-black text on it (about 11:1). Dark mode can use
+  outlines use ink or deep amber**; gold is only a fill with near-black text on it (about 9.4:1). Dark mode can use
   gold for rings. The design system is written as `DESIGN.md` and its contrast is checked by `design.md lint`.
 - **Status colors:** Generating (slate, animated) · Needs fix (red) · In review (gold) · With client (violet) ·
   Approved (green) · Exported (gray). QC: pass (green) / warn (amber) / fail (red). Each status also has an icon, not

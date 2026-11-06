@@ -92,7 +92,7 @@ added only when a review keeps finding the same problem; ig-carousel and indic-t
 
 Gold `#F5B301` on white is about **1.9:1**, which fails even the 3:1 minimum for UI parts. In light mode, focus
 rings, borders and selected outlines use ink or deep amber; gold is only a fill with near-black text on it
-(about 11:1). Dark mode can use gold for rings.
+(about 9.4:1). Dark mode can use gold for rings.
 
 ## Not in the MVP
 
