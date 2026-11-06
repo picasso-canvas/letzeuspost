@@ -75,6 +75,14 @@ svg.lucide { width: 16px; height: 16px; stroke-width: 1.75; flex: none; }
 .main { min-width: 0; display: flex; flex-direction: column; }
 .top { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .ws { font-weight: 600; display: flex; align-items: center; gap: 8px; margin-right: auto; }
+.ws-btn { border: 0; background: none; font: inherit; font-weight: 600; color: inherit; padding: 6px 8px; margin-left: -8px; border-radius: 8px; cursor: pointer; }
+.ws-btn:hover { background: var(--surface-2); }
+.ws-btn svg.lucide { width: 15px; height: 15px; color: var(--muted); }
+.admin-note { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 9px 12px; border-radius: 9px; background: var(--surface-2); margin-bottom: 16px; }
+.admin-note svg.lucide { width: 16px; height: 16px; }
+.table-wrap { overflow-x: auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+table.t tr.cur td { background: var(--surface-2); }
 .search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--surface-2); border-radius: var(--r-ctl); padding: 6px 10px; color: var(--faint); min-width: 0; width: 260px; max-width: 100%; }
 .kbd { margin-left: auto; font-size: 11px; border: 1px solid var(--border-strong); border-radius: 4px; padding: 0 5px; color: var(--muted); }
 .avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--surface-2); border: 1px solid var(--border); flex: none; }
@@ -411,13 +419,13 @@ table.t td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
   </aside>
   <div class="main">
     <header class="top">
-      <div class="ws"><span class="avatar" style="background:#23395B;color:#fff;border:0">NS</span>Northwind Social</div>
+      <button class="ws ws-btn" id="ws-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Workspace: Northwind Social. Switch workspace"><span class="avatar" style="background:#23395B;color:#fff;border:0">NS</span>Northwind Social<i data-lucide="chevrons-up-down"></i></button>
       <div class="search" role="search"><i data-lucide="search"></i><span>Search brands and posts</span><span class="kbd">⌘K</span></div>
       <div style="position:relative">
         <button class="btn btn-gold" id="create-btn" aria-haspopup="menu" aria-expanded="false"><i data-lucide="plus"></i>Create</button>
       </div>
       <button class="icon-btn" aria-label="Notifications" data-act="toast" data-msg="3 new: Rafiq requested changes, Dr Hart approved 4 posts, December calendar is 7 of 12 ready"><i data-lucide="bell"></i></button>
-      <span class="avatar" title="Nadia Karim (Editor)">NK</span>
+      <span class="avatar" title="Nadia Karim (Admin)">NK</span>
     </header>
     <main class="view" id="view" tabindex="-1"></main>
   </div>
@@ -797,11 +805,11 @@ V.review = () => {
 };
 
 V["plan-usage"] = () => `<div class="page-head"><div><h1>Settings</h1><p class="sub">Northwind Social</p></div></div>
-  <div class="settings-layout"><nav class="settings-nav" aria-label="Settings">${["Workspace", "Members", "Plan & usage", "Notifications", "Review page", "Account"].map(n => `<button class="nav" ${n === "Plan & usage" ? 'aria-current="page"' : `data-act="toast" data-msg="Mockup: ${n} isn't drawn yet"`}>${n}</button>`).join("")}</nav>
+  <div class="settings-layout">${settingsNav("Plan & usage")}
   <div class="stack" style="gap:18px">
     <section class="panel" style="padding:16px;display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;align-items:center"><div><span class="eyebrow">Your plan</span><h2 style="margin-top:4px">Design partner</h2><p class="muted">Free until 28 February 2027 · Agency limits · weekly feedback call with the LetZeusPost team</p></div><button class="btn" data-act="toast" data-msg="Mockup: plans open in Section 2">See plans</button></section>
-    <div class="meters">${[["Posts this month", 62, 300], ["AI images", 14, 100], ["Brands", 3, 10], ["Seats", 3, 5]].map(([n, v, m]) => `<div class="meter"><span class="muted">${n}</span><span class="v">${v}<small> / ${m}</small></span><div class="bar"><i style="width:${v / m * 100}%"></i></div></div>`).join("")}</div>
-    <p class="faint" style="font-size:12.5px">Posts and AI images reset on 1 December. A post counts once for all its sizes; edits and AI rewrites are free.</p>
+    <div class="meters">${[["Posts this month", 62, 300], ["AI images", 14, 100], ["Brands", 3, 10], ["Seats", 4, 5]].map(([n, v, m]) => `<div class="meter"><span class="muted">${n}</span><span class="v">${v}<small> / ${m}</small></span><div class="bar"><i style="width:${v / m * 100}%"></i></div></div>`).join("")}</div>
+    <p class="faint" style="font-size:12.5px">Posts and AI images reset on 1 December. A post counts once for all its sizes; edits and AI rewrites are free. Owner, Admins and Editors use a seat; Viewers are free.</p>
     <section class="panel"><div class="panel-head">${ic("receipt")}<h2>Invoices</h2></div><div class="empty" style="padding:28px 16px"><p>No invoices yet. You're a design partner until 28 February 2027.</p></div></section>
   </div></div>`;
 
@@ -852,6 +860,63 @@ V.invite = () => {
       <div class="row" style="justify-content:space-between"><button class="btn btn-ghost" data-act="ivback">${ic("arrow-left")}Back</button><button class="btn btn-gold" data-go="inbox">Go to my Inbox${ic("arrow-right")}</button></div></div></div>`;
 };
 
+function settingsNav(cur) {
+  const go = { "Members": "members", "Plan & usage": "plan-usage" };
+  return `<nav class="settings-nav" aria-label="Settings">${["Workspace", "Members", "Plan & usage", "Notifications", "Review page", "Account"].map(n => `<button class="nav" ${n === cur ? 'aria-current="page"' : go[n] ? `data-go="${go[n]}"` : `data-act="toast" data-msg="Mockup: ${n} isn't drawn yet"`}>${n}</button>`).join("")}</nav>`;
+}
+const MEMBERS = [["Farhana Islam", "farhana@northwind.social", "Owner", true, "#23395B"], ["Nadia Karim", "nadia@northwind.social", "Admin", true, "#7A4FD6"], ["Tanvir Ahmed", "tanvir@northwind.social", "Editor", true, "#0F766E"], ["Sumi Rahman", "sumi@northwind.social", "Viewer", false, "#B45309"]];
+V.members = () => `<div class="page-head"><div><h1>Settings</h1><p class="sub">Northwind Social</p></div></div>
+  <div class="settings-layout">${settingsNav("Members")}
+  <div class="stack" style="gap:18px">
+    <section class="panel" style="padding:16px;display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;align-items:center">
+      <div style="min-width:220px;flex:1"><span class="eyebrow">Seats</span><div class="row" style="gap:10px;margin-top:6px"><span style="font-size:22px;font-weight:650">4<small class="muted" style="font-size:14px;font-weight:500"> / 5 used</small></span></div>
+        <div class="bar" style="margin-top:8px;max-width:320px"><i style="width:80%"></i></div>
+        <p class="faint" style="font-size:12.5px;margin-top:8px">Owner, Admins and Editors use a seat, and so do their pending invites. <b>Viewers are free.</b> Client reviewers don't need an account.</p></div>
+      <button class="btn btn-gold" data-act="invitedlg">${ic("user-plus")}Invite</button></section>
+    <section class="panel"><div class="panel-head">${ic("users")}<h2>Members</h2></div><div class="table-wrap"><table class="t"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Seat</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+      ${MEMBERS.map(([n, e, r, seat, c]) => `<tr><td><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="avatar" style="background:${c};color:#fff;border:0">${n.split(" ").map(w => w[0]).join("")}</span>${n}${n === "Nadia Karim" ? ' <span class="faint">(you)</span>' : ""}</span></td><td class="muted">${e}</td><td>${r}</td><td>${seat ? "Uses a seat" : '<span class="muted">Free</span>'}</td>
+        <td style="text-align:right">${r === "Owner" ? '<span class="faint" style="font-size:12.5px">Only Farhana can transfer ownership or delete the workspace</span>' : n === "Nadia Karim" ? "" : `<button class="btn btn-ghost btn-sm" data-act="toast" data-msg="${r === "Editor" ? `Removing ${n} first asks who takes over their 2 batches, so client replies still reach a person.` : `Mockup: change ${n}'s role or remove them. Making a Viewer an Editor needs a free seat.`}">Manage</button>`}</td></tr>`).join("")}
+      <tr><td><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="avatar">${ic("mail")}</span><span class="muted">Invite pending</span></span></td><td class="muted">rafi@northwind.social</td><td>Editor</td><td>Uses a seat<br><span class="faint" style="font-size:12px">expires 13 Nov</span></td><td style="text-align:right"><button class="btn btn-ghost btn-sm" data-act="toast" data-msg="Invite sent again to rafi@northwind.social">Resend</button><button class="btn btn-ghost btn-sm" data-act="toast" data-msg="Invite revoked. The seat is free again.">Revoke</button></td></tr>
+    </tbody></table></div></section>
+    <section class="panel"><div class="panel-head">${ic("eye")}<h2>LetZeusPost support access</h2></div>
+      <div style="padding:12px 16px 16px;display:grid;gap:10px"><p class="muted" style="font-size:13.5px">Zeus, who runs LetZeusPost, can <b>view</b> your workspace to help you and to check the quality of Bangla posts, but can't change anything or act as you. Every view is listed here.</p>
+      <div class="table-wrap"><table class="t"><thead><tr><th>When</th><th>Who</th><th>Viewed</th><th>Why</th></tr></thead><tbody>
+        <tr><td class="num">6 Nov, 14:02</td><td>Zeus (LetZeusPost)</td><td>Golpo Café › December calendar › 3 Bangla posts</td><td class="muted">Weekly Bangla quality check</td></tr>
+        <tr><td class="num">4 Nov, 10:15</td><td>Zeus (LetZeusPost)</td><td>Brightwell Dental › Brand kit</td><td class="muted">Your problem report: “logo looks blurry”</td></tr>
+      </tbody></table></div></div></section>
+  </div></div>`;
+
+const WS = [["Northwind Social", "London · since 3 Nov", "4 / 5", 3, "62 / 300", "$8.40", "5 of 6", "Today", "1 problem report", "#23395B", "NS"], ["Kite & Co", "Dhaka · since 4 Nov", "2 / 5", 4, "38 / 300", "$5.10", "4 of 6", "Yesterday", "", "#B45309", "KC"], ["Harbor Lane Media", "Manchester · since 5 Nov", "3 / 5", 2, "9 / 300", "$1.20", "2 of 6", "5 days ago", "Stopped at: first client link", "#0F766E", "HL"]];
+V.admin = () => `<div class="page-head"><div><h1>Admin</h1><p class="sub">LetZeusPost · only Zeus · in the real app it has its own frame, outside any agency</p></div><button class="btn" data-act="toast" data-msg="Mockup: a one-use invite code for a named agency, valid 14 days">${ic("ticket")}New invite code</button></div>
+  <div class="admin-note">${ic("key-round")}<span>Opened with your passkey. It asks again in 11 hours. Every view of a workspace's posts or kits is logged and shown to that agency.</span></div>
+  <div class="seg" role="group" aria-label="Admin sections" style="margin-bottom:16px;flex-wrap:wrap">${["Workspaces", "Quality", "Bangla reads", "AI cost", "Policy events", "Problem reports", "Invite codes", "Banner", "Audit log"].map((n, i) => `<button type="button" aria-pressed="${i === 0}" ${i ? `data-act="toast" data-msg="Mockup: ${n} isn't drawn yet"` : ""}>${n}</button>`).join("")}</div>
+  <section class="panel"><div class="panel-head">${ic("building-2")}<h2>Workspaces</h2><span class="faint" style="font-size:12.5px;margin-left:auto">November so far · all design partners</span></div><div class="table-wrap"><table class="t"><thead><tr><th>Workspace</th><th>Seats</th><th>Brands</th><th>Posts</th><th>AI cost</th><th>Setup</th><th>Last active</th><th>Needs a look</th></tr></thead><tbody>
+    ${WS.map(([n, d, seats, b, posts, cost, setup, last, flag, c, ini], i) => `<tr class="${i === 0 ? "cur" : ""}"><td><span class="row" style="gap:8px;flex-wrap:nowrap"><span class="avatar" style="background:${c};color:#fff;border:0">${ini}</span><span><b>${n}</b><br><span class="faint" style="font-size:12px">${d}</span></span></span></td><td class="num">${seats}</td><td class="num">${b}</td><td class="num">${posts}</td><td class="num">${cost}</td><td>${setup}</td><td>${last}</td><td>${flag ? `<span class="tag">${flag}</span>` : '<span class="faint">–</span>'}</td></tr>`).join("")}
+  </tbody></table></div></section>
+  <div class="two" style="margin-top:18px;align-items:start">
+    <section class="panel"><div class="panel-head">${ic("settings-2")}<h2>Northwind Social</h2></div><div style="padding:12px 16px 16px;display:grid;gap:14px">
+      <div class="row" style="gap:8px">
+        <button class="btn btn-sm" data-act="toast" data-msg="Mockup: opens their posts and kits read-only, with a 'Viewing as support' bar. Logged and shown to the agency.">${ic("eye")}View posts (read-only)</button>
+        <button class="btn btn-sm" data-act="toast" data-msg="Mockup: set posts, brands, seats and the AI cost ceiling for this workspace">${ic("gauge")}Raise limits</button>
+        <button class="btn btn-sm" data-act="toast" data-msg="Mockup: builds a ZIP of everything Northwind Social has (brands, kits, posts, versions, approvals, files). The link works for 7 days.">${ic("download")}Download data</button>
+        <button class="btn btn-sm" data-act="toast" data-msg="Mockup: asks for a reason. The agency becomes read-only (exports still work), generation stops and review links pause.">${ic("pause-circle")}Suspend…</button></div>
+      <div><span class="eyebrow">Feature switches</span><div style="display:grid;gap:10px;margin-top:8px">
+        ${[["Stock photos (Pexels)", false, "Right after launch"], ["Buffer CSV", true, "Testing with this partner first"], ["AI images", false, "After launch"]].map(([n, on, d]) => `<div class="row" style="justify-content:space-between;flex-wrap:nowrap;gap:12px"><span>${n}<br><span class="faint" style="font-size:12px">${d}</span></span><button class="toggle" role="switch" aria-checked="${on}" aria-label="${n}" data-act="switch"></button></div>`).join("")}</div></div></div></section>
+    <section class="panel"><div class="panel-head">${ic("megaphone")}<h2>Banner to all users</h2></div><div style="padding:12px 16px 16px;display:grid;gap:12px">
+      <div class="field"><label for="ad-banner">Message</label><textarea id="ad-banner" class="input" rows="2">Maintenance tonight 23:00–23:30 Dhaka time. Generation pauses; nothing is lost.</textarea></div>
+      <div class="two" style="gap:10px"><div class="field"><label for="ad-from">Show from</label><input id="ad-from" class="input" value="6 Nov, 18:00"></div><div class="field"><label for="ad-to">Until</label><input id="ad-to" class="input" value="6 Nov, 23:30"></div></div>
+      <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn btn-sm" data-act="toast" data-msg="Mockup: shows the banner as agencies will see it">Preview</button><button class="btn btn-gold btn-sm" data-act="toast" data-msg="Mockup: the banner is scheduled">Schedule</button></div></div></section>
+  </div>`;
+
+function openWs(btn) {
+  const r = btn.getBoundingClientRect();
+  $("#layer").innerHTML = `<div style="position:fixed;inset:0;z-index:14" data-act="close-layer"></div><div class="menu" role="menu" aria-label="Workspaces" style="top:${r.bottom + 6}px;left:${Math.max(16, r.left)}px;position:fixed">
+    <button role="menuitemradio" aria-checked="true" data-act="close-layer">${ic("check")}Northwind Social<small>Admin · current</small></button>
+    <button role="menuitemradio" aria-checked="false" data-act="toast" data-msg="Mockup: opens Kite & Co's Inbox. Nothing from Northwind Social shows there.">${ic("building-2")}Kite & Co<small>Editor</small></button>
+    <p class="faint" style="font-size:12px;padding:6px 8px 4px;max-width:250px">Each workspace is separate: brands, posts and notifications never mix.</p></div>`;
+  icons(); btn.setAttribute("aria-expanded", "true"); $(".menu button").focus();
+}
+
 const EMAILS = [
   { k: "Welcome", who: "New agency owner · right after sign-up", from: "Zeus at LetZeusPost <hello@letzeuspost.com>", to: "nadia@northwind.social", subj: "Welcome to LetZeusPost, Nadia",
     body: "<p>Hi Nadia,</p><p>Thanks for being one of our first agencies. LetZeusPost plans, writes and designs on-brand posts for each of your clients, and you and your clients stay in charge of what goes out.</p><p>Start with one client's website. You'll have a sample week in about five minutes.</p>", cta: "Make my sample week", fine: "Something feels off? Reply to this email; it comes straight to me. Zeus" },
@@ -879,7 +944,7 @@ function openInvite() {
     <header><h2 id="inv-h">Invite your team</h2><button class="icon-btn" data-act="close-layer" aria-label="Close">${ic("x")}</button></header>
     <div class="content"><div class="field"><label for="inv-email">Email</label><input id="inv-email" class="input" value="tanvir@northwind.social"></div>
       <div class="field"><label for="inv-role">Role</label><select id="inv-role" class="select"><option>Editor: makes posts, approves for the agency, exports</option><option>Viewer: looks and comments only</option><option>Admin: brands, members and settings</option></select></div>
-      <p class="faint" style="font-size:12.5px">3 of 5 seats used. The invite works once and expires in 7 days.</p></div>
+      <p class="faint" style="font-size:12.5px">3 of 5 seats used; Viewers are free. The invite works once and expires in 7 days.</p></div>
     <footer><button class="btn" data-act="close-layer">Cancel</button><button class="btn btn-gold" data-act="sendinvite">${ic("send")}Send invite</button></footer></div></div>`;
   icons(); $("#inv-email").focus();
 }
@@ -911,10 +976,10 @@ function openCreate(btn) {
     <button role="menuitem" data-go="ideas">${ic("link")}From a link<small>A blog post, product page or video</small></button></div>`;
   icons(); btn.setAttribute("aria-expanded", "true"); $(".menu button").focus();
 }
-function closeLayer() { $("#layer").innerHTML = ""; const c = $("#create-btn"); c && c.setAttribute("aria-expanded", "false"); }
+function closeLayer() { $("#layer").innerHTML = ""; const c = $("#create-btn"); c && c.setAttribute("aria-expanded", "false"); const w = $("#ws-btn"); w && w.setAttribute("aria-expanded", "false"); }
 
 /* ---------- router & render ---------- */
-const ROUTES = [["welcome", "Welcome (first run)"], ["invite", "Team member joining"], ["inbox", "Inbox"], ["calendar", "Calendar"], ["brands", "Brands"], ["brand-new", "New brand"], ["kit", "Brand kit"], ["ideas", "Batch: ideas"], ["posts", "Batch: posts"], ["editor", "Post editor"], ["export", "Export dialog"], ["review", "Client review (phone)"], ["plan-usage", "Settings: plan & usage"], ["emails", "Onboarding emails"], ["logos", "Logos (sample)"]];
+const ROUTES = [["welcome", "Welcome (first run)"], ["invite", "Team member joining"], ["inbox", "Inbox"], ["calendar", "Calendar"], ["brands", "Brands"], ["brand-new", "New brand"], ["kit", "Brand kit"], ["ideas", "Batch: ideas"], ["posts", "Batch: posts"], ["editor", "Post editor"], ["export", "Export dialog"], ["review", "Client review (phone)"], ["plan-usage", "Settings: plan & usage"], ["members", "Settings: members and seats"], ["admin", "Zeus's admin panel"], ["emails", "Onboarding emails"], ["logos", "Logos (sample)"]];
 $("#screen-pick").innerHTML = ROUTES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
 document.querySelectorAll("[data-mark]").forEach(el => { el.innerHTML = markSvg(el.dataset.mark, +el.dataset.size || 18); });
 function icons() {
@@ -924,6 +989,7 @@ function navKey(r) {
   if (r === "posts" || r === "export") return S.postsBrand === "golpo" ? "brand:golpo" : "brand:" + S.postsBrand;
   if (["kit", "ideas", "editor"].includes(r)) return "brand:golpo";
   if (r === "brand-new") return "brands";
+  if (r === "members") return "plan-usage";
   return r;
 }
 function render() {
@@ -961,6 +1027,7 @@ try { const t = localStorage.getItem("lzp-mock-theme"); if (t) setTheme(t); } ca
 document.addEventListener("click", e => {
   const th = e.target.closest("[data-theme-set]"); if (th) return setTheme(th.dataset.themeSet);
   if (e.target.closest("#create-btn")) return openCreate($("#create-btn"));
+  if (e.target.closest("#ws-btn")) return openWs($("#ws-btn"));
   if (e.target.closest("#kit-create")) return go("ideas");
   const el = e.target.closest("[data-go],[data-act]"); if (!el) return;
   if (el.dataset.act === "close-layer" && e.target.closest("[data-stop]") && !e.target.closest("button[data-act='close-layer']")) return;

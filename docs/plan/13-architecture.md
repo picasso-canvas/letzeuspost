@@ -99,7 +99,7 @@ packages/render     buildSlide, layouts, looks, fit script, fonts manifest, text
 packages/ui         tokens generated from DESIGN.md, shadcn components, the component gallery
 packages/email      email templates (React Email) with plain-text versions
 packages/storage    file store client, key scheme, signed links, image processing (§10)
-config/             models.ts, providers.ts, plans.ts, networks.ts, env.ts
+config/             models.ts, providers.ts, plans.ts, networks.ts, features.ts (§15), env.ts
 docker/             Dockerfiles, compose files, Caddyfile
 tests/              e2e/, visual/, golden/ (renders), tenancy/ (cross-workspace tests)
 docs/               plan/, design/
@@ -159,7 +159,8 @@ as integers. Post content is JSONB, checked by the zod schema on every write.
 ### Sign-in and sessions
 
 - **Better Auth**, with Google sign-in and emailed sign-in links (§23). **No passwords**, so there is nothing to leak or reset.
-  Sessions are stored in Postgres; cookies are HttpOnly, Secure, SameSite=Lax.
+  Sessions are stored in Postgres; cookies are HttpOnly, Secure, SameSite=Lax. Zeus's admin panel also needs a
+  **passkey**, asked again every 12 hours (§15).
 - **Invite-only at launch:** an agency owner needs an invite code from Zeus; a team member needs an invitation (one
   use, tied to the email address, 7 days).
 - Workspaces and roles use Better Auth's organization feature: workspace = organization, with the four roles of §01. The

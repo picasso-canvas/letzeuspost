@@ -71,7 +71,7 @@ The reviewer sees **"Changed after your approval"** with the difference highligh
 
 - One reminder email after 2 days (the agency can turn it off).
 - 48 hours before a post's date: "Still waiting for the client" to the batch owner, in the app and by email.
-- The agency may **mark a post approved on the client's behalf** with a reason ("approved by phone"); it's recorded
+- An agency Owner or Admin (§15) may **mark a post approved on the client's behalf** with a reason ("approved by phone"); it's recorded
   as exactly that, never as the client's own approval.
 
 ### Comments
