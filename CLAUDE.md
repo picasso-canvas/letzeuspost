@@ -1,8 +1,8 @@
 # LetZeusPost
 
 A SaaS for agencies: on-brand social posts (English + Bangla) that AI plans, writes, designs and checks, that people
-edit and approve, and that are exported ready to schedule. The owner is **Zeus**. Status: **planning**. See
-[docs/plan/00-roadmap.md](docs/plan/00-roadmap.md).
+edit and approve, and that are exported ready to schedule. The owner is **Zeus**. Status: **plan approved except §05 App design** (waiting on Zeus's mockup comments); **H0 Harness** build tasks are
+#24–#35. See [docs/plan/00-roadmap.md](docs/plan/00-roadmap.md).
 
 ## Source of truth
 

@@ -104,7 +104,8 @@ MVP · Done when · Depends on.
 
 When the sections a build milestone needs are approved, Athena breaks them into **build-task** issues (label
 `build-task`, a repo milestone and a "Done when" checklist) and moves them to **Ready to build** (Zeus can pull any
-back). The first milestone is **H0 Harness**: the guardrails are built before any product code. Then:
+back). The first milestone is **H0 Harness** (build tasks #24–#35, created 2026-11-06): the guardrails are built
+before any product code. Then:
 
 **Ready to build → In progress → In review → Done**
 
