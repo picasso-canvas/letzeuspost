@@ -49,7 +49,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 14 | Infrastructure and operations | E Platform | | **Approved** 2026-11-06 | [14-infrastructure.md](14-infrastructure.md) | [#14](https://github.com/picasso-canvas/letzeuspost/issues/14) |
 | 15 | Accounts, team and owner admin | E Platform | ✋ | **Approved** 2026-11-06 | [15-accounts-and-admin.md](15-accounts-and-admin.md) | [#15](https://github.com/picasso-canvas/letzeuspost/issues/15) |
 | 16 | Legal and trust | E Platform | ✋ | **Approved** 2026-11-06 | [16-legal-and-trust.md](16-legal-and-trust.md) | [#16](https://github.com/picasso-canvas/letzeuspost/issues/16) |
-| 17 | Testing and quality | E Platform | | Draft (in progress) | 17-testing.md | [#17](https://github.com/picasso-canvas/letzeuspost/issues/17) |
+| 17 | Testing and quality | E Platform | | Draft (waiting for Zeus) | [17-testing.md](17-testing.md) | [#17](https://github.com/picasso-canvas/letzeuspost/issues/17) |
 | 18 | Design-partner launch | E Platform | ✋ | Not started | 18-launch.md | [#18](https://github.com/picasso-canvas/letzeuspost/issues/18) |
 | 19 | Build team and workflow | F Building with AI | ✋ | **Approved** 2026-11-06 | [19-build-team-and-workflow.md](19-build-team-and-workflow.md) | [#19](https://github.com/picasso-canvas/letzeuspost/issues/19) |
 | 20 | Builder guardrails | F Building with AI | ✋ | **Approved** 2026-11-06 | [20-builder-guardrails.md](20-builder-guardrails.md) | [#20](https://github.com/picasso-canvas/letzeuspost/issues/20) |
