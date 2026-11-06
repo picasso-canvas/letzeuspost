@@ -35,7 +35,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 |---|---|---|---|---|---|---|
 | 1 | Product spec | A Product & business | ✋ | **Approved** 2026-11-06 | [01-product-spec.md](01-product-spec.md) | [#1](https://github.com/picasso-canvas/letzeuspost/issues/1) |
 | 2 | Pricing, plans and billing | A Product & business | ✋ | **Approved** 2026-11-06 | [02-pricing-and-billing.md](02-pricing-and-billing.md) | [#2](https://github.com/picasso-canvas/letzeuspost/issues/2) |
-| 3 | LetZeusPost brand | A Product & business | ✋ | Draft (waiting for Zeus) | [03-letzeuspost-brand.md](03-letzeuspost-brand.md) | [#3](https://github.com/picasso-canvas/letzeuspost/issues/3) |
+| 3 | LetZeusPost brand | A Product & business | ✋ | **Approved** 2026-11-06 | [03-letzeuspost-brand.md](03-letzeuspost-brand.md) | [#3](https://github.com/picasso-canvas/letzeuspost/issues/3) |
 | 4 | User flows and screens | B Experience | ✋ | **Approved** 2026-11-06 | [04-flows-and-screens.md](04-flows-and-screens.md) | [#4](https://github.com/picasso-canvas/letzeuspost/issues/4) |
 | 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) | [#5](https://github.com/picasso-canvas/letzeuspost/issues/5) |
 | 6 | Brand kits | C Engine | | **Approved** 2026-11-06 | [06-brand-kits.md](06-brand-kits.md) | [#6](https://github.com/picasso-canvas/letzeuspost/issues/6) |
