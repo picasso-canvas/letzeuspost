@@ -1,8 +1,8 @@
 # LetZeusPost
 
 A SaaS for agencies: on-brand social posts (English + Bangla) that AI plans, writes, designs and checks, that people
-edit and approve, and that are exported ready to schedule. The owner is **Zeus**. Status: **plan approved except §05 App design** (waiting on Zeus's mockup comments); **H0 Harness** build tasks are
-#24–#35. See [docs/plan/00-roadmap.md](docs/plan/00-roadmap.md).
+edit and approve, and that are exported ready to schedule. The owner is **Zeus**. Status: **every section approved** (2026-11-07); **H0 Harness** build tasks are #24–#36, then the
+**Picasso first** track ([§18](docs/plan/18-launch.md#picasso-first-zeus-2026-11-07)). See [docs/plan/00-roadmap.md](docs/plan/00-roadmap.md).
 
 ## Source of truth
 
@@ -20,7 +20,7 @@ edit and approve, and that are exported ready to schedule. The owner is **Zeus**
 
 ## Harness first
 
-No product code is written until every section is approved. The first build milestone is **H0 Harness**: the
+Build only from approved sections (all are, since 2026-11-07). The first build milestone is **H0 Harness**: the
 minimum guardrails in section 20 (repo-only agent token, sandbox, settings, hooks, H0 checks, the risk gate, agent
 files, the core skills). It must pass its red-team checklist before any other milestone starts.
 
@@ -38,7 +38,8 @@ files, the core skills). It must pass its red-team checklist before any other mi
 
 ## Merging
 
-- **Zeus merges every PR.** Agents never merge, never push to `main`, and never force-push.
+- **Athena merges, only through the merge gate** ([§19](docs/plan/19-build-team-and-workflow.md#the-merge-gate)).
+  Builders never merge. Nobody pushes to `main` or force-pushes.
 - CI labels each PR `routine` or `sensitive`. Sensitive areas: auth, permissions and billing · database schema and
   migrations · dependencies and lockfiles · AI prompts, model/provider config and product AI rules · the guardrails
   themselves (`.github/`, `.claude/`, every `CLAUDE.md`, lint/TS/test configs, `DESIGN.md`, approved visual baselines,

@@ -1,4 +1,4 @@
-# Section 20: Builder guardrails (Approved 2026-11-06, revised 2026-11-06)
+# Section 20: Builder guardrails (Approved 2026-11-06, revised 2026-11-06 and 2026-11-07)
 
 > **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
@@ -6,7 +6,7 @@
 
 Permission rules and hooks are a first line of defense only; Claude Code's own docs say they are **not a security
 boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come from the **sandbox**, the **repo-only
-token** (GitHub enforces its permissions) and **Zeus merging every PR**.
+token** (GitHub enforces its permissions) and the **merge gate**, which only Athena runs ([19](19-build-team-and-workflow.md#the-merge-gate)).
 
 ## Revisions (2026-11-06, same day)
 
@@ -15,6 +15,12 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
    private repo on Free ("Upgrade to GitHub Pro or make this repository public"). Zeus chose to stay on Free and merge
    every PR personally, instead of upgrading or making the repo public.
 3. **A repo-only token for agents**, so GitHub itself limits what they can do.
+4. **2026-11-07: Athena merges**, only through the merge gate in [19](19-build-team-and-workflow.md#the-merge-gate)
+   (Zeus: "You can merge any PR … make sure the harness and safety are maintained properly"). Builders still never
+   merge. Still on GitHub Free.
+5. **2026-11-07: the no-edit and no-merge rules are builder-only** (Zeus approved the wording): they live in
+   `.claude/builder/settings.json`, which `scripts/dispatch.sh` passes with `--settings`, and the hooks apply them
+   when `LZP_ROLE=builder`, which only dispatch sets. Everyone's rules stay in `.claude/settings.json`.
 
 ## Questions for Zeus (answered 2026-11-06)
 
@@ -22,7 +28,7 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
 |---|---|
 | Which changes need extra care? | **Sensitive areas**: auth / permissions / billing · database migrations · dependencies · AI prompts and product AI rules · the guardrails, CI and harness themselves |
 | Which GitHub identity do agents use? | Zeus's account, through a fine-grained **repo-only token** |
-| Merge gate? | Zeus merges every PR (stay on GitHub Free) |
+| Merge gate? | Zeus merges every PR (stay on GitHub Free). **2026-11-07:** Athena merges through the merge gate (§19) |
 | Cost limits? | Caps for building and for the product |
 | Outside skill licences? | MIT/Apache; CC-BY-SA-4.0 text with attribution; never copied from repos without a licence |
 
@@ -44,17 +50,20 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
   marks closed items Done.
 - Agent commits end with `Co-Authored-By: Claude …`, and agent PRs carry an `Agent: <name>` line.
 
-### 2. Claude Code settings (`.claude/settings.json`, committed, sensitive)
+### 2. Claude Code settings (committed, sensitive)
 
-- **Sandbox on:** `sandbox.enabled`, `failIfUnavailable`, `allowUnsandboxedCommands: false`. Writes are limited to
-  the worktree and temp. Network goes only to an allowlist: npm registry, GitHub, Playwright browser downloads, Google
-  Fonts, localhost.
-- **Deny rules:** `Read(**/.env*)`; `Edit` of `/.github/**`, `/.claude/**`, `/CLAUDE.md`, `**/CLAUDE.md`,
-  `/docs/plan/**`, `/DESIGN.md`, lint/TypeScript/test configs and approved visual baselines. Bash: any `gh pr merge`,
-  pushes to `main`, `git push --force*`, `git commit --no-verify*`, `gh auth*`, `security *` (the Keychain),
-  `curl * | sh`, `npm publish*`, `gh repo delete*`, `gh repo edit*`, `gh secret*`, `gh variable*`, `gh ruleset*`, and
-  `gh pr edit` / `gh issue edit` on the `sensitive` / `routine` labels.
-- `permissions.disableBypassPermissionsMode: "disable"`, also set by Zeus in **managed settings** on the Mac.
+- **Sandbox on** for builders: `sandbox.enabled`, `failIfUnavailable`, `allowUnsandboxedCommands: false`. Writes are
+  limited to the worktree and temp. Network goes only to an allowlist: npm registry, GitHub, Playwright browser
+  downloads, Google Fonts, localhost.
+- **Everyone's rules** (`.claude/settings.json`, every session in this repo): deny `Read(**/.env*)`; Bash: pushes to
+  `main`, `git push --force*`, `git commit --no-verify*`, `curl * | sh`, `npm publish*`, `gh repo delete*`.
+- **Builder-only rules** (`.claude/builder/settings.json`, passed by `scripts/dispatch.sh` with `--settings`): deny
+  `Edit` of `/.github/**`, `/.claude/**`, `/CLAUDE.md`, `**/CLAUDE.md`, `/docs/plan/**`, `/DESIGN.md`, lint/TypeScript/
+  test configs and approved visual baselines. Bash: any `gh pr merge`, `gh auth*`, `security *` (the Keychain),
+  `gh repo edit*`, `gh secret*`, `gh variable*`, `gh ruleset*`, and `gh pr edit` / `gh issue edit` on the
+  `sensitive` / `routine` labels. The hooks apply the same rules when `LZP_ROLE=builder` (set only by dispatch,
+  outside the builder's reach).
+- `permissions.disableBypassPermissionsMode: "disable"` in both files, also set by Zeus in **managed settings** on the Mac.
 
 ### 3. Hooks (`.claude/hooks/`, committed, sensitive; they also fire for subagents)
 
@@ -62,7 +71,7 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
 |---|---|
 | SessionStart | Loads the active issue, its Done-when and the rules; stops at once if the repo variable `AGENTS_PAUSED` is true (Zeus's **freeze switch**) |
 | PreToolUse Bash | Blocks the dangerous patterns above (a backup to the deny rules) |
-| PreToolUse Edit/Write | Blocks protected paths; blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
+| PreToolUse Edit/Write | Blocks protected paths (builder); blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
 | PostToolUse Edit/Write | Formats the changed file |
 | Stop / SubagentStop (builder) | Won't let the builder finish while code changed after the last green `pnpm check` (a stamp of the git tree hash). The loop guard is checked at setup |
 | All blocks | Logged to `.claude/logs/guardrail-hits.jsonl` (gitignored) for the weekly report |
@@ -79,7 +88,7 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
 
 ### 5. GitHub side (Free plan)
 
-- No branch rules and no auto-merge on Free private repos. **Zeus merges each PR when the checks are green.**
+- No branch rules and no auto-merge on Free private repos. **Athena merges through the merge gate** ([19](19-build-team-and-workflow.md#the-merge-gate)): every check green, independent reviews passed, squash only.
   Settings: squash merges only, Actions pinned to commit SHAs, least-privilege workflow permissions, Dependabot alerts on.
 - **`risk-gate`** (CI) compares the changed paths with `.github/sensitive-paths.txt` (read from `main`, so a PR can't
   change its own tier) and labels the PR `sensitive` or `routine`. It flags any change to the harness and posts a
@@ -89,9 +98,9 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
   config · `.github/**`, `.claude/**`, every `CLAUDE.md`, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` ·
   baselines of **approved** screens and look presets. The exact paths are listed in [§13](13-architecture.md).
 - **`ai-review`**: `anthropics/claude-code-action@v1` with Zeus's `claude_code_oauth_token` and the code-review plugin
-  posts inline comments on every PR. It is advice for Zeus, not a gate.
-- **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`)
-  and reconsider agents merging `routine` PRs.
+  posts inline comments on every PR. It doesn't block on its own, but the merge gate needs each finding fixed or answered.
+- **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`),
+  so GitHub enforces the merge gate's checks too.
 
 ### 6. Secrets
 
@@ -127,14 +136,15 @@ Cloudflare Images, §16, so libheif and libde265 aren't used.) Anything else tha
 
 ## Not in the MVP
 
-Agents merging their own PRs and server-side merge rules (need GitHub Pro) · a separate agent identity (bot account or
+Builders merging any PR · server-side merge rules (need GitHub Pro) · a separate agent identity (bot account or
 GitHub App) · signed commits · a self-hosted CI runner.
 
 ## Done when (milestone H0)
 
 A red-team checklist passes. An agent tries each item and it is shown blocked:
 
-- [ ] any `gh pr merge` · a push to `main` · a force push
+- [ ] a builder's `gh pr merge` · a push to `main` · a force push
+- [ ] the merge gate refusing a PR that fails any of its items (red check, missing review, stale review after a push, frozen)
 - [ ] the agent token changing a setting, secret, variable or workflow file (GitHub refuses)
 - [ ] reading the Keychain or switching `gh` accounts
 - [ ] editing `.github/` or `.claude/` · reading `.env`

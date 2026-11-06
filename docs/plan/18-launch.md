@@ -1,4 +1,4 @@
-# Section 18: Design-partner launch (Approved 2026-11-06)
+# Section 18: Design-partner launch (Approved 2026-11-06, revised 2026-11-07: Picasso first)
 
 **Goal:** what's in the first launch, the build milestones in their final order, what "ready to launch" means, how
 the design partners are started, supported and listened to, how success is measured, and what follows right after.
@@ -14,8 +14,40 @@ the design partners are started, supported and listened to, how success is measu
 | What moves to right after launch? | **Product cutouts · client photo uploads · two of the four looks (Bold, Editorial) · four extra layouts (testimonial, photo card, meme, before/after)** |
 | When is billing built? | **Right after launch**, finished before the first partner's 3 free months end |
 | Legal documents before real client data? | **The partner agreement first**; the lawyer's review of the full documents lands before billing |
+| First client? (2026-11-07) | **Picasso**, the studio's own kids' art channel, before any partner: "onboard Picasso as our first client as soon as possible" |
+| Deadline? (2026-11-07) | **None: the sooner the better.** Replaces the January aim and the 16 Nov start |
 
 ## Spec
+
+### Picasso first (Zeus, 2026-11-07)
+
+Before any partner agency, the studio is the first agency and **Picasso** (its kids' art channel; Bangla and English;
+Metricool brand "A Picasso") is the first client brand. It runs on Zeus's Mac with Docker Compose and goes through the
+real product flows, so every step a partner will take is first tried on a real brand. The brand's files and answers
+come from the studio's kit (`editz/brands/picasso/`).
+
+The track **P · Picasso live** takes the parts of H0–M5 that a month of Picasso posts needs, in milestone order. The
+rest of each milestone is built after Picasso is live and before the first partner starts.
+
+| Milestone | Picasso first | Before the first partner |
+|---|---|---|
+| H0 Harness | all of it, plus the merge gate (§19) | |
+| M0 Foundation | Docker Compose, config files, the schema with row-level security and the tenancy suite, workspaces and roles, email-link sign-in (emails land in Mailpit on the Mac), jobs, storage, design tokens and the component gallery | Google sign-in, invite codes and invitations, the staging server |
+| M1 Render engine | all of it | |
+| M2 Brand kits | a new brand from files or answers (Picasso has no website), the kit editor with Facts, the asset library and upload processing | the website fetcher |
+| M3 Generate | all of it: the AI pipeline, J1–J4, QC and the Bangla judge, costs and caps, the evals | |
+| M4 Review | the editor, versions, approval modes "none" and "agency", the first run and the checklist | the client review link and client comments, notifications, emails |
+| M5 Export and calendar | Metricool CSV, ZIP, provenance metadata, the calendars | LinkedIn PDF (Picasso has no LinkedIn) |
+
+**Picasso is live when** Zeus signs in on the Mac, creates the Picasso brand from files and answers, generates a month
+of posts in Bangla and English (J1), approves them, imports the Metricool CSV into Picasso's Metricool account, and the
+posts go out. Picasso's Metricool is on the free plan: in M5, check that it accepts a CSV import; if it doesn't, Athena
+schedules the approved posts from the ZIP through the Metricool connector, as the studio does today.
+
+Not needed for Picasso: servers, the domain, billing, the public page, the legal documents (the studio's own brand, no
+outside client data), Google sign-in. **Zeus's account for Picasso first:** an Anthropic API key with a monthly spend
+limit, for M3, kept in the Mac's local `.env` (never in chat). The rest of "Zeus's accounts" below waits for the
+partner launch.
 
 ### What's in the January launch
 
@@ -51,8 +83,8 @@ layouts and looks, §08).
 | **M7 Billing and public page** | Paddle, taka invoices with pay links, the public page, the legal documents live | 02, 03, 16 | 1.5 weeks; **due before the first free period ends** |
 | **M8 After-launch features** | client photo uploads, cutouts, Bold and Editorial, the four extra layouts, in the order partners ask for them | 07, 10, 11 | as needed |
 
-**About 11.5 weeks to launch.** Starting in the week of 10 November, that lands in the last week of January 2027.
-It's an estimate: Zeus reviews and merges every PR, which sets the pace, and the weekly report (§19) tracks it. If the
+**No fixed dates (Zeus, 2026-11-07): as soon as possible, Picasso first.** Athena merges through the merge gate
+(§19), so the pace is set by the builders, the reviews and the checks; the weekly report (§19) tracks it. If the
 plan slips, scope moves to M8 before quality drops.
 
 ### Ready to launch (the checklist)
@@ -133,6 +165,7 @@ tool (email and the in-app button first).
 
 ## Done when
 
+- Picasso is live (see Picasso first) before the first partner starts.
 - The first design partner has a working workspace with a real client brand and has exported a real month.
 - Every item on the launch checklist is ticked, with links to the evidence.
 - The weekly report shows the four success measures for each partner from their first week.

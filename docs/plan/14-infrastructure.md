@@ -12,7 +12,7 @@ and handled, where secrets live, and what it costs each month. Built to be run b
 | Retention | Backups at most **30 days**; server logs 30 days; deleted workspaces erased after 30 days | §16 |
 | Rendering | Playwright + pinned Chromium in Docker, the same image as the visual tests; up to 4 pages per worker | §08 |
 | HEIC | Converted by **Cloudflare Images** | §16 |
-| Merging | Zeus merges every PR; agents never deploy | §20 |
+| Merging | Athena merges through the merge gate (§19, since 2026-11-07); builders never merge; agents never deploy | §20 |
 | Domain | `letzeuspost.com` public page, `app.letzeuspost.com` the app, DNS at Cloudflare | §03 |
 | Costs to watch | AI caps per workspace and $100 a day overall (§22, §02); staging and evals on their own Anthropic key with a spend limit (§20) | |
 
@@ -91,7 +91,7 @@ Cloudflare (DNS, proxy, TLS edge)          Cloudflare Pages: letzeuspost.com (th
 
 ### Deploys
 
-1. Zeus merges a PR to `main` (§20).
+1. A PR is merged to `main` through the merge gate (§19).
 2. CI builds the images and runs the checks; on green, **staging deploys automatically** and a smoke test runs
    (sign in, generate one post with the mock, render, export).
 3. **Production deploys when Zeus runs the "Deploy production" workflow** on `main`. The manual trigger is the
@@ -148,7 +148,7 @@ call; partners are told that problems are handled during Dhaka daytime, faster f
 3. **Assess:** what happened, which workspaces and data, since when. Athena helps read the logs.
 4. **Tell people:** affected agencies **within 48 hours** of confirming a breach (§16); Bangladesh's Authority when
    significant harm is likely; partners by email for outages longer than 30 minutes.
-5. **Fix and review:** the fix goes through the normal PR path (Zeus merges); a short write-up in the repo
+5. **Fix and review:** the fix goes through the normal PR path and the merge gate; a short write-up in the repo
    (`docs/incidents/`), and a follow-up task so it can't happen the same way again.
 
 ### Secrets

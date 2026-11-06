@@ -7,7 +7,7 @@ they run, which ones block a merge, the test data, and how quality is watched on
 
 | Topic | Decision | Where |
 |---|---|---|
-| The gate | `pnpm check` locally = the CI job; Zeus merges only green PRs | §20 |
+| The gate | `pnpm check` locally = the CI job; only green PRs pass the merge gate | §19, §20 |
 | How builders work | Tests first for logic (the `tdd` skill); every bug fix comes with a test that failed before it | §19, §20 |
 | Design | Visual tests of every screen × state × theme; approved baselines change only with Zeus; axe on every screen | §21 |
 | Renders | 560 golden renders + hard cases, identical on two runs, in the same Docker image as production | §08 |

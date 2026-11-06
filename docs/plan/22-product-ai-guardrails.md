@@ -10,7 +10,7 @@
 |---|---|
 | What should the AI refuse or flag? | Political/election content · health, money and legal claims · restricted industries · real people in AI images |
 | Cost limits? | A monthly cap per workspace and a global daily cap |
-| Who may change prompts and AI rules? | Zeus merges every PR; prompt and AI-rule changes are `sensitive`, and the evals must pass |
+| Who may change prompts and AI rules? | Zeus merges every PR (since 2026-11-07: Athena, through the merge gate in §19); prompt and AI-rule changes are `sensitive`, and the evals must pass |
 
 ## Spec
 
