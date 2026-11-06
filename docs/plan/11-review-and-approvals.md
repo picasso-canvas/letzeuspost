@@ -1,4 +1,4 @@
-# Section 11: Review, editing and approvals (Draft, waiting for Zeus)
+# Section 11: Review, editing and approvals (Approved 2026-11-06)
 
 **Goal:** how posts are edited, who approves them and when, how the client reviews them, how comments and
 notifications work, and what gets recorded, so nothing wrong reaches a client or goes out by accident.
