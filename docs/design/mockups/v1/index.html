@@ -414,7 +414,7 @@ table.t td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
     <div class="usage">
       <div class="row" style="justify-content:space-between"><span>Posts this month</span><span class="num">62 / 300</span></div>
       <div class="bar"><i style="width:20.6%"></i></div>
-      <div class="faint">Resets 1 December</div>
+      <div class="faint">Resets 3 December</div>
     </div>
   </aside>
   <div class="main">
@@ -807,10 +807,14 @@ V.review = () => {
 V["plan-usage"] = () => `<div class="page-head"><div><h1>Settings</h1><p class="sub">Northwind Social</p></div></div>
   <div class="settings-layout">${settingsNav("Plan & usage")}
   <div class="stack" style="gap:18px">
-    <section class="panel" style="padding:16px;display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;align-items:center"><div><span class="eyebrow">Your plan</span><h2 style="margin-top:4px">Design partner</h2><p class="muted">Free until 28 February 2027 · Agency limits · weekly feedback call with the LetZeusPost team</p></div><button class="btn" data-act="toast" data-msg="Mockup: plans open in Section 2">See plans</button></section>
-    <div class="meters">${[["Posts this month", 62, 300], ["AI images", 14, 100], ["Brands", 3, 10], ["Seats", 4, 5]].map(([n, v, m]) => `<div class="meter"><span class="muted">${n}</span><span class="v">${v}<small> / ${m}</small></span><div class="bar"><i style="width:${v / m * 100}%"></i></div></div>`).join("")}</div>
-    <p class="faint" style="font-size:12.5px">Posts and AI images reset on 1 December. A post counts once for all its sizes; edits and AI rewrites are free. Owner, Admins and Editors use a seat; Viewers are free.</p>
-    <section class="panel"><div class="panel-head">${ic("receipt")}<h2>Invoices</h2></div><div class="empty" style="padding:28px 16px"><p>No invoices yet. You're a design partner until 28 February 2027.</p></div></section>
+    <section class="panel" style="padding:16px;display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;align-items:center"><div><span class="eyebrow">Your plan</span><h2 style="margin-top:4px">Design partner</h2><p class="muted">Free until 3 February 2027 (3 months), then 50% off any plan for a year · Agency limits · weekly feedback call with the LetZeusPost team</p></div><button class="btn" data-act="toast" data-msg="Mockup: 100 more posts for $25, used before the next reset">${ic("plus")}Buy 100 posts</button></section>
+    <div class="meters">${[["Posts this month", 62, 300], ["Brands", 3, 10], ["Seats", 4, 5], ["Storage (GB)", 2.1, 50]].map(([n, v, m]) => `<div class="meter"><span class="muted">${n}</span><span class="v">${v}<small> / ${m}</small></span><div class="bar"><i style="width:${v / m * 100}%"></i></div></div>`).join("")}</div>
+    <p class="faint" style="font-size:12.5px">Posts reset on 3 December. A post counts once for all its sizes; a linked English + Bangla pair counts as 2. Edits, AI rewrites, ideas and exports are free. Owner, Admins and Editors use a seat; Viewers are free.</p>
+    <section class="panel"><div class="panel-head">${ic("layers")}<h2>Plans</h2><span class="faint" style="font-size:12.5px;margin-left:auto">Monthly · annual is 2 months free · agencies in Bangladesh pay in taka</span></div><div class="table-wrap"><table class="t"><thead><tr><th></th><th>Starter</th><th>Agency</th><th>Scale</th></tr></thead><tbody>
+      ${[["Price", "$49 / month", "$129 / month", "$299 / month"], ["Brands", "3", "10", "30"], ["Posts a month", "80", "300", "1,000"], ["Seats (Viewers free)", "2", "5", "15"], ["Storage", "10 GB", "50 GB", "200 GB"]].map(([k, a, b, c]) => `<tr><td class="muted">${k}</td><td class="num">${a}</td><td class="num"><b>${b}</b></td><td class="num">${c}</td></tr>`).join("")}
+      <tr><td class="muted">Everything else</td><td colspan="3">All 7 networks, English and Bangla, all 4 looks, client review links, exports, on every plan</td></tr>
+    </tbody></table></div></section>
+    <section class="panel"><div class="panel-head">${ic("receipt")}<h2>Invoices</h2></div><div class="empty" style="padding:28px 16px"><p>No invoices yet. You're a design partner, free until 3 February 2027.</p></div></section>
   </div></div>`;
 
 V.welcome = () => {
