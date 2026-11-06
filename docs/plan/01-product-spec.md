@@ -105,9 +105,18 @@ A post has one design that is rendered in every size its networks need, plus its
 
 The app records these events from day one, and Zeus's admin panel (Section 15) shows them.
 
+### MVP scope check (Zeus, 2026-11-06, after the self-review)
+
+| Area | At launch | After launch |
+|---|---|---|
+| Networks | **All 7** (Instagram, Facebook, LinkedIn, X, Threads, TikTok, Pinterest): confirmed | — |
+| Jobs | **All 4**: J1 calendar, J2 one-off, J3 link → posts, J4 holidays: confirmed. J4 starts with hand-curated lists for the partners' countries (the option as described); worldwide holiday data follows | worldwide holiday data |
+| Images | **Brand library + type-only layouts** | stock search (Pexels/Unsplash), then AI image generation |
+| Export | ZIP + **Metricool** CSV (the partners' scheduler) + LinkedIn PDF | Buffer and Hootsuite CSVs |
+
 ## Not in the MVP
 
-Video (Reels, Shorts); direct scheduling and publishing; analytics; a free canvas editor; client accounts, client
+Video (Reels, Shorts); direct scheduling and publishing; stock search and AI image generation (right after launch); Buffer and Hootsuite CSVs; analytics; a free canvas editor; client accounts, client
 uploads and post requests; a white-label custom domain; a mobile app; languages beyond EN/BN; public self-serve
 sign-up and a marketing site; YouTube transcripts; A/B variants for testing.
 

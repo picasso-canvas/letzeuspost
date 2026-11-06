@@ -13,10 +13,10 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | First users | 1–3 agencies Zeus knows, invite-only design partners |
 | First build | Working MVP |
 | Brand setup | From the client's website, then the agency adjusts |
-| Images | Brand library + stock search + AI generation + type-only layouts |
+| Images | At launch: brand library + type-only layouts; stock search and AI generation right after (scope check 2026-11-06) |
 | Editing | Form edit + live preview + AI rewrite |
 | Approval | Set per brand: none / agency / agency + client |
-| Publishing | Export first (ZIP, PDF, CSV); direct scheduling in v2 |
+| Publishing | Export first: ZIP, LinkedIn PDF, **Metricool** CSV (Buffer/Hootsuite later); direct scheduling in v2 |
 | Models / providers | Config files, swappable per task |
 | Hosting | Athena decides in Section 14 (draft: one Hetzner VPS + Cloudflare R2) |
 | Payouts | Not decided yet (Section 2) |
