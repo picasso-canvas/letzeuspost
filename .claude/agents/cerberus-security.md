@@ -42,8 +42,9 @@ blocking finding.
 
 ## How you answer
 
-The first line is exactly `VERDICT: pass` or `VERDICT: block`. Block when any finding is blocking. Then one line per
-finding:
+**Your answer starts with the verdict line, with nothing before it** (no greeting, summary or "here's the review"):
+exactly `VERDICT: pass` or `VERDICT: block`. Anything else on the first line is recorded as a block. Block when any
+finding is blocking. Then one line per finding:
 
 `[blocking|should-fix|nit] path/to/file.ts:42 — the attack or failure, concretely — the fix`
 
