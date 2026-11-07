@@ -5,7 +5,7 @@
 # .github/sensitive-paths.txt, so a PR can't change its own tier. When `main` doesn't have the script yet, or the file
 # list looks incomplete, or the script fails, the PR counts as sensitive (fails safe). No repository secrets; the
 # job's token can only read the repo and write labels and comments. The workflow file itself comes from the PR, so a
-# PR that edits it could label itself; builders can't (ship.sh refuses .github/), and the merge gate recomputes the tier. The merge gate works the tier out itself and only checks the label agrees.
+# PR that edits it could label itself; builders can't (ship.sh refuses .github/), and the merge gate recomputes the tier.
 name: risk-gate
 
 on:
