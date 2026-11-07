@@ -8,7 +8,6 @@ import type { Verdict } from './types.ts';
  */
 export function parseVerdict(summary: string): { verdict: Verdict; reason: string } {
   const lines = summary
-    .replace(/\r\n/g, '\n')
     .split(/\r\n?|\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '' && !/^`{3,}\w*$/.test(line));
@@ -21,7 +20,13 @@ export function parseVerdict(summary: string): { verdict: Verdict; reason: strin
     };
   }
   if (match[1] === 'block') return { verdict: 'block', reason: 'the reviewer blocked' };
-  if (lines.slice(1).some((line) => /^\W*VERDICT:\s*block\b/i.test(line))) {
+  if (
+    lines
+      .slice(1)
+      .some((line) =>
+        /^VERDICT[^\p{L}\p{N}]*block(?![\p{L}\p{N}])/iu.test(stripLeadingMarkup(line)),
+      )
+  ) {
     return { verdict: 'block', reason: 'says pass, then VERDICT: block' };
   }
   // A blocking finding behind any leading markup: list markers, task boxes, emphasis, quotes, headings, HTML tags.
@@ -32,7 +37,7 @@ export function parseVerdict(summary: string): { verdict: Verdict; reason: strin
 }
 
 /**
- * Removes whatever can stand before a finding's `[blocking]` tag: anything that isn't a letter, digit or `[` (table
+ * Removes whatever can stand before a finding's `[blocking]` tag or a `VERDICT: block` line: anything that isn't a letter, digit or `[` (table
  * bars, emoji, dashes, quotes, zero-width characters), task boxes, HTML tags, numbered and lettered list markers.
  */
 function stripLeadingMarkup(line: string): string {

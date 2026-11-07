@@ -217,7 +217,7 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
   const binaries = git(['diff', '--numstat', '-z', '--no-renames', `origin/main...${sha}`])
     .split('\0')
     .filter((line) => line.startsWith('-\t-\t'))
-    .map((line) => line.slice(4));
+    .map((line) => safeName(line.slice(4))); // one printable line each: a name can't add lines
   writeFileSync(
     join(bundle, 'binary.txt'),
     binaries.length ? binaries.join('\n') : 'No binary files.',

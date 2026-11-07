@@ -29,7 +29,7 @@
       "Bash(gh repo delete*)",
       "Bash(gh pr merge*)",
       "Bash(gh api *merge*)",
-      "Edit(~/.claude/projects/**)",
+      "Edit(~/.claude/projects/**/*.jsonl)",
       "Edit(~/.letzeuspost/**)"
     ],
     "disableBypassPermissionsMode": "disable"
