@@ -6,11 +6,13 @@
 // with main's builder settings (sandbox on), an allowlisted environment, LZP_ROLE=builder, LZP_HARNESS_DIR, no GitHub
 // credential and no Docker socket. pnpm's store, cache and state live in the clone. The builder runs in its own
 // process group: when it finishes, or as soon as the freeze switch is on, the whole group is killed, and so is any
-// process still working in the clone (lsof finds the ones that left the group). While it runs,
+// process still working in the clone or carrying the run's random LZP_DISPATCH marker (the ones that left the group);
+// a supervision tick that fails, or a Ctrl-C, stops it too. While it runs,
 // AGENTS_PAUSED is copied into ~/.letzeuspost/paused every minute for the hooks (#29). Once the builder has started,
 // nothing here runs git inside its clone (its .git could point git at config the builder wrote); the builder hands its
 // work over as .lzp/branch.bundle, which ship.ts reads. Services (database, storage, mail) arrive in M0.
 import { execFileSync, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import {
   createWriteStream,
   existsSync,
@@ -112,6 +114,22 @@ export function slugify(title: string): string {
     .slice(0, 40)
     .replace(/-+$/, '');
   return slug === '' ? 'task' : slug;
+}
+
+/**
+ * One supervision tick: re-reads the freeze switch and kills the builder when it's on. A tick that fails (the flag
+ * can't be written, gh can't be run) also kills it: a builder never works without a supervisor that can stop it.
+ */
+export function onTick(refresh: () => boolean, kill: () => void, state: { frozen: boolean }): void {
+  try {
+    if (refresh()) return;
+  } catch (error) {
+    console.error(
+      `Supervision failed (${error instanceof Error ? error.message : String(error)}): stopping the builder.`,
+    );
+  }
+  state.frozen = true;
+  kill();
 }
 
 /** The freeze flag the hooks read: paused unless the variable says exactly "false". */
@@ -277,14 +295,18 @@ async function main(argv: string[]): Promise<number> {
 
   // A fresh clone every time, through git's own transport (--no-local): nothing a builder left behind carries over,
   // and no unrelated objects or refs come along.
-  if (killBuilderProcesses(clone).length > 0)
-    console.log('Killed processes left in the old clone.');
+  const old = existsSync(recordFile)
+    ? parseDispatchRecord(readFileSync(recordFile, 'utf8'), issue)
+    : null;
+  if (killBuilderProcesses(clone, old?.marker).length > 0)
+    console.log('Killed processes left from the last run.');
   if (existsSync(clone)) rmSync(clone, { recursive: true, force: true });
   rmSync(takenPath(issue), { recursive: true, force: true }); // a hand-over taken from an earlier round
+  const marker = randomBytes(16).toString('hex'); // in the builder's environment: finds processes that left the clone
   mkdirSync(dirname(recordFile), { recursive: true, mode: 0o700 });
   writeFileSync(
     recordFile,
-    `${JSON.stringify({ issue, branch, baseSha, dispatchedAt: new Date().toISOString() })}\n`,
+    `${JSON.stringify({ issue, branch, baseSha, dispatchedAt: new Date().toISOString(), marker })}\n`,
     { mode: 0o600 },
   );
   mkdirSync(BUILDERS_DIR, { recursive: true, mode: 0o700 });
@@ -334,6 +356,7 @@ async function main(argv: string[]): Promise<number> {
   const env = builderEnv(process.env, {
     LZP_ROLE: 'builder',
     LZP_HARNESS_DIR: ROOT,
+    LZP_DISPATCH: marker,
     GH_CONFIG_DIR: join(lzp, 'gh'),
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(lzp, 'gitconfig'),
@@ -373,14 +396,28 @@ async function main(argv: string[]): Promise<number> {
     } catch {
       // already gone
     }
-    killBuilderProcesses(clone); // the ones that left the group (setsid, a detached spawn)
+    try {
+      killBuilderProcesses(clone, marker); // the ones that left the group (setsid, a detached spawn)
+    } catch (error) {
+      console.error(
+        `Couldn't look for leftover builder processes: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   };
+  // The builder has its own process group, so a Ctrl-C here wouldn't reach it: stop it before dispatch exits.
+  for (const [signal, code] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+    ['SIGHUP', 129],
+  ] as const) {
+    process.on(signal, () => {
+      killGroup();
+      process.exit(code);
+    });
+  }
   const state = { frozen: false }; // set from the timer
   const timer = setInterval(() => {
-    if (!refreshFlag()) {
-      state.frozen = true;
-      killGroup();
-    }
+    onTick(refreshFlag, killGroup, state);
   }, 60_000);
   const code = await new Promise<number>((resolve) => {
     child.on('close', (c) => {

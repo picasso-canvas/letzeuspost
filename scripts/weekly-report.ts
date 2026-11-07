@@ -185,12 +185,43 @@ function readJsonLines<T>(path: string): T[] {
     });
 }
 
+/** Unknown options are refused: `--creat` must not quietly skip the issue, nor `--no-freez` freeze by surprise. */
+export function parseReportArgs(argv: readonly string[]): {
+  since: string | null;
+  create: boolean;
+  freeze: boolean;
+} {
+  const args = { since: null as string | null, create: false, freeze: true };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] ?? '';
+    if (arg === '--create') args.create = true;
+    else if (arg === '--no-freeze') args.freeze = false;
+    else if (arg === '--since') {
+      const value = argv[++i];
+      if (
+        value === undefined ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        Number.isNaN(Date.parse(value))
+      )
+        throw new Error('--since needs a date (YYYY-MM-DD)');
+      args.since = value;
+    } else if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    else throw new Error(`unexpected argument: ${arg}`);
+  }
+  return args;
+}
+
 function main(argv: string[]): number {
-  const sinceArg = argv[argv.indexOf('--since') + 1];
-  const since =
-    argv.includes('--since') && sinceArg
-      ? new Date(sinceArg)
-      : new Date(Date.now() - 7 * 86_400_000);
+  let args: ReturnType<typeof parseReportArgs>;
+  try {
+    args = parseReportArgs(argv);
+  } catch (error) {
+    console.error(
+      `${error instanceof Error ? error.message : String(error)}\nusage: node scripts/weekly-report.ts [--since YYYY-MM-DD] [--create] [--no-freeze]`,
+    );
+    return 2;
+  }
+  const since = args.since ? new Date(args.since) : new Date(Date.now() - 7 * 86_400_000);
   run('git', ['fetch', '--quiet', 'origin', 'main']);
   const commits = run('git', ['log', '--first-parent', '--format=%H%x09%cI%x09%s', 'origin/main'])
     .split('\n')
@@ -202,7 +233,7 @@ function main(argv: string[]): number {
   const log = readJsonLines<LogEntry>(join(STATE_DIR, 'merges.jsonl'));
   const unknown = auditMain(commits, log);
   let froze = false;
-  if (unknown.length > 0 && !argv.includes('--no-freeze')) {
+  if (unknown.length > 0 && args.freeze) {
     run('gh', ['variable', 'set', 'AGENTS_PAUSED', '-b', 'true', '-R', REPO]);
     froze = true;
   }
@@ -249,7 +280,7 @@ function main(argv: string[]): number {
     needsZeus: list(['issue', 'list', '--state', 'open', '--label', 'needs-zeus']),
     guardrailHits: hits,
   });
-  if (argv.includes('--create')) {
+  if (args.create) {
     const url = run(
       'gh',
       [

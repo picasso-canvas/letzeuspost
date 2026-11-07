@@ -21,7 +21,7 @@ export function readRegularFile(dir: string, name: string, maxBytes: number): Bu
   const folder = lstatSync(dir);
   // The folder itself must not be a link (its parents may be: macOS's /var is), and must resolve to itself.
   const expected = join(realpathSync(dirname(resolve(dir))), basename(resolve(dir)));
-  if (!folder.isDirectory() || folder.isSymbolicLink() || realpathSync(dir) !== expected) {
+  if (!folder.isDirectory() || realpathSync(dir) !== expected) {
     throw new Error(`${dir} isn't a real folder at its own path`);
   }
   const path = join(dir, name);

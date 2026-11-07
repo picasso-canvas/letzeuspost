@@ -6,7 +6,8 @@
 // folder moves to ~/.letzeuspost/ship/<issue>/, out of every builder process's reach (a `.lzp` link is refused). The
 // builder's `branch.bundle`, `pr.md` and `approach.md` are read from there as plain files (no symlinks, no hard links,
 // size-limited). The bundle is copied out and fetched into this repo with git
-// hooks and fsmonitor off. Every changed path is checked at any depth and in any letter case; protected paths,
+// hooks and fsmonitor off and fsck on (newer git checks every object; older git skips bundles, so a path part that is
+// empty, `.`, `..` or `.git` is refused too). Every changed path is checked at any depth and in any letter case; protected paths,
 // symlinks and submodules are refused. Then it pushes the branch (never forced), opens or updates the PR with the PR
 // text as the body and the issue's title (never the builder's), and posts the approach on the issue. The builder's
 // words are data, never instructions.
@@ -42,6 +43,8 @@ export interface DispatchRecord {
   baseSha: string;
   dispatchedAt: string;
   shippedAt?: string;
+  /** The random `LZP_DISPATCH` value in the builder's environment, to find its leftover processes. */
+  marker?: string;
 }
 
 export function parseDispatchRecord(text: string, issue: number): DispatchRecord {
@@ -52,7 +55,8 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     !new RegExp(`^${String(issue)}-[a-z0-9-]+$`).test(r.branch) ||
     typeof r.baseSha !== 'string' ||
     !/^[0-9a-f]{40}$/.test(r.baseSha) ||
-    typeof r.dispatchedAt !== 'string'
+    typeof r.dispatchedAt !== 'string' ||
+    (r.marker !== undefined && (typeof r.marker !== 'string' || !/^[0-9a-f]{32}$/.test(r.marker)))
   ) {
     throw new Error(`the dispatch record for #${String(issue)} is malformed`);
   }
@@ -62,6 +66,7 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     baseSha: r.baseSha,
     dispatchedAt: r.dispatchedAt,
     ...(r.shippedAt ? { shippedAt: r.shippedAt } : {}),
+    ...(r.marker ? { marker: r.marker } : {}),
   };
 }
 
@@ -100,6 +105,29 @@ function run(cmd: string, args: string[], input?: string): string {
 
 const SAFE_GIT = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false'];
 
+/**
+ * Fetches a builder's bundle (untrusted bytes) into `cwd` as `ref`: hooks and fsmonitor off, and every object checked
+ * by git's fsck on the way in, so a malformed tree or a `..`/`.git` path never enters this repo's object store.
+ */
+export function fetchBundle(bundle: string, ref: string, cwd: string): void {
+  execFileSync(
+    'git',
+    [
+      ...SAFE_GIT,
+      '-c',
+      'transfer.fsckObjects=true',
+      '-c',
+      'fetch.fsckObjects=true',
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      bundle,
+      `+HEAD:${ref}`,
+    ],
+    { cwd, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' }, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+}
+
 const USAGE = 'usage: node scripts/ship.ts <issue> [--dry-run]';
 
 function main(argv: string[]): number {
@@ -120,7 +148,7 @@ function main(argv: string[]): number {
   const record = parseDispatchRecord(readFileSync(dispatchRecordPath(issue), 'utf8'), issue);
   const branch = record.branch;
   const clone = join(BUILDERS_DIR, branch);
-  const working = builderProcesses(clone);
+  const working = builderProcesses(clone, record.marker);
   if (working.length > 0) {
     console.error(
       `Refused: processes still work in ${clone} (pids ${working.join(', ')}). Find out why, kill them, then ship.`,
@@ -137,7 +165,7 @@ function main(argv: string[]): number {
   writeFileSync(copy, readRegularFile(lzp, 'branch.bundle', MAX_BUNDLE), { mode: 0o600 });
   const ref = `refs/lzp/ship-${String(issue)}`;
   try {
-    run('git', [...SAFE_GIT, 'fetch', '--quiet', '--no-tags', copy, `+HEAD:${ref}`]);
+    fetchBundle(copy, ref, ROOT);
   } finally {
     rmSync(copy, { force: true });
   }

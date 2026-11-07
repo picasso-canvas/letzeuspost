@@ -57,6 +57,15 @@ export function shipRefusals(changes: readonly RawChange[]): string[] {
   const reasons: string[] = [];
   if (changes.length === 0) reasons.push('the branch changes nothing');
   for (const { mode, path } of changes) {
+    // A tree a builder crafted can hold names checkout would refuse; older git lets them in from a bundle unchecked.
+    if (
+      path
+        .split('/')
+        .some(
+          (part) => part === '' || part === '.' || part === '..' || part.toLowerCase() === '.git',
+        )
+    )
+      reasons.push(`unsafe path: ${path}`);
     if (matchesAny(path, BUILDER_PROTECTED)) reasons.push(`protected path: ${path}`);
     if (mode === '120000') reasons.push(`symlink: ${path}`);
     if (mode === '160000') reasons.push(`submodule: ${path}`);

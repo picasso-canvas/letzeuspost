@@ -46,16 +46,40 @@ export function pidsUnder(lsof: string, dir: string, self: number): number[] {
   return [...pids];
 }
 
+/** The processes `ps -axE -o pid=,command=` lists with this dispatch's `LZP_DISPATCH` marker, except `self`. */
+export function pidsWithMarker(ps: string, marker: string, self: number): number[] {
+  if (!/^[0-9a-f]{32,}$/.test(marker)) throw new Error('bad dispatch marker');
+  const tag = new RegExp(`(?:^|\\s)LZP_DISPATCH=${marker}(?=\\s|$)`);
+  const pids: number[] = [];
+  for (const line of ps.split('\n')) {
+    const match = /^\s*(\d+)\s(.*)$/.exec(line);
+    const pid = Number(match?.[1]);
+    if (match && pid !== self && tag.test(match[2] ?? '')) pids.push(pid);
+  }
+  return pids;
+}
+
 /**
- * Every process of this user still working in a builder's clone: a child that left the builder's process group
- * (`setsid`, a detached spawn) survives the group kill but not this.
+ * Every process of this user still at work for a builder: one with its working folder or an open file in the clone,
+ * or one carrying the dispatch's marker in its environment. A child that left the builder's process group (`setsid`,
+ * a detached spawn) survives the group kill but not this. One that also leaves the clone and drops the marker can
+ * still escape: the sandbox confines its writes, and ship's rename of `.lzp` is the real control for the hand-over.
  */
-export function builderProcesses(clone: string): number[] {
+export function builderProcesses(clone: string, marker?: string): number[] {
+  const pids = new Set<number>();
+  if (marker !== undefined) {
+    const ps = execFileSync('ps', ['-axE', '-o', 'pid=,command='], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 256 * 1024 * 1024,
+    });
+    for (const pid of pidsWithMarker(ps, marker, process.pid)) pids.add(pid);
+  }
   let dir: string;
   try {
     dir = realpathSync(clone);
   } catch {
-    return []; // no clone, nothing working in it
+    return [...pids]; // no clone, nothing working in it
   }
   const uid = process.getuid?.();
   if (uid === undefined) throw new Error('finding builder processes needs a POSIX system');
@@ -65,12 +89,13 @@ export function builderProcesses(clone: string): number[] {
     stdio: ['ignore', 'pipe', 'ignore'],
     maxBuffer: 256 * 1024 * 1024,
   });
-  return pidsUnder(out, dir, process.pid);
+  for (const pid of pidsUnder(out, dir, process.pid)) pids.add(pid);
+  return [...pids];
 }
 
-/** Kills every process still working in the clone; returns the ones that were. */
-export function killBuilderProcesses(clone: string): number[] {
-  const pids = builderProcesses(clone);
+/** Kills every process still at work for the builder; returns the ones that were. */
+export function killBuilderProcesses(clone: string, marker?: string): number[] {
+  const pids = builderProcesses(clone, marker);
   for (const pid of pids) {
     try {
       process.kill(pid, 'SIGKILL');

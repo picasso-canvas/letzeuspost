@@ -45,7 +45,8 @@ Reviewers never review their own work and always start from a fresh context. The
    ([20](20-builder-guardrails.md#1-identity-and-access)). Dispatch records the task's base commit in
    `~/.letzeuspost/dispatch/<issue>.json`, never wipes a clone holding unshipped work (unless `--fresh`), and runs the
    builder in its own process group, killed when it finishes or as soon as the freeze switch is on, together with any
-   process still working in the clone that left the group (found with `lsof`). Before it starts and
+   process that left the group but still works in the clone (`lsof`) or carries the run's random marker (`ps`); a
+   failed supervision tick or a Ctrl-C stops it too. Before it starts and
    every minute while it runs, dispatch copies the repo variable `AGENTS_PAUSED` into `~/.letzeuspost/paused` with the
    time, which the builder's hooks read before every tool call (builders can't reach GitHub to read it themselves); a
    flag older than 3 minutes counts as frozen. One
@@ -59,9 +60,10 @@ Reviewers never review their own work and always start from a fresh context. The
    `scripts/ship.ts <issue>`, which **never runs git inside the builder's clone** (its `.git` could point git at config
    the builder wrote). It refuses while any process still works in the clone, then moves the clone's `.lzp` folder to
    `~/.letzeuspost/ship/<issue>/`, out of every builder process's reach (a `.lzp` that is a link is refused). From
-   there it reads the bundle, `pr.md` and `approach.md` as plain files (no symlinks or hard links, size-limited), copies the bundle out and fetches it with git hooks and fsmonitor off, and checks the
-   builder's own changes since the recorded base (`--no-renames`, any depth, letter case ignored; symlinks and
-   submodules refused). It refuses a branch that changes any builder-protected path
+   there it reads the bundle, `pr.md` and `approach.md` as plain files (no symlinks or hard links, size-limited),
+   copies the bundle out and fetches it with git hooks and fsmonitor off and fsck on, and checks the builder's own
+   changes since the recorded base (`--no-renames`, any depth, letter case ignored; symlinks, submodules and path
+   parts that are empty, `.`, `..` or `.git` refused). It refuses a branch that changes any builder-protected path
    ([20](20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)); otherwise it pushes the branch with
    Zeus's login (never forced), opens the PR with `.lzp/pr.md` as the body file and the issue's title, and posts
    `.lzp/approach.md` on the issue. The `.lzp/`
