@@ -314,3 +314,17 @@ describe('round 5: the security rules hold against workarounds (#82 review)', ()
     }
   });
 });
+
+describe('the design rules on JavaScript files too', () => {
+  it('apply the §21 bans to .js and .jsx in apps/web and packages/ui', async () => {
+    expect(
+      await ruleIds('export const A = () => <div className="bg-[#f00]" />;', 'apps/web/src/a.jsx'),
+    ).toContain('lzp/tokens-only');
+    expect(
+      await ruleIds("import { FaX } from 'react-icons/fa';", 'packages/ui/src/a.js'),
+    ).toContain('lzp/lucide-only');
+    expect(
+      await ruleIds("import { Roboto } from 'next/font/google';", 'apps/web/src/a.mjs'),
+    ).toContain('lzp/inter-only');
+  });
+});
