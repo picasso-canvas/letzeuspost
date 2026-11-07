@@ -268,3 +268,49 @@ describe('round 4 of the #82 review', () => {
     expect(config.linterOptions?.noInlineConfig).toBe(true);
   });
 });
+
+describe('round 5: the security rules hold against workarounds (#82 review)', () => {
+  it('reads template literals and simple concatenation as fixed specifiers', async () => {
+    expect(
+      await ruleIds('export const f = () => import(`next/cache`);', 'apps/web/src/a.ts'),
+    ).toContain('lzp/no-use-cache');
+    expect(await ruleIds('const pg = require(`pg`);', 'apps/web/src/a.cjs')).toContain(
+      'lzp/no-raw-db-client',
+    );
+    expect(await ruleIds("const pg = require('p' + 'g');", 'apps/web/src/a.cjs')).toContain(
+      'lzp/no-raw-db-client',
+    );
+  });
+
+  it('refuses paths into node_modules and createRequire', async () => {
+    expect(
+      await ruleIds(
+        "import { unstable_cache } from '../../node_modules/next/cache.js';",
+        'apps/web/src/a.ts',
+      ),
+    ).toContain('lzp/no-raw-db-client');
+    expect(
+      await ruleIds(
+        "import pg from '../../packages/db/node_modules/pg/lib/index.js';",
+        'apps/web/src/a.ts',
+      ),
+    ).toContain('lzp/no-raw-db-client');
+    expect(
+      await ruleIds(
+        "import { createRequire } from 'node:module';\nexport const r = createRequire(import.meta.url);",
+        'apps/web/src/a.ts',
+      ),
+    ).toContain('lzp/no-raw-db-client');
+  });
+
+  it('catches dangerouslySetInnerHTML behind a computed or template key', async () => {
+    for (const key of [
+      "['dangerously' + 'SetInnerHTML']",
+      '[`dangerouslySetInnerHTML`]',
+      "['dangerouslySetInnerHTML']",
+    ]) {
+      const code = `export const p = { ${key}: { __html: 'x' } };`;
+      expect(await ruleIds(code, 'packages/ui/src/a.tsx'), key).toContain('lzp/no-dangerous-html');
+    }
+  });
+});
