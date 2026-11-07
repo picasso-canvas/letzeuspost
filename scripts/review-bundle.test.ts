@@ -513,3 +513,38 @@ describe('runReviews: in parallel (Zeus, 2026-11-08)', () => {
     expect(recorded.sort()).toEqual(['argus', 'cerberus']);
   }, 3000);
 });
+
+describe('runReviews: one reviewer failing (#84 review)', () => {
+  it('counts a reviewer that throws as failed, and still finishes and records the others', async () => {
+    const recorded: string[] = [];
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => errors.push(msg);
+    let failed: number;
+    try {
+      failed = await runReviews(
+        7,
+        { bundle: '/b', outDir: '/o', refusal: null },
+        ['argus', 'cerberus'],
+        {
+          claude: () =>
+            JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's' }),
+          show: () => 'agent',
+          record: (args) => {
+            recorded.push(args[1] ?? '');
+            return 'ok';
+          },
+          write: (path) => {
+            if (path.includes('argus')) throw new Error('disk full');
+          },
+          env: {},
+        },
+      );
+    } finally {
+      console.error = original;
+    }
+    expect(failed).toBe(1);
+    expect(recorded).toEqual(['cerberus']);
+    expect(errors.join('\n')).toContain('disk full');
+  });
+});
