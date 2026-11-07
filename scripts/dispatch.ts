@@ -365,6 +365,7 @@ async function main(argv: string[]): Promise<number> {
     LZP_ROLE: 'builder',
     LZP_HARNESS_DIR: ROOT,
     LZP_DISPATCH: marker,
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', // no notes carried between builder sessions (#54 turns it off repo-wide)
     GH_CONFIG_DIR: join(lzp, 'gh'),
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(lzp, 'gitconfig'),
