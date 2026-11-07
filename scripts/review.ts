@@ -78,20 +78,39 @@ export interface TreeSource {
 }
 
 /** The PR's files as regular blobs only. Nothing from git's attributes or links applies, and nothing is overwritten. */
+/** A PR whose files can't be laid out safely: recorded as a block (the PR must change), never a hand review. */
+export class TreeRefusal extends Error {}
+
 export function exportTree(sha: string, source: TreeSource, out: string): void {
-  const write = (path: string, content: Buffer | string) => {
+  const write = (path: string, content: () => Buffer | string) => {
     const target = resolve(out, path);
     const rel = relative(out, target);
     if (rel === '' || rel === '..' || rel.startsWith('../') || isAbsolute(rel)) {
-      throw new Error(`refusing a path outside the bundle: ${path}`);
+      throw new TreeRefusal(`${path} points outside the bundle`);
     }
-    mkdirSync(dirname(target), { recursive: true });
     try {
-      writeFileSync(target, content, { mode: 0o600, flag: 'wx' });
+      mkdirSync(dirname(target), { recursive: true });
+    } catch (error) {
+      throw new TreeRefusal(
+        `${path} clashes with another path in the PR (a file and a folder of one name)`,
+        { cause: error },
+      );
+    }
+    let bytes: Buffer | string;
+    try {
+      bytes = content();
+    } catch (error) {
+      if ((error as { code?: unknown }).code === 'ENOBUFS') {
+        throw new TreeRefusal(`${path} is too large to review`, { cause: error });
+      }
+      throw error;
+    }
+    try {
+      writeFileSync(target, bytes, { mode: 0o600, flag: 'wx' });
     } catch (error) {
       if ((error as { code?: unknown }).code === 'EEXIST') {
-        throw new Error(
-          `${path} is already in the tree (a name collision in the PR); review it by hand`,
+        throw new TreeRefusal(
+          `${path} is already in the tree: it collides with another name in the PR`,
           { cause: error },
         );
       }
@@ -101,18 +120,24 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
   for (const entry of source.lsTree().split('\0')) {
     if (entry === '') continue;
     const match = /^(\d{6}) (\w+) ([0-9a-f]{40})\t([\s\S]+)$/.exec(entry);
-    if (!match) throw new Error(`unreadable ls-tree entry: ${JSON.stringify(entry.slice(0, 80))}`);
+    if (!match)
+      throw new TreeRefusal(`an unreadable ls-tree entry: ${JSON.stringify(entry.slice(0, 80))}`);
     const [, mode, , object, path] = match as unknown as [string, string, string, string, string];
     const safe = safeTreePath(path);
     if (mode === '120000') {
       write(
         `${safe}.symlink.txt`,
-        `A symlink in the PR at ${sha.slice(0, 7)}, pointing to:\n${source.blob(object).toString('utf8')}\n`,
+        () =>
+          `A symlink in the PR at ${sha.slice(0, 7)}, pointing to:\n${source.blob(object).toString('utf8')}\n`,
       );
     } else if (mode === '160000') {
-      write(`${safe}.submodule.txt`, `A submodule in the PR, at commit ${object}.\n`);
+      write(
+        `${safe}.submodule.txt`,
+        () => `A submodule in the PR, at commit ${object}.
+`,
+      );
     } else {
-      write(safe, source.blob(object));
+      write(safe, () => source.blob(object));
     }
   }
 }
@@ -145,7 +170,10 @@ export function resultText(json: string): { text: string; sessionId: string | nu
 }
 
 export function reviewerEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => ENV_ALLOW.includes(key)));
+  return {
+    ...Object.fromEntries(Object.entries(env).filter(([key]) => ENV_ALLOW.includes(key))),
+    ENABLE_CLAUDEAI_MCP_SERVERS: 'false', // no claude.ai connectors in a reviewer's session
+  };
 }
 
 export interface BundleDeps {
@@ -186,7 +214,8 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
       join(bundle, 'tree'),
     );
   } catch (error) {
-    refusal = error instanceof Error ? error.message : String(error);
+    if (!(error instanceof TreeRefusal)) throw error; // disk or git trouble: the run fails, nothing is recorded
+    refusal = error.message;
   }
   // Files git treats as binary: their bytes in diff.patch mean little, so reviewers open them in tree/.
   const binaries = git(['diff', '--numstat', '-z', '--no-renames', `origin/main...${sha}`])
@@ -278,6 +307,11 @@ function failureReason(error: unknown): string {
     }
     return text.trim().split('\n')[0]?.slice(0, 200) ?? 'unknown';
   }
+  if (error instanceof Error) {
+    return error.message.startsWith('Command failed')
+      ? 'the claude command failed'
+      : (error.message.split('\n')[0] ?? 'unknown');
+  }
   return 'unknown';
 }
 
@@ -310,6 +344,7 @@ export function runReviews(
               where.bundle,
               '--disallowedTools',
               'Read(**/.env*)',
+              'mcp__*',
               '--setting-sources',
               'project',
               '--strict-mcp-config',

@@ -233,7 +233,7 @@ as integers. Post content is JSONB, checked by the zod schema on every write.
   **mock AI provider**. Seed data: Northwind Social and its 3 brands (§21).
 - **CI:** the same Compose file. **Staging and production:** §14.
 - `config/env.ts` lists every setting with a zod schema; a missing or malformed setting stops the app at startup, and
-  `.env.example` is generated from it.
+  `env.example` is generated from it (no leading dot, so agents may read it; every `.env*` file is denied).
 
 ### What happens to the assumptions (A1–A15)
 

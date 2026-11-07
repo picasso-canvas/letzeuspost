@@ -22,10 +22,6 @@ function review(
   };
 }
 
-function baseFacts(): Facts {
-  return facts();
-}
-
 function facts(over: Partial<Facts> = {}): Facts {
   return {
     pr: 7,
@@ -298,13 +294,13 @@ describe('bodyHash', () => {
 describe('evaluate: reviews must come from the runner', () => {
   it('ignores an argus or cerberus pass without a Claude Code session (hand-written)', () => {
     const handWritten = review('argus', { meta: undefined });
-    expect(
-      evaluate({ ...baseFacts(), reviews: [handWritten] }).items.find((i) => i.id === 5)?.ok,
-    ).toBe(false);
+    expect(evaluate({ ...facts(), reviews: [handWritten] }).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
     const noSession = review('argus', { meta: { agent: 'argus-reviewer', sessionId: null } });
-    expect(
-      evaluate({ ...baseFacts(), reviews: [noSession] }).items.find((i) => i.id === 5)?.ok,
-    ).toBe(false);
+    expect(evaluate({ ...facts(), reviews: [noSession] }).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
   });
 
   it('still counts a hand-written block (blocks always count)', () => {
@@ -315,7 +311,7 @@ describe('evaluate: reviews must come from the runner', () => {
     ];
     expect(
       evaluate({
-        ...baseFacts(),
+        ...facts(),
         labels: ['sensitive'],
         changedFiles: ['packages/auth/x.ts'],
         reviews: blocks,

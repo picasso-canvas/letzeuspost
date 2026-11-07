@@ -10,10 +10,14 @@
 // It refuses when the PR has moved on since the review started (a new push or edited text needs a new review).
 // The record lives in ~/.letzeuspost/reviews/ (append-only, outside every builder clone) and is posted on the PR.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { REPO } from './merge-gate/collect.ts';
 import { bodyHash } from './merge-gate/evaluate.ts';
-import { writeReview } from './merge-gate/reviews.ts';
+import { checkTranscript, transcriptPath } from './merge-gate/meta.ts';
+import { STATE_DIR, writeReview } from './merge-gate/reviews.ts';
 import { REVIEWERS, type Reviewer } from './merge-gate/types.ts';
 import { parseVerdict } from './merge-gate/verdict.ts';
 
@@ -27,6 +31,33 @@ const NAMES: Record<Reviewer, string> = {
   iris: 'Iris',
   redteam: 'Red-team re-run',
 };
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+const AGENTS: Partial<Record<Reviewer, string>> = {
+  argus: 'argus-reviewer',
+  cerberus: 'cerberus-security',
+  iris: 'iris-design',
+};
+
+/** True when any existing record for this PR (any commit) already names this session. */
+function sessionUsed(pr: number, sessionId: string): boolean {
+  const base = join(STATE_DIR, 'reviews', `pr-${String(pr)}`);
+  if (!existsSync(base)) return false;
+  for (const sha of readdirSync(base)) {
+    for (const name of readdirSync(join(base, sha))) {
+      try {
+        const record = JSON.parse(readFileSync(join(base, sha, name), 'utf8')) as {
+          meta?: { sessionId?: unknown };
+        };
+        if (record.meta?.sessionId === sessionId) return true;
+      } catch {
+        // unreadable records are blocks anyway
+      }
+    }
+  }
+  return false;
+}
 
 function gh(args: string[], input?: string): string {
   return execFileSync('gh', args, {
@@ -90,6 +121,30 @@ function main(argv: string[]): number {
       agent: typeof raw.agent === 'string' ? raw.agent : '',
       sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : null,
     };
+    // A session id must be a real Claude Code run of this reviewer's agent, on this bundle, used once per PR.
+    if (meta.sessionId !== null) {
+      const expected = AGENTS[reviewer];
+      if (meta.agent !== expected) {
+        console.error(`--meta names agent ${meta.agent}, but ${reviewer} is ${String(expected)}.`);
+        return 1;
+      }
+      const transcript = transcriptPath(homedir(), ROOT, meta.sessionId);
+      const problem = checkTranscript(
+        existsSync(transcript) ? readFileSync(transcript, 'utf8') : null,
+        expected,
+        dirname(resolve(snapshotFile)),
+      );
+      if (problem !== null) {
+        console.error(`Not recorded: ${problem}.`);
+        return 1;
+      }
+      if (sessionUsed(pr, meta.sessionId)) {
+        console.error(
+          `Not recorded: session ${meta.sessionId} already backs another review of PR #${String(pr)}.`,
+        );
+        return 1;
+      }
+    }
   }
   const file = writeReview({
     pr,

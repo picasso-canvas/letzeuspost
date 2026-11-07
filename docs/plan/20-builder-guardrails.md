@@ -20,7 +20,7 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
    (Zeus: "You can merge any PR … make sure the harness and safety are maintained properly"). Builders still never
    merge. Still on GitHub Free.
 5. **2026-11-07: the no-edit and no-merge rules are builder-only** (Zeus approved the wording): they live in
-   `.claude/builder/settings.json`, which `scripts/dispatch.ts` passes with `--settings`, and the hooks apply them
+   `.claude/builder/settings.json`, which `scripts/dispatch.sh` passes with `--settings`, and the hooks apply them
    when `LZP_ROLE=builder`, which only dispatch sets. Everyone's rules stay in `.claude/settings.json`.
 6. **2026-11-07: builders get no GitHub credential** (replaces 3). An independent review found that a token on
    Zeus's account, however narrow, could still merge through the API, push to `main`, and write labels, ticks and
@@ -41,7 +41,7 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 
 ### 1. Identity and access
 
-- **Builders have no GitHub credential.** `scripts/dispatch.ts` starts each builder with `GH_TOKEN` and
+- **Builders have no GitHub credential.** `scripts/dispatch.sh` starts each builder with `GH_TOKEN` and
   `GITHUB_TOKEN` unset, an empty `GH_CONFIG_DIR`, git's credential helpers switched off (`GIT_CONFIG_NOSYSTEM=1` and a
   `GIT_CONFIG_GLOBAL` file holding only the commit name, email and an empty `credential.helper`), `LZP_ROLE=builder`,
   and no GitHub host on the sandbox's network allowlist. A builder can't push, open or edit PRs, comment, label or
@@ -50,7 +50,7 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
   dispatch starts the task's service containers itself and hands over only their localhost ports. Each builder works
   in its own clone, not a git worktree, so hooks or settings it plants in its `.git` never reach Athena's checkout.
 - The builder reads its task from `.lzp/task.md` and leaves its approach and PR text in `.lzp/` (gitignored).
-  **Athena carries the work to GitHub** with Zeus's login through `scripts/ship.ts`, which fetches the branch into a
+  **Athena carries the work to GitHub** with Zeus's login through `scripts/ship.sh`, which fetches the branch into a
   clean clone with git hooks and fsmonitor off and refuses any branch that changes a builder-protected path (section
   2). Before merge, Athena never runs a builder's code outside the sandbox, and treats `.lzp/` files as data.
 - Builders run only through `dispatch.sh`, never as Athena's subagents (a subagent would inherit Zeus's login and no
@@ -63,7 +63,7 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 - **Everyone's rules** (`.claude/settings.json`, every session in this repo): deny `Read(**/.env*)`;
   `Agent(daedalus-builder)`; Bash: pushes to `main`, `git push --force*`, `git commit --no-verify*`, `curl * | sh`,
   `npm publish*`, `gh repo delete*`, `gh pr merge*` and merges through `gh api` (the merge gate is the only way in).
-- **Builder-only rules** (`.claude/builder/settings.json`, passed by `scripts/dispatch.ts` with `--settings`):
+- **Builder-only rules** (`.claude/builder/settings.json`, passed by `scripts/dispatch.sh` with `--settings`):
   - **Sandbox on:** `sandbox.enabled`, `failIfUnavailable`, `allowUnsandboxedCommands: false`. Writes are limited to
     the builder's clone and temp. Network goes only to an allowlist: npm registry, Playwright browser downloads,
     Google Fonts, and localhost for the task's own service ports. No Unix sockets (no Docker). The sandbox isn't in
@@ -122,7 +122,7 @@ in the CI eval job, added with the AI pipeline. **CI secrets never meet PR code:
 `pull_request` runs from branches in the same repo, so the evals (`ANTHROPIC_API_KEY`) run only on `main` and by hand
 (`workflow_dispatch`): for a PR that touches AI paths, Athena starts them on the PR branch after the reviews pass,
 and the merge gate requires that check on the head commit; `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
-installs or runs the PR's code. `.env` stays local and unreadable to agents; `.env.example` documents
+installs or runs the PR's code. `.env` stays local and unreadable to agents; `env.example` documents
 the keys. CI secrets: `CLAUDE_CODE_OAUTH_TOKEN` now; `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
 Console workspace with a monthly spend limit).
 
@@ -166,7 +166,7 @@ A red-team checklist passes. An agent tries each item and it is shown blocked:
   (no credential) · a push to `main` · a force push
 - [ ] the merge gate refusing a PR that fails any of its items (red check, missing review, stale review after a push or
   an edited PR text, a tier label that disagrees with the paths, frozen) · a builder writing the review record
-- [ ] `scripts/ship.ts` refusing a branch that changes a builder-protected path (any letter case)
+- [ ] `scripts/ship.sh` refusing a branch that changes a builder-protected path (any letter case)
 - [ ] a builder reaching Docker, another task's or Picasso's services, or planting a git hook or setting that runs
   when Athena ships
 - [ ] a builder reading the Keychain or using Zeus's `gh` login · Daedalus started as Athena's subagent

@@ -46,7 +46,8 @@ export function judge(
   }
   const patterns = parsePatternList(list);
   const sensitive = changedFiles.filter((file) => matchesAny(file, patterns));
-  const harness = changedFiles.some((file) => matchesAny(file, harnessPaths));
+  const harnessFiles = changedFiles.filter((file) => matchesAny(file, harnessPaths));
+  const harness = harnessFiles.length > 0;
   if (sensitive.length === 0) {
     return { tier: 'routine', sensitive, harness, summary: 'No sensitive paths changed.' };
   }
@@ -56,7 +57,11 @@ export function judge(
     `**Sensitive:** ${String(sensitive.length)} of ${String(changedFiles.length)} changed files are in sensitive areas (§13).`,
     ...(harness
       ? [
-          "**This PR changes the harness** (a path in `harnessPaths` of main's `.github/merge-gate.json`).",
+          '**This PR changes the harness:**',
+          '```text',
+          ...harnessFiles.slice(0, 10).map(safeName),
+          ...(harnessFiles.length > 10 ? [`… and ${String(harnessFiles.length - 10)} more`] : []),
+          '```',
         ]
       : []),
     '',

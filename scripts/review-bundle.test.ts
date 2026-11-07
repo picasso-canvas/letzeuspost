@@ -157,7 +157,12 @@ describe('reviewerEnv', () => {
       GH_TOKEN: 'secret',
       ELEVENLABS_API_KEY: 'secret',
     });
-    expect(env).toEqual({ PATH: '/bin', HOME: '/h', LANG: 'en_US.UTF-8' });
+    expect(env).toEqual({
+      PATH: '/bin',
+      HOME: '/h',
+      LANG: 'en_US.UTF-8',
+      ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+    });
   });
 });
 
@@ -199,7 +204,7 @@ describe('runReviews', () => {
         'Read(**/.env*)',
       ]),
     );
-    expect(calls[0]?.env).toEqual({ PATH: '/bin' });
+    expect(calls[0]?.env).toEqual({ PATH: '/bin', ENABLE_CLAUDEAI_MCP_SERVERS: 'false' });
     expect(written['/o/iris.md']).toMatch(
       /^VERDICT: block\n\[blocking\] \.claude\/agents\/iris-design\.md/,
     );
@@ -343,7 +348,8 @@ describe('failure reasons and refusals', () => {
     };
     const git = (args: string[]) => {
       if (args[0] === 'rev-parse') return `${SHA}\n`;
-      if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta\x00100644 blob ${'2'.repeat(40)}\ta/b\0`;
+      if (args[0] === 'ls-tree')
+        return `100644 blob ${'1'.repeat(40)}\ta\x00100644 blob ${'2'.repeat(40)}\ta/b\0`;
       if (args[0] === 'diff' && args.includes('--numstat')) return '-\t-\tlogo.png\0';
       return '';
     };

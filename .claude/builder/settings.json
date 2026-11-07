@@ -3,6 +3,7 @@
   "permissions": {
     "allow": ["Read", "Edit(./**)", "Glob", "Grep"],
     "deny": [
+      "Read(**/.env*)",
       "Edit(./.github/**)",
       "Edit(./.claude/**)",
       "Edit(./scripts/**)",
@@ -91,19 +92,6 @@
       "Edit(./config/.gitattributes)",
       "Edit(./config/.pnpmfile.cjs)",
       "Edit(./config/osv-scanner.toml)",
-      "Read(**/.env)",
-      "Read(**/.env.local)",
-      "Read(**/.env.*.local)",
-      "Read(**/.env.development)",
-      "Read(**/.env.production)",
-      "Read(**/.env.test)",
-      "Read(**/.envrc)",
-      "Read(**/.env.staging)",
-      "Read(**/.env.preview)",
-      "Read(**/.env.prod)",
-      "Read(**/.env.dev)",
-      "Read(**/.env.ci)",
-      "Read(**/.env.secrets)",
       "Bash(git push*)",
       "Bash(gh)",
       "Bash(gh *)",
@@ -119,7 +107,8 @@
       "WebFetch",
       "WebSearch",
       "Read(~/.letzeuspost/**)",
-      "mcp__*"
+      "mcp__*",
+      "Edit(./.git/**)"
     ],
     "disableBypassPermissionsMode": "disable",
     "blockReadsOutsideWorkingDirectories": true,
@@ -150,7 +139,8 @@
         "~/Library/Keychains",
         "~/.aws",
         "~/.docker",
-        "~/.letzeuspost"
+        "~/.letzeuspost",
+        "./.env*"
       ],
       "denyWrite": [
         "./.github",
