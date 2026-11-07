@@ -1,0 +1,6 @@
+# zizmor policy (§20): every action is pinned to a full commit SHA, no exceptions.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        '*': hash-pin
