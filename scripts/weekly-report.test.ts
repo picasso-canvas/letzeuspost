@@ -146,3 +146,39 @@ describe('parseReportArgs', () => {
     expect(() => parseReportArgs(['extra'])).toThrow(/unexpected argument/);
   });
 });
+
+describe('renderReport: staging (Zeus, 2026-11-07)', () => {
+  it('says which branch each merge went into', () => {
+    const report = renderReport({
+      week: '2026-W45',
+      merges: [
+        {
+          at: '2026-11-07T10:00:00Z',
+          pr: 70,
+          result: 'merged',
+          tier: 'routine',
+          reviewers: [],
+          base: 'staging',
+        },
+        {
+          at: '2026-11-07T11:00:00Z',
+          pr: 75,
+          result: 'merged',
+          tier: 'sensitive',
+          reviewers: ['argus:pass@abc1234'],
+          base: 'main',
+        },
+      ],
+      titles: { 70: '[M0] Workspaces', 75: '[Batch] 5 tasks' },
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+    });
+    expect(report).toContain('| #70 | [M0] Workspaces | routine |  | merged into staging |');
+    expect(report).toContain(
+      '| #75 | [Batch] 5 tasks | sensitive | argus:pass@abc1234 | merged into main |',
+    );
+  });
+});
