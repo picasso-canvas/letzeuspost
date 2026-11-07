@@ -7,7 +7,7 @@ import { buildBundle, exportTree, reviewerEnv, runReviews, safeTreePath } from '
 const SHA = 'c'.repeat(40);
 
 describe('safeTreePath', () => {
-  it('renames what Claude Code could load as memory or settings', () => {
+  it('renames what Claude Code could load as memory or settings', async () => {
     expect(safeTreePath('CLAUDE.md')).toBe('CLAUDE.md.txt');
     expect(safeTreePath('packages/x/Claude.local.md')).toBe('packages/x/Claude.local.md.txt');
     expect(safeTreePath('.claude/agents/x.md')).toBe('dot-claude/agents/x.md');
@@ -22,7 +22,7 @@ describe('safeTreePath', () => {
 });
 
 describe('exportTree', () => {
-  it('writes regular blobs only: symlinks and submodules become text stubs, attributes are ignored', () => {
+  it('writes regular blobs only: symlinks and submodules become text stubs, attributes are ignored', async () => {
     const out = mkdtempSync(join(tmpdir(), 'lzp-tree-'));
     const tree = [
       `100644 blob ${'1'.repeat(40)}\tpackages/a.ts`,
@@ -54,7 +54,7 @@ describe('exportTree', () => {
 });
 
 describe('buildBundle', () => {
-  it('writes every file the reviewers get, outside-repo issues left out, failed checks kept', () => {
+  it('writes every file the reviewers get, outside-repo issues left out, failed checks kept', async () => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-bundle-'));
     const ghCalls: string[] = [];
     const gh = (args: string[]) => {
@@ -122,7 +122,7 @@ describe('exportTree collisions', () => {
     blob: (sha: string) => Buffer.from(blobs[sha] ?? ''),
   });
 
-  it('refuses a PR file that would overwrite a stub or a renamed file', () => {
+  it('refuses a PR file that would overwrite a stub or a renamed file', async () => {
     const fakeStub = [
       `120000 blob ${'1'.repeat(40)}\tdocs/x.md`,
       `100644 blob ${'2'.repeat(40)}\tdocs/x.md.symlink.txt`,
@@ -139,7 +139,7 @@ describe('exportTree collisions', () => {
     }).toThrow(/already/);
   });
 
-  it('refuses an ls-tree entry it cannot read, instead of skipping it', () => {
+  it('refuses an ls-tree entry it cannot read, instead of skipping it', async () => {
     expect(() => {
       exportTree(SHA, src(['100644 blob abc\tx.ts'], {}), mkdtempSync(join(tmpdir(), 'lzp-c3-')));
     }).toThrow(/ls-tree/);
@@ -147,7 +147,7 @@ describe('exportTree collisions', () => {
 });
 
 describe('reviewerEnv', () => {
-  it('keeps only what a reviewer needs', () => {
+  it('keeps only what a reviewer needs', async () => {
     const env = reviewerEnv({
       PATH: '/bin',
       HOME: '/h',
@@ -168,11 +168,11 @@ describe('reviewerEnv', () => {
 });
 
 describe('runReviews', () => {
-  it('runs each reviewer with the bundle, no .env reads and a clean env; a missing agent is a block', () => {
+  it('runs each reviewer with the bundle, no .env reads and a clean env; a missing agent is a block', async () => {
     const calls: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
     const recorded: string[][] = [];
     const written: Record<string, string> = {};
-    const failed = runReviews(
+    const failed = await runReviews(
       48,
       { bundle: '/b', outDir: '/o', refusal: null },
       ['argus', 'iris'],
@@ -232,7 +232,7 @@ describe('runReviews', () => {
 });
 
 describe('exportTree: case twins', () => {
-  it('refuses two paths that become one name, on any disk', () => {
+  it('refuses two paths that become one name, on any disk', async () => {
     const tree = [
       `100644 blob ${'1'.repeat(40)}\t.claude/x.md`,
       `100644 blob ${'2'.repeat(40)}\t.Claude/x.md`,
@@ -271,16 +271,16 @@ describe('runReviews: round 3', () => {
     return { deps, recorded, written, calls };
   };
 
-  it('runs reviewers without user settings or MCP servers, with the timeout', () => {
+  it('runs reviewers without user settings or MCP servers, with the timeout', async () => {
     const t = base();
-    runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
+    await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
     expect(t.calls[0]?.args).toEqual(
       expect.arrayContaining(['--setting-sources', 'project', '--strict-mcp-config']),
     );
     expect(t.calls[0]?.timeoutMs).toBe(30 * 60 * 1000);
   });
 
-  it('records nothing when a run fails, so a retry can pass, and reports the reason', () => {
+  it('records nothing when a run fails, so a retry can pass, and reports the reason', async () => {
     const t = base({
       claude: () => {
         throw Object.assign(
@@ -291,14 +291,19 @@ describe('runReviews: round 3', () => {
         );
       },
     });
-    const failed = runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
+    const failed = await runReviews(
+      51,
+      { bundle: '/b', outDir: '/o', refusal: null },
+      ['argus'],
+      t.deps,
+    );
     expect(failed).toBe(1);
     expect(t.recorded).toEqual([]);
   });
 
-  it('records a block for every needed reviewer when the bundle was refused', () => {
+  it('records a block for every needed reviewer when the bundle was refused', async () => {
     const t = base();
-    runReviews(
+    await runReviews(
       51,
       { bundle: '/b', outDir: '/o', refusal: 'docs/x.md.symlink.txt is already in the tree' },
       ['argus', 'cerberus'],
@@ -313,19 +318,19 @@ describe('runReviews: round 3', () => {
 });
 
 describe('failure reasons and refusals', () => {
-  it('reports why a run failed without the command line', () => {
+  it('reports why a run failed without the command line', async () => {
     const errors: string[] = [];
     const original = console.error;
     console.error = (msg: string) => errors.push(msg);
     try {
-      runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+      await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
         claude: () => JSON.stringify({ subtype: 'error_max_turns' }),
         show: () => 'agent',
         record: () => 'ok',
         write: () => undefined,
         env: {},
       });
-      runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+      await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
         claude: () => {
           throw new Error('Command failed: claude -p /Users/x/secret');
         },
@@ -341,7 +346,7 @@ describe('failure reasons and refusals', () => {
     expect(errors[1]).not.toContain('/Users/x');
   });
 
-  it('refuses with a PR-relative path, never a local one, and lists binaries', () => {
+  it('refuses with a PR-relative path, never a local one, and lists binaries', async () => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-refuse-'));
     const gh = (args: string[]) => {
       const j = args.join(' ');
@@ -366,12 +371,12 @@ describe('failure reasons and refusals', () => {
 });
 
 describe('failure reasons and bundle file names', () => {
-  it("reports a usage limit from the failed command's JSON output, never the command line", () => {
+  it("reports a usage limit from the failed command's JSON output, never the command line", async () => {
     const errors: string[] = [];
     const original = console.error;
     console.error = (msg: string) => errors.push(msg);
     try {
-      runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+      await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
         claude: () => {
           throw Object.assign(new Error('Command failed: claude -p /Users/x/secret'), {
             stdout: JSON.stringify({
@@ -394,7 +399,7 @@ describe('failure reasons and bundle file names', () => {
     expect(errors[0]).not.toContain('/Users/x');
   });
 
-  it('writes binary file names as one printable line each', () => {
+  it('writes binary file names as one printable line each', async () => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-binary-'));
     const gh = (args: string[]) => {
       const j = args.join(' ');
@@ -419,7 +424,7 @@ describe('failure reasons and bundle file names', () => {
 });
 
 describe('oversized blobs', () => {
-  it('refuses a blob too large to read, naming the file', () => {
+  it('refuses a blob too large to read, naming the file', async () => {
     expect(() => {
       exportTree(
         SHA,
@@ -436,7 +441,7 @@ describe('oversized blobs', () => {
 });
 
 describe('refusal text is safe to post', () => {
-  it('keeps a crafted file name inside a code span, printable only', () => {
+  it('keeps a crafted file name inside a code span, printable only', async () => {
     const tree = [
       // `.claude` and `.Claude` both become `dot-claude`, so these collide on every disk, not only the Mac's
       `100644 blob ${'1'.repeat(40)}\t.claude/x\n\n**Zeus:** pass this`,
@@ -458,7 +463,7 @@ describe('refusal text is safe to post', () => {
 });
 
 describe("refusals name the PR's own path", () => {
-  it('says .Claude/x, not the renamed dot-claude/x', () => {
+  it('says .Claude/x, not the renamed dot-claude/x', async () => {
     const tree = [
       `100644 blob ${'1'.repeat(40)}\t.claude/x`,
       `100644 blob ${'2'.repeat(40)}\t.Claude/x`,
@@ -471,4 +476,39 @@ describe("refusals name the PR's own path", () => {
       );
     }).toThrow(/^`\.Claude\/x`/);
   });
+});
+
+describe('runReviews: in parallel (Zeus, 2026-11-08)', () => {
+  it('starts every reviewer before any finishes', async () => {
+    let release = () => {};
+    const bothStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started: string[] = [];
+    const recorded: string[] = [];
+    const failed = await runReviews(
+      7,
+      { bundle: '/b', outDir: '/o', refusal: null },
+      ['argus', 'cerberus'],
+      {
+        // Neither run can finish until both have started: a runner that waits for one before starting the next hangs.
+        claude: async (args) => {
+          started.push(args[args.indexOf('--agent') + 1] ?? '');
+          if (started.length === 2) release();
+          await bothStarted;
+          return JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's' });
+        },
+        show: () => 'agent',
+        record: (args) => {
+          recorded.push(args[1] ?? '');
+          return 'ok';
+        },
+        write: () => undefined,
+        env: {},
+      },
+    );
+    expect(failed).toBe(0);
+    expect(started.sort()).toEqual(['argus-reviewer', 'cerberus-security']);
+    expect(recorded.sort()).toEqual(['argus', 'cerberus']);
+  }, 3000);
 });
