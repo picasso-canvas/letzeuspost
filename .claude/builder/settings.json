@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": ["Read", "Edit", "Write", "Glob", "Grep"],
+    "deny": [
+      "Edit(**/.github/**)",
+      "Edit(**/.claude/**)",
+      "Edit(**/scripts/**)",
+      "Edit(**/docs/plan/**)",
+      "Edit(**/.husky/**)",
+      "Edit(**/.vscode/**)",
+      "Edit(**/tests/visual/approved/**)",
+      "Edit(**/tests/golden/**)",
+      "Edit(**/CLAUDE.md)",
+      "Edit(**/Claude.md)",
+      "Edit(**/claude.md)",
+      "Edit(**/CLAUDE.local.md)",
+      "Edit(**/DESIGN.md)",
+      "Edit(**/pnpm-workspace.yaml)",
+      "Edit(**/tsconfig*.json)",
+      "Edit(**/eslint.config.*)",
+      "Edit(**/vitest.config.*)",
+      "Edit(**/playwright.config.*)",
+      "Edit(**/.prettierrc*)",
+      "Edit(**/.prettierignore)",
+      "Edit(**/.gitleaks.toml)",
+      "Edit(**/.gitleaksignore)",
+      "Edit(**/.npmrc)",
+      "Edit(**/.nvmrc)",
+      "Edit(**/.mcp.json)",
+      "Edit(**/.gitattributes)",
+      "Edit(**/.pnpmfile.cjs)",
+      "Edit(**/osv-scanner.toml)",
+      "Bash(git push*)",
+      "Bash(gh)",
+      "Bash(gh *)",
+      "Bash(security *)",
+      "Bash(docker*)",
+      "Bash(*docker.sock*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.letzeuspost/reviews/**)",
+      "Read(~/.letzeuspost/merges.jsonl)",
+      "Read(~/letzeuspost-picasso/**)",
+      "Read(~/Library/Keychains/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.docker/**)",
+      "WebFetch",
+      "WebSearch"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "playwright.azureedge.net",
+        "playwright.download.prss.microsoft.com",
+        "cdn.playwright.dev",
+        "fonts.googleapis.com",
+        "fonts.gstatic.com"
+      ],
+      "allowUnixSockets": [],
+      "allowLocalBinding": false
+    },
+    "filesystem": {
+      "denyRead": [
+        "~/.ssh",
+        "~/.config/gh",
+        "~/.letzeuspost/reviews",
+        "~/.letzeuspost/merges.jsonl",
+        "~/letzeuspost-picasso",
+        "~/Library/Keychains",
+        "~/.aws",
+        "~/.docker"
+      ]
+    }
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  }
+}
