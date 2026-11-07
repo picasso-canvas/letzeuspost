@@ -18,6 +18,14 @@ export const ALLOWED = new Set([
   'BlueOak-1.0.0',
 ]);
 
+/** SPDX exception ids accepted after `WITH`: each only adds permissions to its base licence. Others fail. */
+export const WITH_EXCEPTIONS = new Set([
+  'LLVM-exception',
+  'Classpath-exception-2.0',
+  'GCC-exception-3.1',
+  'Autoconf-exception-3.0',
+]);
+
 /**
  * Named exceptions: exact package names with the exact licence they carry. Nothing broader.
  * `devOnly` exceptions fail if the package ever becomes a production dependency.
@@ -64,12 +72,13 @@ export const EXCEPTIONS = [
  */
 
 /**
- * Parses an SPDX licence expression. `WITH <exception>` is kept as its base licence (an exception only adds
- * permissions). Returns null for anything that isn't a valid expression.
- * @param {string} text
+ * Parses an SPDX licence expression. `WITH <exception>` is kept as its base licence when the exception is one of
+ * `WITH_EXCEPTIONS`. Returns null for anything that isn't a valid expression, including a value that isn't text.
+ * @param {unknown} text
  * @returns {SpdxNode | null}
  */
 export function parseSpdx(text) {
+  if (typeof text !== 'string') return null;
   const tokens = text.match(/\(|\)|[^\s()]+/g) ?? [];
   let i = 0;
   const peek = () => tokens[i];
@@ -90,7 +99,7 @@ export function parseSpdx(text) {
     if (isOp(peek(), 'WITH')) {
       i++;
       const exception = tokens[i++];
-      if (exception === undefined || !/^[A-Za-z0-9.+-]+$/.test(exception)) return null;
+      if (exception === undefined || !WITH_EXCEPTIONS.has(exception)) return null;
     }
     return { type: 'id', id: t };
   };
@@ -122,16 +131,16 @@ function allowed(node) {
   return node.type === 'or' ? node.args.some(allowed) : node.args.every(allowed);
 }
 
-/** @param {string} expression */
+/** @param {unknown} expression */
 export function isAllowedExpression(expression) {
   const tree = parseSpdx(expression);
   return tree !== null && allowed(tree);
 }
 
 /**
- * @typedef {{ name: string, versions: string[], license: string }} LicencedPackage
+ * @typedef {{ name: string, versions: string[], license: unknown }} LicencedPackage   `license` as pnpm reports it
  * @typedef {Record<string, LicencedPackage[]>} LicenceList   the shape `pnpm licenses list --json` prints
- * @typedef {LicencedPackage & { reason: string }} Violation
+ * @typedef {{ name: string, versions: string[], license: string, reason: string }} Violation
  */
 
 /**
@@ -145,6 +154,15 @@ export function checkLicences(all, prod) {
   const violations = [];
   for (const pkgs of Object.values(all)) {
     for (const { name, versions, license } of pkgs) {
+      if (typeof license !== 'string') {
+        violations.push({
+          name,
+          versions,
+          license: String(JSON.stringify(license)),
+          reason: 'licence field is not text',
+        });
+        continue;
+      }
       if (isAllowedExpression(license)) continue;
       const exception = EXCEPTIONS.find((e) => e.license === license && e.names.includes(name));
       if (!exception) {
@@ -162,17 +180,23 @@ export function checkLicences(all, prod) {
   return violations.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** @param {string[]} args @returns {LicenceList} */
-function pnpmLicences(args) {
-  const out = execFileSync('pnpm', ['licenses', 'list', '--json', ...args], {
-    encoding: 'utf8',
-  }).trim();
+/**
+ * `-r`: every workspace package (root included), not only the root's own dependencies.
+ * @param {{ prod: boolean }} options
+ */
+export function licenceListArgs({ prod }) {
+  return ['-r', 'licenses', 'list', '--json', ...(prod ? ['--prod'] : [])];
+}
+
+/** @param {{ prod: boolean }} options @returns {LicenceList} */
+function pnpmLicences(options) {
+  const out = execFileSync('pnpm', licenceListArgs(options), { encoding: 'utf8' }).trim();
   return out === '' ? {} : /** @type {LicenceList} */ (JSON.parse(out));
 }
 
 function main() {
-  const all = pnpmLicences([]);
-  const violations = checkLicences(all, pnpmLicences(['--prod']));
+  const all = pnpmLicences({ prod: false });
+  const violations = checkLicences(all, pnpmLicences({ prod: true }));
   const count = Object.values(all).reduce((n, pkgs) => n + pkgs.length, 0);
   if (violations.length === 0) {
     console.log(`licence-check: ${String(count)} packages, all allowed`);

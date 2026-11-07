@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { checkLicences, isAllowedExpression, parseSpdx } from './licence-check.mjs';
+import {
+  checkLicences,
+  isAllowedExpression,
+  licenceListArgs,
+  parseSpdx,
+} from './licence-check.mjs';
 
 /**
  * @param {string} name
@@ -51,6 +56,21 @@ describe('parseSpdx', () => {
     });
   });
 
+  it('accepts only known SPDX exception ids after WITH', () => {
+    expect(parseSpdx('Apache-2.0 WITH LLVM-exception')).toEqual({ type: 'id', id: 'Apache-2.0' });
+    expect(parseSpdx('GPL-2.0 WITH Classpath-exception-2.0')).toEqual({
+      type: 'id',
+      id: 'GPL-2.0',
+    });
+    expect(parseSpdx('MIT WITH Made-Up-exception')).toBeNull();
+    expect(parseSpdx('MIT WITH')).toBeNull();
+  });
+
+  it('rejects a value that is not text', () => {
+    expect(parseSpdx(/** @type {any} */ (42))).toBeNull();
+    expect(parseSpdx(/** @type {any} */ ({ type: 'MIT' }))).toBeNull();
+  });
+
   it('rejects text that is not an SPDX expression', () => {
     expect(parseSpdx('SEE LICENSE IN LICENSE.md')).toBeNull();
     expect(parseSpdx('(MIT')).toBeNull();
@@ -84,6 +104,7 @@ describe('isAllowedExpression', () => {
     'MPL-2.0',
     '(MIT AND GPL-3.0)',
     'GPL-2.0 WITH Classpath-exception-2.0',
+    'MIT WITH Made-Up-exception',
     'UNLICENSED',
     'Unknown',
     'SEE LICENSE IN LICENSE',
@@ -93,7 +114,37 @@ describe('isAllowedExpression', () => {
   });
 });
 
+describe('licenceListArgs', () => {
+  it('lists every workspace package, not only the root', () => {
+    expect(licenceListArgs({ prod: false })).toEqual(['-r', 'licenses', 'list', '--json']);
+    expect(licenceListArgs({ prod: true })).toEqual(['-r', 'licenses', 'list', '--json', '--prod']);
+  });
+});
+
 describe('checkLicences', () => {
+  it('reports a licence field that is not text, with a clear reason', () => {
+    const all = {
+      MIT: [
+        { name: 'weird', versions: ['1.0.0'], license: { type: 'MIT' } },
+        { name: 'weirder', versions: ['1.0.0'], license: undefined },
+      ],
+    };
+    expect(checkLicences(all, {})).toEqual([
+      {
+        name: 'weird',
+        versions: ['1.0.0'],
+        license: '{"type":"MIT"}',
+        reason: 'licence field is not text',
+      },
+      {
+        name: 'weirder',
+        versions: ['1.0.0'],
+        license: 'undefined',
+        reason: 'licence field is not text',
+      },
+    ]);
+  });
+
   it('passes a tree of allowed licences', () => {
     const all = list([pkg('a', 'MIT'), pkg('b', 'Apache-2.0'), pkg('c', '(MIT OR GPL-3.0)')]);
     expect(checkLicences(all, list([pkg('a', 'MIT')]))).toEqual([]);
