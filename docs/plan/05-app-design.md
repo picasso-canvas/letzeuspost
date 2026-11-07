@@ -1,4 +1,4 @@
-# Section 5: App design (Draft: direction approved 2026-11-06, mockups next)
+# Section 5: App design (Approved 2026-11-07)
 
 **Goal:** the look of the LetZeusPost app itself, shown as clickable mockups that Zeus approves before any product code.
 
@@ -10,6 +10,7 @@
 | Accent color? | **Thunderbolt gold** |
 | Light or dark? | **Both**, following the system, with a switch in Account settings |
 | How much Zeus personality? | A **subtle bolt + witty copy**: humor only in loading and empty states; errors and actions stay plain |
+| Mockups approved? | **Yes, 2026-11-07**, as they are (mockups v1.13): "The app design looks good to me; if anything needs improvement we'll do it later." |
 | How to review the designs? | **Clickable HTML mockups** with sample data |
 
 ## Spec
@@ -63,7 +64,10 @@ batch posts (grid and calendar, live generation progress, multi-select), post ed
 phone, settings: plan & usage. Light and dark. Sample agency "Northwind Social" with Golpo Café (Dhaka, Playful),
 Ironline Studio (Austin, Bold) and Brightwell Dental (Leeds, Clean).
 
-Waiting for Zeus's comments. When they're approved, screenshots of each screen go to `docs/design/mockups/`.
+**Approved 2026-11-07** (v1.13): https://claude.ai/artifact/L47yVDF9nHEdrnYKaPHiDe, source archived at
+`docs/design/mockups/v1/index.html`. Screenshots of each screen are taken with Playwright in M0, when the component
+gallery and the visual baselines start (§21), and saved to `docs/design/mockups/v1/screens/`. Improvements found later
+go through Iris's design review and a normal PR.
 
 ## Not in the MVP
 
@@ -71,7 +75,8 @@ A marketing website, the email designs (they follow this system and are planned 
 
 ## Done when
 
-- Zeus approves the mockups, and their link and screenshots are recorded here.
+- [x] Zeus approves the mockups, and their link is recorded here (2026-11-07).
+- [ ] Screenshots of each screen are saved (M0, with the component gallery).
 
 ## Depends on
 

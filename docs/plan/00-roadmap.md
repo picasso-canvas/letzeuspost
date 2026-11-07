@@ -22,7 +22,8 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | Payouts | Not decided yet (Section 2) |
 | Name | LetZeusPost (letzeuspost.com and .ai were free on 2026-11-06) |
 | Builder | Claude Code, from this repo and the GitHub Project board |
-| Merging | **Zeus merges every PR** (GitHub Free can't enforce merge rules on a private repo); agents only open PRs ([19](19-build-team-and-workflow.md)) |
+| Merging | **Athena merges through the merge gate** (Zeus, 2026-11-07; before that Zeus merged every PR); builders only open PRs ([19](19-build-team-and-workflow.md#the-merge-gate)) |
+| First client | **Picasso** (the studio's kids' art channel), on Zeus's Mac, before any partner; no deadline, as soon as possible ([18](18-launch.md#picasso-first-zeus-2026-11-07)) |
 | Sensitive areas | Auth / permissions / billing, database migrations, dependencies, AI prompts and rules, the guardrails and CI themselves: CI labels those PRs `sensitive` ([20](20-builder-guardrails.md)) |
 | Agent identity | Zeus's account through a **repo-only token** (no settings, secrets or workflow access); a bot account was tried and suspended |
 | Outside skills | About 100 rated ([research/skills.md](research/skills.md)); MIT/Apache + CC-BY-SA text; pinned copies only |
@@ -37,7 +38,7 @@ its own detailed plan, and Zeus approves it. Building starts only from approved 
 | 2 | Pricing, plans and billing | A Product & business | ✋ | **Approved** 2026-11-06 | [02-pricing-and-billing.md](02-pricing-and-billing.md) | [#2](https://github.com/picasso-canvas/letzeuspost/issues/2) |
 | 3 | LetZeusPost brand | A Product & business | ✋ | **Approved** 2026-11-06 | [03-letzeuspost-brand.md](03-letzeuspost-brand.md) | [#3](https://github.com/picasso-canvas/letzeuspost/issues/3) |
 | 4 | User flows and screens | B Experience | ✋ | **Approved** 2026-11-06 | [04-flows-and-screens.md](04-flows-and-screens.md) | [#4](https://github.com/picasso-canvas/letzeuspost/issues/4) |
-| 5 | App design | B Experience | ✋ | Draft (direction approved, mockups next) | [05-app-design.md](05-app-design.md) | [#5](https://github.com/picasso-canvas/letzeuspost/issues/5) |
+| 5 | App design | B Experience | ✋ | **Approved** 2026-11-07 | [05-app-design.md](05-app-design.md) | [#5](https://github.com/picasso-canvas/letzeuspost/issues/5) |
 | 6 | Brand kits | C Engine | | **Approved** 2026-11-06 | [06-brand-kits.md](06-brand-kits.md) | [#6](https://github.com/picasso-canvas/letzeuspost/issues/6) |
 | 7 | Posts: types, layouts, sizes, looks | C Engine | ✋ | **Approved** 2026-11-06 | [07-posts.md](07-posts.md) | [#7](https://github.com/picasso-canvas/letzeuspost/issues/7) |
 | 8 | Render engine | C Engine | | **Approved** 2026-11-06 | [08-render-engine.md](08-render-engine.md) | [#8](https://github.com/picasso-canvas/letzeuspost/issues/8) |
@@ -76,9 +77,9 @@ What each section decides:
 15. **Accounts, team and owner admin:** workspaces, the permission matrix, invites, usage meters, Zeus's admin panel.
 16. **Legal and trust:** terms, privacy, the data agreement agencies need (GDPR), AI disclosure, content and licence rules.
 17. **Testing and quality:** unit, golden renders, end-to-end, AI evals, load and security tests.
-18. **Design-partner launch:** onboarding, feedback loop, success tracking, support, the build milestones in final order.
-19. **Build team and workflow:** the agents (Daedalus builds; Argus, Cerberus and Iris review), a task's life from issue to a PR Zeus merges, the weekly report, skills per agent.
-20. **Builder guardrails:** the repo-only token, sandbox, deny rules, hooks, checks, the risk gate, Zeus merging, secrets, usage caps, rules for outside skills.
+18. **Design-partner launch:** Picasso first, onboarding, feedback loop, success tracking, support, the build milestones in final order.
+19. **Build team and workflow:** the agents (Daedalus builds; Argus, Cerberus and Iris review), a task's life from issue to a merged PR, the merge gate, the weekly report, skills per agent.
+20. **Builder guardrails:** the repo-only token, sandbox, deny rules, hooks, checks, the risk gate, the merge gate, secrets, usage caps, rules for outside skills.
 21. **AI design workflow:** mockups → `DESIGN.md` tokens → component gallery → visual tests, Iris's review, the chosen design skills.
 22. **Product AI guardrails:** prompt-injection defences, the content policy, output checks, cost caps, audit, evals.
 23. **Onboarding:** the agency's first run, the getting-started checklist, team members joining, the client's first review, onboarding emails, the design-partner playbook, onboarding measures.
@@ -104,10 +105,11 @@ MVP · Done when · Depends on.
 
 When the sections a build milestone needs are approved, Athena breaks them into **build-task** issues (label
 `build-task`, a repo milestone and a "Done when" checklist) and moves them to **Ready to build** (Zeus can pull any
-back). The first milestone is **H0 Harness** (build tasks #24–#35, created 2026-11-06): the guardrails are built
-before any product code. Then:
+back). **Every section is approved (2026-11-07).** The first milestone is **H0 Harness** (build tasks #24–#35 and #37 (merge gate)): the
+guardrails are built before any product code. Then the **Picasso first** track (§18), then the rest. Then:
 
 **Ready to build → In progress → In review → Done**
 
 `needs-zeus` = waiting on Zeus's answer or approval. `blocked` = something else is missing (the comment says what).
-`sensitive` / `routine` = the tier the CI risk gate gives a PR. `audit` = the weekly report. **Zeus merges every PR.**
+`sensitive` / `routine` = the tier the CI risk gate gives a PR. `audit` = the weekly report. **Athena merges, only
+through the merge gate ([19](19-build-team-and-workflow.md#the-merge-gate)); builders never merge.**

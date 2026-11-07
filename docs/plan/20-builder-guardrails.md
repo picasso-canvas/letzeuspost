@@ -1,12 +1,13 @@
-# Section 20: Builder guardrails (Approved 2026-11-06, revised 2026-11-06)
+# Section 20: Builder guardrails (Approved 2026-11-06, revised 2026-11-06 and 2026-11-07)
 
 > **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
-**Goal:** agents build safely: they can't change the rules or CI, leak secrets, merge anything, or run up costs.
+**Goal:** agents build safely: builders can't change the rules or CI, reach GitHub, leak secrets, merge anything, or
+run up costs, and every merge goes through the merge gate.
 
 Permission rules and hooks are a first line of defense only; Claude Code's own docs say they are **not a security
-boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come from the **sandbox**, the **repo-only
-token** (GitHub enforces its permissions) and **Zeus merging every PR**.
+boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come from the **sandbox**, builders having
+**no GitHub credential**, and the **merge gate**, which only Athena runs ([19](19-build-team-and-workflow.md#the-merge-gate)).
 
 ## Revisions (2026-11-06, same day)
 
@@ -15,14 +16,24 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
    private repo on Free ("Upgrade to GitHub Pro or make this repository public"). Zeus chose to stay on Free and merge
    every PR personally, instead of upgrading or making the repo public.
 3. **A repo-only token for agents**, so GitHub itself limits what they can do.
+4. **2026-11-07: Athena merges**, only through the merge gate in [19](19-build-team-and-workflow.md#the-merge-gate)
+   (Zeus: "You can merge any PR … make sure the harness and safety are maintained properly"). Builders still never
+   merge. Still on GitHub Free.
+5. **2026-11-07: the no-edit and no-merge rules are builder-only** (Zeus approved the wording): they live in
+   `.claude/builder/settings.json`, which `scripts/dispatch.sh` passes with `--settings`, and the hooks apply them
+   when `LZP_ROLE=builder`, which only dispatch sets. Everyone's rules stay in `.claude/settings.json`.
+6. **2026-11-07: builders get no GitHub credential** (replaces 3). An independent review found that a token on
+   Zeus's account, however narrow, could still merge through the API, push to `main`, and write labels, ticks and
+   comments that look like Zeus's. Athena now pushes builders' branches and opens their PRs; the token in #35 isn't
+   needed. The sandbox lives in the builder settings only, and `scripts/` joins the protected paths.
 
 ## Questions for Zeus (answered 2026-11-06)
 
 | Question | Answer |
 |---|---|
 | Which changes need extra care? | **Sensitive areas**: auth / permissions / billing · database migrations · dependencies · AI prompts and product AI rules · the guardrails, CI and harness themselves |
-| Which GitHub identity do agents use? | Zeus's account, through a fine-grained **repo-only token** |
-| Merge gate? | Zeus merges every PR (stay on GitHub Free) |
+| Which GitHub identity do agents use? | Zeus's account, through a fine-grained **repo-only token**. **2026-11-07:** builders get none; Athena ships their work with Zeus's login |
+| Merge gate? | Zeus merges every PR (stay on GitHub Free). **2026-11-07:** Athena merges through the merge gate (§19) |
 | Cost limits? | Caps for building and for the product |
 | Outside skill licences? | MIT/Apache; CC-BY-SA-4.0 text with attribution; never copied from repos without a licence |
 
@@ -30,39 +41,48 @@ token** (GitHub enforces its permissions) and **Zeus merging every PR**.
 
 ### 1. Identity and access
 
-- Agents use a **fine-grained personal access token on Zeus's account, limited to this one repo**, with only:
-  Contents read/write · Pull requests read/write · Issues read/write · Actions read · Commit statuses read ·
-  Variables read · Metadata read. **No** Administration, Secrets, Workflows, Environments, Webhooks or Deployments.
-  It expires after 90 days.
-- GitHub enforces that token's limits: agents **can't** change repo settings, secrets or variables, edit CI
-  workflow files, delete the repo, or reach any other repo (including the editz studio).
-- The token lives in the macOS Keychain (item `letzeuspost-agent-token`), never in a file or in chat. Athena starts
-  builder sessions with it as `GH_TOKEN`; builders never see Zeus's own login.
-- What the token can't stop: it can push to any branch (Free has no branch protection), and it can't reach the
-  project board (fine-grained tokens don't support boards owned by a personal account). So deny rules and hooks block
-  pushes to `main` and every merge, Athena moves board cards with Zeus's login, and the board's built-in workflow
-  marks closed items Done.
+- **Builders have no GitHub credential.** `scripts/dispatch.sh` starts each builder with `GH_TOKEN` and
+  `GITHUB_TOKEN` unset, an empty `GH_CONFIG_DIR`, git's credential helpers switched off (`GIT_CONFIG_NOSYSTEM=1` and a
+  `GIT_CONFIG_GLOBAL` file holding only the commit name, email and an empty `credential.helper`), `LZP_ROLE=builder`,
+  and no GitHub host on the sandbox's network allowlist. A builder can't push, open or edit PRs, comment, label or
+  merge, whatever command it tries (`gh`, `gh api`, `curl`, `git push`).
+- **No Docker socket and no shared `.git`.** A container is root-equivalent and could write anywhere on the Mac, so
+  dispatch starts the task's service containers itself and hands over only their localhost ports. Each builder works
+  in its own clone, not a git worktree, so hooks or settings it plants in its `.git` never reach Athena's checkout.
+- The builder reads its task from `.lzp/task.md` and leaves its approach and PR text in `.lzp/` (gitignored).
+  **Athena carries the work to GitHub** with Zeus's login through `scripts/ship.sh`, which fetches the branch into a
+  clean clone with git hooks and fsmonitor off and refuses any branch that changes a builder-protected path (section
+  2). Before merge, Athena never runs a builder's code outside the sandbox, and treats `.lzp/` files as data.
+- Builders run only through `dispatch.sh`, never as Athena's subagents (a subagent would inherit Zeus's login and no
+  sandbox): everyone's settings deny `Agent(daedalus-builder)`, and the agent file sets no `isolation`.
+- Athena moves board cards with Zeus's login, and the board's built-in workflow marks closed items Done.
 - Agent commits end with `Co-Authored-By: Claude …`, and agent PRs carry an `Agent: <name>` line.
 
-### 2. Claude Code settings (`.claude/settings.json`, committed, sensitive)
+### 2. Claude Code settings (committed, sensitive)
 
-- **Sandbox on:** `sandbox.enabled`, `failIfUnavailable`, `allowUnsandboxedCommands: false`. Writes are limited to
-  the worktree and temp. Network goes only to an allowlist: npm registry, GitHub, Playwright browser downloads, Google
-  Fonts, localhost.
-- **Deny rules:** `Read(**/.env*)`; `Edit` of `/.github/**`, `/.claude/**`, `/CLAUDE.md`, `**/CLAUDE.md`,
-  `/docs/plan/**`, `/DESIGN.md`, lint/TypeScript/test configs and approved visual baselines. Bash: any `gh pr merge`,
-  pushes to `main`, `git push --force*`, `git commit --no-verify*`, `gh auth*`, `security *` (the Keychain),
-  `curl * | sh`, `npm publish*`, `gh repo delete*`, `gh repo edit*`, `gh secret*`, `gh variable*`, `gh ruleset*`, and
-  `gh pr edit` / `gh issue edit` on the `sensitive` / `routine` labels.
-- `permissions.disableBypassPermissionsMode: "disable"`, also set by Zeus in **managed settings** on the Mac.
+- **Everyone's rules** (`.claude/settings.json`, every session in this repo): deny `Read(**/.env*)`;
+  `Agent(daedalus-builder)`; Bash: pushes to `main`, `git push --force*`, `git commit --no-verify*`, `curl * | sh`,
+  `npm publish*`, `gh repo delete*`, `gh pr merge*` and merges through `gh api` (the merge gate is the only way in).
+- **Builder-only rules** (`.claude/builder/settings.json`, passed by `scripts/dispatch.sh` with `--settings`):
+  - **Sandbox on:** `sandbox.enabled`, `failIfUnavailable`, `allowUnsandboxedCommands: false`. Writes are limited to
+    the builder's clone and temp. Network goes only to an allowlist: npm registry, Playwright browser downloads,
+    Google Fonts, and localhost for the task's own service ports. No Unix sockets (no Docker). The sandbox isn't in
+    everyone's file: it would also stop Athena's own tools.
+  - Deny `Edit` of `/.github/**`, `/.claude/**`, `/scripts/**`, `/CLAUDE.md`, `**/CLAUDE.md`, `/docs/plan/**`,
+    `/DESIGN.md`, `pnpm-workspace.yaml`, lint/TypeScript/test/format configs (`tsconfig*.json`, `eslint.config.*`,
+    `vitest.config.*`, `playwright.config.*`, `.prettierrc*`, `.prettierignore`), `.gitleaks.toml`, `.npmrc`,
+    `.nvmrc`, `.mcp.json`, `.husky/**`, `.gitattributes`, `.vscode/**` and approved visual baselines. Paths match
+    in any letter case (macOS treats `Claude.md` as `CLAUDE.md`). Bash: `git push*`, `gh *`, `security *` (the Keychain).
+  - The hooks apply the same rules when `LZP_ROLE=builder` (set only by dispatch, outside the builder's reach).
+- `permissions.disableBypassPermissionsMode: "disable"` in both files, also set by Zeus in **managed settings** on the Mac.
 
 ### 3. Hooks (`.claude/hooks/`, committed, sensitive; they also fire for subagents)
 
 | Hook | Does |
 |---|---|
-| SessionStart | Loads the active issue, its Done-when and the rules; stops at once if the repo variable `AGENTS_PAUSED` is true (Zeus's **freeze switch**) |
+| SessionStart (and every PreToolUse) | Loads the task from `.lzp/task.md` and the rules; stops at once while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute because builders can't reach GitHub |
 | PreToolUse Bash | Blocks the dangerous patterns above (a backup to the deny rules) |
-| PreToolUse Edit/Write | Blocks protected paths; blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
+| PreToolUse Edit/Write | Blocks protected paths (builder); blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
 | PostToolUse Edit/Write | Formats the changed file |
 | Stop / SubagentStop (builder) | Won't let the builder finish while code changed after the last green `pnpm check` (a stamp of the git tree hash). The loop guard is checked at setup |
 | All blocks | Logged to `.claude/logs/guardrail-hits.jsonl` (gitignored) for the weekly report |
@@ -79,7 +99,7 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
 
 ### 5. GitHub side (Free plan)
 
-- No branch rules and no auto-merge on Free private repos. **Zeus merges each PR when the checks are green.**
+- No branch rules and no auto-merge on Free private repos. **Athena merges through the merge gate** ([19](19-build-team-and-workflow.md#the-merge-gate)): every check green, independent reviews passed, squash only. The gate works the tier out itself; the label is for people.
   Settings: squash merges only, Actions pinned to commit SHAs, least-privilege workflow permissions, Dependabot alerts on.
 - **`risk-gate`** (CI) compares the changed paths with `.github/sensitive-paths.txt` (read from `main`, so a PR can't
   change its own tier) and labels the PR `sensitive` or `routine`. It flags any change to the harness and posts a
@@ -89,14 +109,17 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
   config · `.github/**`, `.claude/**`, every `CLAUDE.md`, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` ·
   baselines of **approved** screens and look presets. The exact paths are listed in [§13](13-architecture.md).
 - **`ai-review`**: `anthropics/claude-code-action@v1` with Zeus's `claude_code_oauth_token` and the code-review plugin
-  posts inline comments on every PR. It is advice for Zeus, not a gate.
-- **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`)
-  and reconsider agents merging `routine` PRs.
+  posts inline comments on every PR. It doesn't block on its own, but the merge gate needs each finding fixed or answered.
+- **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`),
+  so GitHub enforces the merge gate's checks too.
 
 ### 6. Secrets
 
 No real secrets on the builder side. Builders use local dev services and a **mocked AI provider**; live AI runs only
-in the CI eval job, added with the AI pipeline. `.env` stays local and unreadable to agents; `.env.example` documents
+in the CI eval job, added with the AI pipeline. **CI secrets never meet PR code:** GitHub gives secrets to
+`pull_request` runs from branches in the same repo, so the evals (`ANTHROPIC_API_KEY`) run only on `main` and by hand
+(`workflow_dispatch`); `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
+installs or runs the PR's code. `.env` stays local and unreadable to agents; `.env.example` documents
 the keys. CI secrets: `CLAUDE_CODE_OAUTH_TOKEN` now; `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
 Console workspace with a monthly spend limit).
 
@@ -121,24 +144,31 @@ Athena only adds a second or third when the weekly report shows room. Any headle
 
 ### Dependency licences
 
-Allowed: MIT, Apache-2.0, BSD, ISC, the PostgreSQL licence, and OFL for fonts. **Named exception (Zeus, 2026-11-06,
-§13 A14):** LGPL libraries used unchanged as separate shared libraries: libvips (inside sharp). (HEIC is converted by
+Allowed: MIT, Apache-2.0, BSD, ISC, the PostgreSQL licence, OFL for fonts and **BlueOak-1.0.0** (Zeus, 2026-11-07).
+**Named exceptions:** LGPL libraries used unchanged as separate shared libraries: libvips (inside sharp; Zeus,
+2026-11-06, §13 A14). **MPL-2.0 for dev-only tools used unchanged:** lightningcss and its platform packages (under
+Vitest; Zeus, 2026-11-07); the check fails if one becomes a production dependency. (HEIC is converted by
 Cloudflare Images, §16, so libheif and libde265 aren't used.) Anything else that isn't on the list fails the check until Zeus adds it.
 
 ## Not in the MVP
 
-Agents merging their own PRs and server-side merge rules (need GitHub Pro) · a separate agent identity (bot account or
+Builders merging any PR · server-side merge rules (need GitHub Pro) · a separate agent identity (bot account or
 GitHub App) · signed commits · a self-hosted CI runner.
 
 ## Done when (milestone H0)
 
 A red-team checklist passes. An agent tries each item and it is shown blocked:
 
-- [ ] any `gh pr merge` · a push to `main` · a force push
-- [ ] the agent token changing a setting, secret, variable or workflow file (GitHub refuses)
-- [ ] reading the Keychain or switching `gh` accounts
-- [ ] editing `.github/` or `.claude/` · reading `.env`
-- [ ] `curl … | sh` · a network call outside the allowlist
+- [ ] a builder pushing, opening a PR, commenting, labelling or merging, with `gh`, `gh api`, `curl` or `git push`
+  (no credential) · a push to `main` · a force push
+- [ ] the merge gate refusing a PR that fails any of its items (red check, missing review, stale review after a push or
+  an edited PR text, a tier label that disagrees with the paths, frozen) · a builder writing the review record
+- [ ] `scripts/ship.sh` refusing a branch that changes a builder-protected path (any letter case)
+- [ ] a builder reaching Docker, another task's or Picasso's services, or planting a git hook or setting that runs
+  when Athena ships
+- [ ] a builder reading the Keychain or using Zeus's `gh` login · Daedalus started as Athena's subagent
+- [ ] a builder editing `.github/`, `.claude/` or `scripts/` · reading `.env`
+- [ ] `curl … | sh` · a network call outside the allowlist (GitHub included)
 - [ ] committing a fake secret
 - [ ] `.only` in a test · finishing without a green check
 - [ ] working while frozen
