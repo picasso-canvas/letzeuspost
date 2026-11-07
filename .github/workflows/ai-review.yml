@@ -2,7 +2,8 @@
 # never approves or blocks on its own: the merge gate needs this check green on the head commit, and Argus checks that
 # each of its findings is fixed or answered.
 #
-# It runs anthropics/claude-code-action (pinned to a commit) on Zeus's subscription token, CLAUDE_CODE_OAUTH_TOKEN.
+# It runs anthropics/claude-code-action (pinned to a commit) on Zeus's subscription token, CLAUDE_CODE_OAUTH_TOKEN, a
+# secret of the `ai-review` environment, so only this job can read it (never ci or risk-gate).
 # Claude gets no Bash, no web, no file writes and no subagents. It may read only inside the checkout, so never /proc,
 # the runner's environment or the token, and it may post inline comments on this PR. Settings, hooks, MCP servers and
 # CLAUDE.md from the PR don't load on their own (--setting-sources user, --strict-mcp-config); the prompt hands it
@@ -25,12 +26,13 @@ jobs:
   ai-review:
     name: ai-review
     if: ${{ !github.event.pull_request.draft }}
+    environment: ai-review
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
-      contents: read
-      pull-requests: write
-      issues: read
+      contents: read # check out the PR and diff it against main
+      pull-requests: write # inline comments and the answer comment; no merge (that needs contents: write)
+      issues: read # the issues the PR closes: Done-when, Areas, section links
     steps:
       - name: Check out the PR's head commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
