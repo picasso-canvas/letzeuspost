@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { branchFor, builderEnv, freezeFlag, parseArgs, slugify, taskText } from './dispatch.ts';
-import { parseDispatchRecord, prFlags } from './ship.ts';
+import {
+  branchFor,
+  builderEnv,
+  freezeFlag,
+  headsFrom,
+  parseArgs,
+  slugify,
+  taskText,
+} from './dispatch.ts';
+import { parseDispatchRecord, parseShipArgs, prFlags } from './ship.ts';
 
 const paused = (flag: string) => (JSON.parse(flag) as { paused: boolean }).paused;
 
@@ -34,6 +42,12 @@ describe('taskText', () => {
     expect(taskText(7, 'Thing', 'Body', '[blocking] a — b — c')).toContain(
       '## Review findings to fix (from Athena)\n\n[blocking] a — b — c',
     );
+  });
+
+  it('holds no command to run: the hand-over command lives in the agent file', () => {
+    const text = taskText(7, 'Thing', 'Body', '[blocking] a — b — c');
+    expect(text).toContain('.lzp/base');
+    expect(text).not.toMatch(/git bundle create/);
   });
 });
 
@@ -110,12 +124,37 @@ describe('parseArgs', () => {
     });
     expect(parseArgs(['--findings', '7']).issue).toBeNaN();
   });
+
+  it('refuses an option it does not know, a second issue and a flag without its value', () => {
+    expect(() => parseArgs(['--dryrun', '7'])).toThrow(/unknown option: --dryrun/);
+    expect(() => parseArgs(['-n', '7'])).toThrow(/unknown option: -n/);
+    expect(() => parseArgs(['7', '8'])).toThrow(/one issue/);
+    expect(() => parseArgs(['7', '--findings'])).toThrow(/--findings needs a value/);
+    expect(() => parseArgs(['7', '--max-turns', '--dry-run'])).toThrow(/--max-turns needs a value/);
+  });
 });
 
-describe('taskText', () => {
-  it('holds no command to run: the hand-over command lives in the agent file', () => {
-    const text = taskText(7, 'Thing', 'Body', '[blocking] a — b — c');
-    expect(text).toContain('.lzp/base');
-    expect(text).not.toMatch(/git bundle create/);
+describe('parseShipArgs', () => {
+  it('takes one issue and --dry-run, and refuses anything else', () => {
+    expect(parseShipArgs(['7'])).toEqual({ issue: 7, dryRun: false });
+    expect(parseShipArgs(['--dry-run', '7'])).toEqual({ issue: 7, dryRun: true });
+    expect(() => parseShipArgs(['--dryrun', '7'])).toThrow(/unknown option: --dryrun/);
+    expect(() => parseShipArgs(['7', '8'])).toThrow(/one issue/);
+    expect(parseShipArgs([]).issue).toBeNaN();
+  });
+});
+
+describe('headsFrom', () => {
+  it('reads exact branch names from ls-remote, never a ref that only ends like one', () => {
+    const out = [
+      `${'a'.repeat(40)}\trefs/heads/7-thing`,
+      `${'b'.repeat(40)}\trefs/heads/foo/7-thing`,
+      `${'c'.repeat(40)}\trefs/tags/7-thing`,
+      `${'d'.repeat(40)}\trefs/heads/7-other`,
+      '',
+    ].join('\n');
+    expect(headsFrom(out)).toEqual(['7-thing', 'foo/7-thing', '7-other']);
+    expect(headsFrom(out).includes('7-thing')).toBe(true);
+    expect(headsFrom(`${'a'.repeat(40)}\trefs/heads/foo/7-x\n`).includes('7-x')).toBe(false);
   });
 });
