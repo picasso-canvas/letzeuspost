@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, takeHandover } from './lib/handover.ts';
-import { parseRawDiff, shipRefusals } from './lib/protected.ts';
+import { historyRefusals, parseRawDiff, parseRevList, shipRefusals } from './lib/protected.ts';
 import { readRegularFile } from './lib/safe-read.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -180,7 +180,27 @@ function main(argv: string[]): number {
   const changes = parseRawDiff(
     run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `${record.baseSha}..${ref}`]),
   );
-  const refusals = shipRefusals(changes);
+  // Every commit is pushed, not just the final tree: each one is judged on its own too.
+  const commits = parseRevList(
+    run('git', ['rev-list', '--reverse', '--parents', `${record.baseSha}..${ref}`]),
+  ).map(({ sha: commit, parents }) => ({
+    sha: commit,
+    parents,
+    changes:
+      parents.length === 1
+        ? parseRawDiff(
+            run('git', [
+              'diff',
+              '--raw',
+              '-z',
+              '--no-renames',
+              '--no-abbrev',
+              `${parents[0] ?? ''}..${commit}`,
+            ]),
+          )
+        : [],
+  }));
+  const refusals = [...shipRefusals(changes), ...historyRefusals(commits)];
   if (refusals.length > 0) {
     console.error(
       `Refused to ship #${String(issue)} (${sha.slice(0, 7)}):\n- ${refusals.join('\n- ')}`,

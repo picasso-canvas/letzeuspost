@@ -406,6 +406,7 @@ async function main(argv: string[]): Promise<number> {
     }
     try {
       killMarkedProcesses(marker); // the builder's own that left the group (setsid, a detached spawn)
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); // let the killed ones finish exiting
       const left = builderProcesses(clone);
       if (left.length > 0) {
         console.error(
