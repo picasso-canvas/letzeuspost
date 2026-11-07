@@ -1,0 +1,78 @@
+# The risk gate (§20 part 5): labels each PR `sensitive` or `routine` and, when sensitive, posts what it touches.
+#
+# It never checks out or runs the PR's code. It checks out `main`, takes the changed files from the GitHub API
+# (renamed files under both names) and runs `main`'s copy of scripts/risk-gate.ts against `main`'s
+# .github/sensitive-paths.txt, so a PR can't change its own tier. When `main` doesn't have the script yet, or the file
+# list looks incomplete, the PR counts as sensitive (fails safe). No repository secrets; the job's token can only read
+# the repo and write labels and comments. The merge gate works the tier out itself and only checks the label agrees.
+name: risk-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: risk-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  risk-gate:
+    name: risk-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write # labels are written through the issues API
+    steps:
+      - name: Check out main (never the PR)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Node (version from main's .nvmrc)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Judge the changed paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '.[] | (.filename, (.previous_filename // empty)) | @json' > "$RUNNER_TEMP/files.jsonl"
+          listed=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename' | wc -l)
+          if [ ! -f scripts/risk-gate.ts ]; then
+            printf '%s\n' '{"tier":"sensitive","summary":"`main` has no risk-gate script yet, so this PR counts as sensitive (fails safe)."}' > "$RUNNER_TEMP/verdict.json"
+          elif [ "$listed" -lt "$CHANGED_FILES" ]; then
+            printf '%s\n' '{"tier":"sensitive","summary":"GitHub listed fewer files than the PR changes (over 3000?), so this PR counts as sensitive (fails safe)."}' > "$RUNNER_TEMP/verdict.json"
+          else
+            node scripts/risk-gate.ts .github/sensitive-paths.txt < "$RUNNER_TEMP/files.jsonl" > "$RUNNER_TEMP/verdict.json"
+          fi
+          cat "$RUNNER_TEMP/verdict.json"
+
+      - name: Label the PR and post the summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          tier=$(jq -r .tier "$RUNNER_TEMP/verdict.json")
+          case "$tier" in
+            sensitive) other=routine ;;
+            routine) other=sensitive ;;
+            *) echo "unexpected tier: $tier"; exit 1 ;;
+          esac
+          gh pr edit "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --add-label "$tier" --remove-label "$other"
+          if [ "$tier" = sensitive ]; then
+            { echo '<!-- risk-gate -->'; echo '🛡️ **risk-gate**'; echo; jq -r .summary "$RUNNER_TEMP/verdict.json"; } > "$RUNNER_TEMP/summary.md"
+            gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/summary.md"
+          fi
+          echo "Tier: $tier" >> "$GITHUB_STEP_SUMMARY"
