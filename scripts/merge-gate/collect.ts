@@ -1,6 +1,6 @@
 import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
-import { changeId, selectReviews } from './carry.ts';
+import { changeId, reviewsAt } from './carry.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
 import { parseVerdict } from './verdict.ts';
@@ -28,32 +28,16 @@ export interface CollectDeps {
   readFile?: (path: string) => string | null;
 }
 
-const newest = (records: readonly ReviewRecord[]) =>
-  records.reduce((latest, r) => (r.at > latest ? r.at : latest), '');
-
-/**
- * Each record verified at its own commit; then reviews from earlier commits with the same change id carry to the
- * head (carry.ts). A commit git can't find here carries nothing.
- */
+/** Each record verified at its own commit; reviews from before an update from main carry to the head (carry.ts). */
 function reviewsFor(pr: number, sha: string, deps: CollectDeps): ReviewRecord[] {
-  const own = deps.readReviews(pr, sha).map((r) => verify(r, pr, sha, deps));
-  if (deps.listReviewedShas === undefined) return own;
-  const headId = changeId(deps.git, sha);
-  const earlier = deps
-    .listReviewedShas(pr)
-    .filter((old) => old !== sha)
-    .flatMap((old) => {
-      try {
-        if (changeId(deps.git, old) !== headId) return [];
-      } catch {
-        return [];
-      }
-      return [
-        { sha: old, records: deps.readReviews(pr, old).map((r) => verify(r, pr, old, deps)) },
-      ];
-    })
-    .sort((a, b) => newest(b.records).localeCompare(newest(a.records)));
-  return selectReviews(sha, own, earlier);
+  const list = deps.listReviewedShas;
+  if (list === undefined) return deps.readReviews(pr, sha).map((r) => verify(r, pr, sha, deps));
+  return reviewsAt(pr, sha, {
+    readReviews: deps.readReviews,
+    listReviewedShas: list,
+    changeId: (commit) => changeId(deps.git, commit),
+    verify: (r, commit) => verify(r, pr, commit, deps),
+  });
 }
 
 /** The gate re-checks every runner-made review against its transcript; anything that doesn't check out isn't verified. */
