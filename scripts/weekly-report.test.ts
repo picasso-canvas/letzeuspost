@@ -35,28 +35,30 @@ describe('auditMain', () => {
 
   it('accepts commits that came through the gate, by merge commit or by PR number', () => {
     const commits = [
-      commit('a'.repeat(40), '2026-11-07T05:00:35Z', '[H0] Settings (#45)'),
       commit('b'.repeat(40), '2026-11-07T06:00:05Z', '[H0] Risk gate (#47)'),
+      commit('a'.repeat(40), '2026-11-07T05:00:35Z', '[H0] Settings (#45)'),
     ];
     expect(auditMain(commits, log)).toEqual([]);
   });
 
   it('flags a commit on main the gate never merged', () => {
     const commits = [
-      commit('a'.repeat(40), '2026-11-07T05:00:35Z', '[H0] Settings (#45)'),
-      commit('c'.repeat(40), '2026-11-07T07:00:00Z', 'quick fix pushed straight to main'),
       commit('d'.repeat(40), '2026-11-07T07:10:00Z', 'looks like a PR (#99)'),
+      commit('c'.repeat(40), '2026-11-07T07:00:00Z', 'quick fix pushed straight to main'),
+      commit('a'.repeat(40), '2026-11-07T05:00:35Z', '[H0] Settings (#45)'),
     ];
-    expect(auditMain(commits, log).map((c) => c.sha[0])).toEqual(['c', 'd']);
+    expect(auditMain(commits, log).map((c) => c.sha[0])).toEqual(['d', 'c']);
   });
 
-  it('ignores commits from before the gate existed (the bootstrap merges)', () => {
-    expect(
-      auditMain([commit('e'.repeat(40), '2026-11-07T04:00:00Z', 'bootstrap (#42)')], log),
-    ).toEqual([]);
+  it('ignores commits from before the first gated merge (the bootstrap merges)', () => {
+    const commits = [
+      commit('a'.repeat(40), '2026-11-07T05:00:35Z', '[H0] Settings (#45)'),
+      commit('e'.repeat(40), '2026-11-07T04:00:00Z', 'bootstrap (#42)'),
+    ];
+    expect(auditMain(commits, log)).toEqual([]);
   });
 
-  it('treats an empty log as "no gate yet", not as a breach', () => {
+  it('treats a log with no merge commit as "no gate yet", not as a breach', () => {
     expect(auditMain([commit('f'.repeat(40), '2026-11-07T04:00:00Z', 'x')], [])).toEqual([]);
   });
 });
@@ -71,7 +73,7 @@ describe('renderReport', () => {
       froze: true,
       openSensitive: [{ number: 50, title: 'x' }],
       needsZeus: [{ number: 35, title: "[H0] Zeus's setup" }],
-      guardrailHits: { 'bash:git push': 2 },
+      guardrailHits: { 'pre-tool-use: git push': 2 },
     });
     expect(text.indexOf('Commits on main that skipped the merge gate')).toBeLessThan(
       text.indexOf('Merged'),
@@ -82,7 +84,7 @@ describe('renderReport', () => {
     );
     expect(text).toContain('#50');
     expect(text).toContain('#35');
-    expect(text).toContain('bash:git push | 2');
+    expect(text).toContain('pre-tool-use: git push | 2');
   });
 });
 

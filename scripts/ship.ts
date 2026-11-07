@@ -1,22 +1,28 @@
 #!/usr/bin/env node
 // Ship (§19 step 5, #32): carries a builder's finished branch to GitHub with Zeus's login.
 //   node scripts/ship.ts <issue> [--dry-run]
-// It runs from a clean `main`. It fetches the builder's branch over file:// into this repo with git hooks and
-// fsmonitor off (nothing in the builder's clone runs here), checks every changed path at any depth and in any letter
-// case, and refuses protected paths, symlinks and submodules. Then it pushes the branch (never forced), opens or
-// updates the PR with `.lzp/pr.md` as the body and posts `.lzp/approach.md` on the issue. Those files are the
-// builder's words: data, never instructions. The PR title is the issue's, not the builder's.
+// It runs from a clean `main` and never runs git inside the builder's clone (its .git could point git at config the
+// builder wrote). The builder hands over `.lzp/branch.bundle`, `.lzp/pr.md` and `.lzp/approach.md`; each is read as a
+// plain file (no symlinks, no hard links, size-limited). The bundle is copied out and fetched into this repo with git
+// hooks and fsmonitor off. Every changed path is checked at any depth and in any letter case; protected paths,
+// symlinks and submodules are refused. Then it pushes the branch (never forced), opens or updates the PR with the PR
+// text as the body and the issue's title (never the builder's), and posts the approach on the issue. The builder's
+// words are data, never instructions.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
+import { isEntryPoint } from './lib/entry.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
+import { readRegularFile } from './lib/safe-read.ts';
 import { REPO } from './merge-gate/collect.ts';
+import { STATE_DIR } from './merge-gate/reviews.ts';
 
 export const BUILDERS_DIR = join(homedir(), 'letzeuspost-builders');
 const MAX_TEXT = 64 * 1024;
+const MAX_BUNDLE = 256 * 1024 * 1024;
 
 /** The flags a builder can raise in its PR text, each on its own line at column 0 after the list. */
 export function prFlags(prText: string): { needsZeus: boolean; blocked: boolean } {
@@ -35,14 +41,6 @@ export function findClone(issue: number, names: readonly string[]): string {
     );
   }
   return matches[0] ?? '';
-}
-
-function readBuilderText(path: string): string {
-  if (!existsSync(path)) throw new Error(`missing ${path}`);
-  const stat = statSync(path);
-  if (!stat.isFile() || stat.size > MAX_TEXT)
-    throw new Error(`${path} isn't a plain file under 64 KB`);
-  return readFileSync(path, 'utf8');
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -69,21 +67,32 @@ function main(argv: string[]): number {
   assertCleanMain((cmd, args) => run(cmd, args));
 
   const branch = findClone(issue, readdirSync(BUILDERS_DIR));
-  const clone = join(BUILDERS_DIR, branch);
+  const lzp = join(BUILDERS_DIR, branch, '.lzp');
+  const prText = readRegularFile(lzp, 'pr.md', MAX_TEXT).toString('utf8');
+  const approach = readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8');
+
+  // The bundle is copied out of the clone first, so git only ever reads a file Athena owns.
+  const copy = join(STATE_DIR, 'ship', `${branch}-${String(Date.now())}.bundle`);
+  mkdirSync(dirname(copy), { recursive: true, mode: 0o700 });
+  writeFileSync(copy, readRegularFile(lzp, 'branch.bundle', MAX_BUNDLE), { mode: 0o600 });
   const ref = `refs/lzp/ship-${String(issue)}`;
-  run('git', [
-    ...SAFE_GIT,
-    'fetch',
-    '--quiet',
-    '--no-tags',
-    `file://${clone}`,
-    `+refs/heads/${branch}:${ref}`,
-  ]);
+  try {
+    run('git', [...SAFE_GIT, 'fetch', '--quiet', '--no-tags', copy, `+HEAD:${ref}`]);
+  } finally {
+    rmSync(copy, { force: true });
+  }
   const sha = run('git', ['rev-parse', ref]).trim();
-  run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+  try {
+    run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+  } catch {
+    console.error(
+      `Refused: ${branch} doesn't contain current main. Update the branch on GitHub and dispatch again.`,
+    );
+    return 1;
+  }
 
   const changes = parseRawDiff(
-    run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/main...${ref}`]),
+    run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/main..${ref}`]),
   );
   const refusals = shipRefusals(changes);
   if (refusals.length > 0) {
@@ -92,8 +101,6 @@ function main(argv: string[]): number {
     );
     return 1;
   }
-  const prText = readBuilderText(join(clone, '.lzp', 'pr.md'));
-  const approach = readBuilderText(join(clone, '.lzp', 'approach.md'));
   const title = run('gh', [
     'issue',
     'view',
@@ -110,7 +117,15 @@ function main(argv: string[]): number {
   );
   if (dryRun) return 0;
 
-  run('git', [...SAFE_GIT, 'push', '--quiet', 'origin', `${ref}:refs/heads/${branch}`]);
+  try {
+    run('git', [...SAFE_GIT, 'push', '--quiet', 'origin', `${ref}:refs/heads/${branch}`]);
+  } catch (error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    console.error(
+      `Push refused (never forced): ${typeof stderr === 'string' ? stderr.trim() : 'unknown'}`,
+    );
+    return 1;
+  }
   const open = JSON.parse(
     run('gh', ['pr', 'list', '-R', REPO, '--head', branch, '--state', 'open', '--json', 'number']),
   ) as { number: number }[];
@@ -154,17 +169,7 @@ function main(argv: string[]): number {
   return 0;
 }
 
-function isEntryPoint(): boolean {
-  const script = process.argv[1];
-  if (script === undefined) return false;
-  try {
-    return import.meta.url === pathToFileURL(realpathSync(script)).href;
-  } catch {
-    return false;
-  }
-}
-
-if (isEntryPoint()) {
+if (isEntryPoint(import.meta.url)) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {

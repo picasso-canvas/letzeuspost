@@ -6,9 +6,10 @@
 // a commit on `main` that didn't come through the gate sets AGENTS_PAUSED=true (unless --no-freeze) and leads the
 // report. Prints the report; --create opens it as an `audit` issue.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { isEntryPoint } from './lib/entry.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 
@@ -40,23 +41,33 @@ export function isoWeek(date: Date): string {
 }
 
 /**
- * Commits on `main` that the gate didn't merge. Before the first logged merge the gate didn't exist yet (the
- * bootstrap merges), so only later commits count. A commit passes when its sha is a logged merge commit, or its
- * subject ends in `(#n)` for a PR the gate logged as merged.
+ * Commits on `main` that the gate didn't merge. `commits` is `git log --first-parent` order (newest first). The audit
+ * starts at the first commit the gate merged (its merge commit is in the log): everything after it on main's
+ * first-parent line must be a gated merge. Dates aren't trusted (whoever pushes sets them). A commit passes when it is
+ * a logged merge commit, or, for a merged PR whose merge commit couldn't be read back, when its subject ends in that
+ * PR's `(#n)`; each such number counts once.
  */
 export function auditMain(commits: readonly MainCommit[], log: readonly LogEntry[]): MainCommit[] {
-  if (log.length === 0) return [];
-  const start = Math.min(...log.map((entry) => Date.parse(entry.at)));
   const mergeCommits = new Set(
     log.filter((e) => e.result === 'merge-commit').map((e) => e.mergeCommit),
   );
-  const mergedPrs = new Set(log.filter((e) => e.result === 'merged').map((e) => e.pr));
-  return commits.filter((c) => {
-    if (Date.parse(c.at) < start) return false;
-    if (mergeCommits.has(c.sha)) return false;
-    const pr = /\(#(\d+)\)\s*$/.exec(c.subject)?.[1];
-    return !(pr !== undefined && mergedPrs.has(Number(pr)));
-  });
+  const anchor = commits.findLastIndex((c) => mergeCommits.has(c.sha));
+  if (anchor < 0) return [];
+  const withCommit = new Set(log.filter((e) => e.result === 'merge-commit').map((e) => e.pr));
+  const unmatched = new Set(
+    log.filter((e) => e.result === 'merged' && !withCommit.has(e.pr)).map((e) => e.pr),
+  );
+  const unknown: MainCommit[] = [];
+  for (const c of commits.slice(0, anchor).reverse()) {
+    if (mergeCommits.has(c.sha)) continue;
+    const pr = Number(/\(#(\d+)\)\s*$/.exec(c.subject)?.[1]);
+    if (unmatched.has(pr)) {
+      unmatched.delete(pr);
+      continue;
+    }
+    unknown.push(c);
+  }
+  return unknown.reverse();
 }
 
 export interface ReportData {
@@ -211,6 +222,7 @@ function main(argv: string[]): number {
     join(STATE_DIR, 'logs', 'guardrail-hits.jsonl'),
   )) {
     if (hit.at !== undefined && Date.parse(hit.at) < since.getTime()) continue;
+    // The hooks (#29) write {at, role, session, agent, project, hook, rule, reason, tool, detail}; rule names its hook.
     const rule = hit.rule ?? hit.hook ?? 'unknown';
     hits[rule] = (hits[rule] ?? 0) + 1;
   }
@@ -250,17 +262,7 @@ function main(argv: string[]): number {
   return unknown.length > 0 ? 1 : 0;
 }
 
-function isEntryPoint(): boolean {
-  const script = process.argv[1];
-  if (script === undefined) return false;
-  try {
-    return import.meta.url === pathToFileURL(realpathSync(script)).href;
-  } catch {
-    return false;
-  }
-}
-
-if (isEntryPoint()) {
+if (isEntryPoint(import.meta.url)) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {

@@ -1,29 +1,73 @@
 #!/usr/bin/env node
 // Dispatch (§19 step 3, #32): starts one builder on one build task.
 //   node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--dry-run]
-// It runs from a clean `main`. The builder gets a fresh clone (never a worktree: a worktree shares .git hooks and
-// settings with this checkout) with no remote, the task in .lzp/task.md, and a headless Claude Code session with
-// main's builder settings (sandbox on), LZP_ROLE=builder, LZP_HARNESS_DIR, no GitHub credential (no GH_TOKEN, an
-// empty gh config, git credential helpers off) and no Docker socket. pnpm's store, cache and state live in the
-// clone. While it runs, the repo variable AGENTS_PAUSED is copied into ~/.letzeuspost/paused every minute, with the
-// time, for the hooks (#29): builders can't reach GitHub to read it. Services (database, storage, mail) arrive in M0.
+// It runs from a clean `main`. The builder gets a fresh `--no-local` clone (never a worktree: a worktree shares .git
+// hooks and settings with this checkout) with no remote, the task in .lzp/task.md, and a headless Claude Code session
+// with main's builder settings (sandbox on), an allowlisted environment, LZP_ROLE=builder, LZP_HARNESS_DIR, no GitHub
+// credential and no Docker socket. pnpm's store, cache and state live in the clone. The builder runs in its own
+// process group: when it finishes, or as soon as the freeze switch is on, the whole group is killed. While it runs,
+// AGENTS_PAUSED is copied into ~/.letzeuspost/paused every minute for the hooks (#29). Once the builder has started,
+// nothing here runs git inside its clone (its .git could point git at config the builder wrote); the builder hands its
+// work over as .lzp/branch.bundle, which ship.ts reads. Services (database, storage, mail) arrive in M0.
 import { execFileSync, spawn } from 'node:child_process';
 import {
   createWriteStream,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
+import { isEntryPoint } from './lib/entry.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 import { BUILDERS_DIR } from './ship.ts';
+
+/** What a builder's environment may carry over from Athena's: enough to run Claude Code and tools, no tokens. */
+const ENV_ALLOW = [
+  'PATH',
+  'HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TERM',
+  'TMPDIR',
+];
+
+export function builderEnv(from: NodeJS.ProcessEnv, extra: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...Object.fromEntries(Object.entries(from).filter(([key]) => ENV_ALLOW.includes(key))),
+    ...extra,
+  };
+}
+
+export interface Args {
+  issue: number;
+  dryRun: boolean;
+  findings: string | undefined;
+  maxTurns: string | undefined;
+}
+
+export function parseArgs(argv: readonly string[]): Args {
+  const args: Args = { issue: Number.NaN, dryRun: false, findings: undefined, maxTurns: undefined };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--dry-run') args.dryRun = true;
+    else if (arg === '--findings') args.findings = argv[++i];
+    else if (arg === '--max-turns') args.maxTurns = argv[++i];
+    else if (arg !== undefined && !arg.startsWith('--') && Number.isNaN(args.issue))
+      args.issue = Number(arg);
+  }
+  return args;
+}
 
 /** `[M0] Sign-in with an email link` → `sign-in-with-an-email-link`, at most 40 characters. */
 export function slugify(title: string): string {
@@ -47,10 +91,19 @@ export function taskText(
   title: string,
   body: string,
   findings: string | null,
+  baseSha: string,
 ): string {
   const parts = [`# Task #${String(issue)}: ${title}`, '', body.trim()];
   if (findings !== null)
     parts.push('', '## Review findings to fix (from Athena)', '', findings.trim());
+  parts.push(
+    '',
+    '## Handing over (last step)',
+    '',
+    'After your last commit and a green `pnpm check`, write `.lzp/pr.md` and `.lzp/approach.md`, then run:',
+    '',
+    `    git bundle create .lzp/branch.bundle ${baseSha}..HEAD`,
+  );
   return `${parts.join('\n')}\n`;
 }
 
@@ -74,6 +127,7 @@ function readVariable(): string | null {
   }
 }
 
+/** Writes the flag; true when agents may work. */
 function refreshFlag(): boolean {
   const variable = readVariable();
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
@@ -81,20 +135,25 @@ function refreshFlag(): boolean {
   return variable?.trim().toLowerCase() === 'false';
 }
 
-function option(argv: string[], name: string): string | undefined {
-  const at = argv.indexOf(name);
-  return at >= 0 ? argv[at + 1] : undefined;
+function isRegularFile(path: string): boolean {
+  try {
+    const stat = lstatSync(path);
+    return stat.isFile() && !stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 async function main(argv: string[]): Promise<number> {
-  const issue = Number(argv.find((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--')));
+  const args = parseArgs(argv);
+  const issue = args.issue;
   if (!Number.isInteger(issue) || issue <= 0) {
     console.error(
       'usage: node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--dry-run]',
     );
     return 2;
   }
-  assertCleanMain((cmd, args) => run(cmd, args));
+  assertCleanMain((cmd, a) => run(cmd, a));
   if (!refreshFlag()) {
     console.error('Frozen: AGENTS_PAUSED is not "false". Nothing was started.');
     return 1;
@@ -110,11 +169,10 @@ async function main(argv: string[]): Promise<number> {
   const branch = `${String(issue)}-${slugify(view.title)}`;
   const clone = join(BUILDERS_DIR, branch);
 
-  // A branch that already exists (a review round) must not differ from main on any protected path: its .claude/
-  // would load in the builder's session.
-  let base = 'origin/main';
-  const remote = run('git', ['ls-remote', '--heads', 'origin', branch]).trim();
-  if (remote !== '') {
+  // A review round: the branch must contain current main (so main's harness, not an old copy, loads) and must not
+  // change any protected path (its .claude/ would load in the builder's session).
+  let baseRef = 'refs/heads/main';
+  if (run('git', ['ls-remote', '--heads', 'origin', branch]).trim() !== '') {
     const ref = `refs/lzp/dispatch-${String(issue)}`;
     run('git', [
       '-c',
@@ -125,51 +183,78 @@ async function main(argv: string[]): Promise<number> {
       'origin',
       `+refs/heads/${branch}:${ref}`,
     ]);
+    try {
+      run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+    } catch {
+      console.error(
+        `Refused: ${branch} is behind main. Update it on GitHub (gh pr update-branch) first.`,
+      );
+      return 1;
+    }
     const refusals = shipRefusals(
       parseRawDiff(
-        run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/main...${ref}`]),
+        run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/main..${ref}`]),
       ),
     ).filter((reason) => reason !== 'the branch changes nothing');
     if (refusals.length > 0) {
       console.error(`Refused: ${branch} changes protected paths:\n- ${refusals.join('\n- ')}`);
       return 1;
     }
-    base = ref;
+    baseRef = ref;
   }
-  const findingsFile = option(argv, '--findings');
+  const baseSha = run('git', ['rev-parse', baseRef]).trim();
   const task = taskText(
     issue,
     view.title,
     view.body,
-    findingsFile ? readFileSync(findingsFile, 'utf8') : null,
+    args.findings ? readFileSync(args.findings, 'utf8') : null,
+    baseSha,
   );
   console.log(
-    `#${String(issue)} → ${clone} on ${branch} (from ${base === 'origin/main' ? 'main' : 'the existing branch'})`,
+    `#${String(issue)} → ${clone} on ${branch} (from ${baseRef === 'refs/heads/main' ? 'main' : 'the existing branch'})`,
   );
-  if (argv.includes('--dry-run')) return 0;
+  if (args.dryRun) return 0;
 
-  // A fresh clone every time: nothing a builder left behind (untracked files, node_modules) carries over.
+  // A fresh clone every time, through git's own transport (--no-local): nothing a builder left behind carries over,
+  // and no unrelated objects or refs come along.
   if (existsSync(clone)) rmSync(clone, { recursive: true, force: true });
   mkdirSync(BUILDERS_DIR, { recursive: true, mode: 0o700 });
   run(
     'git',
-    ['clone', '--quiet', '--no-hardlinks', '-c', 'core.hooksPath=/dev/null', ROOT, clone],
+    [
+      'clone',
+      '--quiet',
+      '--no-local',
+      '--single-branch',
+      '--branch',
+      'main',
+      '-c',
+      'core.hooksPath=/dev/null',
+      ROOT,
+      clone,
+    ],
     BUILDERS_DIR,
   );
-  const baseSha = run('git', ['rev-parse', base]).trim();
-  // By ref name: a local clone may refuse to fetch a bare commit id.
-  const baseRef = base === 'origin/main' ? 'refs/heads/main' : base;
   run(
     'git',
-    ['fetch', '--quiet', '--no-tags', 'origin', `+${baseRef}:refs/heads/${branch}`],
+    [
+      '-c',
+      'core.hooksPath=/dev/null',
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      'origin',
+      `+${baseRef}:refs/heads/${branch}`,
+    ],
     clone,
   );
-  run('git', ['checkout', '--quiet', branch], clone);
+  run('git', ['-c', 'core.hooksPath=/dev/null', 'checkout', '--quiet', branch], clone);
   if (run('git', ['rev-parse', 'HEAD'], clone).trim() !== baseSha)
     throw new Error('the clone is not on the expected commit');
+  run('git', ['remote', 'remove', 'origin'], clone); // nothing to push to, even by path
   // The hooks' "last green pnpm check" stamp belongs to the old clone (#29).
   rmSync(join(STATE_DIR, 'stamps', `${branch}.json`), { force: true });
-  run('git', ['remote', 'remove', 'origin'], clone); // nothing to push to, even by path
+
   const lzp = join(clone, '.lzp');
   for (const dir of ['gh', 'pnpm/store', 'pnpm/cache', 'pnpm/state'])
     mkdirSync(join(lzp, dir), { recursive: true });
@@ -178,11 +263,7 @@ async function main(argv: string[]): Promise<number> {
     join(lzp, 'gitconfig'),
     '[user]\n\tname = Daedalus\n\temail = daedalus@letzeuspost.invalid\n[credential]\n\thelper =\n[core]\n\thooksPath = /dev/null\n',
   );
-
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  delete env.GH_TOKEN;
-  delete env.GITHUB_TOKEN;
-  Object.assign(env, {
+  const env = builderEnv(process.env, {
     LZP_ROLE: 'builder',
     LZP_HARNESS_DIR: ROOT,
     GH_CONFIG_DIR: join(lzp, 'gh'),
@@ -194,6 +275,7 @@ async function main(argv: string[]): Promise<number> {
     pnpm_config_cache_dir: join(lzp, 'pnpm/cache'),
     pnpm_config_state_dir: join(lzp, 'pnpm/state'),
   });
+
   const log = join(STATE_DIR, 'runs', `${branch}-${String(Date.now())}.jsonl`);
   mkdirSync(dirname(log), { recursive: true, mode: 0o700 });
   const prompt = `Build task #${String(issue)}. Your task is in .lzp/task.md. Follow your instructions and CLAUDE.md.`;
@@ -208,47 +290,52 @@ async function main(argv: string[]): Promise<number> {
       '--permission-mode',
       'dontAsk',
       '--max-turns',
-      option(argv, '--max-turns') ?? '200',
+      args.maxTurns ?? '200',
       '--output-format',
       'stream-json',
       '--verbose',
       prompt,
     ],
-    { cwd: clone, env, stdio: ['ignore', 'pipe', 'inherit'] },
+    { cwd: clone, env, detached: true, stdio: ['ignore', 'pipe', 'inherit'] },
   );
   child.stdout.pipe(createWriteStream(log));
-  const timer = setInterval(refreshFlag, 60_000);
+  const killGroup = () => {
+    try {
+      if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      // already gone
+    }
+  };
+  const state = { frozen: false }; // set from the timer
+  const timer = setInterval(() => {
+    if (!refreshFlag()) {
+      state.frozen = true;
+      killGroup();
+    }
+  }, 60_000);
   const code = await new Promise<number>((resolve) => {
     child.on('close', (c) => {
       resolve(c ?? 1);
     });
   });
   clearInterval(timer);
+  killGroup(); // anything the builder left running in the background
 
-  const commits = run('git', ['log', '--oneline', `${baseSha}..HEAD`], clone).trim();
-  console.log(`Builder finished (exit ${String(code)}). Log: ${log}`);
-  console.log(commits === '' ? 'No commits.' : `Commits:\n${commits}`);
   console.log(
-    existsSync(join(lzp, 'pr.md'))
-      ? 'PR text ready: node scripts/ship.ts ' + String(issue)
-      : 'No .lzp/pr.md.',
+    `Builder ${state.frozen ? 'stopped: the freeze switch is on' : 'finished'} (exit ${String(code)}). Log: ${log}`,
   );
-  return code;
+  const ready = ['branch.bundle', 'pr.md', 'approach.md'].map(
+    (name) => `${name}: ${isRegularFile(join(lzp, name)) ? 'yes' : 'no'}`,
+  );
+  console.log(`Handed over: ${ready.join(', ')}. Next: node scripts/ship.ts ${String(issue)}`);
+  return state.frozen ? 1 : code;
 }
 
-function isEntryPoint(): boolean {
-  const script = process.argv[1];
-  if (script === undefined) return false;
-  try {
-    return import.meta.url === pathToFileURL(realpathSync(script)).href;
-  } catch {
-    return false;
-  }
-}
-
-if (isEntryPoint()) {
+if (isEntryPoint(import.meta.url)) {
   main(process.argv.slice(2)).then(
-    (code) => (process.exitCode = code),
+    (code) => {
+      process.exitCode = code;
+    },
     (error: unknown) => {
       console.error(`dispatch error: ${error instanceof Error ? error.message : String(error)}`);
       process.exitCode = 1;
