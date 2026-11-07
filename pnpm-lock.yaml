@@ -196,7 +196,11 @@ importers:
 
   apps/fetcher: {}
 
-  apps/web: {}
+  apps/web:
+    dependencies:
+      lightningcss:
+        specifier: ^1.33.0
+        version: 1.33.0
 
   apps/worker:
     devDependencies:
