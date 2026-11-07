@@ -8,7 +8,8 @@
 // comments. It runs Argus, plus Cerberus on sensitive PRs and Iris on UI PRs once enabled, each headless from main's
 // checkout with a minimal environment and no .env reads, and records each verdict with record-review.ts. Summaries go
 // to pr-<n>/out/<stamp>/, outside the bundle, so each reviewer starts fresh. A builder's code is only read here.
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -277,7 +278,7 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
 
 export interface ReviewDeps {
   /** Runs `claude` with these arguments, environment and timeout; returns its JSON output. */
-  claude: (args: string[], env: NodeJS.ProcessEnv, timeoutMs: number) => string;
+  claude: (args: string[], env: NodeJS.ProcessEnv, timeoutMs: number) => string | Promise<string>;
   /** A file from main (`git show HEAD:`), or null. */
   show: (path: string) => string | null;
   /** Runs record-review.ts with these arguments. */
@@ -322,16 +323,29 @@ export function reviewerModel(reviewer: Asker, tier: 'routine' | 'sensitive'): s
   return reviewer === 'argus' && tier === 'routine' ? 'claude-sonnet-5-5' : null;
 }
 
-/** Runs each reviewer and records its verdict; returns how many reviewers failed to run or record. */
-export function runReviews(
+/**
+ * Runs every reviewer at once (Zeus, 2026-11-08: a round takes as long as the slowest reviewer, not their sum) and
+ * records each verdict as it finishes; returns how many reviewers failed to run or record.
+ */
+export async function runReviews(
   pr: number,
   where: { bundle: string; outDir: string; refusal: string | null },
   reviewers: readonly Asker[],
   deps: ReviewDeps,
   tier: 'routine' | 'sensitive' = 'sensitive',
-): number {
-  let failed = 0;
-  for (const reviewer of reviewers) {
+): Promise<number> {
+  // allSettled: one reviewer throwing still lets the others finish and record, and counts as one failure.
+  const results = await Promise.allSettled(reviewers.map((reviewer) => reviewOne(reviewer)));
+  return results.reduce((sum, r, i) => {
+    if (r.status === 'fulfilled') return sum + r.value;
+    console.error(
+      `${reviewers[i] ?? 'a reviewer'} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}. Nothing recorded for it; run it again.`,
+    );
+    return sum + 1;
+  }, 0);
+
+  async function reviewOne(reviewer: Asker): Promise<number> {
+    let failed = 0;
     const agent = REVIEWER_AGENTS[reviewer];
     const model = reviewerModel(reviewer, tier);
     let summary: string;
@@ -344,7 +358,7 @@ export function runReviews(
     } else {
       try {
         const out = resultText(
-          deps.claude(
+          await deps.claude(
             [
               '-p',
               '--agent',
@@ -374,11 +388,10 @@ export function runReviews(
         sessionId = out.sessionId;
       } catch (error) {
         // A run that didn't finish records nothing: the gate already refuses without a pass, and a retry can pass.
-        failed++;
         console.error(
           `${reviewer} didn't finish: ${failureReason(error)}. Nothing recorded; run it again.`,
         );
-        continue;
+        return 1;
       }
     }
     const file = join(where.outDir, `${reviewer}.md`);
@@ -406,8 +419,8 @@ export function runReviews(
       );
     }
     console.log(summary.split('\n')[0]);
+    return failed;
   }
-  return failed;
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -421,7 +434,7 @@ function run(cmd: string, args: string[]): string {
   });
 }
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const pr = Number(argv.find((a) => !a.startsWith('--')));
   if (!Number.isInteger(pr) || pr <= 0) {
     console.error('usage: node scripts/review.ts <pr> [--dry-run]');
@@ -450,20 +463,23 @@ function main(argv: string[]): number {
     `PR #${String(pr)} at ${where.sha.slice(0, 7)} (${tier}): bundle ${where.bundle}; reviewers ${reviewers.map((r) => `${r}${reviewerModel(r, tier) === null ? '' : ' on Sonnet'}`).join(', ')}`,
   );
   if (argv.includes('--dry-run')) return 0;
-  const failed = runReviews(
+  const failed = await runReviews(
     pr,
     where,
     reviewers,
     {
-      claude: (args, env, timeoutMs) =>
-        execFileSync('claude', args, {
+      // Not blocking, so every reviewer's session runs at the same time. stdin is closed, as before.
+      claude: async (args, env, timeoutMs) => {
+        const run = promisify(execFile)('claude', args, {
           cwd: ROOT,
           env,
           encoding: 'utf8',
           timeout: timeoutMs,
           maxBuffer: 64 * 1024 * 1024,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        }),
+        });
+        run.child.stdin?.end();
+        return (await run).stdout;
+      },
       show,
       record: (args) => run('node', [join(ROOT, 'scripts/record-review.ts'), ...args]),
       write: (path, text) => {
@@ -487,10 +503,13 @@ function isEntryPoint(): boolean {
 }
 
 if (isEntryPoint()) {
-  try {
-    process.exitCode = main(process.argv.slice(2));
-  } catch (error) {
-    console.error(`review error: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = 1;
-  }
+  main(process.argv.slice(2)).then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (error: unknown) => {
+      console.error(`review error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    },
+  );
 }
