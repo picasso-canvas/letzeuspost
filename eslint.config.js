@@ -14,6 +14,9 @@ export default defineConfig(
   {
     linterOptions: {
       reportUnusedDisableDirectives: 'error',
+      // No eslint-disable comments: a rule can't be silenced in a file (CLAUDE.md, §20). An attempt is a warning,
+      // and `pnpm lint` allows none.
+      noInlineConfig: true,
     },
   },
   js.configs.recommended,

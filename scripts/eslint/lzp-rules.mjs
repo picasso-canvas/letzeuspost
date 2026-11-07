@@ -129,6 +129,7 @@ const noUseCache = {
       },
       /** export { unstable_cache } from 'next/cache' @param {any} node */
       ExportNamedDeclaration(node) {
+        if (isDeepNext(node.source?.value)) context.report({ node, messageId: 'module' });
         if (!fromCache(node)) return;
         for (const spec of node.specifiers) {
           const name = spec.local?.name ?? spec.local?.value;
@@ -138,7 +139,8 @@ const noUseCache = {
       },
       /** @param {any} node */
       ExportAllDeclaration(node) {
-        if (fromCache(node)) context.report({ node, messageId: 'module' });
+        if (fromCache(node) || isDeepNext(node.source?.value))
+          context.report({ node, messageId: 'module' });
       },
       /** @param {any} node */
       ImportExpression(node) {
