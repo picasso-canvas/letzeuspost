@@ -42,8 +42,9 @@ Reviewers never review their own work and always start from a fresh context. The
    `.lzp/task.md`, the task's own service containers (database, storage, mail) with their localhost ports, and a
    headless builder session started there with the builder settings (sandbox on), `LZP_ROLE=builder`, **no GitHub
    credential and no Docker socket** ([20](20-builder-guardrails.md#1-identity-and-access)). Before it starts and
-   every minute while it runs, dispatch copies the repo variable `AGENTS_PAUSED` into `~/.letzeuspost/paused`, which
-   the builder's hooks read before every tool call (builders can't reach GitHub to read it themselves). One
+   every minute while it runs, dispatch copies the repo variable `AGENTS_PAUSED` into `~/.letzeuspost/paused` with the
+   time, which the builder's hooks read before every tool call (builders can't reach GitHub to read it themselves); a
+   flag older than 3 minutes counts as frozen. One
    builder at a time in H0; up to 3 later, only on tasks whose Areas don't overlap and whose dependencies are Done. The
    card moves to In progress.
 4. **Build.** The builder reads `.lzp/task.md` and the section docs, writes a 3–5 line approach to
@@ -86,7 +87,8 @@ A PR merges only when all of these hold:
    harness paths (agent files, skills and `CLAUDE.md` are Markdown too); it isn't a draft, it has no conflicts, and its
    branch is up to date with `main`.
 3. **Checks green:** every check run on the head commit succeeded, including each required check named in `main`'s
-   `.github/merge-gate.json` (`ci`, then `risk-gate` and `ai-review` as they land); none failed, pending or skipped.
+   `.github/merge-gate.json` (`ci`, then `risk-gate` and `ai-review` as they land), and the AI evals when the PR
+   touches AI paths (§17); none failed, pending or skipped.
 4. **Tier worked out, not read:** the gate computes the tier from the changed files and `main`'s sensitive-paths list
    (until that list exists, every PR counts as sensitive). The risk-gate label must agree; a mismatch stops the merge.
 5. **Reviewed from a fresh context, for this exact PR:** Athena's record holds a pass from Argus, from Cerberus when
