@@ -97,11 +97,22 @@ describe('transcriptPath', () => {
 
 describe("checkTranscript against Claude Code 2.1.309's real transcript shape", () => {
   // Field names and nesting copied from real reviewer transcripts (2026-11-07); content is made up.
+  const bundle = '/home/athena/.letzeuspost/bundles/pr-52/cd611f7-1794058142401';
+  // The fixture keeps the real shape; its first prompt becomes the runner's exact prompt.
   const sample = readFileSync(
     join(import.meta.dirname, 'fixtures', 'transcript-sample.jsonl'),
     'utf8',
-  );
-  const bundle = '/home/athena/.letzeuspost/bundles/pr-52/cd611f7-1794058142401';
+  )
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => {
+      const entry = JSON.parse(line) as { type?: string; message?: { content?: unknown } };
+      if (entry.type === 'user' && entry.message && typeof entry.message.content === 'string') {
+        entry.message.content = reviewPrompt('cerberus', bundle);
+      }
+      return JSON.stringify(entry);
+    })
+    .join('\n');
   it('reads the agent, the first prompt and the final answer', () => {
     expect(
       checkTranscript(

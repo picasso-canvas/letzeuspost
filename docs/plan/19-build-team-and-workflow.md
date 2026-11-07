@@ -98,8 +98,9 @@ A PR merges only when all of these hold:
    and the hash of the PR text at review time. A new push or an edited PR text needs new reviews. A pass counts only
    when `scripts/review.ts` made it: `record-review` checks that its session id is a real Claude Code transcript of
    that reviewer's agent, whose first prompt names this PR's bundle and whose final answer is the recorded summary,
-   not already used for this PR. The gate checks all of that again at merge time, plus that the record's PR text and
-   commit are the bundle's snapshot. A block always counts, verified or not. The reviewers
+   not already used for this PR; its first prompt must be the runner's exact prompt. At merge time the gate re-checks the
+   agent, the bundle, the first prompt and the final answer, and that the record's PR text and commit are the bundle's
+   snapshot, and takes the verdict from that verified answer. A block always counts, verified or not. The reviewers
    confirm the Done-when evidence and that each GitHub review finding is fixed or answered. Each verdict is also posted
    on the PR, for the record.
 6. **Done-when complete:** no unticked box in the PR's Done-when list.

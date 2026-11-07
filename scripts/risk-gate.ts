@@ -7,8 +7,6 @@ import { readFileSync } from 'node:fs';
 import { matchesAny, parsePatternList } from './lib/paths.ts';
 import { safeName } from './lib/safe-name.ts';
 
-export { safeName };
-
 // The harness paths come from main's .github/merge-gate.json, the same list the merge gate uses.
 const DEFAULT_HARNESS = ['.github/**', '.claude/**', 'scripts/**', 'CLAUDE.md', '**/CLAUDE.md'];
 

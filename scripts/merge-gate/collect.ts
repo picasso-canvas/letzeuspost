@@ -2,6 +2,7 @@ import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
+import { parseVerdict } from './verdict.ts';
 import type { CheckRun, ClosingIssue, Facts, GateConfig, ReviewRecord } from './types.ts';
 
 export const REPO = 'picasso-canvas/letzeuspost';
@@ -53,7 +54,9 @@ function verify(r: ReviewRecord, pr: number, sha: string, deps: CollectDeps): Re
         snapshotMatches(bundle, r, sha, deps);
     }
   }
-  return { ...r, meta: { ...meta, verified } };
+  // A verified record's verdict is the one in the session's own answer, never the record's field.
+  const verdict = verified ? parseVerdict(r.summary).verdict : r.verdict;
+  return { ...r, verdict, meta: { ...meta, verified } };
 }
 
 /** The record's PR text and commit must be the ones in the bundle the reviewer was given. */

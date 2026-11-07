@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { judge, parseJsonLines, safeName } from './risk-gate.ts';
+import { safeName } from './lib/safe-name.ts';
+import { judge, parseJsonLines } from './risk-gate.ts';
 
 const LIST = `# sensitive
 packages/auth/**   packages/db/**   .github/**   scripts/**   **/CLAUDE.md   docs/plan/**`;
