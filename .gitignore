@@ -8,3 +8,7 @@ dist/
 .next/
 coverage/
 *.tsbuildinfo
+.envrc
+.claude/settings.local.json
+CLAUDE.local.md
+.lzp/

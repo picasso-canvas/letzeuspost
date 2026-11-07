@@ -3,7 +3,8 @@
 # Plan, research and archived design files (mockups are kept as published).
 docs/
 pnpm-lock.yaml
-.claude/
+.claude/skills/vendor/
+.claude/logs/
 node_modules/
 dist/
 .next/

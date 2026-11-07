@@ -1,8 +1,10 @@
 // @ts-check
 import js from '@eslint/js';
+import { defineConfig } from 'eslint/config';
+import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-export default tseslint.config(
+export default defineConfig(
   {
     ignores: ['**/node_modules/', '**/dist/', '**/.next/', '**/coverage/'],
   },
@@ -12,7 +14,7 @@ export default tseslint.config(
     },
   },
   js.configs.recommended,
-  ...tseslint.configs.strictTypeChecked,
+  tseslint.configs.strictTypeChecked,
   {
     languageOptions: {
       parserOptions: {
@@ -23,6 +25,9 @@ export default tseslint.config(
   },
   {
     files: ['**/*.js', '**/*.mjs'],
-    ...tseslint.configs.disableTypeChecked,
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: globals.node,
+    },
   },
 );
