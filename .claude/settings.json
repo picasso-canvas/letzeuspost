@@ -28,7 +28,9 @@
       "Bash(pnpm publish*)",
       "Bash(gh repo delete*)",
       "Bash(gh pr merge*)",
-      "Bash(gh api *merge*)"
+      "Bash(gh api *merge*)",
+      "Edit(~/.claude/projects/**)",
+      "Edit(~/.letzeuspost/**)"
     ],
     "disableBypassPermissionsMode": "disable"
   },

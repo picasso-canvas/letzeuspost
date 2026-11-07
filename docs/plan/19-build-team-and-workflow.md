@@ -100,7 +100,11 @@ A PR merges only when all of these hold:
    that reviewer's agent, whose first prompt names this PR's bundle and whose final answer is the recorded summary,
    not already used for this PR; its first prompt must be the runner's exact prompt. At merge time the gate re-checks the
    agent, the bundle, the first prompt and the final answer, and that the record's PR text and commit are the bundle's
-   snapshot, and takes the verdict from that verified answer. A block always counts, verified or not. The reviewers
+   snapshot, and takes the verdict from that verified answer. A block always counts, verified or not. What this
+   proves: the review ran as one uninterrupted session of the reviewer's agent, on the runner's exact prompt and this
+   bundle (a resumed session with a second instruction is refused), so a hand-typed or relabelled record never counts.
+   It can't prove which flags a session was started with, so the weekly report lists every merge with its review
+   sessions for Zeus to audit, and Athena's settings deny edits to transcripts and the review record. The reviewers
    confirm the Done-when evidence and that each GitHub review finding is fixed or answered. Each verdict is also posted
    on the PR, for the record.
 6. **Done-when complete:** no unticked box in the PR's Done-when list.

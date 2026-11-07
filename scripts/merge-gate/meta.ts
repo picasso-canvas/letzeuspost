@@ -27,6 +27,13 @@ export function bundlePattern(stateDir: string, pr: number, headSha: string): Re
   return new RegExp(`^${escape(stateDir)}/bundles/pr-${String(pr)}/${headSha.slice(0, 7)}-\\d+$`);
 }
 
+function onlyToolResults(content: unknown): boolean {
+  return (
+    Array.isArray(content) &&
+    content.every((part) => (part as { type?: unknown }).type === 'tool_result')
+  );
+}
+
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
@@ -68,6 +75,9 @@ export function checkTranscript(
       setting = entry.agentSetting;
     } else if (entry.type === 'user' && firstPrompt === undefined) {
       firstPrompt = textOf(entry.message?.content);
+    } else if (entry.type === 'user' && !onlyToolResults(entry.message?.content)) {
+      // A resumed session: a second human prompt could have told the reviewer what to answer.
+      return 'the session has a second human prompt (resumed)';
     } else if (entry.type === 'assistant') {
       const answer = textOf(entry.message?.content);
       if (answer.trim() !== '') lastAnswer = answer;

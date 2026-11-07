@@ -21,7 +21,6 @@ import { safeName } from './lib/safe-name.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 
-export { reviewPrompt };
 import type { Reviewer } from './merge-gate/types.ts';
 
 type Asker = Exclude<Reviewer, 'redteam'>;
@@ -82,8 +81,9 @@ export class TreeRefusal extends Error {}
 
 /** The PR's files as regular blobs only. Nothing from git's attributes or links applies, and nothing is overwritten. */
 export function exportTree(sha: string, source: TreeSource, out: string): void {
-  const write = (path: string, content: () => Buffer | string) => {
-    const name = `\`${safeName(path)}\``;
+  // `original` is the PR's own path, for messages; `path` is where it lands in the bundle.
+  const write = (path: string, original: string, content: () => Buffer | string) => {
+    const name = `\`${safeName(original)}\``;
     const target = resolve(out, path);
     const rel = relative(out, target);
     if (rel === '' || rel === '..' || rel.startsWith('../') || isAbsolute(rel)) {
@@ -130,20 +130,32 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
     if (mode === '120000') {
       write(
         `${safe}.symlink.txt`,
+        path,
         () =>
           `A symlink in the PR at ${sha.slice(0, 7)}, pointing to:\n${source.blob(object).toString('utf8')}\n`,
       );
     } else if (mode === '160000') {
-      write(`${safe}.submodule.txt`, () => `A submodule in the PR, at commit ${object}.\n`);
+      write(`${safe}.submodule.txt`, path, () => `A submodule in the PR, at commit ${object}.\n`);
     } else {
-      write(safe, () => source.blob(object));
+      write(safe, path, () => source.blob(object));
     }
   }
 }
 
 /** The answer from `claude -p --output-format json`; a run that didn't finish is an error, never a pass. */
 export function resultText(json: string): { text: string; sessionId: string | null } {
-  const out = JSON.parse(json) as { subtype?: unknown; result?: unknown; session_id?: unknown };
+  const out = JSON.parse(json) as {
+    subtype?: unknown;
+    is_error?: unknown;
+    result?: unknown;
+    session_id?: unknown;
+  };
+  if (out.is_error === true) {
+    // API errors and usage limits can come back as "success" with is_error set and the reason in result.
+    throw new Error(
+      `the reviewer didn't finish: ${typeof out.result === 'string' ? (out.result.split('\n')[0] ?? '') : 'error'}`,
+    );
+  }
   if (out.subtype !== 'success' || typeof out.result !== 'string') {
     throw new Error(`the reviewer didn't finish (${String(out.subtype)})`);
   }
@@ -284,7 +296,9 @@ function failureReason(error: unknown): string {
   for (const text of [stdout, stderr]) {
     if (typeof text !== 'string' || text.trim() === '') continue;
     try {
-      const out = JSON.parse(text) as { subtype?: unknown };
+      const out = JSON.parse(text) as { subtype?: unknown; is_error?: unknown; result?: unknown };
+      if (out.is_error === true && typeof out.result === 'string')
+        return out.result.split('\n')[0] ?? 'error';
       if (typeof out.subtype === 'string') return out.subtype;
     } catch {
       // not JSON: take its first line

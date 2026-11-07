@@ -9,7 +9,7 @@ import type { Verdict } from './types.ts';
 export function parseVerdict(summary: string): { verdict: Verdict; reason: string } {
   const lines = summary
     .replace(/\r\n/g, '\n')
-    .split('\n')
+    .split(/\r\n?|\n/)
     .map((line) => line.trim())
     .filter((line) => line !== '' && !/^`{3,}\w*$/.test(line));
   const first = lines[0] ?? '';

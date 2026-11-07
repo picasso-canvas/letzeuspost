@@ -405,12 +405,12 @@ describe("refusals name the PR's own path", () => {
       `100644 blob ${'1'.repeat(40)}\t.claude/x`,
       `100644 blob ${'2'.repeat(40)}\t.Claude/x`,
     ].join('\0');
-    expect(() =>
+    expect(() => {
       exportTree(
         SHA,
         { lsTree: () => `${tree}\0`, blob: () => Buffer.from('x') },
         mkdtempSync(join(tmpdir(), 'lzp-orig-')),
-      ),
-    ).toThrow(/^`\.Claude\/x`/);
+      );
+    }).toThrow(/^`\.Claude\/x`/);
   });
 });
