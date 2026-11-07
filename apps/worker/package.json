@@ -5,5 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "@wordpress/is-shallow-equal": "^6.1.0"
   }
 }
