@@ -87,7 +87,8 @@ export const EXCEPTIONS = [
     why: 'mail transport for the worker, unchanged',
   },
   {
-    // Zeus, 2026-11-08 (in chat, recorded on #64): public-domain CSS data under React Email's preview CLI.
+    // Zeus, 2026-11-08: public-domain CSS data under React Email's preview CLI. His answer, recorded:
+    // https://github.com/picasso-canvas/letzeuspost/issues/64#issuecomment-6711074547
     names: ['mdn-data'],
     license: 'CC0-1.0',
     devOnly: true,

@@ -180,21 +180,6 @@ importers:
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.14.0(jiti@2.7.0))
-      '@lzp/auth':
-        specifier: workspace:*
-        version: link:packages/auth
-      '@lzp/config':
-        specifier: workspace:*
-        version: link:config
-      '@lzp/core':
-        specifier: workspace:*
-        version: link:packages/core
-      '@lzp/db':
-        specifier: workspace:*
-        version: link:packages/db
-      '@lzp/storage':
-        specifier: workspace:*
-        version: link:packages/storage
       '@next/eslint-plugin-next':
         specifier: 16.4.5
         version: 16.4.5(eslint@10.14.0(jiti@2.7.0))

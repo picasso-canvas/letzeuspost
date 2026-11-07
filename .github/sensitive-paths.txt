@@ -8,5 +8,5 @@ package.json  **/package.json  pnpm-lock.yaml  pnpm-workspace.yaml  docker/**  .
 **/CLAUDE.md  DESIGN.md  docs/plan/**  tsconfig*.json  **/tsconfig*.json  **/eslint.config.*  **/vitest.config.*  **/playwright.config.*
 scripts/**  .prettierrc*  .prettierignore  .gitleaks.toml  .npmrc  .nvmrc  .mcp.json  .husky/**  .gitattributes  .vscode/**
 .pnpmfile.cjs  osv-scanner.toml  .gitleaksignore
-tests/visual/approved/**    tests/golden/**    tests/lint/**                     packages/render/src/looks/**
+tests/visual/approved/**    tests/golden/**    tests/lint/**    **/next.config.*                     packages/render/src/looks/**
 apps/fetcher/**             packages/storage/src/public-links/**  apps/web/src/app/r/**

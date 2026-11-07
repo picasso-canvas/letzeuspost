@@ -47,7 +47,9 @@ function onImports(check) {
   };
 }
 
-const DB_CLIENTS = ['pg', 'postgres', 'drizzle-orm/node-postgres', 'drizzle-orm/postgres-js'];
+/** Anything that opens a database connection: the pg family (pg-boss and pg-pool included), postgres, and every Drizzle driver subpath. */
+const DB_CLIENT =
+  /^(?:pg|pg-[\w-]+|postgres|@neondatabase\/serverless|@vercel\/postgres|@electric-sql\/pglite)(?:\/|$)|^drizzle-orm\/./;
 const AUTH_DB = '@lzp/db/auth';
 
 /** §13: importing the raw database client outside packages/db is an error; the auth-only export is for packages/auth (Q5). */
@@ -66,7 +68,7 @@ const noRawDbClient = {
     const inDb = file.startsWith('packages/db/');
     const inAuth = file.startsWith('packages/auth/');
     return onImports((source, node) => {
-      const raw = DB_CLIENTS.some((name) => source === name || source.startsWith(`${name}/`));
+      const raw = DB_CLIENT.test(source);
       if (raw && !inDb) context.report({ node, messageId: 'raw', data: { source } });
       const auth = source === AUTH_DB || source.startsWith(`${AUTH_DB}/`);
       if (auth && !inDb && !inAuth) context.report({ node, messageId: 'auth', data: { source } });
@@ -82,7 +84,13 @@ const CACHE_APIS = new Set([
   'unstable_cacheTag',
 ]);
 
-/** Q17: `use cache` and Next's cache components are banned in apps/web for now (they could cache workspace data). */
+/** next/cache by any name that resolves to it (Next has no exports map). @param {unknown} source */
+const isCacheModule = (source) =>
+  typeof source === 'string' && /^next\/cache(?:\.js)?$/.test(source);
+/** Next's internals (next/dist/…) reach the cache APIs by other paths. @param {unknown} source */
+const isDeepNext = (source) => typeof source === 'string' && source.startsWith('next/dist/');
+
+/** Q17 and §13: `use cache` and Next's cache components are banned everywhere (they could cache workspace data). */
 /** @type {RuleModule} */
 const noUseCache = {
   meta: {
@@ -92,7 +100,7 @@ const noUseCache = {
         "'{{directive}}' is banned: a cache shared across requests could leak one workspace's data to another (§13).",
       api: "'{{name}}' from next/cache is banned (§13).",
       module:
-        'next/cache is banned in this form: import only the names you use, and none of its cache APIs (§13).',
+        "This form of next/cache, and Next's internals (next/dist/…), are banned: import only names you use, none of the cache APIs (§13).",
       config: 'cacheComponents is banned (§13).',
     },
     schema: [],
@@ -101,7 +109,7 @@ const noUseCache = {
     /** @param {any} spec */
     const nameOf = (spec) => spec.imported?.name ?? spec.imported?.value ?? spec.local?.name;
     /** @param {any} node */
-    const fromCache = (node) => node.source?.value === 'next/cache';
+    const fromCache = (node) => isCacheModule(node.source?.value);
     return {
       /** @param {any} node */
       ExpressionStatement(node) {
@@ -111,6 +119,7 @@ const noUseCache = {
       },
       /** @param {any} node */
       ImportDeclaration(node) {
+        if (isDeepNext(node.source?.value)) context.report({ node, messageId: 'module' });
         if (!fromCache(node)) return;
         for (const spec of node.specifiers) {
           if (spec.type !== 'ImportSpecifier') context.report({ node: spec, messageId: 'module' });
@@ -133,7 +142,8 @@ const noUseCache = {
       },
       /** @param {any} node */
       ImportExpression(node) {
-        if (node.source?.value === 'next/cache') context.report({ node, messageId: 'module' });
+        if (isCacheModule(node.source?.value) || isDeepNext(node.source?.value))
+          context.report({ node, messageId: 'module' });
       },
       /** @param {any} node */
       CallExpression(node) {
@@ -141,7 +151,7 @@ const noUseCache = {
         if (
           node.callee.type === 'Identifier' &&
           node.callee.name === 'require' &&
-          arg?.value === 'next/cache'
+          (isCacheModule(arg?.value) || isDeepNext(arg?.value))
         )
           context.report({ node, messageId: 'module' });
       },
@@ -196,12 +206,25 @@ const PALETTE = new RegExp(
 const RAW_COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color)\(/i;
 
 /** The class tokens in a string that use a raw palette colour or an arbitrary value. */
+/** The index of the last colon outside brackets (the end of the variants), or -1. */
+function lastVariantColon(/** @type {string} */ token) {
+  let depth = 0;
+  let last = -1;
+  for (let i = 0; i < token.length; i++) {
+    const ch = token[i];
+    if (ch === '[') depth++;
+    else if (ch === ']') depth = Math.max(0, depth - 1);
+    else if (ch === ':' && depth === 0) last = i;
+  }
+  return last;
+}
+
 function badClasses(/** @type {string} */ text) {
   return text
     .split(/\s+/)
     .filter((token) => token !== '')
     .filter((token) => {
-      const utility = token.slice(token.lastIndexOf(':') + 1).replace(/^!|!$/g, '');
+      const utility = token.slice(lastVariantColon(token) + 1).replace(/^!|!$/g, '');
       return /\[.+\]/.test(utility) || PALETTE.test(utility);
     });
 }
@@ -346,6 +369,8 @@ const interOnly = {
         }
       } else if (source === 'next/font/local') {
         context.report({ node, messageId: 'local' });
+      } else if (source === 'geist' || source.startsWith('geist/')) {
+        context.report({ node, messageId: 'font', data: { font: 'geist' } });
       } else {
         const match = /^@fontsource(?:-variable)?\/([^/]+)/.exec(source);
         if (match && match[1] !== 'inter')

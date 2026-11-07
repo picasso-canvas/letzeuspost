@@ -15,6 +15,7 @@ export const BUILDER_PROTECTED = [
   'tests/visual/approved/**',
   'tests/golden/**',
   'tests/lint/**',
+  '**/next.config.*',
   '**/CLAUDE.md',
   '**/CLAUDE.local.md',
   '**/DESIGN.md',
