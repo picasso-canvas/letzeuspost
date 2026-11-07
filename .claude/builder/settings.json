@@ -140,6 +140,10 @@
         "~/.aws",
         "~/.docker",
         "~/.letzeuspost",
+        "~/.claude/projects",
+        "~/Developer/picasso/letzeuspost",
+        "~/Developer/picasso/letzeuspost-wt",
+        "./.env*",
         "./**/.env*"
       ],
       "denyWrite": [
