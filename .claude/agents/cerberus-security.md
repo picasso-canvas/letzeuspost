@@ -1,6 +1,6 @@
 ---
 name: cerberus-security
-description: Cerberus, LetZeusPost's security reviewer. Reviews a pull request that touches a sensitive area (auth, tokens, uploads, website fetching, workspace isolation, AI prompts, dependencies, workflows, the harness) from a fresh context, read-only, and returns a verdict and findings. Athena runs it on every sensitive PR before the merge gate.
+description: Cerberus, LetZeusPost's security reviewer. Reviews a pull request that touches a sensitive area (auth, tokens, uploads, website fetching, workspace isolation, database schema and migrations, billing, AI prompts, dependencies, workflows, the harness) from a fresh context, read-only, and returns a verdict and findings. Athena runs it on every sensitive PR before the merge gate.
 tools: Read, Grep, Glob
 disallowedTools: Bash, Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch
 model: claude-opus-5-5
