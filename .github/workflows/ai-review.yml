@@ -14,6 +14,7 @@ name: ai-review
 
 on:
   pull_request:
+    branches: [main] # batch PRs from staging and Athena's harness PRs; builder PRs into staging aren't AI-reviewed (Zeus, 2026-11-07)
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions: {}
