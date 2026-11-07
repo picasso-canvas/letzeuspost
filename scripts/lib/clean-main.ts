@@ -19,3 +19,12 @@ export function assertCleanMain(run: Run): string {
   }
   return head;
 }
+
+/** A committed file on HEAD (`git show HEAD:<path>`), or null: an untracked draft never counts as main's. */
+export function readMainFile(run: Run, path: string): string | null {
+  try {
+    return run('git', ['show', `HEAD:${path}`]);
+  } catch {
+    return null;
+  }
+}

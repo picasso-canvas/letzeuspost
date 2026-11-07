@@ -44,9 +44,11 @@ describe('reviewPrompt', () => {
 
 describe('resultText', () => {
   it('takes the result from claude -p --output-format json, and refuses anything else', () => {
-    expect(resultText('{"type":"result","subtype":"success","result":"VERDICT: pass"}')).toBe(
-      'VERDICT: pass',
-    );
+    expect(
+      resultText(
+        '{"type":"result","subtype":"success","result":"VERDICT: pass","session_id":"s-9"}',
+      ),
+    ).toEqual({ text: 'VERDICT: pass', sessionId: 's-9' });
     expect(() => resultText('{"type":"result","subtype":"error_max_turns"}')).toThrow(
       /error_max_turns/,
     );

@@ -127,22 +127,22 @@ describe('exportTree collisions', () => {
       `120000 blob ${'1'.repeat(40)}\tdocs/x.md`,
       `100644 blob ${'2'.repeat(40)}\tdocs/x.md.symlink.txt`,
     ];
-    expect(() =>
-      exportTree(SHA, src(fakeStub, {}), mkdtempSync(join(tmpdir(), 'lzp-c1-'))),
-    ).toThrow(/already/);
+    expect(() => {
+      exportTree(SHA, src(fakeStub, {}), mkdtempSync(join(tmpdir(), 'lzp-c1-')));
+    }).toThrow(/already/);
     const fakeRename = [
       `100644 blob ${'3'.repeat(40)}\tCLAUDE.md`,
       `100644 blob ${'4'.repeat(40)}\tCLAUDE.md.txt`,
     ];
-    expect(() =>
-      exportTree(SHA, src(fakeRename, {}), mkdtempSync(join(tmpdir(), 'lzp-c2-'))),
-    ).toThrow(/already/);
+    expect(() => {
+      exportTree(SHA, src(fakeRename, {}), mkdtempSync(join(tmpdir(), 'lzp-c2-')));
+    }).toThrow(/already/);
   });
 
   it('refuses an ls-tree entry it cannot read, instead of skipping it', () => {
-    expect(() =>
-      exportTree(SHA, src(['100644 blob abc\tx.ts'], {}), mkdtempSync(join(tmpdir(), 'lzp-c3-'))),
-    ).toThrow(/ls-tree/);
+    expect(() => {
+      exportTree(SHA, src(['100644 blob abc\tx.ts'], {}), mkdtempSync(join(tmpdir(), 'lzp-c3-')));
+    }).toThrow(/ls-tree/);
   });
 });
 
