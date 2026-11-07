@@ -56,6 +56,9 @@ From `skills/security-audit/`:
      dependencies and SHA-pinned actions;
    - `WEB-PROTOCOL-AND-AUTH.md` "A missing header, cookie attribute, MFA prompt, or rate limit is not a finding alone
      …": overridden for rate limits only.
+7. The "Operating modes" note names two more lines that give way to hardening the plan or the loading agent requires:
+   `SKILL.md` "Do not elevate a missing best practice … into a security finding" and `ATTACK-CLASSES.md` "A flag is not
+   a finding" (#56, after Cerberus on #53). Neither file's line is edited; the note settles them.
 
 ## Review notes
 
