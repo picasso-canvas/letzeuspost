@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRawDiff, shipRefusals } from './protected.ts';
+import { historyRefusals, parseRawDiff, parseRevList, shipRefusals } from './protected.ts';
 
 const file = (path: string, mode = '100644') => ({ mode, path });
 
@@ -66,7 +66,7 @@ describe('shipRefusals: unsafe path parts', () => {
 });
 
 describe('shipRefusals: names macOS or Windows treat as .git', () => {
-  it('refuses .git hidden by ignorable characters, a trailing dot or space, and decomposed forms', () => {
+  it('refuses .git hidden by ignorable characters or a trailing dot or space', () => {
     for (const path of [
       '.g\u200cit/config',
       'a/.GIT\u200d/hooks',
@@ -79,5 +79,64 @@ describe('shipRefusals: names macOS or Windows treat as .git', () => {
       );
     }
     expect(shipRefusals([{ mode: '100644', path: 'src/.github-notes.md' }])).toEqual([]);
+  });
+});
+
+describe('shipRefusals: Windows names for .git', () => {
+  it('refuses the 8.3 short name and NTFS stream forms', () => {
+    for (const path of [
+      'GIT~1/config',
+      'a/git~1/hooks/x',
+      '.git::$INDEX_ALLOCATION/config',
+      '.GIT:$DATA',
+    ]) {
+      expect(shipRefusals([{ mode: '100644', path }]), path).toContain(`unsafe path: ${path}`);
+    }
+    expect(shipRefusals([{ mode: '100644', path: 'docs/git~2.md' }])).toEqual([]);
+  });
+});
+
+describe('parseRevList', () => {
+  it('reads each commit with its parents, oldest first', () => {
+    const a = 'a'.repeat(40);
+    const b = 'b'.repeat(40);
+    const c = 'c'.repeat(40);
+    expect(parseRevList(`${b} ${a}\n${c} ${b} ${a}\n`)).toEqual([
+      { sha: b, parents: [a] },
+      { sha: c, parents: [b, a] },
+    ]);
+  });
+});
+
+describe('historyRefusals', () => {
+  it('refuses a protected path, symlink or merge in any commit, even one a later commit undid', () => {
+    const sha = (ch: string) => ch.repeat(40);
+    expect(
+      historyRefusals([
+        {
+          sha: sha('1'),
+          parents: [sha('0')],
+          changes: [{ mode: '100644', path: '.github/x.yml' }],
+        },
+        {
+          sha: sha('2'),
+          parents: [sha('1')],
+          changes: [{ mode: '000000', path: '.github/x.yml' }],
+        },
+        { sha: sha('3'), parents: [sha('2')], changes: [{ mode: '120000', path: 'src/link' }] },
+        { sha: sha('4'), parents: [sha('3'), sha('9')], changes: [] },
+        { sha: sha('5'), parents: [sha('4')], changes: [] },
+      ]),
+    ).toEqual([
+      '1111111: protected path: .github/x.yml',
+      '2222222: protected path: .github/x.yml',
+      '3333333: symlink: src/link',
+      '4444444: a merge commit (builders commit in a straight line)',
+    ]);
+    expect(
+      historyRefusals([
+        { sha: sha('1'), parents: [sha('0')], changes: [{ mode: '100644', path: 'src/a.ts' }] },
+      ]),
+    ).toEqual([]);
   });
 });
