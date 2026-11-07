@@ -32,6 +32,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     isDraft: false,
     baseRef: 'main',
     headRef: '42-something',
+    crossRepo: false,
     headSha: SHA,
     title: '[H0] Something',
     mergeable: 'MERGEABLE',
@@ -39,6 +40,8 @@ function facts(over: Partial<Facts> = {}): Facts {
     body: BODY,
     closingIssues: [{ number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 }],
     changedFiles: ['packages/ui/src/button.ts'],
+    changes: [{ mode: '100644', path: 'packages/ui/src/button.ts' }],
+    ungatedStaging: [],
     labels: ['routine'],
     checkRuns: [
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
@@ -414,5 +417,34 @@ describe('evaluate: the batch PR from staging into main', () => {
 describe('evaluate: targets', () => {
   it('refuses any base but main and staging', () => {
     expect(failedIds(facts({ baseRef: 'release' }))).toContain(2);
+  });
+});
+
+describe('evaluate: round 2 of the #63 review', () => {
+  it("refuses a batch while staging holds a commit the gate didn't merge or sync", () => {
+    const batchBody =
+      'Closes #42\n\n**Done when**\n- [x] #42 (PR #50): merged into staging through the gate';
+    const batch = facts({
+      headRef: 'staging',
+      body: batchBody,
+      reviews: [review('argus', { bodyHash: bodyHash(batchBody) })],
+      ungatedStaging: ['d'.repeat(40)],
+    });
+    expect(evaluate(batch).items.find((i) => i.id === 2)?.detail).toMatch(
+      /dddddd.*didn't come through the gate/,
+    );
+    expect(failedIds({ ...batch, ungatedStaging: [] })).toEqual([]);
+  });
+
+  it('refuses a builder-protected path or a symlink into staging, not only harness paths', () => {
+    const toStaging = (path: string, mode = '100644') =>
+      facts({ baseRef: 'staging', reviews: [], changedFiles: [path], changes: [{ mode, path }] });
+    expect(failedIds(toStaging('packages/web/tsconfig.json'))).toEqual([7]);
+    expect(failedIds(toStaging('apps/web/src/link', '120000'))).toEqual([7]);
+    expect(failedIds(toStaging('apps/web/src/page.tsx'))).toEqual([]);
+  });
+
+  it('never treats a PR from another repository as the batch', () => {
+    expect(failedIds(facts({ headRef: 'staging', crossRepo: true }))).toContain(2);
   });
 });

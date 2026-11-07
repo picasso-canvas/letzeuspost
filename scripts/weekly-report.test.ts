@@ -182,3 +182,18 @@ describe('renderReport: staging (Zeus, 2026-11-07)', () => {
     );
   });
 });
+
+describe('auditMain: staging merges (#63 review)', () => {
+  it("doesn't report a merge into staging as missing from main", () => {
+    const log: LogEntry[] = [
+      {
+        at: '2026-11-07T10:00:00Z',
+        pr: 70,
+        result: 'merge-commit',
+        base: 'staging',
+        mergeCommit: 's'.repeat(40),
+      },
+    ];
+    expect(auditMain([commit('m'.repeat(40), '2026-11-07T09:00:00Z', 'x')], log)).toEqual([]);
+  });
+});
