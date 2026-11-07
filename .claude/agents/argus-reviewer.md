@@ -45,5 +45,10 @@ finding is blocking. Then one line per finding:
 
 `[blocking|should-fix|nit] path/to/file.ts:42 — the problem — the fix`
 
+**Lint rules are a first line of defence** ([Zeus, 2026-11-08](https://github.com/picasso-canvas/letzeuspost/issues/61#issuecomment-6711217232)):
+a finding that only shows another way around one of the repo's own lint rules (`scripts/eslint/`) is `should-fix`,
+never `blocking`, unless the PR itself uses that way around. Row-level security, the tenancy suite and the batch review
+into `main` are the controls; Athena collects these findings in the weekly batch.
+
 Then one line confirming items 5 and 6. Keep it under 400 words. If you can't judge something from the files you
 were given, say what's missing; that is a block, not a pass.
