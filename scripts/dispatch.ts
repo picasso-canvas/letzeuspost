@@ -30,7 +30,8 @@ import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
-import { STATE_DIR } from './merge-gate/reviews.ts';
+import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
+import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
 import { BUILDERS_DIR, dispatchRecordPath, parseDispatchRecord, takenPath } from './ship.ts';
 
 /** What a builder's environment may carry over from Athena's: enough to run Claude Code and tools, no tokens. */
@@ -273,6 +274,35 @@ async function main(argv: string[]): Promise<number> {
     console.error(
       "Refused: staging doesn't contain main (the merge gate merges main into staging after each merge into main; settle that first).",
     );
+    return 1;
+  }
+  // staging has no branch rules (free plan): it may differ from main only by gated builder work, or a direct push
+  // could put a hook or an agent file in every builder's session.
+  const stagingIssues = stagingProblems(
+    parseRawDiff(
+      run('git', [
+        'diff',
+        '--raw',
+        '-z',
+        '--no-renames',
+        '--no-abbrev',
+        'origin/main',
+        'origin/staging',
+      ]),
+    ),
+    ungatedStagingCommits(
+      run('git', ['log', '--first-parent', '--format=%H', 'origin/main..origin/staging'])
+        .split('\n')
+        .filter((line) => line !== ''),
+      readMergeLog().map((e) => ({
+        result: String(e.result),
+        ...(typeof e.base === 'string' ? { base: e.base } : {}),
+        ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
+      })),
+    ),
+  );
+  if (stagingIssues.length > 0) {
+    console.error(`Refused: staging isn't safe to build on:\n- ${stagingIssues.join('\n- ')}`);
     return 1;
   }
   // A review round: the branch must contain current staging and must not change any protected path (its .claude/

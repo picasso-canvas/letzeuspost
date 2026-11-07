@@ -125,6 +125,12 @@ export function evaluate(f: Facts): GateResult {
   if (f.behindBy !== 0)
     linked.push(`branch is behind ${f.baseRef} by ${String(f.behindBy ?? 'unknown')}`);
   if (f.changedFiles.length === 0) linked.push('no changed files');
+  if (kind === 'batch') {
+    for (const issue of f.closingIssues) {
+      if (!f.gatedIssues.includes(issue.number))
+        linked.push(`#${String(issue.number)} wasn't merged into staging through the gate`);
+    }
+  }
   if (kind === 'batch' && f.ungatedStaging.length > 0) {
     linked.push(
       `staging holds commits that didn't come through the gate: ${f.ungatedStaging.map((sha) => sha.slice(0, 7)).join(', ')}`,

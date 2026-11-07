@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { REPO } from './merge-gate/collect.ts';
+import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 
 export const BATCH_TASKS = 5;
@@ -123,16 +124,13 @@ function main(argv: string[]): number {
   if (!argv.includes('--open') || !due) return 0;
 
   const gated = gatedIntoStaging();
+  // GitHub links no issues for PRs into staging: each task's issue comes from its branch name (dispatch's record).
   const tasks: BatchTask[] = prs.map((pr) => {
     const view = JSON.parse(
-      run('gh', ['pr', 'view', String(pr), '-R', REPO, '--json', 'title,closingIssuesReferences']),
-    ) as { title: string; closingIssuesReferences: { number: number }[] };
-    return {
-      pr,
-      title: view.title,
-      issues: view.closingIssuesReferences.map((i) => i.number),
-      gated: gated.has(pr),
-    };
+      run('gh', ['pr', 'view', String(pr), '-R', REPO, '--json', 'title,headRefName']),
+    ) as { title: string; headRefName: string };
+    const issue = issueFromBranch(view.headRefName);
+    return { pr, title: view.title, issues: issue === null ? [] : [issue], gated: gated.has(pr) };
   });
   const body = batchBody(tasks);
   const open = JSON.parse(

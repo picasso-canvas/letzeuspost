@@ -109,7 +109,11 @@ harness or builder-protected path, and is refused while `staging` holds a first-
 `main` with a merge commit, so `main` then contains its task commits and the next batch counts only new ones; every
 other PR is squash-merged. A PR from another repository is never a batch. Builder-protected work of Athena's goes
 straight into `main`. The free plan has no branch rules, so nothing technical stops a direct push to `staging`; the
-batch gate and the weekly audit (which walks `staging` too and freezes on a commit the gate didn't make) catch one.
+batch gate and the weekly audit (which walks `staging` too and freezes on a commit the gate didn't make) catch one. Dispatch
+also refuses to start a builder while `staging` differs from `main` on a protected path or holds a commit the gate
+didn't make. GitHub links "Closes #n" only for PRs into `main`, so a PR into `staging` is tied to its task by its
+branch name (`<issue>-<slug>`, from dispatch's record), and a batch may close only issues the merge log shows were
+merged into `staging`.
 
 **What the gate trusts.** Builders can't write to GitHub, but their words reach it: the PR text is the builder's
 `.lzp/pr.md`. So the gate never takes a comment, tick or PR text as proof that something was checked, and it works the

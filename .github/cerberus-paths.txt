@@ -6,3 +6,5 @@ packages/auth/**            packages/core/src/permissions/**    packages/core/sr
 packages/db/**              tests/tenancy/**                    config/plans.ts
 packages/storage/**         apps/fetcher/**                     apps/web/src/app/r/**
 packages/ai/prompts/**      packages/ai/policy/**               config/models.ts            config/providers.ts
+apps/web/src/middleware.ts  apps/web/src/app/**/route.ts        package.json                **/package.json
+pnpm-lock.yaml

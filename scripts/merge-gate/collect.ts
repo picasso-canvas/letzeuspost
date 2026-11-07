@@ -1,7 +1,7 @@
 import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
-import { ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
+import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
 import { parseRawDiff } from '../lib/protected.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
@@ -179,6 +179,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   const changes = parseRawDiff(
     deps.git(['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/${base}...${sha}`]),
   );
+  const mergeLog = deps.readMergeLog?.() ?? [];
   // A batch: every commit on staging must have come through the gate (merged into staging, or main synced into it).
   let ungatedStaging: string[] = [];
   if (base === 'main' && view.headRefName === 'staging' && !view.isCrossRepository) {
@@ -193,7 +194,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       .git(['log', '--first-parent', '--format=%H', 'origin/main..origin/staging'])
       .split('\n')
       .filter((line) => line !== '');
-    ungatedStaging = ungatedStagingCommits(shas, deps.readMergeLog?.() ?? []);
+    ungatedStaging = ungatedStagingCommits(shas, mergeLog);
   }
 
   let behindBy: number | null;
@@ -205,7 +206,23 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   }
 
   const issuePrefix = `https://github.com/${repo}/issues/`;
-  const closingIssues: ClosingIssue[] = view.closingIssuesReferences.map(({ number, url }) => {
+  // GitHub links no issues for a PR into staging: the task issue comes from the branch name dispatch gave it.
+  const stagingIssue = base === 'staging' ? issueFromBranch(view.headRefName) : null;
+  const references =
+    base === 'staging'
+      ? stagingIssue === null
+        ? []
+        : [
+            {
+              number: stagingIssue,
+              url: `https://github.com/${repo}/issues/${String(stagingIssue)}`,
+            },
+          ]
+      : view.closingIssuesReferences;
+  const gatedIssues = mergeLog
+    .filter((e) => e.result === 'merged' && e.base === 'staging' && typeof e.issue === 'number')
+    .map((e) => e.issue as number);
+  const closingIssues: ClosingIssue[] = references.map(({ number, url }) => {
     if (!url.startsWith(issuePrefix))
       return { number, inRepo: false, labels: [], doneWhenBoxes: 0 };
     const issue = JSON.parse(
@@ -256,6 +273,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     changedFiles: [...new Set(changedFiles)],
     changes,
     ungatedStaging,
+    gatedIssues,
     labels: view.labels.map((label) => label.name),
     checkRuns,
     statuses,

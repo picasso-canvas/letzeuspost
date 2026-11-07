@@ -238,7 +238,11 @@ function main(argv: string[]): number {
   const log = readJsonLines<LogEntry>(join(STATE_DIR, 'merges.jsonl'));
   const unknown = auditMain(commits, log);
   // Nobody pushes to staging either (no branch rules on the free plan): a commit there the gate didn't make counts too.
+  // Only a missing staging branch skips this; any other failure is reported as a finding (and freezes).
+  const hasStaging =
+    run('git', ['ls-remote', '--heads', 'origin', 'refs/heads/staging']).trim() !== '';
   try {
+    if (!hasStaging) throw new Error('no staging');
     run('git', ['fetch', '--quiet', 'origin', '+refs/heads/staging:refs/remotes/origin/staging']);
     const onStaging = run('git', [
       'log',
@@ -259,8 +263,14 @@ function main(argv: string[]): number {
       ),
     );
     unknown.push(...onStaging.filter((c) => ungated.has(c.sha)));
-  } catch {
-    // no staging branch yet
+  } catch (error) {
+    if (hasStaging) {
+      unknown.push({
+        sha: '',
+        at: new Date().toISOString(),
+        subject: `couldn't audit staging: ${error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error)}`,
+      });
+    }
   }
   let froze = false;
   if (unknown.length > 0 && args.freeze) {

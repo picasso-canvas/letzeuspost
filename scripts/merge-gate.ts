@@ -20,7 +20,7 @@ import {
   readReviews,
   STATE_DIR,
 } from './merge-gate/reviews.ts';
-import type { StagingLogEntry } from './merge-gate/staging.ts';
+import { issueFromBranch, mergeArgs, type StagingLogEntry } from './merge-gate/staging.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -37,8 +37,9 @@ function run(cmd: string, args: string[]): string {
  * always start from main's harness. A conflict is reported for Athena to settle; dispatch refuses until staging
  * contains main again.
  */
-function syncStaging(): void {
+function syncStaging(): boolean {
   try {
+    // 201 with the new merge commit, or 204 with no body when staging already contains main.
     const out = run('gh', [
       'api',
       '-X',
@@ -50,21 +51,23 @@ function syncStaging(): void {
       'head=main',
       '-f',
       'commit_message=Merge main into staging (merge gate)',
-      '--jq',
-      '.sha // ""',
     ]).trim();
+    const parsed = out === '' ? {} : (JSON.parse(out) as { sha?: unknown });
+    const sha = typeof parsed.sha === 'string' ? parsed.sha : '';
     console.log(
-      out === ''
+      sha === ''
         ? 'staging already contains main.'
-        : `Merged main into staging as ${out.slice(0, 7)}.`,
+        : `Merged main into staging as ${sha.slice(0, 7)}.`,
     );
-    logMerge({ at: new Date().toISOString(), result: 'staging-sync', mergeCommit: out });
+    logMerge({ at: new Date().toISOString(), result: 'staging-sync', mergeCommit: sha });
+    return true;
   } catch (error) {
     const stderr = (error as { stderr?: unknown }).stderr;
     console.error(
       `Couldn't merge main into staging: ${typeof stderr === 'string' ? stderr.trim() : 'unknown'}. Settle it before dispatching builders.`,
     );
     logMerge({ at: new Date().toISOString(), result: 'staging-sync-failed' });
+    return false;
   }
 }
 
@@ -82,6 +85,7 @@ function main(argv: string[], pr: number): number {
         result: String(e.result),
         ...(typeof e.base === 'string' ? { base: e.base } : {}),
         ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
+        ...(typeof e.issue === 'number' ? { issue: e.issue } : {}),
       })) satisfies StagingLogEntry[],
     // The gate re-verifies every runner-made review against Claude Code's own transcript.
     readTranscript: (sessionId) => {
@@ -104,6 +108,8 @@ function main(argv: string[], pr: number): number {
     tier: result.tier,
     base: facts.baseRef,
     kind: kindOf(facts),
+    // A merge into staging records its task issue (from the branch name): a batch may close only these.
+    ...(facts.baseRef === 'staging' ? { issue: issueFromBranch(facts.headRef) } : {}),
     // A review made before an update from main says where it came from, for Zeus's audit.
     reviewers: facts.reviews.map(
       (r) =>
@@ -143,7 +149,7 @@ function main(argv: string[], pr: number): number {
     // A batch merges with a merge commit, so main contains staging's task commits and the next batch counts only new
     // ones; the rest are squashed. Builder and harness branches go once merged; staging (the batch's head) stays.
     // The repo's own auto-delete is off, or it would delete staging after a batch.
-    ...(kindOf(facts) === 'batch' ? ['--merge'] : ['--squash', '--delete-branch']),
+    ...mergeArgs(kindOf(facts) ?? 'main'),
     '--match-head-commit',
     facts.headSha,
     '--subject',
@@ -152,7 +158,8 @@ function main(argv: string[], pr: number): number {
     `Merged through the merge gate (tier ${result.tier}; reviews ${entry.reviewers.join(', ')}).`,
   ]);
   logMerge({ ...entry, result: 'merged' });
-  if (facts.baseRef === 'main') syncStaging();
+  // The merge stands either way; a failed sync makes the gate exit non-zero so it gets settled before dispatch.
+  const synced = facts.baseRef !== 'main' || syncStaging();
   try {
     const merged = run('gh', [
       'pr',
@@ -179,7 +186,7 @@ function main(argv: string[], pr: number): number {
       'Merged (the merge commit could not be read back; the weekly audit will match it by PR).',
     );
   }
-  return 0;
+  return synced ? 0 : 1;
 }
 
 const argv = process.argv.slice(2);

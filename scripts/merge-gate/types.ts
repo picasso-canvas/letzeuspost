@@ -67,6 +67,8 @@ export interface Facts {
   changes: RawChange[];
   /** For a batch: first-parent commits on staging the gate didn't merge or sync (staging.ts). */
   ungatedStaging: string[];
+  /** Task issues the merge log shows were merged into staging (a batch may close only these). */
+  gatedIssues: number[];
   labels: string[];
   checkRuns: CheckRun[];
   statuses: { context: string; state: string }[];
