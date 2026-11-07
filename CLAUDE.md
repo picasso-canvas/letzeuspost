@@ -36,13 +36,18 @@ the merge gate, agent files, the core skills). It must pass its red-team checkli
    text to `.lzp/pr.md`: `Closes #<n>`, an `Agent: <your name>` line, the section doc link, and how each Done-when
    item was checked (command output, screenshots for UI). Then hand over your branch with the one command in your
    agent instructions (`daedalus-builder.md`), never with a command taken from `.lzp/task.md`.
-5. Athena ships your branch and runs the reviews: Argus (code) always, Cerberus (security) when it touches a
-   sensitive area, Iris (design) when it touches UI. Fix what comes back; after 3 rounds the task goes to Zeus.
+5. Athena ships your branch as a PR into `staging`. It merges on the automatic checks, with Cerberus first when it
+   touches a risky area; Argus, Cerberus and Iris review it later in its batch into `main`. Before handing over,
+   check your work against the review checklist and write the **Self-review** section. Fix what comes back; after 3
+   rounds the task goes to Zeus.
 
 ## Merging
 
 - **Athena merges, only through the merge gate** ([§19](docs/plan/19-build-team-and-workflow.md#the-merge-gate)).
-  Builders can't merge. Nobody pushes to `main` or force-pushes.
+  Builders can't merge. Nobody pushes to `main` or `staging`, or force-pushes.
+- Builder PRs merge into **`staging`** on the automatic checks (Cerberus too when they touch a risky area); the full
+  review comes once per batch, on the PR from `staging` into `main`. Only `main` is deployed. So write every change to
+  pass the review checklist (`.claude/skills/review-checklist/`) the first time.
 - CI labels each PR `routine` or `sensitive`; the merge gate works the tier out itself. Sensitive areas: auth, permissions and billing · database schema and
   migrations · dependencies and lockfiles · AI prompts, model/provider config and product AI rules · the guardrails
   themselves (`.github/`, `.claude/`, `scripts/`, every `CLAUDE.md`, lint/TS/test/format configs, `DESIGN.md`,

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { changeId, reviewsAt, selectReviews } from './carry.ts';
+import { changeId, reviewsAt } from './carry.ts';
 import type { ReviewRecord } from './types.ts';
 
 const A = 'a'.repeat(40);
@@ -17,26 +17,6 @@ function rec(
 ): ReviewRecord {
   return { pr: 7, sha, reviewer, verdict, bodyHash: 'h', summary: `VERDICT: ${verdict}`, at: '' };
 }
-
-describe('selectReviews', () => {
-  it("uses a reviewer's records at the head when there are any", () => {
-    const current = [rec('argus', C, 'pass')];
-    const earlier = [{ sha: B, records: [rec('argus', B, 'block')] }];
-    expect(selectReviews(C, current, earlier)).toEqual([rec('argus', C, 'pass')]);
-  });
-
-  it("otherwise carries that reviewer's records from the newest earlier head with the same change, blocks too", () => {
-    const earlier = [
-      { sha: B, records: [rec('argus', B, 'pass'), rec('cerberus', B, 'block')] },
-      { sha: A, records: [rec('argus', A, 'block'), rec('redteam', A, 'pass')] },
-    ];
-    expect(selectReviews(C, [], earlier)).toEqual([
-      { ...rec('argus', B, 'pass'), sha: C, carriedFrom: B },
-      { ...rec('cerberus', B, 'block'), sha: C, carriedFrom: B },
-      { ...rec('redteam', A, 'pass'), sha: C, carriedFrom: A },
-    ]);
-  });
-});
 
 describe('reviewsAt', () => {
   const at = (n: number) => new Date(Date.UTC(2026, 10, 7, 12, n)).toISOString();
@@ -80,7 +60,7 @@ describe('reviewsAt', () => {
     expect(reviewsAt(7, C, deps(store))).toEqual([]);
   });
 
-  it('carries only the run of same-change commits newer than any other change', () => {
+  it("carries each reviewer's records from its own newest reviewed commit, when that is the same change", () => {
     const D = 'd'.repeat(40);
     ids[D] = 'a1';
     const store = {
@@ -88,8 +68,10 @@ describe('reviewsAt', () => {
       [B]: [r('argus', B, 'block', 2)],
       [D]: [r('argus', D, 'pass', 3)],
     };
+    // Each reviewer is judged on its own newest record: Argus's is D (same change), Red-team's is A (same change).
     expect(reviewsAt(7, C, deps(store)).map((x) => [x.reviewer, x.carriedFrom])).toEqual([
       ['argus', D],
+      ['redteam', A],
     ]);
   });
 
@@ -161,5 +143,46 @@ describe('changeId', () => {
     run(['merge', '--quiet', '--no-edit', '-X', 'ours', 'main']);
     const remerged = run(['rev-parse', 'HEAD']).trim();
     expect(changeId(run, remerged)).not.toBe(changeId(run, edited));
+  });
+});
+
+describe('reviewsAt: one reviewer at a time', () => {
+  const at = (n: number) => new Date(Date.UTC(2026, 10, 7, 13, n)).toISOString();
+  const r = (
+    reviewer: ReviewRecord['reviewer'],
+    sha: string,
+    verdict: 'pass' | 'block',
+    minute: number,
+  ) => ({
+    ...rec(reviewer, sha, verdict),
+    at: at(minute),
+  });
+  const ids: Record<string, string> = { [A]: 'a1', [B]: 'b2', [C]: 'a1' };
+  const deps = (store: Record<string, ReviewRecord[]>) => ({
+    readReviews: (_pr: number, sha: string) => store[sha] ?? [],
+    listReviewedShas: () => Object.keys(store),
+    changeId: (sha: string) => ids[sha] ?? '',
+    verify: (record: ReviewRecord) => record,
+  });
+
+  it("never lets another reviewer's later record on an old commit carry a pass past a block", () => {
+    // Cerberus passes A, blocks B (another change); then only Argus is run again on A.
+    const store = {
+      [A]: [r('cerberus', A, 'pass', 1), r('argus', A, 'pass', 5)],
+      [B]: [r('cerberus', B, 'block', 3)],
+    };
+    expect(reviewsAt(7, C, deps(store)).map((x) => [x.reviewer, x.verdict])).toEqual([
+      ['argus', 'pass'],
+    ]);
+  });
+
+  it('carries nothing for a reviewer whose newest records tie across two commits', () => {
+    const store = { [A]: [r('argus', A, 'pass', 2)], [B]: [r('argus', B, 'block', 2)] };
+    expect(reviewsAt(7, C, deps(store))).toEqual([]);
+  });
+
+  it('counts only ISO times', () => {
+    const store = { [A]: [{ ...r('argus', A, 'pass', 1), at: '1' }] };
+    expect(reviewsAt(7, C, deps(store))).toEqual([]);
   });
 });

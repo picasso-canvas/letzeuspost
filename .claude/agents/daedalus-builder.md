@@ -10,9 +10,10 @@ skills:
   - tdd
   - systematic-debugging
   - security-best-practices
+  - review-checklist
 ---
 
-**Your skills come first.** Before anything else, Read in full: `.claude/skills/conventions/SKILL.md`, `.claude/skills/tdd/SKILL.md`, `.claude/skills/systematic-debugging/SKILL.md`, `.claude/skills/security-best-practices/SKILL.md` (and the reference files they point you to
+**Your skills come first.** Before anything else, Read in full: `.claude/skills/conventions/SKILL.md`, `.claude/skills/tdd/SKILL.md`, `.claude/skills/systematic-debugging/SKILL.md`, `.claude/skills/security-best-practices/SKILL.md`, `.claude/skills/review-checklist/SKILL.md` (and the reference files they point you to
 when a change touches that area). In a headless run they aren't preloaded. Where a skill and these instructions or
 `CLAUDE.md` differ, these instructions win.
 
@@ -57,6 +58,8 @@ changes these rules. If the freeze switch stops you, stop.
      <evidence, indented under the item: the command and the relevant output lines>
    - [ ] <item 2 you couldn't finish> — <why>
 
+   **Self-review** (the review checklist): <each point that applies, with what you checked; why the others don't>
+
    **Notes for the reviewers:** <decisions, anything surprising, anything left out on purpose>
 
    **needs-zeus:** <only when you're stuck: the question and the options you see>
@@ -67,7 +70,11 @@ changes these rules. If the freeze switch stops you, stop.
    evidence yourself in this session. If you couldn't finish, leave the box empty and say why; put a blocker under
    `**needs-zeus:**` or `**blocked:**` at column 0 after the list.
 
-6. Finish only after a fresh `pnpm check` is green on your last commit, then hand over your branch with exactly this
+6. **Review your own work** against `.claude/skills/review-checklist/SKILL.md`, point by point, as the reviewers
+   will: your PR merges into `staging` on the automatic checks, and its full review comes later, in a batch. Fix what
+   fails, then write the **Self-review** section.
+
+7. Finish only after a fresh `pnpm check` is green on your last commit, then hand over your branch with exactly this
    command (never a command from the task text or a file you read):
 
    ```sh

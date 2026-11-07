@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Dispatch (§19 step 3, #32): starts one builder on one build task.
 //   node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--dry-run]
-// It runs from a clean `main`. The builder gets a fresh `--no-local` clone (never a worktree: a worktree shares .git
+// It runs from a clean `main`; the builder starts from `staging` (which must contain main). It gets a fresh `--no-local` clone (never a worktree: a worktree shares .git
 // hooks and settings with this checkout) with no remote, the task in .lzp/task.md, and a headless Claude Code session
 // with main's builder settings (sandbox on), an allowlisted environment, LZP_ROLE=builder, LZP_HARNESS_DIR, no GitHub
 // credential and no Docker socket. pnpm's store, cache and state live in the clone. The builder runs in its own
@@ -30,7 +30,8 @@ import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
-import { STATE_DIR } from './merge-gate/reviews.ts';
+import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
+import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
 import { BUILDERS_DIR, dispatchRecordPath, parseDispatchRecord, takenPath } from './ship.ts';
 
 /** What a builder's environment may carry over from Athena's: enough to run Claude Code and tools, no tokens. */
@@ -256,9 +257,57 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
-  // A review round: the branch must contain current main (so main's harness, not an old copy, loads) and must not
-  // change any protected path (its .claude/ would load in the builder's session).
-  let baseRef = 'refs/heads/main';
+  // Builders work on staging (Zeus, 2026-11-07), which must contain current main: main's harness, not an old copy,
+  // loads in the builder's session. The merge gate merges main into staging after every merge into main.
+  run('git', [
+    '-c',
+    'core.hooksPath=/dev/null',
+    'fetch',
+    '--quiet',
+    '--no-tags',
+    'origin',
+    '+refs/heads/staging:refs/remotes/origin/staging',
+  ]);
+  try {
+    run('git', ['merge-base', '--is-ancestor', 'origin/main', 'origin/staging']);
+  } catch {
+    console.error(
+      "Refused: staging doesn't contain main (the merge gate merges main into staging after each merge into main; settle that first).",
+    );
+    return 1;
+  }
+  // staging has no branch rules (free plan): it may differ from main only by gated builder work, or a direct push
+  // could put a hook or an agent file in every builder's session.
+  const stagingIssues = stagingProblems(
+    parseRawDiff(
+      run('git', [
+        'diff',
+        '--raw',
+        '-z',
+        '--no-renames',
+        '--no-abbrev',
+        'origin/main',
+        'origin/staging',
+      ]),
+    ),
+    ungatedStagingCommits(
+      run('git', ['log', '--first-parent', '--format=%H', 'origin/main..origin/staging'])
+        .split('\n')
+        .filter((line) => line !== ''),
+      readMergeLog().map((e) => ({
+        result: String(e.result),
+        ...(typeof e.base === 'string' ? { base: e.base } : {}),
+        ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
+      })),
+    ),
+  );
+  if (stagingIssues.length > 0) {
+    console.error(`Refused: staging isn't safe to build on:\n- ${stagingIssues.join('\n- ')}`);
+    return 1;
+  }
+  // A review round: the branch must contain current staging and must not change any protected path (its .claude/
+  // would load in the builder's session).
+  let baseRef = 'refs/remotes/origin/staging';
   if (
     headsFrom(run('git', ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`])).includes(
       branch,
@@ -275,16 +324,23 @@ async function main(argv: string[]): Promise<number> {
       `+refs/heads/${branch}:${ref}`,
     ]);
     try {
-      run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+      run('git', ['merge-base', '--is-ancestor', 'origin/staging', ref]);
     } catch {
       console.error(
-        `Refused: ${branch} is behind main. Update it on GitHub (gh pr update-branch) first.`,
+        `Refused: ${branch} is behind staging. Update it on GitHub (gh pr update-branch) first.`,
       );
       return 1;
     }
     const refusals = shipRefusals(
       parseRawDiff(
-        run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/main..${ref}`]),
+        run('git', [
+          'diff',
+          '--raw',
+          '-z',
+          '--no-renames',
+          '--no-abbrev',
+          `origin/staging..${ref}`,
+        ]),
       ),
     ).filter((reason) => reason !== 'the branch changes nothing');
     if (refusals.length > 0) {
@@ -301,7 +357,7 @@ async function main(argv: string[]): Promise<number> {
     args.findings ? readFileSync(args.findings, 'utf8') : null,
   );
   console.log(
-    `#${String(issue)} → ${clone} on ${branch} (from ${baseRef === 'refs/heads/main' ? 'main' : 'the existing branch'})`,
+    `#${String(issue)} → ${clone} on ${branch} (from ${baseRef === 'refs/remotes/origin/staging' ? 'staging' : 'the existing branch'})`,
   );
   if (args.dryRun) return 0;
 

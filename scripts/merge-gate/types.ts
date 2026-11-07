@@ -1,3 +1,4 @@
+import type { RawChange } from '../lib/protected.ts';
 export const REVIEWERS = ['argus', 'cerberus', 'iris', 'redteam'] as const;
 export type Reviewer = (typeof REVIEWERS)[number];
 export type Verdict = 'pass' | 'block';
@@ -51,6 +52,10 @@ export interface Facts {
   state: string;
   isDraft: boolean;
   baseRef: string;
+  /** The PR's branch: `staging` marks the batch PR into `main` (only from this repository). */
+  headRef: string;
+  /** True when the PR's branch lives in another repository (a fork). */
+  crossRepo: boolean;
   headSha: string;
   title: string;
   mergeable: string;
@@ -58,11 +63,19 @@ export interface Facts {
   body: string;
   closingIssues: ClosingIssue[];
   changedFiles: string[];
+  /** The changed files with their new modes (`git diff --raw`), for ship's refusals on staging and batch PRs. */
+  changes: RawChange[];
+  /** For a batch: first-parent commits on staging the gate didn't merge or sync (staging.ts). */
+  ungatedStaging: string[];
+  /** Task issues the merge log shows were merged into staging (a batch may close only these). */
+  gatedIssues: number[];
   labels: string[];
   checkRuns: CheckRun[];
   statuses: { context: string; state: string }[];
   reviews: ReviewRecord[];
   sensitivePatterns: string[] | null;
+  /** `.github/cerberus-paths.txt` on main: the risky areas Cerberus reviews per PR into staging. Null: every one. */
+  cerberusPatterns: string[] | null;
   config: GateConfig;
 }
 

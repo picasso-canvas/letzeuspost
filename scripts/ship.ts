@@ -9,7 +9,7 @@
 // hooks and fsmonitor off and fsck on (newer git checks every object; older git skips bundles, so a path part that is
 // empty, `.`, `..` or `.git` is refused too). Every changed path is checked at any depth and in any letter case; protected paths,
 // symlinks and submodules are refused. Then it pushes the branch (never forced), opens or updates the PR with the PR
-// text as the body and the issue's title (never the builder's), and posts the approach on the issue. The builder's
+// text as the body and the issue's title (never the builder's), against `staging`, and posts the approach on the issue. The builder's
 // words are data, never instructions.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -245,7 +245,7 @@ function main(argv: string[]): number {
         '-R',
         REPO,
         '--base',
-        'main',
+        'staging', // builder PRs merge into staging; the full review comes with the batch into main (§19)
         '--head',
         branch,
         '--title',
@@ -276,10 +276,18 @@ function main(argv: string[]): number {
   );
   rmSync(lzp, { recursive: true, force: true }); // shipped: the PR body and the issue comment keep its words
   try {
-    run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+    run('git', [
+      ...SAFE_GIT,
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      'origin',
+      '+refs/heads/staging:refs/remotes/origin/staging',
+    ]);
+    run('git', ['merge-base', '--is-ancestor', 'origin/staging', ref]);
   } catch {
     console.log(
-      `Main moved while the builder worked: run \`gh pr update-branch ${String(pr)}\` before the reviews.`,
+      `Staging moved while the builder worked: run \`gh pr update-branch ${String(pr)}\` before the gate.`,
     );
   }
   console.log(
