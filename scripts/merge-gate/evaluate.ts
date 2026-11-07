@@ -157,10 +157,15 @@ export function evaluate(f: Facts): GateResult {
     if (r.verdict === 'block') reviewProblems.push(`${r.reviewer} blocked this commit`);
   }
   for (const reviewer of needed) {
-    const passes = current.filter((r) => r.reviewer === reviewer && r.verdict === 'pass');
-    if (passes.length === 0)
-      reviewProblems.push(`no ${reviewer} pass for ${f.headSha.slice(0, 7)}`);
-    else if (!passes.some((r) => r.bodyHash === hash)) {
+    // A pass counts only when scripts/review.ts made it: a real Claude Code session, not a hand-written summary.
+    const passes = current.filter(
+      (r) => r.reviewer === reviewer && r.verdict === 'pass' && r.meta?.verified === true,
+    );
+    if (passes.length === 0) {
+      reviewProblems.push(
+        `no ${reviewer} pass from scripts/review.ts for ${f.headSha.slice(0, 7)}`,
+      );
+    } else if (!passes.some((r) => r.bodyHash === hash)) {
       reviewProblems.push(`PR text changed since ${reviewer} reviewed`);
     }
   }

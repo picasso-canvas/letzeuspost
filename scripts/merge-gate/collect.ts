@@ -1,5 +1,8 @@
 import { parsePatternList } from '../lib/paths.ts';
-import { doneWhenBoxes } from './evaluate.ts';
+import { agentFor } from './agents.ts';
+import { bodyHash, doneWhenBoxes } from './evaluate.ts';
+import { bundlePattern, checkTranscript } from './meta.ts';
+import { parseVerdict } from './verdict.ts';
 import type { CheckRun, ClosingIssue, Facts, GateConfig, ReviewRecord } from './types.ts';
 
 export const REPO = 'picasso-canvas/letzeuspost';
@@ -14,6 +17,61 @@ export interface CollectDeps {
   /** A file from `main`'s tree (`git show HEAD:<path>`), or null when it doesn't exist. */
   readMainFile: (path: string) => string | null;
   readReviews: (pr: number, sha: string) => ReviewRecord[];
+  /** A Claude Code transcript by session id, or null. */
+  readTranscript?: (sessionId: string) => string | null;
+  /** Where bundles live (`~/.letzeuspost`). */
+  stateDir?: string;
+  /** A file's text, or null (bundle snapshots). */
+  readFile?: (path: string) => string | null;
+}
+
+/** The gate re-checks every runner-made review against its transcript; anything that doesn't check out isn't verified. */
+function verify(r: ReviewRecord, pr: number, sha: string, deps: CollectDeps): ReviewRecord {
+  const meta = r.meta as ReviewRecord['meta'] | null;
+  if (meta === undefined) return r;
+  if (meta === null || typeof meta !== 'object')
+    return { ...r, meta: { agent: '', sessionId: null, verified: false } };
+  let verified = false;
+  const { sessionId, bundle } = meta;
+  const agent = agentFor(r.reviewer);
+  if (
+    agent !== undefined &&
+    meta.agent === agent &&
+    sessionId &&
+    bundle &&
+    deps.readTranscript &&
+    deps.stateDir
+  ) {
+    if (bundlePattern(deps.stateDir, pr, sha).test(bundle)) {
+      let text: string | null;
+      try {
+        text = deps.readTranscript(sessionId);
+      } catch {
+        text = null;
+      }
+      verified =
+        checkTranscript(text, agent, bundle, r.summary) === null &&
+        snapshotMatches(bundle, r, sha, deps);
+    }
+  }
+  // A verified record's verdict is the one in the session's own answer, never the record's field.
+  const verdict = verified ? parseVerdict(r.summary).verdict : r.verdict;
+  return { ...r, verdict, meta: { ...meta, verified } };
+}
+
+/** The record's PR text and commit must be the ones in the bundle the reviewer was given. */
+function snapshotMatches(bundle: string, r: ReviewRecord, sha: string, deps: CollectDeps): boolean {
+  if (!deps.readFile) return false;
+  try {
+    const text = deps.readFile(`${bundle}/snapshot.json`);
+    if (text === null) return false;
+    const snap = JSON.parse(text) as { headRefOid?: unknown; body?: unknown };
+    return (
+      snap.headRefOid === sha && typeof snap.body === 'string' && bodyHash(snap.body) === r.bodyHash
+    );
+  } catch {
+    return false;
+  }
 }
 
 interface PrView {
@@ -144,7 +202,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     labels: view.labels.map((label) => label.name),
     checkRuns,
     statuses,
-    reviews: deps.readReviews(pr, sha),
+    reviews: deps.readReviews(pr, sha).map((r) => verify(r, pr, sha, deps)),
     sensitivePatterns: sensitiveList === null ? null : parsePatternList(sensitiveList),
     config,
   };

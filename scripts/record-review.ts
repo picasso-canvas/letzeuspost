@@ -10,16 +10,21 @@
 // It refuses when the PR has moved on since the review started (a new push or edited text needs a new review).
 // The record lives in ~/.letzeuspost/reviews/ (append-only, outside every builder clone) and is posted on the PR.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { REPO } from './merge-gate/collect.ts';
 import { bodyHash } from './merge-gate/evaluate.ts';
-import { writeReview } from './merge-gate/reviews.ts';
+import { agentFor } from './merge-gate/agents.ts';
+import { bundlePattern, checkTranscript, transcriptPath } from './merge-gate/meta.ts';
+import { STATE_DIR, writeReview } from './merge-gate/reviews.ts';
 import { REVIEWERS, type Reviewer } from './merge-gate/types.ts';
 import { parseVerdict } from './merge-gate/verdict.ts';
 
 const USAGE =
   'usage: node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <summary-file> ' +
-  '--snapshot <gh pr view --json headRefOid,body output taken before the review>';
+  '--snapshot <gh pr view --json headRefOid,body output taken before the review> [--meta <file>]';
 
 const NAMES: Record<Reviewer, string> = {
   argus: 'Argus',
@@ -27,6 +32,28 @@ const NAMES: Record<Reviewer, string> = {
   iris: 'Iris',
   redteam: 'Red-team re-run',
 };
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/** True when any existing record for this PR (any commit) already names this session. */
+function sessionUsed(pr: number, sessionId: string): boolean {
+  const base = join(STATE_DIR, 'reviews', `pr-${String(pr)}`);
+  if (!existsSync(base)) return false;
+  for (const sha of readdirSync(base, { withFileTypes: true })) {
+    if (!sha.isDirectory()) continue; // e.g. .DS_Store
+    for (const name of readdirSync(join(base, sha.name))) {
+      try {
+        const record = JSON.parse(readFileSync(join(base, sha.name, name), 'utf8')) as {
+          meta?: { sessionId?: unknown };
+        };
+        if (record.meta?.sessionId === sessionId) return true;
+      } catch {
+        // unreadable records are blocks anyway
+      }
+    }
+  }
+  return false;
+}
 
 function gh(args: string[], input?: string): string {
   return execFileSync('gh', args, {
@@ -80,7 +107,7 @@ function main(argv: string[]): number {
     return 1;
   }
 
-  let meta: { agent: string; sessionId: string | null } | undefined;
+  let meta: { agent: string; sessionId: string | null; bundle?: string } | undefined;
   if (metaFile !== undefined) {
     const raw = JSON.parse(readFileSync(metaFile, 'utf8')) as {
       agent?: unknown;
@@ -90,6 +117,40 @@ function main(argv: string[]): number {
       agent: typeof raw.agent === 'string' ? raw.agent : '',
       sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : null,
     };
+    // A pass must come from a real Claude Code run of this reviewer's agent, on this bundle, used once per PR.
+    // A block is always recorded, verified or not: a block always counts.
+    if (meta.sessionId !== null && verdict === 'pass') {
+      const expected = agentFor(reviewer);
+      if (meta.agent !== expected) {
+        console.error(`--meta names agent ${meta.agent}, but ${reviewer} is ${String(expected)}.`);
+        return 1;
+      }
+      const transcript = transcriptPath(homedir(), ROOT, meta.sessionId);
+      const bundle = dirname(resolve(snapshotFile));
+      if (!bundlePattern(STATE_DIR, pr, reviewedSha).test(bundle)) {
+        console.error(
+          `Not recorded: ${bundle} isn't a bundle for PR #${String(pr)} at ${reviewedSha.slice(0, 7)}.`,
+        );
+        return 1;
+      }
+      meta.bundle = bundle;
+      const problem = checkTranscript(
+        existsSync(transcript) ? readFileSync(transcript, 'utf8') : null,
+        expected,
+        bundle,
+        summary,
+      );
+      if (problem !== null) {
+        console.error(`Not recorded: ${problem}.`);
+        return 1;
+      }
+      if (sessionUsed(pr, meta.sessionId)) {
+        console.error(
+          `Not recorded: session ${meta.sessionId} already backs another review of PR #${String(pr)}.`,
+        );
+        return 1;
+      }
+    }
   }
   const file = writeReview({
     pr,
