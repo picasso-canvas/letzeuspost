@@ -17,7 +17,9 @@ function review(
     bodyHash: bodyHash(BODY),
     summary: 'ok',
     at: '2026-11-07T00:00:00Z',
-    ...(reviewer === 'redteam' ? {} : { meta: { agent: `${reviewer}-agent`, sessionId: 's-1' } }),
+    ...(reviewer === 'redteam'
+      ? {}
+      : { meta: { agent: `${reviewer}-agent`, sessionId: 's-1', verified: true } }),
     ...over,
   };
 }
@@ -317,5 +319,16 @@ describe('evaluate: reviews must come from the runner', () => {
         reviews: blocks,
       }).items.find((i) => i.id === 5)?.ok,
     ).toBe(false);
+  });
+});
+
+describe('evaluate: only verified sessions count', () => {
+  it('ignores a pass whose transcript did not check out', () => {
+    const unverified = review('argus', {
+      meta: { agent: 'argus-reviewer', sessionId: 's-x', verified: false },
+    });
+    expect(evaluate(facts({ reviews: [unverified] })).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
   });
 });

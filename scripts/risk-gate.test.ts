@@ -73,3 +73,13 @@ describe('the harness line', () => {
     expect(summary).toContain(".github/x'y.yml");
   });
 });
+
+describe('the harness list cap', () => {
+  it('shows ten harness files and counts the rest', () => {
+    const files = Array.from({ length: 12 }, (_, i) => `.husky/h${String(i)}`);
+    const summary = judge([...files, 'packages/auth/a.ts'], LIST, ['.husky/**']).summary;
+    expect(summary).toContain('.husky/h9');
+    expect(summary).not.toContain('.husky/h10');
+    expect(summary).toContain('… and 2 more');
+  });
+});

@@ -106,3 +106,10 @@ describe("parseVerdict: anything before [blocking] that isn't a word", () => {
     }
   });
 });
+
+describe('parseVerdict: angle brackets', () => {
+  it('catches a bare < or an arrow before [blocking]', () => {
+    expect(parseVerdict('VERDICT: pass\n< [blocking] x').verdict).toBe('block');
+    expect(parseVerdict('VERDICT: pass\n<-- [blocking] a -> b').verdict).toBe('block');
+  });
+});

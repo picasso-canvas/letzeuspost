@@ -359,3 +359,20 @@ describe('failure reasons and refusals', () => {
     expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe('logo.png');
   });
 });
+
+describe('oversized blobs', () => {
+  it('refuses a blob too large to read, naming the file', () => {
+    expect(() =>
+      exportTree(
+        SHA,
+        {
+          lsTree: () => `100644 blob ${'1'.repeat(40)}\tassets/huge.bin\0`,
+          blob: () => {
+            throw Object.assign(new Error('spawnSync git ENOBUFS'), { code: 'ENOBUFS' });
+          },
+        },
+        mkdtempSync(join(tmpdir(), 'lzp-big-')),
+      ),
+    ).toThrow(/assets\/huge\.bin is too large/);
+  });
+});
