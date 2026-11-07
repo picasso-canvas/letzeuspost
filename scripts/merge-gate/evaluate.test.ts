@@ -31,6 +31,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     state: 'OPEN',
     isDraft: false,
     baseRef: 'main',
+    headRef: '42-something',
     headSha: SHA,
     title: '[H0] Something',
     mergeable: 'MERGEABLE',
@@ -46,6 +47,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     statuses: [],
     reviews: [review('argus')],
     sensitivePatterns: ['packages/auth/**', 'scripts/**', '.github/**', '**/CLAUDE.md'],
+    cerberusPatterns: ['packages/auth/**', 'packages/db/**'],
     config: {
       requiredChecks: ['ci', 'risk-gate'],
       requireTierLabel: true,
@@ -330,5 +332,87 @@ describe('evaluate: only verified sessions count', () => {
     expect(evaluate(facts({ reviews: [unverified] })).items.find((i) => i.id === 5)?.ok).toBe(
       false,
     );
+  });
+});
+
+describe('evaluate: a builder PR into staging (Zeus, 2026-11-07)', () => {
+  const toStaging = (over: Partial<Facts> = {}) =>
+    facts({ baseRef: 'staging', reviews: [], ...over });
+
+  it('merges on the automatic checks alone: no Argus', () => {
+    expect(failedIds(toStaging())).toEqual([]);
+  });
+
+  it('still needs Cerberus when the PR touches a risky area', () => {
+    const risky = toStaging({
+      changedFiles: ['packages/db/src/schema.ts'],
+      sensitivePatterns: ['packages/db/**'],
+      labels: ['sensitive'],
+    });
+    expect(failedIds(risky)).toEqual([5]);
+    expect(failedIds({ ...risky, reviews: [review('cerberus')] })).toEqual([]);
+    // Without the risky-area list on main, every staging PR needs Cerberus (fail safe).
+    expect(failedIds(toStaging({ cerberusPatterns: null }))).toEqual([5]);
+  });
+
+  it('refuses harness paths (they go straight to main) and a branch behind staging', () => {
+    const harness = toStaging({
+      changedFiles: ['scripts/x.ts'],
+      labels: ['sensitive'],
+      reviews: [review('cerberus')],
+    });
+    expect(failedIds(harness)).toContain(7);
+    expect(evaluate(toStaging({ behindBy: 2 })).items.find((i) => i.id === 2)?.detail).toMatch(
+      /behind staging/,
+    );
+  });
+});
+
+describe('evaluate: the batch PR from staging into main', () => {
+  const batchBody =
+    'Closes #42\nCloses #43\n\n**Done when**\n- [x] #42 (PR #50): merged into staging through the gate\n- [x] #43 (PR #51): merged into staging through the gate';
+  const batch = (over: Partial<Facts> = {}) =>
+    facts({
+      headRef: 'staging',
+      body: batchBody,
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 6 },
+        { number: 43, inRepo: true, labels: ['build-task'], doneWhenBoxes: 4 },
+      ],
+      reviews: [review('argus', { bodyHash: bodyHash(batchBody) })],
+      ...over,
+    });
+
+  it('gets the full review, with one ticked box per task', () => {
+    expect(failedIds(batch())).toEqual([]);
+    expect(failedIds(batch({ reviews: [] }))).toEqual([5]);
+  });
+
+  it('refuses a batch that carries a harness path, or misses a task box', () => {
+    expect(
+      failedIds(
+        batch({
+          changedFiles: ['packages/ui/src/button.ts', '.claude/agents/x.md'],
+          labels: ['sensitive'],
+          reviews: [
+            review('argus', { bodyHash: bodyHash(batchBody) }),
+            review('cerberus', { bodyHash: bodyHash(batchBody) }),
+            review('redteam', { bodyHash: bodyHash(batchBody) }),
+          ],
+        }),
+      ),
+    ).toEqual([7]);
+    const oneBox = 'Closes #42\nCloses #43\n\n**Done when**\n- [x] #42 (PR #50): merged';
+    expect(
+      failedIds(
+        batch({ body: oneBox, reviews: [review('argus', { bodyHash: bodyHash(oneBox) })] }),
+      ),
+    ).toEqual([6]);
+  });
+});
+
+describe('evaluate: targets', () => {
+  it('refuses any base but main and staging', () => {
+    expect(failedIds(facts({ baseRef: 'release' }))).toContain(2);
   });
 });
