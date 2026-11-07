@@ -16,9 +16,18 @@
     "licence-check": "node scripts/licence-check.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "10.0.1",
+    "@lzp/auth": "workspace:*",
+    "@lzp/config": "workspace:*",
+    "@lzp/core": "workspace:*",
+    "@lzp/db": "workspace:*",
+    "@lzp/storage": "workspace:*",
+    "@next/eslint-plugin-next": "16.4.5",
+    "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
     "eslint": "10.14.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.14.0",
     "prettier": "3.9.10",
     "typescript": "6.0.3",

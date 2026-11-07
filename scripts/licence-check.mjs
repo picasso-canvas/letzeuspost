@@ -65,6 +65,27 @@ export const EXCEPTIONS = [
     devOnly: true,
     why: 'test tooling (vite via vitest), used unchanged',
   },
+  {
+    // Zeus, 2026-11-07 (#18 comment 6710134630): browser support data that Next.js ships in production.
+    names: ['caniuse-lite'],
+    license: 'CC-BY-4.0',
+    devOnly: false,
+    why: 'browser support data inside Next.js, unchanged',
+  },
+  {
+    // Zeus, 2026-11-07 (#18 comment 6710134630): accessibility checks in the Playwright tests only.
+    names: ['axe-core', '@axe-core/playwright'],
+    license: 'MPL-2.0',
+    devOnly: true,
+    why: 'accessibility test tooling, used unchanged',
+  },
+  {
+    // Zeus, 2026-11-07 (#18 comment 6710134630): sends the sign-in emails (to Mailpit in dev).
+    names: ['nodemailer'],
+    license: 'MIT-0',
+    devOnly: false,
+    why: 'mail transport for the worker, unchanged',
+  },
 ];
 
 /**

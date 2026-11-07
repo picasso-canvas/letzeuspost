@@ -13,3 +13,10 @@ minimumReleaseAge: 1440
 overrides:
   # GHSA-g3hv-75wg-m249 (medium, DoS via globparts amplification), via eslint → @eslint/config-array.
   minimatch@>=7.0.0 <11.0.1: 11.0.5
+  # vitest is an optional peer of better-auth: keep the test runner out of the production dependency graph.
+  better-auth>vitest: '-'
+
+# Build scripts, each by name (strictDepBuilds fails any other). esbuild's postinstall only fetches a binary the
+# package already ships as an optional dependency, so it stays off.
+allowBuilds:
+  esbuild: false
