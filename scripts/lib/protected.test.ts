@@ -148,3 +148,11 @@ describe('shipRefusals: the lint rules and their tests (#82 review)', () => {
     );
   });
 });
+
+describe('shipRefusals: next.config (#82 review)', () => {
+  it("refuses next.config.*, where cacheComponents could be switched on out of the lint rule's sight", () => {
+    expect(shipRefusals([{ mode: '100644', path: 'apps/web/next.config.ts' }])).toContain(
+      'protected path: apps/web/next.config.ts',
+    );
+  });
+});

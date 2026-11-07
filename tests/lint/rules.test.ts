@@ -204,3 +204,48 @@ describe('round 2 of the #82 review', () => {
     }
   });
 });
+
+describe('round 3 of the #82 review', () => {
+  it('reads variants only up to a colon outside brackets', async () => {
+    for (const cls of [
+      'bg-[color:#ff0000]',
+      '[color:red]',
+      '[background:#f00]',
+      'bg-[url(https://x)]',
+    ]) {
+      expect(
+        await ruleIds(`export const A = () => <div className="${cls}" />;`, 'apps/web/src/a.tsx'),
+        cls,
+      ).toContain('lzp/tokens-only');
+    }
+    const ok =
+      'export const A = () => <div className="[&:hover]:bg-accent data-[state=open]:bg-accent" />;';
+    expect(await ruleIds(ok, 'apps/web/src/a.tsx')).toEqual([]);
+  });
+
+  it('bans next/cache by any path that reaches it, and deep next/dist imports', async () => {
+    for (const source of ['next/cache.js', 'next/dist/server/web/spec-extension/unstable-cache']) {
+      expect(
+        await ruleIds(`import { unstable_cache } from '${source}';`, 'apps/web/src/a.ts'),
+        source,
+      ).toContain('lzp/no-use-cache');
+    }
+  });
+
+  it('counts pg-boss, pg-pool and every Drizzle driver as a raw client', async () => {
+    for (const source of ['pg-boss', 'pg-pool', 'drizzle-orm/pg-proxy', 'drizzle-orm/neon-http']) {
+      expect(await ruleIds(`import x from '${source}';`, 'apps/web/src/a.ts'), source).toContain(
+        'lzp/no-raw-db-client',
+      );
+    }
+    expect(await ruleIds("import PgBoss from 'pg-boss';", 'packages/db/src/jobs/queue.ts')).toEqual(
+      [],
+    );
+  });
+
+  it('bans the geist font', async () => {
+    expect(
+      await ruleIds("import { GeistSans } from 'geist/font/sans';", 'apps/web/src/a.tsx'),
+    ).toContain('lzp/inter-only');
+  });
+});
