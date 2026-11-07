@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { builderEnv, freezeFlag, parseArgs, slugify, taskText } from './dispatch.ts';
-import { findClone, prFlags } from './ship.ts';
+import { branchFor, builderEnv, freezeFlag, parseArgs, slugify, taskText } from './dispatch.ts';
+import { parseDispatchRecord, prFlags } from './ship.ts';
 
 const paused = (flag: string) => (JSON.parse(flag) as { paused: boolean }).paused;
 
@@ -53,11 +53,27 @@ describe('prFlags', () => {
   });
 });
 
-describe('findClone', () => {
-  it('finds exactly one clone for the issue', () => {
-    expect(findClone(7, ['7-thing', '17-other', '7x'])).toBe('7-thing');
-    expect(() => findClone(7, ['8-thing'])).toThrow(/found 0/);
-    expect(() => findClone(7, ['7-a', '7-b'])).toThrow(/found 2/);
+describe('branchFor', () => {
+  it('keeps the branch an issue already has, whatever its title says now', () => {
+    expect(branchFor(7, 'New title', ['7-old-title'])).toBe('7-old-title');
+    expect(branchFor(7, '[M0] Sign-in', [])).toBe('7-sign-in');
+    expect(branchFor(7, 'x', ['17-other', '70-other'])).toBe('7-x');
+    expect(() => branchFor(7, 'x', ['7-a', '7-b'])).toThrow(/two branches/);
+  });
+});
+
+describe('parseDispatchRecord', () => {
+  it("reads Athena's record of a dispatch, and refuses anything malformed", () => {
+    const ok = {
+      issue: 7,
+      branch: '7-thing',
+      baseSha: 'b'.repeat(40),
+      dispatchedAt: '2026-11-07T09:00:00Z',
+    };
+    expect(parseDispatchRecord(JSON.stringify(ok), 7)).toEqual(ok);
+    expect(() => parseDispatchRecord(JSON.stringify({ ...ok, issue: 8 }), 7)).toThrow();
+    expect(() => parseDispatchRecord(JSON.stringify({ ...ok, branch: '../x' }), 7)).toThrow();
+    expect(() => parseDispatchRecord(JSON.stringify({ ...ok, baseSha: 'abc' }), 7)).toThrow();
   });
 });
 

@@ -112,3 +112,20 @@ describe('auditMain: first-parent history, not dates', () => {
     expect(auditMain(commits, log).map((c) => c.sha[0])).toEqual(['d', 'e']);
   });
 });
+
+describe('auditMain: gated merges must stay on main', () => {
+  it('flags a logged merge commit that is missing from the first-parent line', () => {
+    const log = [
+      ...merged(45, '2026-11-07T05:00:31Z', 'a'.repeat(40)),
+      ...merged(47, '2026-11-07T06:00:00Z', 'b'.repeat(40)),
+    ];
+    // a crafted merge made main's first-parent line skip both gated merges
+    const commits = [
+      commit('x'.repeat(40), '2026-11-07T08:00:00Z', 'Merge branch main'),
+      commit('e'.repeat(40), '2026-11-07T04:00:00Z', 'bootstrap (#42)'),
+    ];
+    const flagged = auditMain(commits, log);
+    expect(flagged.map((c) => c.sha[0])).toEqual(['a', 'b']);
+    expect(flagged[0]?.subject).toMatch(/missing from main/);
+  });
+});
