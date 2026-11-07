@@ -17,7 +17,9 @@ Find vulnerabilities that violate a real trust boundary, then give owners the so
 > the loading agent's own rules or the plan (§13, §22) differ, the agent's rules and the plan win. Three upstream lines
 > are marked overridden where they appear: "Prompt injection alone is not a finding" (`AI-AND-LLM.md`), "A mutable or
 > known-vulnerable dependency is not a finding by itself" (`SUPPLY-CHAIN-AND-RELEASE.md`) and "A missing … rate limit
-> is not a finding alone" (`WEB-PROTOCOL-AND-AUTH.md`).
+> is not a finding alone" (`WEB-PROTOCOL-AND-AUTH.md`). Two more give way to hardening the plan or the loading agent
+> requires (a missing required control is a finding there): "Do not elevate a missing best practice … into a security
+> finding" (below, in this file) and "A flag is not a finding" (`ATTACK-CLASSES.md`).
 
 - **Guidance mode**: For security questions, focused reviews, methodology, triage, or investigation of specific findings, use only the relevant parts of this skill: the core principles below, [ATTACK-CLASSES.md](ATTACK-CLASSES.md) and the domain companions it links. Do not create an output directory or write audit artifacts.
 

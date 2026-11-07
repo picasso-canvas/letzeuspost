@@ -14,7 +14,7 @@ paths are in your task). Review the complete diff. It contains all code changes 
 
 
 OBJECTIVE:
-Perform a security-focused code review to identify HIGH-CONFIDENCE security vulnerabilities that could have real exploitation potential. This is not a general code review - focus ONLY on security implications newly added by this PR. Do not comment on existing security concerns.
+Perform a security-focused code review to identify security vulnerabilities that could have real exploitation potential, with a confidence for each. This is not a general code review - focus ONLY on security implications newly added by this PR. Do not comment on existing security concerns.
 
 CRITICAL INSTRUCTIONS:
 1. REPORT WHAT THE FILES CAN'T RULE OUT: give every finding with your confidence and what would settle it. A risk the
@@ -133,7 +133,7 @@ FALSE POSITIVE FILTERING:
 > 1. Lack of input validation on non-security-critical fields without proven security impact.
 > 2. Race conditions or timing attacks that are theoretical rather than practical issues. Only report a race condition if it is concretely problematic. (In this repo a builder's own processes racing Athena's scripts on files in the builder's clone are practical, not theoretical.)
 > 3. Memory safety issues such as buffer overflows or use-after-free-vulnerabilities are impossible in rust. Do not report memory safety issues in rust or any other memory safe languages.
-> 4. Files that are only unit tests or only used as part of running tests.
+> 4. Vulnerabilities in test-only code paths (code that runs only in tests). Still in scope: a weakened, skipped or removed security or tenancy test, and a real secret in a test fixture.
 > 5. Log spoofing concerns. Outputting un-sanitized user input to logs is not a vulnerability.
 > 6. SSRF vulnerabilities that only control the path. SSRF is only a concern if it can control the host or protocol.
 > 7. A lack of audit logs is not a vulnerability.
@@ -145,8 +145,8 @@ FALSE POSITIVE FILTERING:
 > 
 > PRECEDENTS -
 > 1. Logging high value secrets in plaintext is a vulnerability. Logging URLs is assumed to be safe.
-> 2. UUIDs can be assumed to be unguessable and do not need to be validated.
-> 3. Environment variables and CLI flags are trusted values. Attackers are generally not able to modify them in a secure environment. Any attack that relies on controlling an environment variable is invalid.
+> 2. Random UUIDs used as record IDs can be assumed to be unguessable and do not need to be validated. (Here record IDs are UUIDv7, which is time-ordered and partly predictable: never treat an ID as a secret. Invite and review-link tokens must be random secrets of at least 128 bits, stored as hashes.)
+> 3. Environment variables and CLI flags are trusted values. Attackers are generally not able to modify them in a secure environment. Any attack that relies on controlling an environment variable is invalid. (Not here for builders: any variable a builder or the scripts it runs can set, such as `LZP_ROLE`, is untrusted, and a guard that relies on one is a finding.)
 > 4. Subtle or low impact web vulnerabilities such as tabnabbing, XS-Leaks, prototype pollution, and open redirects are LOW unless the files show a concrete attack path.
 > 5. React and Angular are generally secure against XSS. These frameworks do not need to sanitize or escape user input unless it is using dangerouslySetInnerHTML, bypassSecurityTrustHtml, or similar methods. Do not report XSS vulnerabilities in React or Angular components or tsx files unless they are using unsafe methods.
 > 6. A lack of permission checking or authentication in client-side JS/TS code is not a vulnerability. Client-side code is not trusted and does not need to implement these checks, they are handled on the server-side. The same applies to all flows that send untrusted data to the backend, the backend is responsible for validating and sanitizing all inputs.
@@ -156,7 +156,7 @@ FALSE POSITIVE FILTERING:
 > 
 > SIGNAL QUALITY CRITERIA - For remaining findings, assess:
 > 1. Is there a concrete, exploitable vulnerability with a clear attack path?
-> 2. Does this represent a real security risk vs theoretical best practice?
+> 2. Does this represent a real security risk vs theoretical best practice? (A risk the files can't rule out stays in, with what would rule it out.)
 > 3. Are there specific code locations and reproduction steps?
 > 4. Would this finding be actionable for a security team?
 > 
