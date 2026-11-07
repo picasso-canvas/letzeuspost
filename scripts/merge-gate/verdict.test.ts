@@ -90,3 +90,19 @@ describe('parseVerdict: round 3 forms', () => {
     expect(parseVerdict('VERDICT: pass\n[nit] x\nVERDICT: block').verdict).toBe('block');
   });
 });
+
+describe("parseVerdict: anything before [blocking] that isn't a word", () => {
+  it('catches table cells, emoji, dashes, quotes, zero-width and (a)', () => {
+    for (const line of [
+      '| [blocking] | a |',
+      '🔴 [blocking] a',
+      '– [blocking] a',
+      '"[blocking] a',
+      '\u200b[blocking] a',
+      '(a) [blocking] a',
+      '(1) [blocking] a',
+    ]) {
+      expect(parseVerdict(`VERDICT: pass\n${line}`).verdict, JSON.stringify(line)).toBe('block');
+    }
+  });
+});

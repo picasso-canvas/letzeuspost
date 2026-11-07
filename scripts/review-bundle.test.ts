@@ -301,3 +301,55 @@ describe('runReviews: round 3', () => {
     );
   });
 });
+
+describe('failure reasons and refusals', () => {
+  it('reports why a run failed without the command line', () => {
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => errors.push(msg);
+    try {
+      runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+        claude: () => JSON.stringify({ subtype: 'error_max_turns' }),
+        show: () => 'agent',
+        record: () => 'ok',
+        write: () => undefined,
+        env: {},
+      });
+      runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+        claude: () => {
+          throw new Error('Command failed: claude -p /Users/x/secret');
+        },
+        show: () => 'agent',
+        record: () => 'ok',
+        write: () => undefined,
+        env: {},
+      });
+    } finally {
+      console.error = original;
+    }
+    expect(errors[0]).toContain('error_max_turns');
+    expect(errors[1]).not.toContain('/Users/x');
+  });
+
+  it('refuses with a PR-relative path, never a local one, and lists binaries', () => {
+    const state = mkdtempSync(join(tmpdir(), 'lzp-refuse-'));
+    const gh = (args: string[]) => {
+      const j = args.join(' ');
+      if (j.includes('headRefOid,body')) return JSON.stringify({ headRefOid: SHA, body: 'x' });
+      if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
+      if (j.startsWith('pr checks')) return 'ci pass';
+      if (j.includes('comments,reviews')) return '{}';
+      return '';
+    };
+    const git = (args: string[]) => {
+      if (args[0] === 'rev-parse') return `${SHA}\n`;
+      if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta\x00100644 blob ${'2'.repeat(40)}\ta/b\0`;
+      if (args[0] === 'diff' && args.includes('--numstat')) return '-\t-\tlogo.png\0';
+      return '';
+    };
+    const result = buildBundle(9, { gh, git, blob: () => Buffer.from('x'), now: () => 2 }, state);
+    expect(result.refusal).toMatch(/^a\/b /);
+    expect(result.refusal).not.toContain(state);
+    expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe('logo.png');
+  });
+});

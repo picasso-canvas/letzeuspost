@@ -308,7 +308,11 @@ describe('evaluate: reviews must come from the runner', () => {
   });
 
   it('still counts a hand-written block (blocks always count)', () => {
-    const blocks = [review('argus'), review('cerberus', { verdict: 'block', meta: undefined })];
+    const blocks = [
+      review('argus'),
+      review('cerberus'),
+      review('cerberus', { verdict: 'block', meta: undefined }),
+    ];
     expect(
       evaluate({
         ...baseFacts(),

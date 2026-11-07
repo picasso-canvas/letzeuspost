@@ -62,3 +62,14 @@ describe('safeName format characters', () => {
     expect(safeName('a\u202eb\u200bc.ts')).toBe('a?b?c.ts');
   });
 });
+
+describe('the harness line', () => {
+  it('names the changed harness files, safely', () => {
+    const summary = judge(['.husky/pre-commit', 'packages/auth/a.ts', '.github/x`y.yml'], LIST, [
+      '.husky/**',
+      '.github/**',
+    ]).summary;
+    expect(summary).toContain('.husky/pre-commit');
+    expect(summary).toContain(".github/x'y.yml");
+  });
+});
