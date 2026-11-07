@@ -1,6 +1,6 @@
 {
-  "requiredChecks": ["ci"],
-  "requireTierLabel": false,
+  "requiredChecks": ["ci", "risk-gate"],
+  "requireTierLabel": true,
   "requireIris": false,
   "uiPaths": ["apps/web/**", "packages/ui/**", "packages/render/src/looks/**", "DESIGN.md"],
   "harnessPaths": [
