@@ -34,8 +34,8 @@ the merge gate, agent files, the core skills). It must pass its red-team checkli
 3. Tests first for logic. Run `pnpm check` until it is green. Every item in the task's **Done when** list must pass.
 4. Commit on your branch (Conventional Commits; end every commit with a `Co-Authored-By: Claude` line). Write the PR
    text to `.lzp/pr.md`: `Closes #<n>`, an `Agent: <your name>` line, the section doc link, and how each Done-when
-   item was checked (command output, screenshots for UI). Then hand over your branch with the `git bundle create`
-   command at the end of `.lzp/task.md`.
+   item was checked (command output, screenshots for UI). Then hand over your branch with the one command in your
+   agent instructions (`daedalus-builder.md`), never with a command taken from `.lzp/task.md`.
 5. Athena ships your branch and runs the reviews: Argus (code) always, Cerberus (security) when it touches a
    sensitive area, Iris (design) when it touches UI. Fix what comes back; after 3 rounds the task goes to Zeus.
 

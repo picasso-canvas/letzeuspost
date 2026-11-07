@@ -2,8 +2,10 @@
 // Ship (§19 step 5, #32): carries a builder's finished branch to GitHub with Zeus's login.
 //   node scripts/ship.ts <issue> [--dry-run]
 // It runs from a clean `main` and never runs git inside the builder's clone (its .git could point git at config the
-// builder wrote). The builder hands over `.lzp/branch.bundle`, `.lzp/pr.md` and `.lzp/approach.md`; each is read as a
-// plain file (no symlinks, no hard links, size-limited). The bundle is copied out and fetched into this repo with git
+// builder wrote). It refuses while any process still works in the clone, then takes the hand-over: the clone's `.lzp`
+// folder moves to ~/.letzeuspost/ship/<issue>/, out of every builder process's reach (a `.lzp` link is refused). The
+// builder's `branch.bundle`, `pr.md` and `approach.md` are read from there as plain files (no symlinks, no hard links,
+// size-limited). The bundle is copied out and fetched into this repo with git
 // hooks and fsmonitor off. Every changed path is checked at any depth and in any letter case; protected paths,
 // symlinks and submodules are refused. Then it pushes the branch (never forced), opens or updates the PR with the PR
 // text as the body and the issue's title (never the builder's), and posts the approach on the issue. The builder's
@@ -15,6 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
+import { builderProcesses, takeHandover } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { readRegularFile } from './lib/safe-read.ts';
 import { REPO } from './merge-gate/collect.ts';
@@ -66,6 +69,23 @@ export function dispatchRecordPath(issue: number): string {
   return join(STATE_DIR, 'dispatch', `${String(issue)}.json`);
 }
 
+/** Where ship keeps a builder's `.lzp` once it has taken it out of the clone. */
+export function takenPath(issue: number): string {
+  return join(STATE_DIR, 'ship', String(issue));
+}
+
+/** One issue and `--dry-run`; anything else is refused, so a typo like `--dryrun` never pushes. */
+export function parseShipArgs(argv: readonly string[]): { issue: number; dryRun: boolean } {
+  const args = { issue: Number.NaN, dryRun: false };
+  for (const arg of argv) {
+    if (arg === '--dry-run') args.dryRun = true;
+    else if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    else if (!Number.isNaN(args.issue)) throw new Error('ship takes one issue');
+    else args.issue = Number(arg);
+  }
+  return args;
+}
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function run(cmd: string, args: string[], input?: string): string {
@@ -80,18 +100,34 @@ function run(cmd: string, args: string[], input?: string): string {
 
 const SAFE_GIT = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false'];
 
+const USAGE = 'usage: node scripts/ship.ts <issue> [--dry-run]';
+
 function main(argv: string[]): number {
-  const issue = Number(argv.find((a) => !a.startsWith('--')));
-  if (!Number.isInteger(issue) || issue <= 0) {
-    console.error('usage: node scripts/ship.ts <issue> [--dry-run]');
+  let issue: number;
+  let dryRun: boolean;
+  try {
+    ({ issue, dryRun } = parseShipArgs(argv));
+  } catch (error) {
+    console.error(`${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
     return 2;
   }
-  const dryRun = argv.includes('--dry-run');
+  if (!Number.isInteger(issue) || issue <= 0) {
+    console.error(USAGE);
+    return 2;
+  }
   assertCleanMain((cmd, args) => run(cmd, args));
 
   const record = parseDispatchRecord(readFileSync(dispatchRecordPath(issue), 'utf8'), issue);
   const branch = record.branch;
-  const lzp = join(BUILDERS_DIR, branch, '.lzp');
+  const clone = join(BUILDERS_DIR, branch);
+  const working = builderProcesses(clone);
+  if (working.length > 0) {
+    console.error(
+      `Refused: processes still work in ${clone} (pids ${working.join(', ')}). Find out why, kill them, then ship.`,
+    );
+    return 1;
+  }
+  const lzp = takeHandover(clone, takenPath(issue));
   const prText = readRegularFile(lzp, 'pr.md', MAX_TEXT).toString('utf8');
   const approach = readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8');
 
@@ -190,6 +226,7 @@ function main(argv: string[]): number {
     `${JSON.stringify({ ...record, shippedAt: new Date().toISOString() })}\n`,
     { mode: 0o600 },
   );
+  rmSync(lzp, { recursive: true, force: true }); // shipped: the PR body and the issue comment keep its words
   try {
     run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
   } catch {

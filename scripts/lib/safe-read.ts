@@ -36,6 +36,7 @@ export function readRegularFile(dir: string, name: string, maxBytes: number): Bu
     if (open.ino !== before.ino || open.dev !== before.dev || !open.isFile() || open.nlink !== 1) {
       throw new Error(`${path} changed while it was being read`);
     }
+    if (open.size > maxBytes) throw new Error(`${path} is too large (${String(open.size)} bytes)`);
     const buffer = Buffer.alloc(open.size);
     let read = 0;
     while (read < open.size) {

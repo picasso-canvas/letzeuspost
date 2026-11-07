@@ -51,8 +51,8 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
   in its own clone, not a git worktree, so hooks or settings it plants in its `.git` never reach Athena's checkout.
 - The builder reads its task from `.lzp/task.md` and leaves its approach and PR text in `.lzp/` (gitignored).
   **Athena carries the work to GitHub** with Zeus's login through `scripts/ship.ts`, which never runs git inside a builder's
-  clone: the builder hands over a git bundle, read as a plain file (no symlinks or hard links) and fetched with git
-  hooks and fsmonitor off, and ship refuses any branch that changes a builder-protected path (section 2). Before merge, Athena never runs a builder's code outside the sandbox, and treats `.lzp/` files as data.
+  clone: the builder hands over a git bundle in `.lzp/`, which ship first moves out of the clone (so no builder process
+  can swap it mid-read), reads as a plain file (no symlinks or hard links) and fetches with git hooks and fsmonitor off, and ship refuses any branch that changes a builder-protected path (section 2). Before merge, Athena never runs a builder's code outside the sandbox, and treats `.lzp/` files as data.
 - Builders run only through `dispatch.ts`, never as Athena's subagents (a subagent would inherit Zeus's login and no
   sandbox): everyone's settings deny `Agent(daedalus-builder)`, and the agent file sets no `isolation`.
 - Athena moves board cards with Zeus's login, and the board's built-in workflow marks closed items Done.

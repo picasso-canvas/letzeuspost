@@ -5,7 +5,8 @@
 // hooks and settings with this checkout) with no remote, the task in .lzp/task.md, and a headless Claude Code session
 // with main's builder settings (sandbox on), an allowlisted environment, LZP_ROLE=builder, LZP_HARNESS_DIR, no GitHub
 // credential and no Docker socket. pnpm's store, cache and state live in the clone. The builder runs in its own
-// process group: when it finishes, or as soon as the freeze switch is on, the whole group is killed. While it runs,
+// process group: when it finishes, or as soon as the freeze switch is on, the whole group is killed, and so is any
+// process still working in the clone (lsof finds the ones that left the group). While it runs,
 // AGENTS_PAUSED is copied into ~/.letzeuspost/paused every minute for the hooks (#29). Once the builder has started,
 // nothing here runs git inside its clone (its .git could point git at config the builder wrote); the builder hands its
 // work over as .lzp/branch.bundle, which ship.ts reads. Services (database, storage, mail) arrive in M0.
@@ -23,10 +24,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
+import { killBuilderProcesses } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
-import { BUILDERS_DIR, dispatchRecordPath, parseDispatchRecord } from './ship.ts';
+import { BUILDERS_DIR, dispatchRecordPath, parseDispatchRecord, takenPath } from './ship.ts';
 
 /** What a builder's environment may carry over from Athena's: enough to run Claude Code and tools, no tokens. */
 const ENV_ALLOW = [
@@ -57,6 +59,7 @@ export interface Args {
   maxTurns: string | undefined;
 }
 
+/** Unknown options are refused: a typo like `--dryrun` must never start a real builder. */
 export function parseArgs(argv: readonly string[]): Args {
   const args: Args = {
     issue: Number.NaN,
@@ -65,16 +68,31 @@ export function parseArgs(argv: readonly string[]): Args {
     findings: undefined,
     maxTurns: undefined,
   };
+  const value = (i: number, flag: string): string => {
+    const next = argv[i];
+    if (next === undefined || next.startsWith('-')) throw new Error(`${flag} needs a value`);
+    return next;
+  };
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
+    const arg = argv[i] ?? '';
     if (arg === '--dry-run') args.dryRun = true;
     else if (arg === '--fresh') args.fresh = true;
-    else if (arg === '--findings') args.findings = argv[++i];
-    else if (arg === '--max-turns') args.maxTurns = argv[++i];
-    else if (arg !== undefined && !arg.startsWith('--') && Number.isNaN(args.issue))
-      args.issue = Number(arg);
+    else if (arg === '--findings') args.findings = value(++i, arg);
+    else if (arg === '--max-turns') args.maxTurns = value(++i, arg);
+    else if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    else if (!Number.isNaN(args.issue)) throw new Error('dispatch takes one issue');
+    else args.issue = Number(arg);
   }
   return args;
+}
+
+/** Branch names from `git ls-remote` output, exactly as `refs/heads/<name>` gives them. */
+export function headsFrom(lsRemote: string): string[] {
+  return lsRemote
+    .split('\n')
+    .map((line) => line.split('\t')[1] ?? '')
+    .filter((ref) => ref.startsWith('refs/heads/'))
+    .map((ref) => ref.slice('refs/heads/'.length));
 }
 
 /** The branch an issue already has keeps its name (titles change); a new one is `<issue>-<slug>`. */
@@ -150,20 +168,26 @@ function refreshFlag(): boolean {
 
 function isRegularFile(path: string): boolean {
   try {
-    const stat = lstatSync(path);
-    return stat.isFile() && !stat.isSymbolicLink();
+    return lstatSync(path).isFile();
   } catch {
     return false;
   }
 }
 
+const USAGE =
+  'usage: node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--fresh] [--dry-run]';
+
 async function main(argv: string[]): Promise<number> {
-  const args = parseArgs(argv);
+  let args: Args;
+  try {
+    args = parseArgs(argv);
+  } catch (error) {
+    console.error(`${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
+    return 2;
+  }
   const issue = args.issue;
   if (!Number.isInteger(issue) || issue <= 0) {
-    console.error(
-      'usage: node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--dry-run]',
-    );
+    console.error(USAGE);
     return 2;
   }
   assertCleanMain((cmd, a) => run(cmd, a));
@@ -179,15 +203,9 @@ async function main(argv: string[]): Promise<number> {
     console.error(`#${String(issue)} isn't an open build-task issue.`);
     return 1;
   }
-  const remoteBranches = run('git', [
-    'ls-remote',
-    '--heads',
-    'origin',
-    `refs/heads/${String(issue)}-*`,
-  ])
-    .split('\n')
-    .map((line) => line.split('refs/heads/')[1] ?? '')
-    .filter((name) => name !== '');
+  const remoteBranches = headsFrom(
+    run('git', ['ls-remote', '--heads', 'origin', `refs/heads/${String(issue)}-*`]),
+  );
   const branch = branchFor(issue, view.title, remoteBranches);
   const clone = join(BUILDERS_DIR, branch);
   // Never wipe work that hasn't been shipped yet.
@@ -211,7 +229,11 @@ async function main(argv: string[]): Promise<number> {
   // A review round: the branch must contain current main (so main's harness, not an old copy, loads) and must not
   // change any protected path (its .claude/ would load in the builder's session).
   let baseRef = 'refs/heads/main';
-  if (run('git', ['ls-remote', '--heads', 'origin', branch]).trim() !== '') {
+  if (
+    headsFrom(run('git', ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`])).includes(
+      branch,
+    )
+  ) {
     const ref = `refs/lzp/dispatch-${String(issue)}`;
     run('git', [
       '-c',
@@ -255,7 +277,10 @@ async function main(argv: string[]): Promise<number> {
 
   // A fresh clone every time, through git's own transport (--no-local): nothing a builder left behind carries over,
   // and no unrelated objects or refs come along.
+  if (killBuilderProcesses(clone).length > 0)
+    console.log('Killed processes left in the old clone.');
   if (existsSync(clone)) rmSync(clone, { recursive: true, force: true });
+  rmSync(takenPath(issue), { recursive: true, force: true }); // a hand-over taken from an earlier round
   mkdirSync(dirname(recordFile), { recursive: true, mode: 0o700 });
   writeFileSync(
     recordFile,
@@ -296,8 +321,6 @@ async function main(argv: string[]): Promise<number> {
   if (run('git', ['rev-parse', 'HEAD'], clone).trim() !== baseSha)
     throw new Error('the clone is not on the expected commit');
   run('git', ['remote', 'remove', 'origin'], clone); // nothing to push to, even by path
-  // The hooks' "last green pnpm check" stamp belongs to the old clone (#29).
-  rmSync(join(STATE_DIR, 'stamps', `${branch}.json`), { force: true });
 
   const lzp = join(clone, '.lzp');
   for (const dir of ['gh', 'pnpm/store', 'pnpm/cache', 'pnpm/state'])
@@ -350,6 +373,7 @@ async function main(argv: string[]): Promise<number> {
     } catch {
       // already gone
     }
+    killBuilderProcesses(clone); // the ones that left the group (setsid, a detached spawn)
   };
   const state = { frozen: false }; // set from the timer
   const timer = setInterval(() => {
