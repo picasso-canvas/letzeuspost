@@ -110,8 +110,9 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
   `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, Dockerfiles · AI prompts, AI policy, model/provider/plan
   config · `.github/**`, `.claude/**`, every `CLAUDE.md`, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` ·
   baselines of **approved** screens and look presets. The exact paths are listed in [§13](13-architecture.md).
-- **`ai-review`**: `anthropics/claude-code-action@v1` with Zeus's `claude_code_oauth_token` and the code-review plugin
-  posts inline comments on every PR. It doesn't block on its own, but the merge gate needs each finding fixed or answered.
+- **`ai-review`**: `anthropics/claude-code-action@v1` (pinned to a commit) with Zeus's `claude_code_oauth_token` and our
+  own review prompt posts inline comments on every PR. Claude reads only inside the checkout and has no Bash, so not the
+  code-review plugin, which runs `gh` through Bash (amended 2026-11-07, #27). It doesn't block on its own, but the merge gate needs each finding fixed or answered.
 - **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`),
   so GitHub enforces the merge gate's checks too.
 

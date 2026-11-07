@@ -26,7 +26,7 @@
 | **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity, the Done-when evidence and the GitHub review's findings | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high |
 | **Cerberus** `cerberus-security` | Security review, **only** when a diff touches a sensitive area: auth, tokens, uploads, website fetch (SSRF), workspace isolation, AI prompts, dependencies, workflows | same as Argus | Opus 5.5, effort high |
 | **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Opus 5.5, effort high |
-| **GitHub review** | A second, independent review that comments on every PR (claude-code-action + the code-review plugin). Not a gate on its own: the merge gate needs each of its findings fixed or answered | comments only | Zeus's subscription token |
+| **GitHub review** | A second, independent review that comments on every PR (claude-code-action with our own review prompt, no Bash). Not a gate on its own: the merge gate needs each of its findings fixed or answered | comments only | Zeus's subscription token |
 
 Reviewers never review their own work and always start from a fresh context. The builder cannot spawn agents
 (`disallowedTools: Agent`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`), so it never picks its own reviewers.
