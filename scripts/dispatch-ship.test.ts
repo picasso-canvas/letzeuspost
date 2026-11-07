@@ -30,10 +30,8 @@ describe('freezeFlag', () => {
 
 describe('taskText', () => {
   it('holds the issue and, in a review round, the findings', () => {
-    expect(taskText(7, 'Thing', 'Body', null, 'b'.repeat(40))).toContain(
-      '# Task #7: Thing\n\nBody\n',
-    );
-    expect(taskText(7, 'Thing', 'Body', '[blocking] a — b — c', 'b'.repeat(40))).toContain(
+    expect(taskText(7, 'Thing', 'Body', null)).toContain('# Task #7: Thing\n\nBody\n');
+    expect(taskText(7, 'Thing', 'Body', '[blocking] a — b — c')).toContain(
       '## Review findings to fix (from Athena)\n\n[blocking] a — b — c',
     );
   });
@@ -115,9 +113,9 @@ describe('parseArgs', () => {
 });
 
 describe('taskText', () => {
-  it('ends with the bundle step', () => {
-    expect(taskText(7, 'Thing', 'Body', null, 'b'.repeat(40))).toContain(
-      `git bundle create .lzp/branch.bundle ${'b'.repeat(40)}..HEAD`,
-    );
+  it('holds no command to run: the hand-over command lives in the agent file', () => {
+    const text = taskText(7, 'Thing', 'Body', '[blocking] a — b — c');
+    expect(text).toContain('.lzp/base');
+    expect(text).not.toMatch(/git bundle create/);
   });
 });

@@ -106,7 +106,6 @@ export function taskText(
   title: string,
   body: string,
   findings: string | null,
-  baseSha: string,
 ): string {
   const parts = [`# Task #${String(issue)}: ${title}`, '', body.trim()];
   if (findings !== null)
@@ -115,10 +114,9 @@ export function taskText(
     '',
     '## Handing over (last step)',
     '',
-    'After your last commit and a green `pnpm check`, write `.lzp/pr.md` and `.lzp/approach.md`, then run:',
-    '',
-    `    git bundle create .lzp/branch.bundle ${baseSha}..HEAD`,
+    'Hand over your branch as your instructions say (`.lzp/base` holds the commit you started from).',
   );
+
   return `${parts.join('\n')}\n`;
 }
 
@@ -249,7 +247,6 @@ async function main(argv: string[]): Promise<number> {
     view.title,
     view.body,
     args.findings ? readFileSync(args.findings, 'utf8') : null,
-    baseSha,
   );
   console.log(
     `#${String(issue)} → ${clone} on ${branch} (from ${baseRef === 'refs/heads/main' ? 'main' : 'the existing branch'})`,
@@ -306,6 +303,7 @@ async function main(argv: string[]): Promise<number> {
   for (const dir of ['gh', 'pnpm/store', 'pnpm/cache', 'pnpm/state'])
     mkdirSync(join(lzp, dir), { recursive: true });
   writeFileSync(join(lzp, 'task.md'), task);
+  writeFileSync(join(lzp, 'base'), `${baseSha}\n`); // the builder's bundle starts here (ship checks the recorded base)
   writeFileSync(
     join(lzp, 'gitconfig'),
     '[user]\n\tname = Daedalus\n\temail = daedalus@letzeuspost.invalid\n[credential]\n\thelper =\n[core]\n\thooksPath = /dev/null\n',
