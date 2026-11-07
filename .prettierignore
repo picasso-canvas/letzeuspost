@@ -3,7 +3,11 @@
 # Plan, research and archived design files (mockups are kept as published).
 docs/
 pnpm-lock.yaml
-.claude/skills/vendor/
+# Vendored skills stay exactly as upstream wrote them (plus our recorded changes).
+.claude/skills/security-audit/
+.claude/skills/security-best-practices/
+.claude/skills/security-review/
+.claude/skills/systematic-debugging/
 .claude/logs/
 node_modules/
 dist/
