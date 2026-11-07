@@ -117,7 +117,10 @@ A PR merges only when all of these hold:
    proves: the review ran as one uninterrupted session of the reviewer's agent, on the runner's exact prompt and this
    bundle (a resumed session with a second instruction is refused), so a hand-typed or relabelled record never counts.
    It can't prove which flags a session was started with, so the weekly report lists every merge with its review
-   sessions for Zeus to audit, and Athena's settings deny edits to transcripts and the review record. The reviewers
+   sessions for Zeus to audit, and Athena's settings deny edits to transcripts and the review record. Those denies
+   cover her Edit and Write tools only; her shell can still write those files, so the weekly report's audit is the
+   backstop. Auto-memory is off for every session in the repo (`autoMemoryEnabled: false`) and for reviewers
+   (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`), so no note left in `~/.claude/projects/*/memory/` reaches a review. The reviewers
    confirm the Done-when evidence and that each GitHub review finding is fixed or answered. Each verdict is also posted
    on the PR, for the record.
 6. **Done-when complete:** no unticked box in the PR's Done-when list.
