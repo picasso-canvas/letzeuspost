@@ -82,14 +82,14 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 
 | Hook | Does |
 |---|---|
-| SessionStart (and every PreToolUse) | Loads the task from `.lzp/task.md` and the rules; stops at once while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute, with the time, because builders can't reach GitHub. A flag older than 3 minutes counts as frozen, so a dead refresher fails closed |
+| SessionStart and PreToolUse | SessionStart loads the task from `.lzp/task.md` and the rules (Claude Code doesn't let SessionStart block). PreToolUse, on every tool call, refuses while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute, with the time, because builders can't reach GitHub. A flag older than 3 minutes counts as frozen, so a dead refresher fails closed |
 | PreToolUse Bash | Blocks the dangerous patterns above (a backup to the deny rules) |
 | PreToolUse Edit/Write | Blocks protected paths (builder); blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
 | PostToolUse Edit/Write | Formats the changed file |
 | Stop / SubagentStop (builder) | Won't let the builder finish while code changed after the last green `pnpm check` (a stamp of the git tree hash). The loop guard is checked at setup |
 | All blocks | Logged to `.claude/logs/guardrail-hits.jsonl` (gitignored) for the weekly report |
 
-### 4. Checks (`pnpm check` locally = the CI job `ci`)
+### 4. Checks (`pnpm check` locally; the CI job `ci` runs it and more)
 
 **H0 (minimum):** frozen-lockfile install · TypeScript strict · ESLint · format · unit tests · **gitleaks** CLI ·
 `pnpm audit` + OSV-Scanner · **zizmor** on workflows · a **dependency licence check** (below).
@@ -122,7 +122,7 @@ in the CI eval job, added with the AI pipeline. **CI secrets never meet PR code:
 `pull_request` runs from branches in the same repo, so the evals (`ANTHROPIC_API_KEY`) run only on `main` and by hand
 (`workflow_dispatch`): for a PR that touches AI paths, Athena starts them on the PR branch after the reviews pass,
 and the merge gate requires that check on the head commit; `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
-installs or runs the PR's code. `.env` stays local and unreadable to agents; `.env.example` documents
+installs or runs the PR's code. `.env` stays local and unreadable to agents; `env.example` documents
 the keys. CI secrets: `CLAUDE_CODE_OAUTH_TOKEN` now; `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
 Console workspace with a monthly spend limit).
 

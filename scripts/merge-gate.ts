@@ -3,12 +3,15 @@
 //   node scripts/merge-gate.ts <pr> [--dry-run]
 // It runs from a clean checkout of `main` that matches `origin/main`, so a PR can't change the gate that judges it.
 import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
 import { evaluate } from './merge-gate/evaluate.ts';
-import { logMerge, readReviews } from './merge-gate/reviews.ts';
+import { transcriptPath } from './merge-gate/meta.ts';
+import { logMerge, readReviews, STATE_DIR } from './merge-gate/reviews.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -28,6 +31,13 @@ function main(argv: string[], pr: number): number {
     git: (args) => run('git', args),
     readMainFile: (path) => readMainFile(run, path),
     readReviews: (n, sha) => readReviews(n, sha),
+    // The gate re-verifies every runner-made review against Claude Code's own transcript.
+    readTranscript: (sessionId) => {
+      const file = transcriptPath(homedir(), ROOT, sessionId);
+      return existsSync(file) ? readFileSync(file, 'utf8') : null;
+    },
+    stateDir: STATE_DIR,
+    readFile: (path) => (existsSync(path) ? readFileSync(path, 'utf8') : null),
   });
   const result = evaluate(facts);
 

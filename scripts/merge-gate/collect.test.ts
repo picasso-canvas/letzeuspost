@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { collectFacts, parseConfig, type CollectDeps } from './collect.ts';
+import { bodyHash } from './evaluate.ts';
+import { reviewPrompt } from './meta.ts';
 
 const SHA = 'f'.repeat(40);
 const CONFIG = JSON.stringify({
@@ -119,5 +121,120 @@ describe('collectFacts', () => {
   it('refuses to run without the config on main, and with a malformed one', () => {
     expect(() => collectFacts(7, deps({ readMainFile: () => null }))).toThrow(/missing on main/);
     expect(() => parseConfig('{"requiredChecks":"ci"}')).toThrow(/requiredChecks/);
+  });
+});
+
+describe('collectFacts re-checks every pass against its transcript', () => {
+  it('marks a pass verified only when its session checks out', () => {
+    const bundle = `/s/bundles/pr-7/${SHA.slice(0, 7)}-1`;
+    const good = {
+      pr: 7,
+      sha: SHA,
+      reviewer: 'argus' as const,
+      verdict: 'pass' as const,
+      bodyHash: bodyHash('text'),
+      summary: 'VERDICT: pass',
+      at: '',
+      meta: { agent: 'argus-reviewer', sessionId: 's-ok', bundle },
+    };
+    const forged = {
+      ...good,
+      meta: { agent: 'argus-reviewer', sessionId: 's-fake', bundle, verified: true },
+    }; // a stored flag never counts
+    const f = collectFacts(
+      7,
+      deps({
+        readReviews: () => [good, forged],
+        readTranscript: (id) =>
+          id === 's-ok'
+            ? [
+                JSON.stringify({ type: 'agent-setting', agentSetting: 'argus-reviewer' }),
+                JSON.stringify({
+                  type: 'user',
+                  message: { content: reviewPrompt('argus', bundle) },
+                }),
+                JSON.stringify({
+                  type: 'assistant',
+                  message: { content: [{ type: 'text', text: 'VERDICT: pass' }] },
+                }),
+              ].join('\n')
+            : null,
+        stateDir: '/s',
+        readFile: (path) =>
+          path === `${bundle}/snapshot.json`
+            ? JSON.stringify({ headRefOid: SHA, body: 'text' })
+            : null,
+      }),
+    );
+    expect(f.reviews.map((r) => r.meta?.verified)).toEqual([true, false]);
+  });
+});
+
+describe('collectFacts: records that copy a real pass', () => {
+  it('refuses a record whose PR text differs from the reviewed snapshot, and a null meta', () => {
+    const bundle = `/s/bundles/pr-7/${SHA.slice(0, 7)}-1`;
+    const real = [
+      JSON.stringify({ type: 'agent-setting', agentSetting: 'argus-reviewer' }),
+      JSON.stringify({ type: 'user', message: { content: reviewPrompt('argus', bundle) } }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'VERDICT: pass' }] },
+      }),
+    ].join('\n');
+    const copied = {
+      pr: 7,
+      sha: SHA,
+      reviewer: 'argus' as const,
+      verdict: 'pass' as const,
+      bodyHash: bodyHash('edited text'),
+      summary: 'VERDICT: pass',
+      at: '',
+      meta: { agent: 'argus-reviewer', sessionId: 's-ok', bundle },
+    };
+    const nullMeta = { ...copied, meta: null as unknown as undefined };
+    const f = collectFacts(
+      7,
+      deps({
+        readReviews: () => [copied, nullMeta],
+        readTranscript: () => real,
+        stateDir: '/s',
+        readFile: () => JSON.stringify({ headRefOid: SHA, body: 'text' }),
+      }),
+    );
+    expect(f.reviews.map((r) => r.meta?.verified ?? false)).toEqual([false, false]);
+  });
+});
+
+describe('collectFacts takes the verdict from the verified summary', () => {
+  it('counts a record that says pass but whose real answer was a block as a block', () => {
+    const bundle = `/s/bundles/pr-7/${SHA.slice(0, 7)}-1`;
+    const real = [
+      JSON.stringify({ type: 'agent-setting', agentSetting: 'argus-reviewer' }),
+      JSON.stringify({ type: 'user', message: { content: reviewPrompt('argus', bundle) } }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'VERDICT: block\n[blocking] x — y — z' }] },
+      }),
+    ].join('\n');
+    const relabelled = {
+      pr: 7,
+      sha: SHA,
+      reviewer: 'argus' as const,
+      verdict: 'pass' as const,
+      bodyHash: bodyHash('text'),
+      summary: 'VERDICT: block\n[blocking] x — y — z',
+      at: '',
+      meta: { agent: 'argus-reviewer', sessionId: 's-ok', bundle },
+    };
+    const f = collectFacts(
+      7,
+      deps({
+        readReviews: () => [relabelled],
+        readTranscript: () => real,
+        stateDir: '/s',
+        readFile: () => JSON.stringify({ headRefOid: SHA, body: 'text' }),
+      }),
+    );
+    expect(f.reviews[0]?.verdict).toBe('block');
   });
 });

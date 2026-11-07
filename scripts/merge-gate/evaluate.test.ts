@@ -17,6 +17,9 @@ function review(
     bodyHash: bodyHash(BODY),
     summary: 'ok',
     at: '2026-11-07T00:00:00Z',
+    ...(reviewer === 'redteam'
+      ? {}
+      : { meta: { agent: `${reviewer}-agent`, sessionId: 's-1', verified: true } }),
     ...over,
   };
 }
@@ -287,5 +290,45 @@ describe('bodyHash', () => {
   it('ignores line-ending differences only', () => {
     expect(bodyHash('a\r\nb')).toBe(bodyHash('a\nb'));
     expect(bodyHash('a\nb')).not.toBe(bodyHash('a\nc'));
+  });
+});
+
+describe('evaluate: reviews must come from the runner', () => {
+  it('ignores an argus or cerberus pass without a Claude Code session (hand-written)', () => {
+    const handWritten = review('argus', { meta: undefined });
+    expect(evaluate({ ...facts(), reviews: [handWritten] }).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
+    const noSession = review('argus', { meta: { agent: 'argus-reviewer', sessionId: null } });
+    expect(evaluate({ ...facts(), reviews: [noSession] }).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
+  });
+
+  it('still counts a hand-written block (blocks always count)', () => {
+    const blocks = [
+      review('argus'),
+      review('cerberus'),
+      review('cerberus', { verdict: 'block', meta: undefined }),
+    ];
+    expect(
+      evaluate({
+        ...facts(),
+        labels: ['sensitive'],
+        changedFiles: ['packages/auth/x.ts'],
+        reviews: blocks,
+      }).items.find((i) => i.id === 5)?.ok,
+    ).toBe(false);
+  });
+});
+
+describe('evaluate: only verified sessions count', () => {
+  it('ignores a pass whose transcript did not check out', () => {
+    const unverified = review('argus', {
+      meta: { agent: 'argus-reviewer', sessionId: 's-x', verified: false },
+    });
+    expect(evaluate(facts({ reviews: [unverified] })).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
   });
 });
