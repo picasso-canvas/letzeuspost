@@ -118,6 +118,17 @@ export function slugify(title: string): string {
 }
 
 /**
+ * The model the builder runs on, or null for its agent file's (Opus). Zeus, 2026-11-07: routine tasks build on Sonnet.
+ * The tier comes from the issue Athena wrote (`**Predicted tier:** \`routine\``); anything else keeps Opus.
+ */
+export function builderModel(issueBody: string): string | null {
+  const tiers = [...issueBody.matchAll(/\*\*Predicted tier:\*\*(.*)/g)].map((m) => m[1] ?? '');
+  return tiers.length === 1 && /^\s*`routine`\s*$/.test(tiers[0] ?? '')
+    ? 'claude-sonnet-5-5'
+    : null;
+}
+
+/**
  * One supervision tick: re-reads the freeze switch and kills the builder when it's on. A tick that fails (the flag
  * can't be written, gh can't be run) also kills it: a builder never works without a supervisor that can stop it.
  */
@@ -378,6 +389,8 @@ async function main(argv: string[]): Promise<number> {
 
   const log = join(STATE_DIR, 'runs', `${branch}-${String(Date.now())}.jsonl`);
   mkdirSync(dirname(log), { recursive: true, mode: 0o700 });
+  const model = builderModel(view.body);
+  console.log(`Builder model: ${model ?? 'Opus (the agent file)'}`);
   const prompt = `Build task #${String(issue)}. Your task is in .lzp/task.md. Follow your instructions and CLAUDE.md.`;
   const child = spawn(
     'claude',
@@ -385,6 +398,7 @@ async function main(argv: string[]): Promise<number> {
       '-p',
       '--agent',
       'daedalus-builder',
+      ...(model === null ? [] : ['--model', model]),
       '--settings',
       join(ROOT, '.claude/builder/settings.json'),
       '--permission-mode',

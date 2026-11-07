@@ -11,7 +11,7 @@ import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
 import { evaluate } from './merge-gate/evaluate.ts';
 import { transcriptPath } from './merge-gate/meta.ts';
-import { logMerge, readReviews, STATE_DIR } from './merge-gate/reviews.ts';
+import { listReviewedShas, logMerge, readReviews, STATE_DIR } from './merge-gate/reviews.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -31,6 +31,7 @@ function main(argv: string[], pr: number): number {
     git: (args) => run('git', args),
     readMainFile: (path) => readMainFile(run, path),
     readReviews: (n, sha) => readReviews(n, sha),
+    listReviewedShas: (n) => listReviewedShas(n),
     // The gate re-verifies every runner-made review against Claude Code's own transcript.
     readTranscript: (sessionId) => {
       const file = transcriptPath(homedir(), ROOT, sessionId);

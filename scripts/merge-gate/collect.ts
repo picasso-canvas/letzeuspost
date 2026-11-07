@@ -1,5 +1,6 @@
 import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
+import { changeId, selectReviews } from './carry.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
 import { parseVerdict } from './verdict.ts';
@@ -17,12 +18,42 @@ export interface CollectDeps {
   /** A file from `main`'s tree (`git show HEAD:<path>`), or null when it doesn't exist. */
   readMainFile: (path: string) => string | null;
   readReviews: (pr: number, sha: string) => ReviewRecord[];
+  /** The PR's commits that have review records; their reviews carry to the head when the change is the same. */
+  listReviewedShas?: (pr: number) => string[];
   /** A Claude Code transcript by session id, or null. */
   readTranscript?: (sessionId: string) => string | null;
   /** Where bundles live (`~/.letzeuspost`). */
   stateDir?: string;
   /** A file's text, or null (bundle snapshots). */
   readFile?: (path: string) => string | null;
+}
+
+const newest = (records: readonly ReviewRecord[]) =>
+  records.reduce((latest, r) => (r.at > latest ? r.at : latest), '');
+
+/**
+ * Each record verified at its own commit; then reviews from earlier commits with the same change id carry to the
+ * head (carry.ts). A commit git can't find here carries nothing.
+ */
+function reviewsFor(pr: number, sha: string, deps: CollectDeps): ReviewRecord[] {
+  const own = deps.readReviews(pr, sha).map((r) => verify(r, pr, sha, deps));
+  if (deps.listReviewedShas === undefined) return own;
+  const headId = changeId(deps.git, sha);
+  const earlier = deps
+    .listReviewedShas(pr)
+    .filter((old) => old !== sha)
+    .flatMap((old) => {
+      try {
+        if (changeId(deps.git, old) !== headId) return [];
+      } catch {
+        return [];
+      }
+      return [
+        { sha: old, records: deps.readReviews(pr, old).map((r) => verify(r, pr, old, deps)) },
+      ];
+    })
+    .sort((a, b) => newest(b.records).localeCompare(newest(a.records)));
+  return selectReviews(sha, own, earlier);
 }
 
 /** The gate re-checks every runner-made review against its transcript; anything that doesn't check out isn't verified. */
@@ -202,7 +233,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     labels: view.labels.map((label) => label.name),
     checkRuns,
     statuses,
-    reviews: deps.readReviews(pr, sha).map((r) => verify(r, pr, sha, deps)),
+    reviews: reviewsFor(pr, sha, deps),
     sensitivePatterns: sensitiveList === null ? null : parsePatternList(sensitiveList),
     config,
   };

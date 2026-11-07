@@ -14,6 +14,8 @@ export interface ReviewRecord {
   at: string;
   /** For runs by scripts/review.ts: which agent answered, in which Claude Code session. */
   meta?: { agent: string; sessionId: string | null; bundle?: string; verified?: boolean };
+  /** Set by the gate when the record was made at an earlier head with the same change (carry.ts). */
+  carriedFrom?: string;
 }
 
 /** `.github/merge-gate.json`, always read from `main`. */
