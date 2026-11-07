@@ -5,7 +5,7 @@
 - **Licence:** Apache-2.0, per skill (`LICENSE.txt` from the skill folder, beside this file). The repo root has no
   licence; only this skill's own licence file covers what we copied.
 - **Vendored:** 2026-11-07 by Athena (task #31).
-- **Discovery:** `.claude/skills/security-best-practices` is a relative symlink to this folder.
+- **Discovery:** the skill lives directly at `.claude/skills/security-best-practices/` (Claude Code finds skills one level deep; no symlinks, no `vendor/` folder).
 
 ## Paths copied
 
@@ -45,3 +45,5 @@ Sentry `skill-scanner` (`getsentry/skills` @ `e94f22214528d69899d09c627b3315ddc3
 run with `uv`), plus its same checks applied to every file in the folder: 0 findings on 2026-11-07. Its URL list
 flags 57 citation links (nextjs.org, OWASP, react.dev, MDN and similar docs, `example.com` in examples) and apache.org
 in `LICENSE.txt`; none is fetched.
+- Removed the upstream sentence "you MAY report it to the user, but do not fight with them" and the suggestion to document bypasses: an override outside `docs/plan/` and `CLAUDE.md` is a finding.
+- Added a LetZeusPost note at the top of **Report Format**: headless agents never write a report file or stop to ask; findings go in `.lzp/pr.md` or the reviewer's answer.

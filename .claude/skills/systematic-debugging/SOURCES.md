@@ -5,8 +5,7 @@
 - **Licence:** MIT (`LICENSE`, copied from the repo root, beside this file)
 - **Vendored:** 2026-11-07 by Athena (task #31). Copied the skill folder only, never the superpowers plugin (its
   startup hook injects instructions).
-- **Discovery:** Claude Code finds skills only at `.claude/skills/<name>/SKILL.md`, so
-  `.claude/skills/systematic-debugging` is a relative symlink to this folder.
+- **Discovery:** the skill lives directly at `.claude/skills/systematic-debugging/` (Claude Code finds skills one level deep; no symlinks, no `vendor/` folder).
 
 ## Paths copied
 
@@ -33,7 +32,7 @@ From `skills/systematic-debugging/`:
    `pnpm check` output)". Those superpowers skills aren't installed here.
 3. `condition-based-waiting.md`: the pointer to `condition-based-waiting-example.ts` now says the file isn't in this
    copy.
-4. `root-cause-tracing.md` and `find-polluter.sh`: `npm test` → `pnpm vitest run` (our test runner).
+4. `root-cause-tracing.md` and `find-polluter.sh`: `npm test` → `pnpm vitest run` (both occurrences in `find-polluter.sh`; everything else in that script is upstream's) (our test runner).
 
 ## Review notes
 

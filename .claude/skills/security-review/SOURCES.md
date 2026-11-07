@@ -4,7 +4,7 @@
 - **Commit:** `0c6a49f1fa56a1d472575da86a94dbc1edb78eda` (main, 2026-02-11)
 - **Licence:** MIT (`LICENSE`, copied from the repo root, beside this file)
 - **Vendored:** 2026-11-07 by Athena (task #31). Our fork for Cerberus.
-- **Discovery:** `.claude/skills/security-review` is a relative symlink to this folder. A project skill with this name
+- **Discovery:** the skill lives directly at `.claude/skills/security-review/` (Claude Code finds skills one level deep; no symlinks, no `vendor/` folder). A project skill with this name
   replaces Claude Code's built-in `/security-review` (checked on 2026-11-07: the session listed our description).
 
 ## Paths copied

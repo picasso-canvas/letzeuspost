@@ -4,7 +4,7 @@
 - **Commit:** `c1c8a8c1471069fb0e188eeaff69b8e8db6564a8` (main, 2026-09-14)
 - **Licence:** MIT (`LICENSE`, copied from the repo root, beside this file)
 - **Vendored:** 2026-11-07 by Athena (task #31), for Cerberus in **guidance mode only**.
-- **Discovery:** `.claude/skills/security-audit` is a relative symlink to this folder.
+- **Discovery:** the skill lives directly at `.claude/skills/security-audit/` (Claude Code finds skills one level deep; no symlinks, no `vendor/` folder).
 
 ## Paths copied
 
