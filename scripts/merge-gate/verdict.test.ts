@@ -70,3 +70,23 @@ describe('parseVerdict: blocking behind any leading markup', () => {
     }
   });
 });
+
+describe('parseVerdict: round 3 forms', () => {
+  it('catches [blocking] behind a task box, an HTML tag or a lettered list', () => {
+    for (const line of [
+      '- [ ] [blocking] a',
+      '- [x] [blocking] a',
+      '<b>[blocking]</b> a',
+      'a) [blocking] a',
+    ]) {
+      expect(parseVerdict(`VERDICT: pass\n${line}`).verdict, line).toBe('block');
+    }
+    expect(
+      parseVerdict('VERDICT: pass\n[nit] a ok — the PR quotes "[blocking]" — fine').verdict,
+    ).toBe('pass');
+  });
+
+  it('refuses a pass followed by a VERDICT: block line', () => {
+    expect(parseVerdict('VERDICT: pass\n[nit] x\nVERDICT: block').verdict).toBe('block');
+  });
+});

@@ -215,3 +215,84 @@ describe('runReviews', () => {
     });
   });
 });
+
+describe('exportTree: case twins', () => {
+  it('refuses two paths that become one name, on any disk', () => {
+    const tree = [
+      `100644 blob ${'1'.repeat(40)}\t.claude/x.md`,
+      `100644 blob ${'2'.repeat(40)}\t.Claude/x.md`,
+    ].join('\0');
+    expect(() =>
+      exportTree(
+        SHA,
+        { lsTree: () => `${tree}\0`, blob: () => Buffer.from('x') },
+        mkdtempSync(join(tmpdir(), 'lzp-twin-')),
+      ),
+    ).toThrow(/already/);
+  });
+});
+
+describe('runReviews: round 3', () => {
+  const base = (over: Partial<Parameters<typeof runReviews>[3]> = {}) => {
+    const recorded: string[][] = [];
+    const written: Record<string, string> = {};
+    const calls: { args: string[]; timeoutMs: number }[] = [];
+    const deps = {
+      claude: (args: string[], _env: NodeJS.ProcessEnv, timeoutMs: number) => {
+        calls.push({ args, timeoutMs });
+        return JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's-2' });
+      },
+      show: () => 'agent',
+      record: (args: string[]) => {
+        recorded.push(args);
+        return 'ok';
+      },
+      write: (path: string, text: string) => {
+        written[path] = text;
+      },
+      env: {},
+      ...over,
+    };
+    return { deps, recorded, written, calls };
+  };
+
+  it('runs reviewers without user settings or MCP servers, with the timeout', () => {
+    const t = base();
+    runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
+    expect(t.calls[0]?.args).toEqual(
+      expect.arrayContaining(['--setting-sources', 'project', '--strict-mcp-config']),
+    );
+    expect(t.calls[0]?.timeoutMs).toBe(30 * 60 * 1000);
+  });
+
+  it('records nothing when a run fails, so a retry can pass, and reports the reason', () => {
+    const t = base({
+      claude: () => {
+        throw Object.assign(
+          new Error('Command failed: claude -p --agent argus-reviewer /Users/x/secret-path'),
+          {
+            stderr: 'API error: overloaded',
+          },
+        );
+      },
+    });
+    const failed = runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
+    expect(failed).toBe(1);
+    expect(t.recorded).toEqual([]);
+  });
+
+  it('records a block for every needed reviewer when the bundle was refused', () => {
+    const t = base();
+    runReviews(
+      51,
+      { bundle: '/b', outDir: '/o', refusal: 'docs/x.md.symlink.txt is already in the tree' },
+      ['argus', 'cerberus'],
+      t.deps,
+    );
+    expect(t.calls).toEqual([]);
+    expect(t.recorded.map((r) => r[1])).toEqual(['argus', 'cerberus']);
+    expect(t.written['/o/argus.md']).toMatch(
+      /^VERDICT: block\n\[blocking\] docs\/x\.md\.symlink\.txt is already in the tree/,
+    );
+  });
+});
