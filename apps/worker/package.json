@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "devDependencies": {
-    "@wordpress/is-shallow-equal": "^6.1.0"
+    "@wordpress/is-shallow-equal": "^6.1.0",
+    "lodash": "4.17.20"
   }
 }
