@@ -102,10 +102,15 @@ real sites, 5 of them Bangladeshi, and file reading on 5 Facebook-only businesse
 
 | When | What | Blocks a merge |
 |---|---|---|
-| **Every PR** (target under 12 minutes) | static, unit, integration, tenancy, the end-to-end tests and screenshots for the screens it touches, golden renders if render code changed, the AI smoke evals if AI code changed | **yes** |
+| **Every PR** (target under 12 minutes) | static, unit, integration, tenancy, the end-to-end tests and screenshots for the screens it touches, golden renders if render code changed, the AI smoke evals if AI code changed (started by Athena with `workflow_dispatch` on the PR branch after the reviews pass, so the API key never meets PR-triggered runs; §20 §6) | **yes**: the merge gate requires each of these checks on the head commit |
 | **Every night on `main`** | all end-to-end and visual tests, all golden renders, the payment sandboxes | no, but a red night is fixed first the next day |
 | **Every week** | full AI evals, ZAP scan, dependency audit, the automatic restore (§14) | no; in the weekly report |
 | **Monthly and before launch** | load and speed, the manual drill every 3 months | no; in the report |
+
+**Where they run (2026-11-07):** builders have no Docker (§20), so the local `pnpm check` holds static, unit and the
+checks that need no services. Integration, tenancy, end-to-end, visual and golden tests run in CI, or on the Mac in
+the service containers dispatch starts for the task (`pnpm check:services`, which the builder may run when dispatch
+has handed it the ports). The builder's Stop hook asks only for a green `pnpm check`.
 
 **GitHub Actions budget:** about 1,400 of the free ~2,000 minutes a month at the expected pace (about 60 PRs a month
 at ~10 minutes, plus nightly runs). If it runs over, a self-hosted runner on its own small server takes the heavy

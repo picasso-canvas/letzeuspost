@@ -73,6 +73,8 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
     `vitest.config.*`, `playwright.config.*`, `.prettierrc*`, `.prettierignore`), `.gitleaks.toml`, `.npmrc`,
     `.nvmrc`, `.mcp.json`, `.husky/**`, `.gitattributes`, `.vscode/**` and approved visual baselines. Paths match
     in any letter case (macOS treats `Claude.md` as `CLAUDE.md`). Bash: `git push*`, `gh *`, `security *` (the Keychain).
+  - Deny reads of `~/.config/gh/**`, `~/.ssh/**`, `~/.letzeuspost/**` except the freeze flag, Picasso's instance
+    folder (its `.env`) and every `.env*`: the sandbox limits writes, not reads.
   - The hooks apply the same rules when `LZP_ROLE=builder` (set only by dispatch, outside the builder's reach).
 - `permissions.disableBypassPermissionsMode: "disable"` in both files, also set by Zeus in **managed settings** on the Mac.
 
@@ -80,7 +82,7 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 
 | Hook | Does |
 |---|---|
-| SessionStart (and every PreToolUse) | Loads the task from `.lzp/task.md` and the rules; stops at once while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute because builders can't reach GitHub |
+| SessionStart (and every PreToolUse) | Loads the task from `.lzp/task.md` and the rules; stops at once while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute, with the time, because builders can't reach GitHub. A flag older than 3 minutes counts as frozen, so a dead refresher fails closed |
 | PreToolUse Bash | Blocks the dangerous patterns above (a backup to the deny rules) |
 | PreToolUse Edit/Write | Blocks protected paths (builder); blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
 | PostToolUse Edit/Write | Formats the changed file |
@@ -118,7 +120,8 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
 No real secrets on the builder side. Builders use local dev services and a **mocked AI provider**; live AI runs only
 in the CI eval job, added with the AI pipeline. **CI secrets never meet PR code:** GitHub gives secrets to
 `pull_request` runs from branches in the same repo, so the evals (`ANTHROPIC_API_KEY`) run only on `main` and by hand
-(`workflow_dispatch`); `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
+(`workflow_dispatch`): for a PR that touches AI paths, Athena starts them on the PR branch after the reviews pass,
+and the merge gate requires that check on the head commit; `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
 installs or runs the PR's code. `.env` stays local and unreadable to agents; `.env.example` documents
 the keys. CI secrets: `CLAUDE_CODE_OAUTH_TOKEN` now; `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
 Console workspace with a monthly spend limit).
