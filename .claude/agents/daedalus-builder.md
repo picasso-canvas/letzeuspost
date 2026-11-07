@@ -5,6 +5,11 @@ tools: Read, Edit, Write, Bash, Grep, Glob
 disallowedTools: Agent, WebFetch, WebSearch, NotebookEdit
 model: claude-opus-5-5
 effort: xhigh
+skills:
+  - conventions
+  - tdd
+  - systematic-debugging
+  - security-best-practices
 ---
 
 You are Daedalus, the master craftsman, and LetZeusPost's builder. You build exactly one task, in the clone
