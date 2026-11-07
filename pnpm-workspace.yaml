@@ -13,8 +13,14 @@ minimumReleaseAge: 1440
 overrides:
   # GHSA-g3hv-75wg-m249 (medium, DoS via globparts amplification), via eslint → @eslint/config-array.
   minimatch@>=7.0.0 <11.0.1: 11.0.5
-  # vitest is an optional peer of better-auth: keep the test runner out of the production dependency graph.
+  # vitest and drizzle-kit are optional peers of better-auth: keep dev tools out of the production dependency graph.
   better-auth>vitest: '-'
+  better-auth>drizzle-kit: '-'
+  # GHSA-67mh-4wv8-2f99 (medium, the dev server answers any website), via drizzle-kit → @esbuild-kit/core-utils
+  # (dev only; it uses esbuild's transform API, unchanged in 0.25).
+  '@esbuild-kit/core-utils>esbuild': 0.25.12
+  # GHSA-3g3m-2fjr-6pw4 (medium, AbortSignal bypass), via @storybook/react-vite → its docgen plugin (dev only).
+  '@joshwooding/vite-plugin-react-docgen-typescript>glob': 14.0.2
 
 # Build scripts, each by name (strictDepBuilds fails any other). esbuild's postinstall only fetches a binary the
 # package already ships as an optional dependency, so it stays off.
