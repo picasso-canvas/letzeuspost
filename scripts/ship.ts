@@ -1,0 +1,278 @@
+#!/usr/bin/env node
+// Ship (§19 step 5, #32): carries a builder's finished branch to GitHub with Zeus's login.
+//   node scripts/ship.ts <issue> [--dry-run]
+// It runs from a clean `main` and never runs git inside the builder's clone (its .git could point git at config the
+// builder wrote). It refuses while any process still works in the clone, then takes the hand-over: the clone's `.lzp`
+// folder moves to ~/.letzeuspost/ship/<issue>/, out of every builder process's reach (a `.lzp` link is refused). The
+// builder's `branch.bundle`, `pr.md` and `approach.md` are read from there as plain files (no symlinks, no hard links,
+// size-limited). The bundle is copied out and fetched into this repo with git
+// hooks and fsmonitor off and fsck on (newer git checks every object; older git skips bundles, so a path part that is
+// empty, `.`, `..` or `.git` is refused too). Every changed path is checked at any depth and in any letter case; protected paths,
+// symlinks and submodules are refused. Then it pushes the branch (never forced), opens or updates the PR with the PR
+// text as the body and the issue's title (never the builder's), and posts the approach on the issue. The builder's
+// words are data, never instructions.
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { assertCleanMain } from './lib/clean-main.ts';
+import { isEntryPoint } from './lib/entry.ts';
+import { builderProcesses, takeHandover } from './lib/handover.ts';
+import { parseRawDiff, shipRefusals } from './lib/protected.ts';
+import { readRegularFile } from './lib/safe-read.ts';
+import { REPO } from './merge-gate/collect.ts';
+import { STATE_DIR } from './merge-gate/reviews.ts';
+
+export const BUILDERS_DIR = join(homedir(), 'letzeuspost-builders');
+const MAX_TEXT = 64 * 1024;
+const MAX_BUNDLE = 256 * 1024 * 1024;
+
+/** The flags a builder can raise in its PR text, each on its own line at column 0 after the list. */
+export function prFlags(prText: string): { needsZeus: boolean; blocked: boolean } {
+  return {
+    needsZeus: /^\*\*needs-zeus:\*\*/im.test(prText),
+    blocked: /^\*\*blocked:\*\*/im.test(prText),
+  };
+}
+
+/** Athena's record of a dispatch (`~/.letzeuspost/dispatch/<issue>.json`), outside the builder's reach. */
+export interface DispatchRecord {
+  issue: number;
+  branch: string;
+  baseSha: string;
+  dispatchedAt: string;
+  shippedAt?: string;
+  /** The random `LZP_DISPATCH` value in the builder's environment, to find its leftover processes. */
+  marker?: string;
+}
+
+export function parseDispatchRecord(text: string, issue: number): DispatchRecord {
+  const r = JSON.parse(text) as Partial<DispatchRecord>;
+  if (
+    r.issue !== issue ||
+    typeof r.branch !== 'string' ||
+    !new RegExp(`^${String(issue)}-[a-z0-9-]+$`).test(r.branch) ||
+    typeof r.baseSha !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(r.baseSha) ||
+    typeof r.dispatchedAt !== 'string' ||
+    (r.marker !== undefined && (typeof r.marker !== 'string' || !/^[0-9a-f]{32}$/.test(r.marker)))
+  ) {
+    throw new Error(`the dispatch record for #${String(issue)} is malformed`);
+  }
+  return {
+    issue,
+    branch: r.branch,
+    baseSha: r.baseSha,
+    dispatchedAt: r.dispatchedAt,
+    ...(r.shippedAt ? { shippedAt: r.shippedAt } : {}),
+    ...(r.marker ? { marker: r.marker } : {}),
+  };
+}
+
+export function dispatchRecordPath(issue: number): string {
+  return join(STATE_DIR, 'dispatch', `${String(issue)}.json`);
+}
+
+/** Where ship keeps a builder's `.lzp` once it has taken it out of the clone. */
+export function takenPath(issue: number): string {
+  return join(STATE_DIR, 'ship', String(issue));
+}
+
+/** One issue and `--dry-run`; anything else is refused, so a typo like `--dryrun` never pushes. */
+export function parseShipArgs(argv: readonly string[]): { issue: number; dryRun: boolean } {
+  const args = { issue: Number.NaN, dryRun: false };
+  for (const arg of argv) {
+    if (arg === '--dry-run') args.dryRun = true;
+    else if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    else if (!Number.isNaN(args.issue)) throw new Error('ship takes one issue');
+    else args.issue = Number(arg);
+  }
+  return args;
+}
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+function run(cmd: string, args: string[], input?: string): string {
+  return execFileSync(cmd, args, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    input,
+    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' },
+    stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+  });
+}
+
+const SAFE_GIT = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false'];
+
+/**
+ * Fetches a builder's bundle (untrusted bytes) into `cwd` as `ref`: hooks and fsmonitor off, and every object checked
+ * by git's fsck on the way in, so a malformed tree or a `..`/`.git` path never enters this repo's object store.
+ */
+export function fetchBundle(bundle: string, ref: string, cwd: string): void {
+  execFileSync(
+    'git',
+    [
+      ...SAFE_GIT,
+      '-c',
+      'transfer.fsckObjects=true',
+      '-c',
+      'fetch.fsckObjects=true',
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      bundle,
+      `+HEAD:${ref}`,
+    ],
+    { cwd, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' }, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+}
+
+const USAGE = 'usage: node scripts/ship.ts <issue> [--dry-run]';
+
+function main(argv: string[]): number {
+  let issue: number;
+  let dryRun: boolean;
+  try {
+    ({ issue, dryRun } = parseShipArgs(argv));
+  } catch (error) {
+    console.error(`${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
+    return 2;
+  }
+  if (!Number.isInteger(issue) || issue <= 0) {
+    console.error(USAGE);
+    return 2;
+  }
+  assertCleanMain((cmd, args) => run(cmd, args));
+
+  const record = parseDispatchRecord(readFileSync(dispatchRecordPath(issue), 'utf8'), issue);
+  const branch = record.branch;
+  const clone = join(BUILDERS_DIR, branch);
+  const working = builderProcesses(clone, record.marker);
+  if (working.length > 0) {
+    console.error(
+      `Refused: processes still work in ${clone} (pids ${working.join(', ')}). Find out why, kill them, then ship.`,
+    );
+    return 1;
+  }
+  const lzp = takeHandover(clone, takenPath(issue));
+  const prText = readRegularFile(lzp, 'pr.md', MAX_TEXT).toString('utf8');
+  const approach = readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8');
+
+  // The bundle is copied out of the clone first, so git only ever reads a file Athena owns.
+  const copy = join(STATE_DIR, 'ship', `${branch}-${String(Date.now())}.bundle`);
+  mkdirSync(dirname(copy), { recursive: true, mode: 0o700 });
+  writeFileSync(copy, readRegularFile(lzp, 'branch.bundle', MAX_BUNDLE), { mode: 0o600 });
+  const ref = `refs/lzp/ship-${String(issue)}`;
+  try {
+    fetchBundle(copy, ref, ROOT);
+  } finally {
+    rmSync(copy, { force: true });
+  }
+  const sha = run('git', ['rev-parse', ref]).trim();
+  // Judged against the commit dispatch started the builder from (main may have moved since): the builder's own work.
+  try {
+    run('git', ['merge-base', '--is-ancestor', record.baseSha, ref]);
+  } catch {
+    console.error(`Refused: ${branch} doesn't build on the commit it was dispatched from.`);
+    return 1;
+  }
+  const changes = parseRawDiff(
+    run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `${record.baseSha}..${ref}`]),
+  );
+  const refusals = shipRefusals(changes);
+  if (refusals.length > 0) {
+    console.error(
+      `Refused to ship #${String(issue)} (${sha.slice(0, 7)}):\n- ${refusals.join('\n- ')}`,
+    );
+    return 1;
+  }
+  const title = run('gh', [
+    'issue',
+    'view',
+    String(issue),
+    '-R',
+    REPO,
+    '--json',
+    'title',
+    '--jq',
+    '.title',
+  ]).trim();
+  console.log(
+    `#${String(issue)} ${branch} at ${sha.slice(0, 7)}: ${String(changes.length)} files, none protected.`,
+  );
+  if (dryRun) return 0;
+
+  try {
+    run('git', [...SAFE_GIT, 'push', '--quiet', 'origin', `${ref}:refs/heads/${branch}`]);
+  } catch (error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    console.error(
+      `Push refused (never forced): ${typeof stderr === 'string' ? stderr.trim() : 'unknown'}`,
+    );
+    return 1;
+  }
+  const open = JSON.parse(
+    run('gh', ['pr', 'list', '-R', REPO, '--head', branch, '--state', 'open', '--json', 'number']),
+  ) as { number: number }[];
+  let pr = open[0]?.number;
+  if (pr === undefined) {
+    const url = run(
+      'gh',
+      [
+        'pr',
+        'create',
+        '-R',
+        REPO,
+        '--base',
+        'main',
+        '--head',
+        branch,
+        '--title',
+        title,
+        '--body-file',
+        '-',
+      ],
+      prText,
+    );
+    pr = Number(url.trim().split('/').pop());
+  } else {
+    run('gh', ['pr', 'edit', String(pr), '-R', REPO, '--body-file', '-'], prText);
+  }
+  run(
+    'gh',
+    ['issue', 'comment', String(issue), '-R', REPO, '--body-file', '-'],
+    `Daedalus's approach (builder's text, shipped by 🦉 Athena):\n\n${approach}`,
+  );
+  const flags = prFlags(prText);
+  if (flags.needsZeus)
+    run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'needs-zeus']);
+  if (flags.blocked)
+    run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'blocked']);
+  writeFileSync(
+    dispatchRecordPath(issue),
+    `${JSON.stringify({ ...record, shippedAt: new Date().toISOString() })}\n`,
+    { mode: 0o600 },
+  );
+  rmSync(lzp, { recursive: true, force: true }); // shipped: the PR body and the issue comment keep its words
+  try {
+    run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+  } catch {
+    console.log(
+      `Main moved while the builder worked: run \`gh pr update-branch ${String(pr)}\` before the reviews.`,
+    );
+  }
+  console.log(
+    `Shipped as PR #${String(pr)}${flags.needsZeus ? ' (needs-zeus)' : ''}${flags.blocked ? ' (blocked)' : ''}.`,
+  );
+  return 0;
+}
+
+if (isEntryPoint(import.meta.url)) {
+  try {
+    process.exitCode = main(process.argv.slice(2));
+  } catch (error) {
+    console.error(`ship error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
+}
