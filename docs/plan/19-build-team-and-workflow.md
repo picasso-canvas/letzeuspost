@@ -83,10 +83,7 @@ Reviewers never review their own work and always start from a fresh context. The
    first UI milestone). Harness changes (Athena's) skip `staging` and go straight into `main` with the full review.
    Reviewers read a bundle: the PR's files as regular blobs (no `.git`, symlinks as stubs, `CLAUDE.md` and `.claude/` renamed),
    the diff, the history, the PR text, the issue, CI results and comments. They never run the PR's code, and only their
-   own recorded verdicts count (§ merge gate, item 5). A finding that only shows another way around one of the
-   design lint rules (`lzp/tokens-only`, `lzp/lucide-only`, `lzp/inter-only`) is should-fix, unless the PR itself uses
-   it; workarounds of every other lint rule, which guard workspaces and users, still block (Zeus, 2026-11-08). Blocking
-   findings go back to a builder: on a task PR, a new
+   own recorded verdicts count (§ merge gate, item 5). Blocking findings go back to a builder: on a task PR, a new
    dispatch on the same branch; on a batch, a fix task on `staging`, then the batch is reviewed again. At most 3
    rounds, then `needs-zeus` with a summary. The card moves to In review, and stays there until its batch merges.
 7. **Merge gate.** Athena runs `scripts/merge-gate.ts <pr>` from `main`. It checks every item in

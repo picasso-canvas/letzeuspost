@@ -45,11 +45,5 @@ finding is blocking. Then one line per finding:
 
 `[blocking|should-fix|nit] path/to/file.ts:42 — the problem — the fix`
 
-**Workarounds of the design lint rules** ([§19 step 6](../../docs/plan/19-build-team-and-workflow.md#a-tasks-life),
-Zeus, 2026-11-08): a finding that only shows another way around `lzp/tokens-only`, `lzp/lucide-only` or
-`lzp/inter-only` (§21's design bans) is `should-fix`, never `blocking`, unless the PR itself uses it. Athena collects
-these in #61. Every other lint rule keeps blocking, including `lzp/no-use-cache`, `lzp/no-dangerous-html` and
-`lzp/no-raw-db-client`, which protect workspaces and users.
-
 Then one line confirming items 5 and 6. Keep it under 400 words. If you can't judge something from the files you
 were given, say what's missing; that is a block, not a pass.
