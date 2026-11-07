@@ -5,6 +5,7 @@ import {
   renderReport,
   type LogEntry,
   type MainCommit,
+  parseReportArgs,
 } from './weekly-report.ts';
 
 const commit = (sha: string, at: string, subject: string): MainCommit => ({ sha, at, subject });
@@ -127,5 +128,21 @@ describe('auditMain: gated merges must stay on main', () => {
     const flagged = auditMain(commits, log);
     expect(flagged.map((c) => c.sha[0])).toEqual(['a', 'b']);
     expect(flagged[0]?.subject).toMatch(/missing from main/);
+  });
+});
+
+describe('parseReportArgs', () => {
+  it('reads --since, --create and --no-freeze, and refuses anything else', () => {
+    expect(parseReportArgs([])).toEqual({ since: null, create: false, freeze: true });
+    expect(parseReportArgs(['--since', '2026-11-01', '--create', '--no-freeze'])).toEqual({
+      since: '2026-11-01',
+      create: true,
+      freeze: false,
+    });
+    expect(() => parseReportArgs(['--creat'])).toThrow(/unknown option: --creat/);
+    expect(() => parseReportArgs(['--no-freez'])).toThrow(/unknown option/);
+    expect(() => parseReportArgs(['--since'])).toThrow(/--since needs a date/);
+    expect(() => parseReportArgs(['--since', 'last week'])).toThrow(/--since needs a date/);
+    expect(() => parseReportArgs(['extra'])).toThrow(/unexpected argument/);
   });
 });

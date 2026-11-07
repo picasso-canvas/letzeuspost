@@ -1,14 +1,19 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   branchFor,
   builderEnv,
   freezeFlag,
   headsFrom,
+  onTick,
   parseArgs,
   slugify,
   taskText,
 } from './dispatch.ts';
-import { parseDispatchRecord, parseShipArgs, prFlags } from './ship.ts';
+import { fetchBundle, parseDispatchRecord, parseShipArgs, prFlags } from './ship.ts';
 
 const paused = (flag: string) => (JSON.parse(flag) as { paused: boolean }).paused;
 
@@ -156,5 +161,84 @@ describe('headsFrom', () => {
     expect(headsFrom(out)).toEqual(['7-thing', 'foo/7-thing', '7-other']);
     expect(headsFrom(out).includes('7-thing')).toBe(true);
     expect(headsFrom(`${'a'.repeat(40)}\trefs/heads/foo/7-x\n`).includes('7-x')).toBe(false);
+  });
+});
+
+describe('onTick', () => {
+  it('kills the builder when frozen, and when the refresh itself fails', () => {
+    const kills: string[] = [];
+    const state = { frozen: false };
+    onTick(
+      () => true,
+      () => kills.push('k'),
+      state,
+    );
+    expect(state.frozen).toBe(false);
+    expect(kills).toEqual([]);
+    onTick(
+      () => false,
+      () => kills.push('k'),
+      state,
+    );
+    expect(state.frozen).toBe(true);
+    const broken = { frozen: false };
+    onTick(
+      () => {
+        throw new Error('disk full');
+      },
+      () => kills.push('k2'),
+      broken,
+    );
+    expect(broken.frozen).toBe(true);
+    expect(kills).toEqual(['k', 'k2']);
+  });
+});
+
+function git(cwd: string, args: string[], input?: string): string {
+  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
+    cwd,
+    encoding: 'utf8',
+    input,
+    env: {
+      ...process.env,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_AUTHOR_NAME: 't',
+      GIT_AUTHOR_EMAIL: 't@t.invalid',
+      GIT_COMMITTER_NAME: 't',
+      GIT_COMMITTER_EMAIL: 't@t.invalid',
+    },
+  });
+}
+
+describe('fetchBundle', () => {
+  it('fetches a sound bundle and refuses one carrying a malformed object', () => {
+    const root = mkdtempSync(join(tmpdir(), 'lzp-fsck-'));
+    const builder = join(root, 'builder');
+    const athena = join(root, 'athena');
+    for (const dir of [builder, athena]) git(root, ['init', '--quiet', '-b', 'main', dir]);
+    writeFileSync(join(builder, 'a.txt'), 'a\n');
+    git(builder, ['add', 'a.txt']);
+    git(builder, ['commit', '--quiet', '-m', 'good']);
+    git(builder, ['bundle', 'create', '--quiet', join(root, 'good.bundle'), 'HEAD']);
+    fetchBundle(join(root, 'good.bundle'), 'refs/lzp/ship-7', athena);
+    expect(git(athena, ['rev-parse', 'refs/lzp/ship-7']).trim()).toMatch(/^[0-9a-f]{40}$/);
+
+    // A tree whose entry is named "..": git's fsck refuses it (the shape behind past path-traversal CVEs).
+    const blob = git(builder, ['hash-object', '-w', 'a.txt']).trim();
+    const tree = execFileSync(
+      'git',
+      ['hash-object', '-t', 'tree', '--literally', '-w', '--stdin'],
+      {
+        cwd: builder,
+        input: Buffer.concat([Buffer.from('100644 ..\0'), Buffer.from(blob, 'hex')]),
+        encoding: 'utf8',
+      },
+    ).trim();
+    const commit = git(builder, ['commit-tree', tree, '-p', 'HEAD', '-m', 'bad']).trim();
+    git(builder, ['update-ref', 'refs/heads/main', commit]);
+    git(builder, ['bundle', 'create', '--quiet', join(root, 'bad.bundle'), 'HEAD']);
+    expect(() => fetchBundle(join(root, 'bad.bundle'), 'refs/lzp/ship-8', athena)).toThrow();
+    expect(() => git(athena, ['rev-parse', '--verify', '--quiet', 'refs/lzp/ship-8'])).toThrow();
   });
 });

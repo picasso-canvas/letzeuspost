@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { pidsUnder, takeHandover } from './handover.ts';
+import { pidsUnder, pidsWithMarker, takeHandover } from './handover.ts';
 
 function setup(): { clone: string; taken: string; root: string } {
   const root = mkdtempSync(join(tmpdir(), 'lzp-handover-'));
@@ -79,5 +79,25 @@ describe('pidsUnder', () => {
 
   it('finds every process whose working folder or an open file is in the clone, never itself', () => {
     expect(pidsUnder(lsof, '/Users/p/letzeuspost-builders/7-thing', 400)).toEqual([100, 200]);
+  });
+});
+
+describe('pidsWithMarker', () => {
+  const marker = 'a'.repeat(32);
+  const ps = [
+    `  101 node build.js PATH=/bin LZP_DISPATCH=${marker} HOME=/h`,
+    `  102 sleep 300 LZP_DISPATCH=${'b'.repeat(32)}`,
+    `  103 sh -c x LZP_DISPATCH=${marker}0`,
+    `  104 node dispatch.ts LZP_DISPATCH=${marker}`,
+    '  105 vim',
+    '',
+  ].join('\n');
+
+  it("finds processes carrying this dispatch's marker in their environment, never itself", () => {
+    expect(pidsWithMarker(ps, marker, 104)).toEqual([101]);
+  });
+
+  it('refuses a marker too short to be unique', () => {
+    expect(() => pidsWithMarker(ps, 'abc', 1)).toThrow(/marker/);
   });
 });
