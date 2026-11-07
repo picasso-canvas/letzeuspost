@@ -1,0 +1,102 @@
+# The CI job `ci` (§20 part 4): the same checks as `pnpm check`, plus secrets, advisories, workflow lint and licences.
+# Every action is pinned to a commit SHA; every downloaded tool is checked against a pinned SHA-256.
+#
+# No repository secrets here, ever: this job runs on pull_request, where the branch's code is untrusted. Jobs that need
+# secrets (the AI evals, §17) live in their own workflow and run only on push to main or workflow_dispatch (§20 part 6).
+# The one credential used is GitHub's automatic read-only token, for zizmor's online audits, before any PR code runs.
+#
+# Order: the scanners that only read files (zizmor, gitleaks, OSV-Scanner, pnpm audit on the lockfile) run first, before
+# `pnpm install` or any of the branch's code, so that code can't tamper with the tools or their results.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # runs on main are never cancelled
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  OSV_SCANNER_VERSION: 2.7.0
+  OSV_SCANNER_SHA256: 160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+  ZIZMOR_VERSION: 1.32.0
+  ZIZMOR_SHA256: bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # gitleaks scans the head's whole history
+
+      - name: Set up pnpm (version from packageManager)
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install tools (checksum-verified)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl -fsSLo gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz -C bin gitleaks
+          curl -fsSLo bin/osv-scanner "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  bin/osv-scanner" | sha256sum -c -
+          chmod +x bin/osv-scanner
+          curl -fsSLo zizmor.tar.gz "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${ZIZMOR_SHA256}  zizmor.tar.gz" | sha256sum -c -
+          tar -xzf zizmor.tar.gz -C bin zizmor
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      # Before any of the branch's code is installed or run. Each check runs even when an earlier one failed, so one
+      # run shows every problem.
+      - name: Workflows (zizmor)
+        env:
+          GH_TOKEN: ${{ github.token }} # read-only; lets zizmor run its online audits (impostor commits, known-vulnerable actions)
+        run: zizmor --config .github/zizmor.yml --format plain .github/workflows
+
+      - name: Secrets (gitleaks, the head's history)
+        if: ${{ !cancelled() }}
+        run: gitleaks git --log-opts=HEAD --redact --no-banner --verbose .
+
+      - name: Advisories (OSV-Scanner on the lockfile)
+        if: ${{ !cancelled() }}
+        run: osv-scanner scan source --lockfile pnpm-lock.yaml
+
+      - name: Advisories (pnpm audit on the lockfile, high and above)
+        if: ${{ !cancelled() }}
+        run: pnpm audit --audit-level high
+
+      - name: Install dependencies (frozen lockfile)
+        id: install
+        if: ${{ !cancelled() }}
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm check (typecheck, lint, format, unit tests, licences)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check
+
+      # Again on its own, so a failing test or lint error can't hide a licence problem.
+      - name: Licences (every workspace package)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm licence-check

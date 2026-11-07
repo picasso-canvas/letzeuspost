@@ -12,7 +12,8 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm licence-check",
+    "licence-check": "node scripts/licence-check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

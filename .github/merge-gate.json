@@ -1,0 +1,17 @@
+{
+  "requiredChecks": ["ci"],
+  "requireTierLabel": false,
+  "requireIris": false,
+  "uiPaths": ["apps/web/**", "packages/ui/**", "packages/render/src/looks/**", "DESIGN.md"],
+  "harnessPaths": [
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "CLAUDE.md",
+    "**/CLAUDE.md",
+    ".husky/**",
+    ".mcp.json",
+    ".vscode/**",
+    ".gitattributes"
+  ]
+}
