@@ -14,7 +14,7 @@ the job queue, file storage, the API and security, so the builders have one sett
 | Review links | Tokens of at least 128 bits, stored hashed, 30 days, revocable, rate-limited, noindex | §11 |
 | Files | Images processed on upload (sRGB, EXIF removed, re-encoded); exports kept 30 days; Metricool image links public until 7 days after the last post date | §10, §12 |
 | Isolation | Every AI call scoped to one workspace and brand; cache keys include the workspace | §22 |
-| Building | Sensitive areas need Zeus's merge; "exact folders come from §13" | §20 |
+| Building | Sensitive areas need Cerberus's review before the merge gate passes (§19); "exact folders come from §13" | §20 |
 
 ## Spec
 
@@ -54,8 +54,8 @@ lockfile; these are the lines to start on.
 
 **Framework security:** Next.js and React had several critical remote-code bugs in 2025–26 (React2Shell in December 2025,
 more in September and October 2026) and a **cross-workspace data leak in Next.js's `use cache`** fixed on 2026-11-03.
-So: critical security releases are applied **within 2 days** and others within a week (a `sensitive` PR Zeus
-merges); and **workspace data is never put in Next.js's shared caches**: `use cache` and cache components are banned
+So: critical security releases are applied **within 2 days** and others within a week (a `sensitive` PR through
+the merge gate); and **workspace data is never put in Next.js's shared caches**: `use cache` and cache components are banned
 by lint for anything that reads workspace data, and those pages render per request.
 
 ### What runs
@@ -113,11 +113,13 @@ packages/db/**              packages/ai/prompts/**              packages/ai/poli
 config/models.ts            config/providers.ts                 config/plans.ts             config/env.ts
 package.json  **/package.json  pnpm-lock.yaml  pnpm-workspace.yaml  docker/**  .github/**  .claude/**
 **/CLAUDE.md  DESIGN.md  docs/plan/**  tsconfig*.json  eslint.config.*  vitest.config.*  playwright.config.*
+scripts/**  .prettierrc*  .prettierignore  .gitleaks.toml  .npmrc  .nvmrc
 tests/visual/approved/**    tests/golden/**                     packages/render/src/looks/**
 apps/fetcher/**             packages/storage/src/public-links/**  apps/web/src/app/r/**
 ```
 
-The last line adds three areas §20 didn't name: the fetcher (the SSRF boundary), public image links (§12) and the
+The `scripts/**` line (2026-11-07) covers the harness scripts (dispatch, ship, merge gate, risk gate, licence check)
+and the remaining tool configs. The last line adds three areas §20 didn't name: the fetcher (the SSRF boundary), public image links (§12) and the
 client review page (no-account access).
 
 ### Data model

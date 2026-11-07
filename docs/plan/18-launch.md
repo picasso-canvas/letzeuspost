@@ -32,21 +32,28 @@ rest of each milestone is built after Picasso is live and before the first partn
 | Milestone | Picasso first | Before the first partner |
 |---|---|---|
 | H0 Harness | all of it, plus the merge gate (§19) | |
-| M0 Foundation | Docker Compose, config files, the schema with row-level security and the tenancy suite, workspaces and roles, email-link sign-in (emails land in Mailpit on the Mac), jobs, storage, design tokens and the component gallery | Google sign-in, invite codes and invitations, the staging server |
+| M0 Foundation | Docker Compose, config files, the schema with row-level security and the tenancy suite, workspaces and roles, email-link sign-in (emails land in Mailpit on the Mac), a seed command that creates the studio's workspace with Zeus as owner, jobs, storage, design tokens and the component gallery | Google sign-in, invite codes and invitations, the staging server |
 | M1 Render engine | all of it | |
 | M2 Brand kits | a new brand from files or answers (Picasso has no website), the kit editor with Facts, the asset library and upload processing | the website fetcher |
-| M3 Generate | all of it: the AI pipeline, J1–J4, QC and the Bangla judge, costs and caps, the evals | |
+| M3 Generate | the AI pipeline, J1, J2 and J4, QC and the Bangla judge, costs and caps, the evals | J3 (from a link: it needs the fetcher) |
 | M4 Review | the editor, versions, approval modes "none" and "agency", the first run and the checklist | the client review link and client comments, notifications, emails |
-| M5 Export and calendar | Metricool CSV, ZIP, provenance metadata, the calendars | LinkedIn PDF (Picasso has no LinkedIn) |
+| M5 Export and calendar | ZIP, provenance metadata, the calendars; the Metricool CSV once public image links work (R2, below) | LinkedIn PDF (Picasso has no LinkedIn) |
 
 **Picasso is live when** Zeus signs in on the Mac, creates the Picasso brand from files and answers, generates a month
-of posts in Bangla and English (J1), approves them, imports the Metricool CSV into Picasso's Metricool account, and the
-posts go out. Picasso's Metricool is on the free plan: in M5, check that it accepts a CSV import; if it doesn't, Athena
-schedules the approved posts from the ZIP through the Metricool connector, as the studio does today.
+of posts in Bangla and English (J1), approves them, exports them, and the posts go out from Picasso's Metricool. The
+Metricool CSV needs public image links (§12), which need R2; until then, Athena sends the approved posts from the ZIP
+through the studio's route (images to Dropbox links with rclone, then the Metricool connector). Picasso's Metricool is
+on the free plan: when the CSV is built, check that the plan accepts a CSV import.
+
+**Picasso's instance is not a build environment.** It runs as its own Compose project (own ports, volumes and
+database) on a Docker engine builders can't reach (OrbStack; builders only get Docker Desktop's socket), with a nightly
+`pg_dump`. Updating it is a deploy: from a `main` commit with green checks, and Athena asks Zeus first.
 
 Not needed for Picasso: servers, the domain, billing, the public page, the legal documents (the studio's own brand, no
-outside client data), Google sign-in. **Zeus's account for Picasso first:** an Anthropic API key with a monthly spend
-limit, for M3, kept in the Mac's local `.env` (never in chat). The rest of "Zeus's accounts" below waits for the
+outside client data), Google sign-in, invite codes. **Zeus's accounts for Picasso first** (Zeus saves the keys; never in
+chat): for M3, an Anthropic Console workspace with a monthly spend limit and two keys, one for the CI evals (repo
+secret `ANTHROPIC_API_KEY`, §17) and one for Picasso's instance (the Mac's local `.env`). Optional, for the Metricool
+CSV: a Cloudflare R2 bucket in the EU for public image links. The rest of "Zeus's accounts" below waits for the
 partner launch.
 
 ### What's in the January launch

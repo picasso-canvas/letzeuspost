@@ -21,37 +21,38 @@ edit and approve, and that are exported ready to schedule. The owner is **Zeus**
 ## Harness first
 
 Build only from approved sections (all are, since 2026-11-07). The first build milestone is **H0 Harness**: the
-minimum guardrails in section 20 (repo-only agent token, sandbox, settings, hooks, H0 checks, the risk gate, agent
-files, the core skills). It must pass its red-team checklist before any other milestone starts.
+minimum guardrails in section 20 (builders without GitHub access, sandbox, settings, hooks, H0 checks, the risk gate,
+the merge gate, agent files, the core skills). It must pass its red-team checklist before any other milestone starts.
 
-## Building
+## Building (builders)
 
-1. Take only issues labelled `build-task` whose Status is **Ready to build**.
-2. Work in your own worktree, through the repo-only agent token. Read the issue, the section doc(s) it links, and the
-   sections those depend on. Post a 3–5 line approach comment.
-3. Tests first for logic. Run `pnpm check` until it is green. Every item in the issue's **Done when** list must pass.
-4. Local reviews: Argus (code) always; Cerberus (security) when the diff touches a sensitive area; Iris (design) when
-   it touches UI (from the first UI milestone). Fix blocking findings; after 3 rounds, add `needs-zeus` and stop.
-5. One issue → one branch `<issue-number>-<short-slug>` → one pull request that says `Closes #<n>`, carries an
-   `Agent: <your name>` line, links the section doc, and shows how each Done-when item was checked (command output,
-   screenshots for UI). End every commit with a `Co-Authored-By: Claude` line.
+1. `scripts/dispatch.sh` starts you in your own worktree, on your task's branch `<issue-number>-<short-slug>`. Your
+   task is in `.lzp/task.md`. You have **no GitHub access**: don't run `gh` or `git push`.
+2. Read the task, the section doc(s) it links, and the sections those depend on. Write a 3–5 line approach to
+   `.lzp/approach.md`.
+3. Tests first for logic. Run `pnpm check` until it is green. Every item in the task's **Done when** list must pass.
+4. Commit on your branch (Conventional Commits; end every commit with a `Co-Authored-By: Claude` line). Write the PR
+   text to `.lzp/pr.md`: `Closes #<n>`, an `Agent: <your name>` line, the section doc link, and how each Done-when
+   item was checked (command output, screenshots for UI).
+5. Athena ships your branch and runs the reviews: Argus (code) always, Cerberus (security) when it touches a
+   sensitive area, Iris (design) when it touches UI. Fix what comes back; after 3 rounds the task goes to Zeus.
 
 ## Merging
 
 - **Athena merges, only through the merge gate** ([§19](docs/plan/19-build-team-and-workflow.md#the-merge-gate)).
-  Builders never merge. Nobody pushes to `main` or force-pushes.
-- CI labels each PR `routine` or `sensitive`. Sensitive areas: auth, permissions and billing · database schema and
+  Builders can't merge. Nobody pushes to `main` or force-pushes.
+- CI labels each PR `routine` or `sensitive`; the merge gate works the tier out itself. Sensitive areas: auth, permissions and billing · database schema and
   migrations · dependencies and lockfiles · AI prompts, model/provider config and product AI rules · the guardrails
-  themselves (`.github/`, `.claude/`, every `CLAUDE.md`, lint/TS/test configs, `DESIGN.md`, approved visual baselines,
-  `docs/plan/`). Never touch those labels.
-- Never weaken a guardrail, skip or silence a check, or work around a block. If a guardrail is in the way, comment on
-  the issue, add `needs-zeus`, and stop.
+  themselves (`.github/`, `.claude/`, `scripts/`, every `CLAUDE.md`, lint/TS/test/format configs, `DESIGN.md`,
+  approved visual baselines, `docs/plan/`).
+- Never weaken a guardrail, skip or silence a check, or work around a block. If a guardrail is in the way, write it in
+  `.lzp/pr.md` under `needs-zeus` and stop.
 - **Freeze switch:** if the repo variable `AGENTS_PAUSED` is true, stop all work at once.
 
 ## When the plan doesn't say
 
-Comment on the issue with the question and the options you see, add the `needs-zeus` label, and stop work on that
-task. Never guess a product decision, and never change an approved doc without Zeus's OK.
+Write the question and the options you see in `.lzp/pr.md` under `needs-zeus`, and stop work on that task (Athena
+posts it on the issue). Never guess a product decision, and never change an approved doc without Zeus's OK.
 
 ## Never without Zeus's OK
 

@@ -7,8 +7,8 @@ description: Update the LetZeusPost GitHub Project board (Athena only). Use when
 
 - Repo `picasso-canvas/letzeuspost`. Project **LetZeusPost** #2 (owner `picasso-canvas`):
   https://github.com/users/picasso-canvas/projects/2
-- **Athena runs this skill with Zeus's own login.** Builder agents use the repo-only token, which can't reach a board
-  owned by a personal account, so they don't touch the board; they comment on their issue instead.
+- **Athena runs this skill with Zeus's own login.** Builders have no GitHub access at all (§20); Athena ships their
+  work and moves their cards.
 - Every ID (project, fields, options, section items, milestones) is in `.claude/board-ids.json`. Read the IDs from
   there and don't look them up again. Section keys are two-digit strings: `.sections["07"]`, not `["7"]`. If an ID fails, rebuild the file with
   `gh project field-list 2 --owner picasso-canvas --format json`.
@@ -58,9 +58,9 @@ Created by Athena only after the sections they need are approved. The first mile
 | When | Athena does |
 |---|---|
 | A builder starts | Status → In progress |
-| The builder opens its PR | Status → In review |
-| The builder adds `needs-zeus` or `blocked` | Tell Zeus in chat |
-| Zeus merges | The issue closes from the PR; the board's built-in workflow sets Done (otherwise Athena does) |
+| Athena ships the builder's branch (PR opened) | Status → In review |
+| The builder's `.lzp/pr.md` says `needs-zeus` or `blocked` | Add the label; tell Zeus in chat |
+| Athena merges through the merge gate | The issue closes from the PR; the board's built-in workflow sets Done (otherwise Athena does) |
 
 ## Weekly report (Athena, Fridays)
 
