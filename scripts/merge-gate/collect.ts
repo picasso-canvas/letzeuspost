@@ -57,7 +57,7 @@ export function parseConfig(text: string | null): GateConfig {
  * The changed files from git itself (GitHub's files API stops at 3000). `--no-renames` lists a rename under both
  * names, so moving a file out of a sensitive folder is sensitive; `-z` keeps odd file names whole.
  */
-function changedFilesFromGit(git: Run, pr: number, sha: string): string[] {
+export function changedFilesFromGit(git: Run, pr: number, sha: string): string[] {
   const ref = `refs/lzp/pr-${String(pr)}`;
   git(['fetch', '--quiet', '--no-tags', 'origin', `+refs/pull/${String(pr)}/head:${ref}`]);
   const fetched = git(['rev-parse', ref]).trim();

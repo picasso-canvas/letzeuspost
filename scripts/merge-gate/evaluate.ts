@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { matchesAny } from '../lib/paths.ts';
-import type { Facts, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
+import type { Facts, GateConfig, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
 
 /** The PR text a review was given, normalised so only real edits change it. */
 export function bodyHash(body: string): string {
@@ -52,9 +52,25 @@ export function doneWhenBoxes(markdown: string): { ticked: number; unticked: num
 }
 
 export function workOutTier(f: Facts): Tier {
-  if (f.sensitivePatterns === null) return 'sensitive';
-  const patterns = f.sensitivePatterns;
-  return f.changedFiles.some((file) => matchesAny(file, patterns)) ? 'sensitive' : 'routine';
+  return tierOf(f.changedFiles, f.sensitivePatterns);
+}
+
+export function tierOf(changedFiles: readonly string[], sensitivePatterns: string[] | null): Tier {
+  if (sensitivePatterns === null) return 'sensitive';
+  return changedFiles.some((file) => matchesAny(file, sensitivePatterns)) ? 'sensitive' : 'routine';
+}
+
+/** The reviewers the gate needs: Argus; Cerberus when sensitive; Iris for UI paths once enabled. */
+export function requiredReviewers(
+  changedFiles: readonly string[],
+  sensitivePatterns: string[] | null,
+  config: Pick<GateConfig, 'requireIris' | 'uiPaths'>,
+): Exclude<Reviewer, 'redteam'>[] {
+  const needed: Exclude<Reviewer, 'redteam'>[] = ['argus'];
+  if (tierOf(changedFiles, sensitivePatterns) === 'sensitive') needed.push('cerberus');
+  if (config.requireIris && changedFiles.some((p) => matchesAny(p, config.uiPaths)))
+    needed.push('iris');
+  return needed;
 }
 
 // GitHub skips push CI on `main` when the merge commit's message carries one of these.
@@ -135,11 +151,7 @@ export function evaluate(f: Facts): GateResult {
   // 5. Fresh-context reviews for this commit and this PR text; any block on this commit refuses
   const hash = bodyHash(f.body);
   const current = f.reviews.filter((r) => r.pr === f.pr && r.sha === f.headSha);
-  const needed: Reviewer[] = ['argus'];
-  if (tier === 'sensitive') needed.push('cerberus');
-  if (f.config.requireIris && f.changedFiles.some((p) => matchesAny(p, f.config.uiPaths))) {
-    needed.push('iris');
-  }
+  const needed: Reviewer[] = requiredReviewers(f.changedFiles, f.sensitivePatterns, f.config);
   const reviewProblems: string[] = [];
   for (const r of current) {
     if (r.verdict === 'block') reviewProblems.push(`${r.reviewer} blocked this commit`);

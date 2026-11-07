@@ -5,6 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
 import { evaluate } from './merge-gate/evaluate.ts';
 import { logMerge, readReviews } from './merge-gate/reviews.ts';
@@ -19,36 +20,13 @@ function run(cmd: string, args: string[]): string {
   });
 }
 
-function assertCleanMain(): void {
-  run('git', ['fetch', '--quiet', 'origin', 'main']);
-  const branch = run('git', ['symbolic-ref', '--short', 'HEAD']).trim();
-  const head = run('git', ['rev-parse', 'HEAD']).trim();
-  const remote = run('git', ['rev-parse', 'origin/main']).trim();
-  const dirty = run('git', ['status', '--porcelain', '--untracked-files=no']).trim();
-  if (branch !== 'main' || head !== remote || dirty !== '') {
-    throw new Error(
-      `the gate must run from a clean main that matches origin/main (branch ${branch}, ` +
-        `HEAD ${head.slice(0, 7)}, origin/main ${remote.slice(0, 7)}, ${dirty === '' ? 'clean' : 'dirty'})`,
-    );
-  }
-}
-
-/** Committed files only: an untracked draft in the checkout must never count as main's. */
-function readMainFile(path: string): string | null {
-  try {
-    return run('git', ['show', `HEAD:${path}`]);
-  } catch {
-    return null;
-  }
-}
-
 function main(argv: string[], pr: number): number {
   const dryRun = argv.includes('--dry-run');
-  assertCleanMain();
+  assertCleanMain(run);
   const facts = collectFacts(pr, {
     gh: (args) => run('gh', args),
     git: (args) => run('git', args),
-    readMainFile,
+    readMainFile: (path) => readMainFile(run, path),
     readReviews: (n, sha) => readReviews(n, sha),
   });
   const result = evaluate(facts);
