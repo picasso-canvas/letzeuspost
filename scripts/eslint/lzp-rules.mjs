@@ -13,15 +13,33 @@ function repoPath(/** @type {RuleContext} */ context) {
 }
 
 /**
+ * The string an expression always evaluates to, or null: a string literal, a template with no `${}`, or `+` of those.
+ * Bundlers treat all three as fixed paths, so the import rules read them the same way.
+ * @param {any} node
+ * @returns {string | null}
+ */
+function staticString(node) {
+  if (!node) return null;
+  if (node.type === 'Literal') return typeof node.value === 'string' ? node.value : null;
+  if (node.type === 'TemplateLiteral' && node.expressions.length === 0)
+    return node.quasis[0]?.value.cooked ?? null;
+  if (node.type === 'BinaryExpression' && node.operator === '+') {
+    const left = staticString(node.left);
+    const right = staticString(node.right);
+    return left === null || right === null ? null : left + right;
+  }
+  return null;
+}
+
+/**
  * Calls `check(source, node)` for every module a file imports or re-exports by name.
  * @param {(source: string, node: EsNode) => void} check
  */
 function onImports(check) {
   /** @param {any} node */
   const visit = (node) => {
-    if (node.source?.type === 'Literal' && typeof node.source.value === 'string') {
-      check(node.source.value, node);
-    }
+    const source = staticString(node.source);
+    if (source !== null) check(source, node);
   };
   return {
     ImportDeclaration: visit,
@@ -30,19 +48,18 @@ function onImports(check) {
     ImportExpression: visit,
     /** require('x') @param {any} node */
     CallExpression(node) {
-      const [arg] = node.arguments;
-      if (
-        node.callee.type === 'Identifier' &&
-        node.callee.name === 'require' &&
-        arg?.type === 'Literal'
-      )
-        if (typeof arg.value === 'string') check(arg.value, node);
+      const source =
+        node.callee.type === 'Identifier' && node.callee.name === 'require'
+          ? staticString(node.arguments[0])
+          : null;
+      if (source !== null) check(source, node);
     },
     /** import x = require('x') @param {any} node */
     TSImportEqualsDeclaration(node) {
       const ref = node.moduleReference;
-      if (ref?.type === 'TSExternalModuleReference' && typeof ref.expression?.value === 'string')
-        check(ref.expression.value, node);
+      const source =
+        ref?.type === 'TSExternalModuleReference' ? staticString(ref.expression) : null;
+      if (source !== null) check(source, node);
     },
   };
 }
@@ -60,6 +77,9 @@ const noRawDbClient = {
     messages: {
       raw: "'{{source}}' is the raw database client: go through packages/db's scoped helper (§13).",
       auth: "'{{source}}' is packages/db's auth-only export: only packages/auth may import it (Q5).",
+      modules:
+        "'{{source}}' reaches into node_modules by path, around the import rules: import the package by name.",
+      dynamic: "createRequire loads modules out of the import rules' sight: import them instead.",
     },
     schema: [],
   },
@@ -67,12 +87,24 @@ const noRawDbClient = {
     const file = repoPath(context);
     const inDb = file.startsWith('packages/db/');
     const inAuth = file.startsWith('packages/auth/');
-    return onImports((source, node) => {
+    const imports = onImports((source, node) => {
+      if (/(^|\/)node_modules\//.test(source))
+        context.report({ node, messageId: 'modules', data: { source } });
       const raw = DB_CLIENT.test(source);
       if (raw && !inDb) context.report({ node, messageId: 'raw', data: { source } });
       const auth = source === AUTH_DB || source.startsWith(`${AUTH_DB}/`);
       if (auth && !inDb && !inAuth) context.report({ node, messageId: 'auth', data: { source } });
     });
+    return {
+      ...imports,
+      /** @param {any} node */
+      CallExpression(node) {
+        imports.CallExpression(node);
+        const callee = node.callee;
+        const name = callee.type === 'Identifier' ? callee.name : callee.property?.name;
+        if (name === 'createRequire') context.report({ node, messageId: 'dynamic' });
+      },
+    };
   },
 };
 
@@ -144,7 +176,8 @@ const noUseCache = {
       },
       /** @param {any} node */
       ImportExpression(node) {
-        if (isCacheModule(node.source?.value) || isDeepNext(node.source?.value))
+        const source = staticString(node.source);
+        if (isCacheModule(source) || isDeepNext(source))
           context.report({ node, messageId: 'module' });
       },
       /** @param {any} node */
@@ -153,7 +186,7 @@ const noUseCache = {
         if (
           node.callee.type === 'Identifier' &&
           node.callee.name === 'require' &&
-          (isCacheModule(arg?.value) || isDeepNext(arg?.value))
+          (isCacheModule(staticString(arg)) || isDeepNext(staticString(arg)))
         )
           context.report({ node, messageId: 'module' });
       },
@@ -193,7 +226,8 @@ const noDangerousHtml = {
       },
       /** @param {any} node */
       Property(node) {
-        check(node, node.key?.name ?? node.key?.value);
+        // { dangerouslySetInnerHTML }, { ['dangerously' + 'SetInnerHTML'] } and { [`dangerouslySetInnerHTML`] }
+        check(node, node.computed ? staticString(node.key) : (node.key?.name ?? node.key?.value));
       },
     };
   },
