@@ -13,6 +13,7 @@ import {
   slugify,
   taskText,
 } from './dispatch.ts';
+import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { fetchBundle, parseDispatchRecord, parseShipArgs, prFlags } from './ship.ts';
 
 const paused = (flag: string) => (JSON.parse(flag) as { paused: boolean }).paused;
@@ -212,7 +213,7 @@ function git(cwd: string, args: string[], input?: string): string {
 }
 
 describe('fetchBundle', () => {
-  it('fetches a sound bundle and refuses one carrying a malformed object', () => {
+  it('fetches a sound bundle, and a malformed one never ships', () => {
     const root = mkdtempSync(join(tmpdir(), 'lzp-fsck-'));
     const builder = join(root, 'builder');
     const athena = join(root, 'athena');
@@ -238,7 +239,27 @@ describe('fetchBundle', () => {
     const commit = git(builder, ['commit-tree', tree, '-p', 'HEAD', '-m', 'bad']).trim();
     git(builder, ['update-ref', 'refs/heads/main', commit]);
     git(builder, ['bundle', 'create', '--quiet', join(root, 'bad.bundle'), 'HEAD']);
-    expect(() => fetchBundle(join(root, 'bad.bundle'), 'refs/lzp/ship-8', athena)).toThrow();
-    expect(() => git(athena, ['rev-parse', '--verify', '--quiet', 'refs/lzp/ship-8'])).toThrow();
+    // Newer git (bundle fsck) refuses it on fetch; older git (Apple's 2.39) lets it in, and ship's path check refuses
+    // it before anything is pushed. Either way it never ships.
+    let fetched = true;
+    try {
+      fetchBundle(join(root, 'bad.bundle'), 'refs/lzp/ship-8', athena);
+    } catch {
+      fetched = false;
+    }
+    if (fetched) {
+      const base = git(athena, ['rev-parse', 'refs/lzp/ship-7']).trim();
+      const diff = git(athena, [
+        'diff',
+        '--raw',
+        '-z',
+        '--no-renames',
+        '--no-abbrev',
+        `${base}..refs/lzp/ship-8`,
+      ]);
+      expect(shipRefusals(parseRawDiff(diff))).toContain('unsafe path: ..');
+    } else {
+      expect(() => git(athena, ['rev-parse', '--verify', '--quiet', 'refs/lzp/ship-8'])).toThrow();
+    }
   });
 });

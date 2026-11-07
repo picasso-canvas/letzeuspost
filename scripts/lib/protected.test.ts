@@ -47,3 +47,20 @@ describe('parseRawDiff', () => {
     ]);
   });
 });
+
+describe('shipRefusals: unsafe path parts', () => {
+  it('refuses an empty, ".", ".." or ".git" part in any letter case', () => {
+    for (const path of [
+      '..',
+      'a/../b',
+      './a',
+      'a//b',
+      '.git/hooks/pre-push',
+      'src/.GIT/config',
+      'x/.Git',
+    ]) {
+      expect(shipRefusals([{ mode: '100644', path }]), path).toContain(`unsafe path: ${path}`);
+    }
+    expect(shipRefusals([{ mode: '100644', path: 'src/.gitkeep' }])).toEqual([]);
+  });
+});
