@@ -56,3 +56,9 @@ describe('comment safety', () => {
     expect(judge(['.husky/pre-commit'], LIST, ['.github/**']).harness).toBe(false);
   });
 });
+
+describe('safeName format characters', () => {
+  it('replaces bidi and zero-width characters', () => {
+    expect(safeName('a\u202eb\u200bc.ts')).toBe('a?b?c.ts');
+  });
+});

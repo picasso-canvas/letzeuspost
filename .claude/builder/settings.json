@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
-    "allow": ["Read", "Edit", "Write", "Glob", "Grep"],
+    "allow": ["Read", "Edit(./**)", "Glob", "Grep"],
     "deny": [
       "Edit(./.github/**)",
       "Edit(./.claude/**)",
@@ -98,6 +98,12 @@
       "Read(**/.env.production)",
       "Read(**/.env.test)",
       "Read(**/.envrc)",
+      "Read(**/.env.staging)",
+      "Read(**/.env.preview)",
+      "Read(**/.env.prod)",
+      "Read(**/.env.dev)",
+      "Read(**/.env.ci)",
+      "Read(**/.env.secrets)",
       "Bash(git push*)",
       "Bash(gh)",
       "Bash(gh *)",

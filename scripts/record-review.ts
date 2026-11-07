@@ -19,7 +19,7 @@ import { parseVerdict } from './merge-gate/verdict.ts';
 
 const USAGE =
   'usage: node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <summary-file> ' +
-  '--snapshot <gh pr view --json headRefOid,body output taken before the review>';
+  '--snapshot <gh pr view --json headRefOid,body output taken before the review> [--meta <file>]';
 
 const NAMES: Record<Reviewer, string> = {
   argus: 'Argus',

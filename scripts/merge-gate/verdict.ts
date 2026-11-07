@@ -20,11 +20,22 @@ export function parseVerdict(summary: string): { verdict: Verdict; reason: strin
     };
   }
   if (match[1] === 'block') return { verdict: 'block', reason: 'the reviewer blocked' };
-  // A blocking finding behind any markup: `- [blocking]`, `> **[Blocking]**`, `### [blocking]`, `` `[blocking]` ``.
-  if (
-    lines.slice(1).some((line) => /^(?:\d+[.)]\s*)?[^\p{L}\p{N}[]*\[\s*blocking\s*\]/iu.test(line))
-  ) {
+  if (lines.slice(1).some((line) => /^\W*VERDICT:\s*block\b/i.test(line))) {
+    return { verdict: 'block', reason: 'says pass, then VERDICT: block' };
+  }
+  // A blocking finding behind any leading markup: list markers, task boxes, emphasis, quotes, headings, HTML tags.
+  if (lines.slice(1).some((line) => /^\[\s*blocking\s*\]/i.test(stripLeadingMarkup(line)))) {
     return { verdict: 'block', reason: 'says pass but lists a [blocking] finding' };
   }
   return { verdict: 'pass', reason: 'ok' };
+}
+
+/** Removes list markers, task boxes, emphasis, quote and heading marks and HTML tags from the start of a line. */
+function stripLeadingMarkup(line: string): string {
+  const noise = /^(?:\s+|[-*+•>#_~`]+|\d+[.)]|[a-z][.)](?=\s)|\[[ xX]\](?=\s)|<[^>]*>)/iu;
+  let rest = line;
+  for (let match = noise.exec(rest); match && match[0] !== ''; match = noise.exec(rest)) {
+    rest = rest.slice(match[0].length);
+  }
+  return rest;
 }

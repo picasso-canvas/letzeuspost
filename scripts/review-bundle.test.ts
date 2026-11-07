@@ -166,21 +166,26 @@ describe('runReviews', () => {
     const calls: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
     const recorded: string[][] = [];
     const written: Record<string, string> = {};
-    const failed = runReviews(48, { bundle: '/b', outDir: '/o' }, ['argus', 'iris'], {
-      claude: (args, env) => {
-        calls.push({ args, env });
-        return JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's-1' });
+    const failed = runReviews(
+      48,
+      { bundle: '/b', outDir: '/o', refusal: null },
+      ['argus', 'iris'],
+      {
+        claude: (args, env) => {
+          calls.push({ args, env });
+          return JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's-1' });
+        },
+        show: (path) => (path.endsWith('argus-reviewer.md') ? 'agent' : null),
+        record: (args) => {
+          recorded.push(args);
+          return 'ok';
+        },
+        write: (path, text) => {
+          written[path] = text;
+        },
+        env: { PATH: '/bin', LZP_ROLE: 'builder' },
       },
-      show: (path) => (path.endsWith('argus-reviewer.md') ? 'agent' : null),
-      record: (args) => {
-        recorded.push(args);
-        return 'ok';
-      },
-      write: (path, text) => {
-        written[path] = text;
-      },
-      env: { PATH: '/bin', LZP_ROLE: 'builder' },
-    });
+    );
     expect(failed).toBe(0);
     expect(calls).toHaveLength(1);
     const args = calls[0]?.args ?? [];
@@ -222,13 +227,13 @@ describe('exportTree: case twins', () => {
       `100644 blob ${'1'.repeat(40)}\t.claude/x.md`,
       `100644 blob ${'2'.repeat(40)}\t.Claude/x.md`,
     ].join('\0');
-    expect(() =>
+    expect(() => {
       exportTree(
         SHA,
         { lsTree: () => `${tree}\0`, blob: () => Buffer.from('x') },
         mkdtempSync(join(tmpdir(), 'lzp-twin-')),
-      ),
-    ).toThrow(/already/);
+      );
+    }).toThrow(/already/);
   });
 });
 

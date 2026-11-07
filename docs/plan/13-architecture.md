@@ -112,14 +112,16 @@ packages/auth/**            packages/core/src/permissions/**    packages/core/sr
 packages/db/**              packages/ai/prompts/**              packages/ai/policy/**
 config/models.ts            config/providers.ts                 config/plans.ts             config/env.ts
 package.json  **/package.json  pnpm-lock.yaml  pnpm-workspace.yaml  docker/**  .github/**  .claude/**
-**/CLAUDE.md  DESIGN.md  docs/plan/**  tsconfig*.json  eslint.config.*  vitest.config.*  playwright.config.*
+**/CLAUDE.md  DESIGN.md  docs/plan/**  tsconfig*.json  **/tsconfig*.json  **/eslint.config.*  **/vitest.config.*  **/playwright.config.*
 scripts/**  .prettierrc*  .prettierignore  .gitleaks.toml  .npmrc  .nvmrc  .mcp.json  .husky/**  .gitattributes  .vscode/**
+.pnpmfile.cjs  osv-scanner.toml  .gitleaksignore
 tests/visual/approved/**    tests/golden/**                     packages/render/src/looks/**
 apps/fetcher/**             packages/storage/src/public-links/**  apps/web/src/app/r/**
 ```
 
-The `scripts/**` line (2026-11-07) covers the harness scripts (dispatch, ship, merge gate, risk gate, licence check)
-and the remaining tool configs. The last line adds three areas §20 didn't name: the fetcher (the SSRF boundary), public image links (§12) and the
+The `scripts/**` line and the one after it (2026-11-07) cover the harness scripts (dispatch, ship, merge gate, risk gate,
+review runner, licence check), per-package tool configs and the files that could weaken a scanner. This list is kept
+identical to `.github/sensitive-paths.txt`. The last line adds three areas §20 didn't name: the fetcher (the SSRF boundary), public image links (§12) and the
 client review page (no-account access).
 
 ### Data model

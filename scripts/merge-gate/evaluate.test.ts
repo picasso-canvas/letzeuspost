@@ -298,8 +298,9 @@ describe('bodyHash', () => {
 describe('evaluate: reviews must come from the runner', () => {
   it('ignores an argus or cerberus pass without a Claude Code session (hand-written)', () => {
     const handWritten = review('argus', { meta: undefined });
-    const f = { reviews: [handWritten] } as const;
-    expect(evaluate({ ...baseFacts(), ...f }).items.find((i) => i.id === 5)?.ok).toBe(false);
+    expect(
+      evaluate({ ...baseFacts(), reviews: [handWritten] }).items.find((i) => i.id === 5)?.ok,
+    ).toBe(false);
     const noSession = review('argus', { meta: { agent: 'argus-reviewer', sessionId: null } });
     expect(
       evaluate({ ...baseFacts(), reviews: [noSession] }).items.find((i) => i.id === 5)?.ok,

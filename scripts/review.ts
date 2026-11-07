@@ -127,6 +127,7 @@ export function reviewPrompt(reviewer: Reviewer, bundle: string): string {
     `- ${bundle}/issues.md: the issues it closes, with their Done-when lists and Areas`,
     `- ${bundle}/ci.txt: the CI checks on the head commit`,
     `- ${bundle}/comments.json: comments and review comments on the PR, including the GitHub AI review`,
+    `- ${bundle}/binary.txt: files git treats as binary (open them in tree/, not in the diff)`,
     'Answer in your required format: the first line is exactly `VERDICT: pass` or `VERDICT: block`.',
   ].join('\n');
 }
@@ -159,6 +160,8 @@ export interface Bundle {
   outDir: string;
   sha: string;
   changed: string[];
+  /** Why the PR's files couldn't be laid out safely (a name collision, an unreadable entry, a huge blob), or null. */
+  refusal: string | null;
 }
 
 export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR): Bundle {
@@ -175,10 +178,24 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
   mkdirSync(outDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(bundle, 'snapshot.json'), snapshotJson);
   writeFileSync(join(bundle, 'pr.md'), snapshot.body);
-  exportTree(
-    sha,
-    { lsTree: () => git(['ls-tree', '-r', '-z', '--full-tree', sha]), blob: deps.blob },
-    join(bundle, 'tree'),
+  let refusal: string | null = null;
+  try {
+    exportTree(
+      sha,
+      { lsTree: () => git(['ls-tree', '-r', '-z', '--full-tree', sha]), blob: deps.blob },
+      join(bundle, 'tree'),
+    );
+  } catch (error) {
+    refusal = error instanceof Error ? error.message : String(error);
+  }
+  // Files git treats as binary: their bytes in diff.patch mean little, so reviewers open them in tree/.
+  const binaries = git(['diff', '--numstat', '-z', '--no-renames', `origin/main...${sha}`])
+    .split('\0')
+    .filter((line) => line.startsWith('-\t-\t'))
+    .map((line) => line.slice(4));
+  writeFileSync(
+    join(bundle, 'binary.txt'),
+    binaries.length ? binaries.join('\n') : 'No binary files.',
   );
   // --text: a stray NUL byte must not hide a file's code behind "Binary files differ".
   writeFileSync(join(bundle, 'diff.patch'), git(['diff', '--text', `origin/main...${sha}`]));
@@ -229,12 +246,12 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
     join(bundle, 'comments.json'),
     JSON.stringify({ conversation, reviewComments }, null, 2),
   );
-  return { bundle, outDir, sha, changed };
+  return { bundle, outDir, sha, changed, refusal };
 }
 
 export interface ReviewDeps {
-  /** Runs `claude` with these arguments and environment; returns its JSON output. */
-  claude: (args: string[], env: NodeJS.ProcessEnv) => string;
+  /** Runs `claude` with these arguments, environment and timeout; returns its JSON output. */
+  claude: (args: string[], env: NodeJS.ProcessEnv, timeoutMs: number) => string;
   /** A file from main (`git show HEAD:`), or null. */
   show: (path: string) => string | null;
   /** Runs record-review.ts with these arguments. */
@@ -243,10 +260,31 @@ export interface ReviewDeps {
   env: NodeJS.ProcessEnv;
 }
 
-/** Runs each reviewer and records its verdict; returns how many records failed. */
+/** The reason a reviewer run failed, from its output: never the command line, which holds local paths. */
+function failureReason(error: unknown): string {
+  const { stderr, stdout, signal } = error as {
+    stderr?: unknown;
+    stdout?: unknown;
+    signal?: unknown;
+  };
+  if (signal === 'SIGTERM') return 'it timed out';
+  for (const text of [stdout, stderr]) {
+    if (typeof text !== 'string' || text.trim() === '') continue;
+    try {
+      const out = JSON.parse(text) as { subtype?: unknown };
+      if (typeof out.subtype === 'string') return out.subtype;
+    } catch {
+      // not JSON: take its first line
+    }
+    return text.trim().split('\n')[0]?.slice(0, 200) ?? 'unknown';
+  }
+  return 'unknown';
+}
+
+/** Runs each reviewer and records its verdict; returns how many reviewers failed to run or record. */
 export function runReviews(
   pr: number,
-  where: { bundle: string; outDir: string },
+  where: { bundle: string; outDir: string; refusal: string | null },
   reviewers: readonly Asker[],
   deps: ReviewDeps,
 ): number {
@@ -255,7 +293,10 @@ export function runReviews(
     const agent = AGENTS[reviewer];
     let summary: string;
     let sessionId: string | null = null;
-    if (deps.show(`.claude/agents/${agent}.md`) === null) {
+    if (where.refusal !== null) {
+      // The PR's files couldn't be laid out safely: the PR must change, so this commit is blocked.
+      summary = `VERDICT: block\n[blocking] ${where.refusal} — rename or remove it so the files can be reviewed`;
+    } else if (deps.show(`.claude/agents/${agent}.md`) === null) {
       summary = `VERDICT: block\n[blocking] .claude/agents/${agent}.md — main has no ${agent} agent file — add it before PRs need ${reviewer}`;
     } else {
       try {
@@ -269,6 +310,9 @@ export function runReviews(
               where.bundle,
               '--disallowedTools',
               'Read(**/.env*)',
+              '--setting-sources',
+              'project',
+              '--strict-mcp-config',
               '--permission-mode',
               'dontAsk',
               '--max-turns',
@@ -278,12 +322,18 @@ export function runReviews(
               reviewPrompt(reviewer, where.bundle),
             ],
             reviewerEnv(deps.env),
+            REVIEW_TIMEOUT_MS,
           ),
         );
         summary = out.text;
         sessionId = out.sessionId;
       } catch (error) {
-        summary = `VERDICT: block\n[blocking] review — the ${reviewer} run failed: ${error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error)} — run it again`;
+        // A run that didn't finish records nothing: the gate already refuses without a pass, and a retry can pass.
+        failed++;
+        console.error(
+          `${reviewer} didn't finish: ${failureReason(error)}. Nothing recorded; run it again.`,
+        );
+        continue;
       }
     }
     const file = join(where.outDir, `${reviewer}.md`);
@@ -351,12 +401,12 @@ function main(argv: string[]): number {
   );
   if (argv.includes('--dry-run')) return 0;
   const failed = runReviews(pr, where, reviewers, {
-    claude: (args, env) =>
+    claude: (args, env, timeoutMs) =>
       execFileSync('claude', args, {
         cwd: ROOT,
         env,
         encoding: 'utf8',
-        timeout: REVIEW_TIMEOUT_MS,
+        timeout: timeoutMs,
         maxBuffer: 64 * 1024 * 1024,
         stdio: ['ignore', 'pipe', 'pipe'],
       }),
