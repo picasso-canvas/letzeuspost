@@ -66,7 +66,7 @@ Created by Athena only after the sections they need are approved. The first mile
 
 Open an issue titled `Week <year>-W<week>` with label `audit`, assigned to `picasso-canvas`:
 - what merged, and which `sensitive` PRs are still waiting
-- guardrail hits (`.claude/logs/guardrail-hits.jsonl`)
+- guardrail hits (`~/.letzeuspost/logs/guardrail-hits.jsonl`; `node scripts/weekly-report.ts` drafts the whole report)
 - AI usage against Zeus's Claude limits
 - flaky tests and product eval results
 

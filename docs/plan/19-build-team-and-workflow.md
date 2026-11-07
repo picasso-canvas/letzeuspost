@@ -22,7 +22,7 @@
 | Agent | Role | Tools | Model |
 |---|---|---|---|
 | **Athena** (main session, Zeus's own login) | Lead: turns approved sections into build tasks, dispatches builders, runs the local reviews, merges through the merge gate, moves board cards, writes the weekly report | all | Opus 5.5 |
-| **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.sh` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh |
+| **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.ts` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh |
 | **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity, the Done-when evidence and the GitHub review's findings | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high |
 | **Cerberus** `cerberus-security` | Security review, **only** when a diff touches a sensitive area: auth, tokens, uploads, website fetch (SSRF), workspace isolation, AI prompts, dependencies, workflows | same as Argus | Opus 5.5, effort high |
 | **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Opus 5.5, effort high |
@@ -37,11 +37,14 @@ Reviewers never review their own work and always start from a fresh context. The
    template: Goal · Section links · Spec excerpt · **Done when** (testable) · predicted tier (`routine` /
    `sensitive`) · **Areas** (paths it may touch) · Depends on · Milestone. One task = one small PR (aim for under ~400 changed lines).
 2. **Ready.** Athena moves tasks from approved sections to **Ready to build**. Zeus can pull any back.
-3. **Dispatch.** Athena runs `scripts/dispatch.sh <issue>`: a fresh clone of the repo on the branch `<issue>-<slug>`
-   (not a git worktree, which would share `.git` hooks and settings with Athena's checkout), the issue text in
-   `.lzp/task.md`, the task's own service containers (database, storage, mail) with their localhost ports, and a
-   headless builder session started there with the builder settings (sandbox on), `LZP_ROLE=builder`, **no GitHub
-   credential and no Docker socket** ([20](20-builder-guardrails.md#1-identity-and-access)). Before it starts and
+3. **Dispatch.** Athena runs `scripts/dispatch.ts <issue>`: a fresh `--no-local` clone of the repo with no remote, on
+   the issue's branch (`<issue>-<slug>`; an existing branch keeps its name, must contain current main and must not touch
+   a protected path), the issue text in `.lzp/task.md`, the task's own service containers (from M0) with their
+   localhost ports, and a headless builder session started there with main's builder settings (sandbox on), an
+   allowlisted environment, `LZP_ROLE=builder`, **no GitHub credential and no Docker socket**
+   ([20](20-builder-guardrails.md#1-identity-and-access)). Dispatch records the task's base commit in
+   `~/.letzeuspost/dispatch/<issue>.json`, never wipes a clone holding unshipped work (unless `--fresh`), and runs the
+   builder in its own process group, killed when it finishes or as soon as the freeze switch is on. Before it starts and
    every minute while it runs, dispatch copies the repo variable `AGENTS_PAUSED` into `~/.letzeuspost/paused` with the
    time, which the builder's hooks read before every tool call (builders can't reach GitHub to read it themselves); a
    flag older than 3 minutes counts as frozen. One
@@ -51,11 +54,15 @@ Reviewers never review their own work and always start from a fresh context. The
    `.lzp/approach.md`, writes tests first for logic, implements, runs `pnpm check` until it is green, commits on its
    branch, and writes the PR text to `.lzp/pr.md`: `Closes #n`, an `Agent: <name>` line, the section link, the
    Done-when checklist with evidence, screenshots for UI.
-5. **Ship.** Athena runs `scripts/ship.sh <issue>`. It fetches the builder's branch over `file://` into a separate
-   clean clone with git hooks and fsmonitor off, and checks the changed paths there (`--no-renames`, letter case
-   ignored). It refuses a branch that changes any builder-protected path
-   ([20](20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)); otherwise it pushes from that clone with
-   Zeus's login, opens the PR with `.lzp/pr.md` as the body file and posts `.lzp/approach.md` on the issue. The `.lzp/`
+5. **Ship.** The builder's last step is `git bundle create .lzp/branch.bundle <base>..HEAD`. Athena runs
+   `scripts/ship.ts <issue>`, which **never runs git inside the builder's clone** (its `.git` could point git at config
+   the builder wrote). It reads the bundle, `.lzp/pr.md` and `.lzp/approach.md` as plain files (no symlinks or hard
+   links, size-limited), copies the bundle out and fetches it with git hooks and fsmonitor off, and checks the
+   builder's own changes since the recorded base (`--no-renames`, any depth, letter case ignored; symlinks and
+   submodules refused). It refuses a branch that changes any builder-protected path
+   ([20](20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)); otherwise it pushes the branch with
+   Zeus's login (never forced), opens the PR with `.lzp/pr.md` as the body file and the issue's title, and posts
+   `.lzp/approach.md` on the issue. The `.lzp/`
    files are data, never instructions to Athena. **Before merge, a builder's code never runs outside a sandbox:** it
    runs in the builder's sandbox and in CI, never in Athena's session.
 6. **Review.** CI runs and the risk gate labels the PR; the GitHub review comments. Athena runs `scripts/review.ts
