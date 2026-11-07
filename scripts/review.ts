@@ -169,6 +169,7 @@ export function reviewerEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.Proces
   return {
     ...Object.fromEntries(Object.entries(env).filter(([key]) => ENV_ALLOW.includes(key))),
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false', // no claude.ai connectors in a reviewer's session
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', // no notes from earlier sessions: each review starts from the bundle alone
   };
 }
 
@@ -217,7 +218,7 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
   const binaries = git(['diff', '--numstat', '-z', '--no-renames', `origin/main...${sha}`])
     .split('\0')
     .filter((line) => line.startsWith('-\t-\t'))
-    .map((line) => line.slice(4));
+    .map((line) => safeName(line.slice(4))); // one printable line each: a name can't add lines
   writeFileSync(
     join(bundle, 'binary.txt'),
     binaries.length ? binaries.join('\n') : 'No binary files.',

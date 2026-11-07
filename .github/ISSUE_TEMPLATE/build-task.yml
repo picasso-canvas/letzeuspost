@@ -1,0 +1,60 @@
+name: Build task
+description: One small piece of an approved section, built by one builder in one PR (§19).
+title: '[M?] '
+labels: [build-task]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One line.
+    validations:
+      required: true
+  - type: textarea
+    id: sections
+    attributes:
+      label: Sections
+      description: Links to the approved section docs (docs/plan/) this task builds.
+    validations:
+      required: true
+  - type: textarea
+    id: spec
+    attributes:
+      label: Spec excerpt
+      description: The part of the section this task covers, quoted or summarised.
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: A testable checklist. The PR must tick one box per item, in this order (the merge gate counts them).
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Predicted tier
+      options:
+        - routine
+        - sensitive
+    validations:
+      required: true
+  - type: textarea
+    id: areas
+    attributes:
+      label: Areas
+      description: The only paths this task may touch.
+    validations:
+      required: true
+  - type: textarea
+    id: not-in-task
+    attributes:
+      label: Not in this task
+  - type: input
+    id: depends-on
+    attributes:
+      label: Depends on
+      description: Issue numbers, e.g. #24, #25
