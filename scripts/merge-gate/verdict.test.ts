@@ -39,3 +39,18 @@ describe('parseVerdict', () => {
     ).toBe('pass');
   });
 });
+
+describe('parseVerdict: blocking findings in any markup', () => {
+  it('catches list, bold and capitalised forms', () => {
+    for (const line of [
+      '- [blocking] a — b — c',
+      '* [blocking] a',
+      '1. [blocking] a',
+      '**[blocking]** a',
+      '[Blocking] a',
+      '- **[BLOCKING]** a',
+    ]) {
+      expect(parseVerdict(`VERDICT: pass\n${line}`).verdict, line).toBe('block');
+    }
+  });
+});
