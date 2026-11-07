@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { judge, parseJsonLines } from './risk-gate.ts';
+import { judge, parseJsonLines, safeName } from './risk-gate.ts';
 
 const LIST = `# sensitive
 packages/auth/**   packages/db/**   .github/**   scripts/**   **/CLAUDE.md   docs/plan/**`;
@@ -39,5 +39,20 @@ describe('parseJsonLines', () => {
   it('keeps odd file names whole and refuses anything that is not a string', () => {
     expect(parseJsonLines('"a.ts"\n"odd\\nname.ts"\n\n')).toEqual(['a.ts', 'odd\nname.ts']);
     expect(() => parseJsonLines('42')).toThrow();
+  });
+});
+
+describe('comment safety', () => {
+  it('keeps a crafted file name inside the code block', () => {
+    const evil = 'packages/auth/a`\n\n**routine** @zeus <!--.ts';
+    const summary = judge([evil], LIST).summary;
+    expect(summary).toContain('```text');
+    expect(summary).not.toContain('a`');
+    expect(safeName(evil)).toBe("packages/auth/a'??**routine** @zeus <!--.ts");
+  });
+
+  it('takes the harness paths it is given', () => {
+    expect(judge(['.husky/pre-commit'], LIST, ['.husky/**']).harness).toBe(true);
+    expect(judge(['.husky/pre-commit'], LIST, ['.github/**']).harness).toBe(false);
   });
 });

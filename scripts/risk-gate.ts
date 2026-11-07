@@ -6,7 +6,13 @@
 import { readFileSync } from 'node:fs';
 import { matchesAny, parsePatternList } from './lib/paths.ts';
 
-const HARNESS = ['.github/**', '.claude/**', 'scripts/**', 'CLAUDE.md', '**/CLAUDE.md'];
+// The harness paths come from main's .github/merge-gate.json, the same list the merge gate uses.
+const DEFAULT_HARNESS = ['.github/**', '.claude/**', 'scripts/**', 'CLAUDE.md', '**/CLAUDE.md'];
+
+/** File names are builder-controlled: printable text only, so a name can't break out of the comment's code block. */
+export function safeName(name: string): string {
+  return name.replace(/[^\x20-\x7e\u00a0-\uffff]/g, '?').replace(/`/g, "'");
+}
 
 export interface Judgement {
   tier: 'sensitive' | 'routine';
@@ -15,7 +21,11 @@ export interface Judgement {
   summary: string;
 }
 
-export function judge(changedFiles: readonly string[], list: string | null): Judgement {
+export function judge(
+  changedFiles: readonly string[],
+  list: string | null,
+  harnessPaths: readonly string[] = DEFAULT_HARNESS,
+): Judgement {
   if (list === null) {
     return {
       tier: 'sensitive',
@@ -35,19 +45,21 @@ export function judge(changedFiles: readonly string[], list: string | null): Jud
   }
   const patterns = parsePatternList(list);
   const sensitive = changedFiles.filter((file) => matchesAny(file, patterns));
-  const harness = changedFiles.some((file) => matchesAny(file, HARNESS));
+  const harness = changedFiles.some((file) => matchesAny(file, harnessPaths));
   if (sensitive.length === 0) {
     return { tier: 'routine', sensitive, harness, summary: 'No sensitive paths changed.' };
   }
-  const shown = sensitive.slice(0, 30).map((file) => `- \`${file}\``);
-  if (sensitive.length > 30) shown.push(`- … and ${String(sensitive.length - 30)} more`);
+  const shown = sensitive.slice(0, 30).map(safeName);
+  if (sensitive.length > 30) shown.push(`… and ${String(sensitive.length - 30)} more`);
   const lines = [
     `**Sensitive:** ${String(sensitive.length)} of ${String(changedFiles.length)} changed files are in sensitive areas (§13).`,
     ...(harness
       ? ['**This PR changes the harness** (`.github/`, `.claude/`, `scripts/` or a `CLAUDE.md`).']
       : []),
     '',
+    '```text',
     ...shown,
+    '```',
     '',
     'Cerberus reviews it before the merge gate passes (§19).',
   ];
@@ -67,7 +79,7 @@ export function parseJsonLines(text: string): string[] {
 }
 
 if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
-  // usage: node scripts/risk-gate.ts <sensitive-paths-file> < files.jsonl
+  // usage: node scripts/risk-gate.ts <sensitive-paths-file> <merge-gate.json> < files.jsonl
   const listPath = process.argv[2];
   let list: string | null;
   try {
@@ -75,5 +87,15 @@ if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
   } catch {
     list = null;
   }
-  process.stdout.write(`${JSON.stringify(judge(parseJsonLines(readFileSync(0, 'utf8')), list))}\n`);
+  let harnessPaths: string[] = DEFAULT_HARNESS;
+  try {
+    const config = JSON.parse(readFileSync(process.argv[3] ?? '', 'utf8')) as {
+      harnessPaths?: unknown;
+    };
+    if (Array.isArray(config.harnessPaths)) harnessPaths = config.harnessPaths.map(String);
+  } catch {
+    // no config on main yet: the defaults
+  }
+  const verdict = judge(parseJsonLines(readFileSync(0, 'utf8')), list, harnessPaths);
+  process.stdout.write(`${JSON.stringify(verdict)}\n`);
 }
