@@ -2,6 +2,8 @@
 // The merge gate (§19): Athena merges only through this script. Usage:
 //   node scripts/merge-gate.ts <pr> [--dry-run]
 // It runs from a clean checkout of `main` that matches `origin/main`, so a PR can't change the gate that judges it.
+// It merges builder PRs into `staging`, and the batch PR from `staging` or Athena's harness PRs into `main`; after every
+// merge into `main` it merges `main` into `staging` on GitHub, so builders always start from main's harness (§19).
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -9,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
-import { evaluate } from './merge-gate/evaluate.ts';
+import { evaluate, kindOf } from './merge-gate/evaluate.ts';
 import { transcriptPath } from './merge-gate/meta.ts';
 import { listReviewedShas, logMerge, readReviews, STATE_DIR } from './merge-gate/reviews.ts';
 
@@ -21,6 +23,42 @@ function run(cmd: string, args: string[]): string {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+/**
+ * After a merge into main, main is merged into staging on GitHub (never the other way outside a batch PR), so builders
+ * always start from main's harness. A conflict is reported for Athena to settle; dispatch refuses until staging
+ * contains main again.
+ */
+function syncStaging(): void {
+  try {
+    const out = run('gh', [
+      'api',
+      '-X',
+      'POST',
+      `repos/${REPO}/merges`,
+      '-f',
+      'base=staging',
+      '-f',
+      'head=main',
+      '-f',
+      'commit_message=Merge main into staging (merge gate)',
+      '--jq',
+      '.sha // ""',
+    ]).trim();
+    console.log(
+      out === ''
+        ? 'staging already contains main.'
+        : `Merged main into staging as ${out.slice(0, 7)}.`,
+    );
+    logMerge({ at: new Date().toISOString(), result: 'staging-sync', mergeCommit: out });
+  } catch (error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    console.error(
+      `Couldn't merge main into staging: ${typeof stderr === 'string' ? stderr.trim() : 'unknown'}. Settle it before dispatching builders.`,
+    );
+    logMerge({ at: new Date().toISOString(), result: 'staging-sync-failed' });
+  }
 }
 
 function main(argv: string[], pr: number): number {
@@ -51,7 +89,13 @@ function main(argv: string[], pr: number): number {
     pr,
     sha: facts.headSha,
     tier: result.tier,
-    reviewers: facts.reviews.map((r) => `${r.reviewer}:${r.verdict}`),
+    base: facts.baseRef,
+    kind: kindOf(facts),
+    // A review made before an update from main says where it came from, for Zeus's audit.
+    reviewers: facts.reviews.map(
+      (r) =>
+        `${r.reviewer}:${r.verdict}${r.carriedFrom === undefined ? '' : `@${r.carriedFrom.slice(0, 7)}`}`,
+    ),
     failed: result.items.filter((item) => !item.ok).map((item) => item.id),
   };
 
@@ -64,11 +108,16 @@ function main(argv: string[], pr: number): number {
     console.log('Would merge (dry run).');
     return 0;
   }
-  // Narrow the base race: refuse if main moved while the gate was checking.
-  const base = run('git', ['rev-parse', 'HEAD']).trim();
-  run('git', ['fetch', '--quiet', 'origin', 'main']);
-  if (run('git', ['rev-parse', 'origin/main']).trim() !== base) {
+  // Narrow the base race: refuse if main moved while the gate was checking (and staging, for a PR into it).
+  const main0 = run('git', ['rev-parse', 'HEAD']).trim();
+  const staging0 =
+    facts.baseRef === 'staging' ? run('git', ['rev-parse', 'origin/staging']).trim() : null;
+  run('git', ['fetch', '--quiet', 'origin', 'main', ...(staging0 === null ? [] : ['staging'])]);
+  if (run('git', ['rev-parse', 'origin/main']).trim() !== main0) {
     throw new Error('main moved while the gate was checking; pull main and run the gate again');
+  }
+  if (staging0 !== null && run('git', ['rev-parse', 'origin/staging']).trim() !== staging0) {
+    throw new Error('staging moved while the gate was checking; run the gate again');
   }
   // The message is ours, never the builder's commits or PR text (which could carry "[skip ci]").
   // --match-head-commit: a push between the checks and the merge makes GitHub refuse it.
@@ -79,6 +128,9 @@ function main(argv: string[], pr: number): number {
     '-R',
     REPO,
     '--squash',
+    // Builder and harness branches go once merged; staging (the batch PR's head) stays. The repo's own
+    // auto-delete is off, or it would delete staging after a batch.
+    ...(kindOf(facts) === 'batch' ? [] : ['--delete-branch']),
     '--match-head-commit',
     facts.headSha,
     '--subject',
@@ -87,6 +139,7 @@ function main(argv: string[], pr: number): number {
     `Merged through the merge gate (tier ${result.tier}; reviews ${entry.reviewers.join(', ')}).`,
   ]);
   logMerge({ ...entry, result: 'merged' });
+  if (facts.baseRef === 'main') syncStaging();
   try {
     const merged = run('gh', [
       'pr',

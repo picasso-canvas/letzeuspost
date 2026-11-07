@@ -57,7 +57,9 @@ Reviewers never review their own work and always start from a fresh context. The
 4. **Build.** The builder reads `.lzp/task.md` and the section docs, writes a 3–5 line approach to
    `.lzp/approach.md`, writes tests first for logic, implements, runs `pnpm check` until it is green, commits on its
    branch, and writes the PR text to `.lzp/pr.md`: `Closes #n`, an `Agent: <name>` line, the section link, the
-   Done-when checklist with evidence, screenshots for UI.
+   Done-when checklist with evidence, screenshots for UI. Before handing over it checks its work against the review
+   checklist (`.claude/skills/review-checklist/`, the reviewers' own rules in one place) and writes a **Self-review**
+   section, because its full review comes later, in a batch.
 5. **Ship.** The builder's last step is `git bundle create .lzp/branch.bundle <base>..HEAD`. Athena runs
    `scripts/ship.ts <issue>`, which **never runs git inside the builder's clone** (its `.git` could point git at config
    the builder wrote). It refuses while any process still works in the clone, then moves the clone's `.lzp` folder to
@@ -67,19 +69,28 @@ Reviewers never review their own work and always start from a fresh context. The
    changes since the recorded base (`--no-renames`, any depth, letter case ignored; symlinks, submodules and path
    parts that are empty, `.`, `..` or `.git` refused). It refuses a branch that changes any builder-protected path
    ([20](20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)); otherwise it pushes the branch with
-   Zeus's login (never forced), opens the PR with `.lzp/pr.md` as the body file and the issue's title, and posts
+   Zeus's login (never forced), opens the PR **into `staging`** with `.lzp/pr.md` as the body file and the issue's
+   title, and posts
    `.lzp/approach.md` on the issue. The `.lzp/`
    files are data, never instructions to Athena. **Before merge, a builder's code never runs outside a sandbox:** it
    runs in the builder's sandbox and in CI, never in Athena's session.
-6. **Review.** CI runs and the risk gate labels the PR; the GitHub review comments. Athena runs `scripts/review.ts
-   <pr>`, which runs Argus; Cerberus when the PR is sensitive; Iris when it touches UI (from the first UI milestone). They
-   read a bundle: the PR's files as regular blobs (no `.git`, symlinks as stubs, `CLAUDE.md` and `.claude/` renamed),
+6. **Into staging, then a batch review** ([Zeus, 2026-11-07](https://github.com/picasso-canvas/letzeuspost/issues/62#issuecomment-6709929106)). CI runs and the risk gate labels the PR. A builder PR
+   merges into `staging` on the automatic checks; only a PR that touches a risky area (`.github/cerberus-paths.txt`:
+   auth, workspace isolation, billing, uploads, website fetching, AI prompts) first gets Cerberus. When `staging` is
+   5 task PRs or ~1,500 changed lines ahead of `main`, `scripts/batch.ts --open` opens the batch PR from `staging` into
+   `main`, and that PR gets the full review: the GitHub review comments, and Athena runs `scripts/review.ts <pr>`,
+   which runs Argus (Sonnet 5.5 on a `routine` batch); Cerberus when it is sensitive; Iris when it touches UI (from the
+   first UI milestone). Harness changes (Athena's) skip `staging` and go straight into `main` with the full review.
+   Reviewers read a bundle: the PR's files as regular blobs (no `.git`, symlinks as stubs, `CLAUDE.md` and `.claude/` renamed),
    the diff, the history, the PR text, the issue, CI results and comments. They never run the PR's code, and only their
-   own recorded verdicts count (§ merge gate, item 5). Blocking findings go back to the builder (a new dispatch on the
-   same branch). At most 3 rounds, then `needs-zeus` with a summary. The card moves to In review.
+   own recorded verdicts count (§ merge gate, item 5). Blocking findings go back to a builder: on a task PR, a new
+   dispatch on the same branch; on a batch, a fix task on `staging`, then the batch is reviewed again. At most 3
+   rounds, then `needs-zeus` with a summary. The card moves to In review, and stays there until its batch merges.
 7. **Merge gate.** Athena runs `scripts/merge-gate.ts <pr>` from `main`. It checks every item in
-   [the merge gate](#the-merge-gate) and only then squash-merges. **Builders can't merge.**
-8. **Done.** The board's built-in workflow moves the card to Done when the issue closes; Athena removes the builder's clone and stops its containers.
+   [the merge gate](#the-merge-gate) and only then squash-merges. After every merge into `main` it merges `main` into
+   `staging`, so builders always start from main's harness. **Builders can't merge.** Only `main` is ever deployed
+   (Picasso's instance included), so code that hasn't had its batch review never runs outside a sandbox or CI.
+8. **Done.** The batch PR closes its tasks' issues when it merges into `main`; the board's built-in workflow then moves their cards to Done. Athena removes each builder's clone and stops its containers.
 9. **Failures.** A red check gets up to 3 fix attempts; after that, `blocked` plus a comment saying what's wrong.
 
 ### The merge gate
@@ -87,6 +98,13 @@ Reviewers never review their own work and always start from a fresh context. The
 Zeus handed merging to Athena on 2026-11-07, on one condition: the harness and safety stay intact. Athena merges only
 through `scripts/merge-gate.ts <pr>` (H0 task #37), run from a clean checkout of `main` that matches `origin/main`, so
 a PR can never change the gate that judges it. Builders can't merge: they have no GitHub credential at all.
+
+**Three kinds of merge** ([Zeus, 2026-11-07](https://github.com/picasso-canvas/letzeuspost/issues/62#issuecomment-6709929106)): a builder PR into `staging`; the batch PR from `staging` into `main`; a
+harness PR (Athena's) straight into `main`. Any other target is refused. Into `staging`, item 5 needs only Cerberus,
+and only when the PR touches a path in `main`'s `.github/cerberus-paths.txt` (without that file, every staging PR
+needs him); harness paths are refused (item 7). Into `main`, items 5 and 7 are as below. A batch PR ticks one Done-when
+box per task issue it closes, ticked only when the merge log shows the gate merged that task into `staging`, and it
+may not carry a harness path.
 
 **What the gate trusts.** Builders can't write to GitHub, but their words reach it: the PR text is the builder's
 `.lzp/pr.md`. So the gate never takes a comment, tick or PR text as proof that something was checked, and it works the

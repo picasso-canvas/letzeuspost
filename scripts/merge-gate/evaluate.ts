@@ -73,6 +73,25 @@ export function requiredReviewers(
   return needed;
 }
 
+/**
+ * What kind of merge this is (Zeus, 2026-11-07): a builder PR into `staging`; the batch PR from `staging` into
+ * `main`; or a harness PR (Athena's) straight into `main`. Anything else is refused.
+ */
+export function kindOf(f: Pick<Facts, 'baseRef' | 'headRef'>): 'staging' | 'batch' | 'main' | null {
+  if (f.baseRef === 'staging') return 'staging';
+  if (f.baseRef === 'main') return f.headRef === 'staging' ? 'batch' : 'main';
+  return null;
+}
+
+/** Into staging, only Cerberus reviews, and only a PR touching a risky area; without the list on main, every PR. */
+export function stagingReviewers(
+  changedFiles: readonly string[],
+  cerberusPatterns: string[] | null,
+): Exclude<Reviewer, 'redteam'>[] {
+  if (cerberusPatterns === null) return ['cerberus'];
+  return changedFiles.some((file) => matchesAny(file, cerberusPatterns)) ? ['cerberus'] : [];
+}
+
 // GitHub skips push CI on `main` when the merge commit's message carries one of these.
 const SKIP_CI = /\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|skip-checks:\s*true/i;
 
@@ -89,13 +108,16 @@ export function evaluate(f: Facts): GateResult {
   add(1, 'Not frozen', paused === 'false' ? [] : [`AGENTS_PAUSED is ${JSON.stringify(f.paused)}`]);
 
   // 2. Linked and current
+  const kind = kindOf(f);
   const linked: string[] = [];
   if (f.state !== 'OPEN') linked.push(`state is ${f.state}`);
   if (f.isDraft) linked.push('draft');
-  if (f.baseRef !== 'main') linked.push(`base is ${f.baseRef}`);
+  if (kind === null)
+    linked.push(`base is ${f.baseRef}: PRs go into staging, or into main as a batch or harness PR`);
   if (f.mergeable !== 'MERGEABLE')
     linked.push(`mergeable is ${f.mergeable} (try again if UNKNOWN)`);
-  if (f.behindBy !== 0) linked.push(`branch is behind main by ${String(f.behindBy ?? 'unknown')}`);
+  if (f.behindBy !== 0)
+    linked.push(`branch is behind ${f.baseRef} by ${String(f.behindBy ?? 'unknown')}`);
   if (f.changedFiles.length === 0) linked.push('no changed files');
   if (SKIP_CI.test(f.title)) linked.push('the title would skip CI on main');
   if (f.closingIssues.some((issue) => !issue.inRepo)) {
@@ -151,7 +173,10 @@ export function evaluate(f: Facts): GateResult {
   // 5. Fresh-context reviews for this commit and this PR text; any block on this commit refuses
   const hash = bodyHash(f.body);
   const current = f.reviews.filter((r) => r.pr === f.pr && r.sha === f.headSha);
-  const needed: Reviewer[] = requiredReviewers(f.changedFiles, f.sensitivePatterns, f.config);
+  const needed: Reviewer[] =
+    kind === 'staging'
+      ? stagingReviewers(f.changedFiles, f.cerberusPatterns)
+      : requiredReviewers(f.changedFiles, f.sensitivePatterns, f.config);
   const reviewProblems: string[] = [];
   for (const r of current) {
     if (r.verdict === 'block') reviewProblems.push(`${r.reviewer} blocked this commit`);
@@ -177,7 +202,9 @@ export function evaluate(f: Facts): GateResult {
   if (boxes.ticked + boxes.unticked === 0)
     doneProblems.push('no Done-when checklist in the PR text');
   if (boxes.unticked > 0) doneProblems.push(`${String(boxes.unticked)} unticked`);
-  const expected = Math.max(0, ...tasks.map((issue) => issue.doneWhenBoxes));
+  // A batch PR ticks one box per task (each task's own list was checked when it merged into staging).
+  const expected =
+    kind === 'batch' ? tasks.length : Math.max(0, ...tasks.map((issue) => issue.doneWhenBoxes));
   if (boxes.ticked < expected) {
     doneProblems.push(`${String(boxes.ticked)} ticked, the issue lists ${String(expected)}`);
   }
@@ -187,7 +214,10 @@ export function evaluate(f: Facts): GateResult {
   const harness = f.changedFiles.filter((p) => matchesAny(p, f.config.harnessPaths));
   const redTeam = current.filter((r) => r.reviewer === 'redteam' && r.verdict === 'pass');
   const harnessProblems: string[] = [];
-  if (harness.length > 0) {
+  if (harness.length > 0 && kind !== 'main') {
+    // Harness changes go straight to main with the full gate, never through staging (Zeus, 2026-11-07).
+    harnessProblems.push(`harness paths can't go through staging (${harness.join(', ')})`);
+  } else if (harness.length > 0) {
     if (redTeam.length === 0) {
       harnessProblems.push(`harness paths changed (${harness.join(', ')}), no red-team record`);
     } else if (!redTeam.some((r) => r.bodyHash === hash)) {

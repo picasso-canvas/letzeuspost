@@ -29,6 +29,8 @@ export interface LogEntry {
   mergeCommit?: string;
   failed?: number[];
   message?: string;
+  /** The branch the gate merged into (`staging` or `main`); older entries have none (main). */
+  base?: string;
 }
 
 export function isoWeek(date: Date): string {
@@ -118,7 +120,7 @@ export function renderReport(d: ReportData): string {
     for (const e of merged) {
       const commit = commits.get(e.pr);
       lines.push(
-        `| #${String(e.pr)} | ${d.titles[e.pr] ?? ''} | ${e.tier ?? ''} | ${(e.reviewers ?? []).join(', ')} | ${commit ? `merged as ${commit.slice(0, 7)}` : 'merged'} |`,
+        `| #${String(e.pr)} | ${d.titles[e.pr] ?? ''} | ${e.tier ?? ''} | ${(e.reviewers ?? []).join(', ')} | ${e.base === undefined ? (commit ? `merged as ${commit.slice(0, 7)}` : 'merged') : `merged into ${e.base}${commit ? ` as ${commit.slice(0, 7)}` : ''}`} |`,
       );
     }
   }
@@ -239,7 +241,7 @@ function main(argv: string[]): number {
   }
   const merges = log.filter((e) => Date.parse(e.at) >= since.getTime());
   const titles: Record<number, string> = {};
-  for (const pr of new Set(merges.map((e) => e.pr))) {
+  for (const pr of new Set(merges.filter((e) => typeof e.pr === 'number').map((e) => e.pr))) {
     try {
       titles[pr] = run('gh', [
         'pr',

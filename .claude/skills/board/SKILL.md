@@ -58,9 +58,10 @@ Created by Athena only after the sections they need are approved. The first mile
 | When | Athena does |
 |---|---|
 | A builder starts | Status → In progress |
-| Athena ships the builder's branch (PR opened) | Status → In review |
+| Athena ships the builder's branch (PR into `staging` opened) | Status → In review |
+| The gate merges the task PR into `staging` | Stays In review until its batch merges into `main` |
 | The builder's `.lzp/pr.md` says `needs-zeus` or `blocked` | Add the label; tell Zeus in chat |
-| Athena merges through the merge gate | The issue closes from the PR; the board's built-in workflow sets Done (otherwise Athena does) |
+| Athena merges through the merge gate into `main` (a batch, or her own harness PR) | The issues close from the PR; the board's built-in workflow sets Done (otherwise Athena does) |
 
 ## Weekly report (Athena, Fridays)
 

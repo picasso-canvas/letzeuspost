@@ -51,6 +51,8 @@ export interface Facts {
   state: string;
   isDraft: boolean;
   baseRef: string;
+  /** The PR's branch: `staging` marks the batch PR into `main`. */
+  headRef: string;
   headSha: string;
   title: string;
   mergeable: string;
@@ -63,6 +65,8 @@ export interface Facts {
   statuses: { context: string; state: string }[];
   reviews: ReviewRecord[];
   sensitivePatterns: string[] | null;
+  /** `.github/cerberus-paths.txt` on main: the risky areas Cerberus reviews per PR into staging. Null: every one. */
+  cerberusPatterns: string[] | null;
   config: GateConfig;
 }
 

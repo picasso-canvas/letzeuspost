@@ -392,7 +392,7 @@ describe('evaluate: the batch PR from staging into main', () => {
     expect(
       failedIds(
         batch({
-          changedFiles: ['packages/ui/src/button.ts', '.claude/agents/x.md'],
+          changedFiles: ['packages/ui/src/button.ts', 'scripts/x.ts'],
           labels: ['sensitive'],
           reviews: [
             review('argus', { bodyHash: bodyHash(batchBody) }),
