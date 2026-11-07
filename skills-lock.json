@@ -1,0 +1,31 @@
+{
+  "skills": {
+    "board": { "source": "local", "path": ".claude/skills/board" },
+    "conventions": { "source": "local", "path": ".claude/skills/conventions" },
+    "tdd": { "source": "local", "path": ".claude/skills/tdd" },
+    "systematic-debugging": {
+      "source": "obra/superpowers",
+      "path": "skills/systematic-debugging",
+      "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "licence": "MIT"
+    },
+    "security-best-practices": {
+      "source": "openai/skills",
+      "path": "skills/.curated/security-best-practices",
+      "commit": "49f948faa9258a0c61caceaf225e179651397431",
+      "licence": "Apache-2.0"
+    },
+    "security-audit": {
+      "source": "cloudflare/security-audit-skill",
+      "path": "skills/security-audit",
+      "commit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+      "licence": "MIT"
+    },
+    "security-review": {
+      "source": "anthropics/claude-code-security-review",
+      "path": ".claude/commands/security-review.md",
+      "commit": "0c6a49f1fa56a1d472575da86a94dbc1edb78eda",
+      "licence": "MIT"
+    }
+  }
+}

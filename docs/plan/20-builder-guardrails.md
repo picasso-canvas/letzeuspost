@@ -134,8 +134,9 @@ Athena only adds a second or third when the weekly report shows room. Any headle
 
 ### Outside skills
 
-- Vendor a copy pinned to a commit into `.claude/skills/vendor/<name>/`, with `SOURCES.md` listing the repo, commit,
-  licence and every change we made.
+- Vendor a copy pinned to a commit into `.claude/skills/<name>/` (Claude Code only finds skills one level deep, so no
+  `vendor/` folder; amended 2026-11-07), with `SOURCES.md` listing the repo, commit, licence and every change we made.
+  The agent files tell each agent to read its skills first: `skills:` preloading doesn't apply to headless `--agent` runs.
 - **Licences (Zeus, 2026-11-06):** copy MIT and Apache skills. CC-BY-SA-4.0 instruction text (Trail of Bits) is
   allowed with attribution and its licence file kept beside it (private repo, not redistributed). Repos without a
   licence file are never copied (e.g. Better Auth's skills, Vercel's React rules: reference only). Scripts and code
