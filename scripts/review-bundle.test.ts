@@ -162,6 +162,7 @@ describe('reviewerEnv', () => {
       HOME: '/h',
       LANG: 'en_US.UTF-8',
       ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
     });
   });
 });
@@ -360,7 +361,7 @@ describe('failure reasons and refusals', () => {
   });
 });
 
-describe('round 6 nits', () => {
+describe('failure reasons and bundle file names', () => {
   it("reports a usage limit from the failed command's JSON output, never the command line", () => {
     const errors: string[] = [];
     const original = console.error;

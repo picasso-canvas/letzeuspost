@@ -135,6 +135,11 @@ describe('parseVerdict: a later VERDICT: block behind any markup', () => {
       '**VERDICT:** block',
       '> VERDICT: block',
       '- VERDICT — block',
+      '[VERDICT: block]',
+      '[ VERDICT: block ]',
+      '<b>VERDICT: block</b>',
+      'VERDICT: blocked',
+      '**VERDICT: blocking**',
     ]) {
       expect(parseVerdict(`VERDICT: pass\nAll good.\n${line}`).verdict, line).toBe('block');
     }
