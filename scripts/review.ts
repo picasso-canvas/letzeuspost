@@ -334,8 +334,15 @@ export async function runReviews(
   deps: ReviewDeps,
   tier: 'routine' | 'sensitive' = 'sensitive',
 ): Promise<number> {
-  const results = await Promise.all(reviewers.map((reviewer) => reviewOne(reviewer)));
-  return results.reduce((sum, n) => sum + n, 0);
+  // allSettled: one reviewer throwing still lets the others finish and record, and counts as one failure.
+  const results = await Promise.allSettled(reviewers.map((reviewer) => reviewOne(reviewer)));
+  return results.reduce((sum, r, i) => {
+    if (r.status === 'fulfilled') return sum + r.value;
+    console.error(
+      `${reviewers[i] ?? 'a reviewer'} failed: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}. Nothing recorded for it; run it again.`,
+    );
+    return sum + 1;
+  }, 0);
 
   async function reviewOne(reviewer: Asker): Promise<number> {
     let failed = 0;
