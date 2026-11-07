@@ -5,7 +5,7 @@ import console from 'node:console';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
-/** SPDX ids allowed outright (§20). */
+/** SPDX ids allowed outright (§20; BlueOak-1.0.0 added by Zeus, 2026-11-07). */
 export const ALLOWED = new Set([
   'MIT',
   'Apache-2.0',
@@ -15,6 +15,7 @@ export const ALLOWED = new Set([
   'ISC',
   'PostgreSQL',
   'OFL-1.1',
+  'BlueOak-1.0.0',
 ]);
 
 /**
@@ -42,7 +43,7 @@ export const EXCEPTIONS = [
     why: 'libvips inside sharp, unchanged (§13 A14)',
   },
   {
-    // PROPOSED in #25, needs Zeus's OK: Vite's CSS tool, pulled in by Vitest. Never shipped.
+    // Zeus, 2026-11-07: MPL-2.0 only for dev-only tools used unchanged. Vite's CSS tool, pulled in by Vitest.
     names: [
       'lightningcss',
       'lightningcss-darwin-arm64',
@@ -55,13 +56,6 @@ export const EXCEPTIONS = [
     license: 'MPL-2.0',
     devOnly: true,
     why: 'test tooling (vite via vitest), used unchanged',
-  },
-  {
-    // PROPOSED in #25, needs Zeus's OK: a permissive licence, pulled in by ESLint. Never shipped.
-    names: ['minimatch', '@isaacs/nonrecursive-glob-match'],
-    license: 'BlueOak-1.0.0',
-    devOnly: true,
-    why: 'lint tooling (eslint), permissive',
   },
 ];
 

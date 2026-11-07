@@ -1,5 +1,9 @@
 # The CI job `ci` (§20 part 4): the same checks as `pnpm check`, plus secrets, advisories, workflow lint and licences.
 # Every action is pinned to a commit SHA; every downloaded tool is checked against a pinned SHA-256.
+#
+# No repository secrets here, ever: this job runs on pull_request, where the branch's code is untrusted. Jobs that need
+# secrets (the AI evals, §17) live in their own workflow and run only on push to main or workflow_dispatch (§20 part 6).
+# The one credential used is GitHub's automatic read-only token, for zizmor's online audits, before any PR code runs.
 name: ci
 
 on:
@@ -61,8 +65,15 @@ jobs:
           tar -xzf zizmor.tar.gz -C bin zizmor
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
+      # Reads the workflow files only, before any of the branch's code is installed or run.
+      - name: Workflows (zizmor)
+        env:
+          GH_TOKEN: ${{ github.token }} # read-only; lets zizmor run its online audits (impostor commits, known-vulnerable actions)
+        run: zizmor --config .github/zizmor.yml --format plain .github/workflows
+
       - name: Install dependencies (frozen lockfile)
         id: install
+        if: ${{ !cancelled() }}
         run: pnpm install --frozen-lockfile
 
       # Each check below runs even when an earlier one failed, so one run shows every problem.
@@ -81,9 +92,3 @@ jobs:
       - name: Advisories (OSV-Scanner on the lockfile)
         if: ${{ !cancelled() }}
         run: osv-scanner scan source --lockfile pnpm-lock.yaml
-
-      - name: Workflows (zizmor)
-        if: ${{ !cancelled() }}
-        env:
-          GH_TOKEN: ${{ github.token }} # read-only; lets zizmor run its online audits (impostor commits, known-vulnerable actions)
-        run: zizmor --config .github/zizmor.yml --format plain .github/workflows

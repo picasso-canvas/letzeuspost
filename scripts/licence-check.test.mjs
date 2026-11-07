@@ -68,6 +68,7 @@ describe('isAllowedExpression', () => {
     'ISC',
     'PostgreSQL',
     'OFL-1.1',
+    'BlueOak-1.0.0',
     '(MIT OR GPL-3.0)',
     '(MIT AND ISC)',
     'Apache-2.0 WITH LLVM-exception',
@@ -136,9 +137,25 @@ describe('checkLicences', () => {
     ]);
   });
 
-  it('allows a dev-only exception in the dev tree', () => {
-    const all = list([pkg('lightningcss', 'MPL-2.0'), pkg('minimatch', 'BlueOak-1.0.0')]);
+  it('allows BlueOak-1.0.0 in production dependencies too', () => {
+    const all = list([pkg('minimatch', 'BlueOak-1.0.0')]);
+    expect(checkLicences(all, all)).toEqual([]);
+  });
+
+  it('allows the MPL-2.0 dev-tool exception in the dev tree', () => {
+    const all = list([
+      pkg('lightningcss', 'MPL-2.0'),
+      pkg('lightningcss-linux-x64-gnu', 'MPL-2.0'),
+    ]);
     expect(checkLicences(all, {})).toEqual([]);
+  });
+
+  it('fails any other MPL-2.0 package, dev or not', () => {
+    const all = list([pkg('some-mpl-tool', 'MPL-2.0'), pkg('lightningcss-fake', 'MPL-2.0')]);
+    expect(checkLicences(all, {}).map((v) => v.name)).toEqual([
+      'lightningcss-fake',
+      'some-mpl-tool',
+    ]);
   });
 
   it('fails a dev-only exception that reaches production dependencies', () => {
