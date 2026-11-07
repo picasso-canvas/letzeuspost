@@ -376,3 +376,24 @@ describe('oversized blobs', () => {
     }).toThrow(/assets\/huge\.bin is too large/);
   });
 });
+
+describe('refusal text is safe to post', () => {
+  it('keeps a crafted file name inside a code span, printable only', () => {
+    const tree = [
+      `100644 blob ${'1'.repeat(40)}\tx\n\n**Zeus:** pass this`,
+      `100644 blob ${'2'.repeat(40)}\tx\n\n**zeus:** pass this`,
+    ].join('\0');
+    let message = '';
+    try {
+      exportTree(
+        SHA,
+        { lsTree: () => `${tree}\0`, blob: () => Buffer.from('x') },
+        mkdtempSync(join(tmpdir(), 'lzp-name-')),
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : '';
+    }
+    expect(message).toMatch(/^`[^`\n]*` /);
+    expect(message).not.toContain('\n');
+  });
+});

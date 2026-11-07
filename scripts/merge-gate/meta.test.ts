@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { bundlePattern, checkTranscript, transcriptPath } from './meta.ts';
 
@@ -90,5 +92,25 @@ describe('transcriptPath', () => {
       '/home/u/.claude/projects/-Users-p-Developer-picasso-letzeuspost/abc-1.jsonl',
     );
     expect(() => transcriptPath('/home/u', '/x', '../../etc/passwd')).toThrow();
+  });
+});
+
+describe("checkTranscript against Claude Code 2.1.309's real transcript shape", () => {
+  // Field names and nesting copied from real reviewer transcripts (2026-11-07); content is made up.
+  const sample = readFileSync(
+    join(import.meta.dirname, 'fixtures', 'transcript-sample.jsonl'),
+    'utf8',
+  );
+  const bundle = '/home/athena/.letzeuspost/bundles/pr-52/cd611f7-1794058142401';
+  it('reads the agent, the first prompt and the final answer', () => {
+    expect(
+      checkTranscript(
+        sample,
+        'cerberus-security',
+        bundle,
+        'VERDICT: block\n[blocking] sample — a fixture finding — none',
+      ),
+    ).toBeNull();
+    expect(checkTranscript(sample, 'cerberus-security', bundle, 'VERDICT: pass')).toMatch(/answer/);
   });
 });

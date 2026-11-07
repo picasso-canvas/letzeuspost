@@ -113,3 +113,10 @@ describe('parseVerdict: angle brackets', () => {
     expect(parseVerdict('VERDICT: pass\n<-- [blocking] a -> b').verdict).toBe('block');
   });
 });
+
+describe('parseVerdict: tight boxes and roman numerals', () => {
+  it('catches - [x][blocking] and iv. [blocking]', () => {
+    expect(parseVerdict('VERDICT: pass\n- [x][blocking] a').verdict).toBe('block');
+    expect(parseVerdict('VERDICT: pass\niv. [blocking] a').verdict).toBe('block');
+  });
+});

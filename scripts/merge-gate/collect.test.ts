@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { collectFacts, parseConfig, type CollectDeps } from './collect.ts';
+import { bodyHash } from './evaluate.ts';
 
 const SHA = 'f'.repeat(40);
 const CONFIG = JSON.stringify({
@@ -155,5 +156,40 @@ describe('collectFacts re-checks every pass against its transcript', () => {
       }),
     );
     expect(f.reviews.map((r) => r.meta?.verified)).toEqual([true, false]);
+  });
+});
+
+describe('collectFacts: records that copy a real pass', () => {
+  it('refuses a record whose PR text differs from the reviewed snapshot, and a null meta', () => {
+    const bundle = `/s/bundles/pr-7/${SHA.slice(0, 7)}-1`;
+    const real = [
+      JSON.stringify({ type: 'agent-setting', agentSetting: 'argus-reviewer' }),
+      JSON.stringify({ type: 'user', message: { content: `Review … ${bundle}/ …` } }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'VERDICT: pass' }] },
+      }),
+    ].join('\n');
+    const copied = {
+      pr: 7,
+      sha: SHA,
+      reviewer: 'argus' as const,
+      verdict: 'pass' as const,
+      bodyHash: bodyHash('edited text'),
+      summary: 'VERDICT: pass',
+      at: '',
+      meta: { agent: 'argus-reviewer', sessionId: 's-ok', bundle },
+    };
+    const nullMeta = { ...copied, meta: null as unknown as undefined };
+    const f = collectFacts(
+      7,
+      deps({
+        readReviews: () => [copied, nullMeta],
+        readTranscript: () => real,
+        stateDir: '/s',
+        readFile: () => JSON.stringify({ headRefOid: SHA, body: 'text' }),
+      }),
+    );
+    expect(f.reviews.map((r) => r.meta?.verified ?? false)).toEqual([false, false]);
   });
 });
