@@ -12,10 +12,12 @@ Find vulnerabilities that violate a real trust boundary, then give owners the so
 > **LetZeusPost copy: guidance mode only** (changes listed in SOURCES.md). The full six-phase audit workflow, its
 > phase files (`RECONNAISSANCE.md`, `HUNTING.md`, `VALIDATION-AND-REPORTING.md`), `report-schema.json`, the two Node
 > validators and the native/binary and desktop/mobile companions were not vendored. If a full audit, pen test or
-> report artifacts are asked for, say that this copy can't run one and stop. Links to files that aren't in this folder
-> point to those parts: skip them. Where this skill and the loading agent's own rules or the plan (§13, §22) differ,
-> the agent's rules and the plan win; for example, client text placed in prompt instructions instead of a data block
-> is a finding there even without a proven exploit chain.
+> report artifacts are asked for, say that this copy can't run one, and carry on in guidance mode (a reviewer still
+> gives its verdict). Links to files that aren't in this folder point to those parts: skip them. Where this skill and
+> the loading agent's own rules or the plan (§13, §22) differ, the agent's rules and the plan win. Three upstream lines
+> are marked overridden where they appear: "Prompt injection alone is not a finding" (`AI-AND-LLM.md`), "A mutable or
+> known-vulnerable dependency is not a finding by itself" (`SUPPLY-CHAIN-AND-RELEASE.md`) and "A missing … rate limit
+> is not a finding alone" (`WEB-PROTOCOL-AND-AUTH.md`).
 
 - **Guidance mode**: For security questions, focused reviews, methodology, triage, or investigation of specific findings, use only the relevant parts of this skill: the core principles below, [ATTACK-CLASSES.md](ATTACK-CLASSES.md) and the domain companions it links. Do not create an output directory or write audit artifacts.
 

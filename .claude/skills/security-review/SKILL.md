@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: Security review of a pull request's changes, for high-confidence exploitable vulnerabilities. LetZeusPost's fork of Anthropic's /security-review prompt without its denial-of-service, rate-limit and prompt-injection exclusions. Use when reviewing a diff for security.
+description: Security review of a pull request's changes. LetZeusPost's fork of Anthropic's /security-review prompt without its confidence cutoff and without its denial-of-service, rate-limit, prompt-injection, documentation, workflow, dependency and hardening exclusions. Use when reviewing a diff for security.
 ---
 
 > **LetZeusPost fork** of `anthropics/claude-code-security-review` `.claude/commands/security-review.md` (MIT). Every
@@ -17,11 +17,13 @@ OBJECTIVE:
 Perform a security-focused code review to identify HIGH-CONFIDENCE security vulnerabilities that could have real exploitation potential. This is not a general code review - focus ONLY on security implications newly added by this PR. Do not comment on existing security concerns.
 
 CRITICAL INSTRUCTIONS:
-1. MINIMIZE FALSE POSITIVES: Only flag issues where you're >80% confident of actual exploitability
-2. AVOID NOISE: Skip theoretical issues, style concerns, or low-impact findings
+1. REPORT WHAT THE FILES CAN'T RULE OUT: give every finding with your confidence and what would settle it. A risk the
+   files you were given can't rule out is a finding, never dropped for low confidence (Cerberus blocks on it).
+2. AVOID NOISE: Skip style concerns
 3. FOCUS ON IMPACT: Prioritize vulnerabilities that could lead to unauthorized access, data breaches, or system compromise
-4. EXCLUSIONS: Do NOT report the following issue types:
-   - Secrets or sensitive data stored on disk (these are handled by other processes)
+4. IN SCOPE HERE: prompt, agent, skill and `CLAUDE.md` files (markdown that steers an agent), the plan in `docs/plan/`,
+   GitHub Actions workflows, dependencies (pinning, licences, install scripts, known vulnerabilities), secrets written
+   to disk, and missing hardening the plan or the loading agent requires
 
 SECURITY CATEGORIES TO EXAMINE:
 
@@ -118,46 +120,39 @@ CONFIDENCE SCORING:
 - 0.9-1.0: Certain exploit path identified, tested if possible
 - 0.8-0.9: Clear vulnerability pattern with known exploitation methods
 - 0.7-0.8: Suspicious pattern requiring specific conditions to exploit
-- Below 0.7: Don't report (too speculative)
+- Below 0.7: Report it with what would rule it out; the loading agent decides how much it weighs
 
 FINAL REMINDER:
-Focus on HIGH and MEDIUM findings only. Better to miss some theoretical issues than flood the report with false positives. Each finding should be something a security engineer would confidently raise in a PR review.
+Lead with HIGH and MEDIUM findings, and keep LOW ones short. A missed hole costs more here than a finding the author can answer in one line. Each finding should be something a security engineer would raise in a PR review.
 
 FALSE POSITIVE FILTERING:
 
 > You do not need to run commands to reproduce the vulnerability, just read the code to determine if it is a real vulnerability. Do not use the bash tool or write to any files.
 >
 > HARD EXCLUSIONS - Automatically exclude findings matching these patterns:
-> 1. Secrets or credentials stored on disk if they are otherwise secured.
-> 2. Lack of input validation on non-security-critical fields without proven security impact.
-> 3. Input sanitization concerns for GitHub Action workflows unless they are clearly triggerable via untrusted input.
-> 4. A lack of hardening measures. Code is not expected to implement all security best practices, only flag concrete vulnerabilities.
-> 5. Race conditions or timing attacks that are theoretical rather than practical issues. Only report a race condition if it is concretely problematic.
-> 6. Vulnerabilities related to outdated third-party libraries. These are managed separately and should not be reported here.
-> 7. Memory safety issues such as buffer overflows or use-after-free-vulnerabilities are impossible in rust. Do not report memory safety issues in rust or any other memory safe languages.
-> 8. Files that are only unit tests or only used as part of running tests.
-> 9. Log spoofing concerns. Outputting un-sanitized user input to logs is not a vulnerability.
-> 10. SSRF vulnerabilities that only control the path. SSRF is only a concern if it can control the host or protocol.
-> 11. Regex injection. Injecting untrusted content into a regex is not a vulnerability.
-> 12. Insecure documentation. Do not report any findings in documentation files such as markdown files.
-> 13. A lack of audit logs is not a vulnerability.
+> 1. Lack of input validation on non-security-critical fields without proven security impact.
+> 2. Race conditions or timing attacks that are theoretical rather than practical issues. Only report a race condition if it is concretely problematic. (In this repo a builder's own processes racing Athena's scripts on files in the builder's clone are practical, not theoretical.)
+> 3. Memory safety issues such as buffer overflows or use-after-free-vulnerabilities are impossible in rust. Do not report memory safety issues in rust or any other memory safe languages.
+> 4. Files that are only unit tests or only used as part of running tests.
+> 5. Log spoofing concerns. Outputting un-sanitized user input to logs is not a vulnerability.
+> 6. SSRF vulnerabilities that only control the path. SSRF is only a concern if it can control the host or protocol.
+> 7. A lack of audit logs is not a vulnerability.
 >
 > NOT EXCLUDED in this fork: denial of service, resource exhaustion (memory, CPU, regex), missing or bypassable rate
-> limits, AI cost abuse, and user or client content placed in AI prompt instructions (prompt injection). Report them
-> under the same confidence bar as everything else.
+> limits, AI cost abuse, user or client content placed in AI prompt instructions (prompt injection), untrusted content
+> in a regex, markdown that steers an agent, GitHub Actions workflows, outdated or unpinned dependencies, secrets
+> stored on disk, and missing hardening the plan or the loading agent requires.
 > 
 > PRECEDENTS -
 > 1. Logging high value secrets in plaintext is a vulnerability. Logging URLs is assumed to be safe.
 > 2. UUIDs can be assumed to be unguessable and do not need to be validated.
 > 3. Environment variables and CLI flags are trusted values. Attackers are generally not able to modify them in a secure environment. Any attack that relies on controlling an environment variable is invalid.
-> 4. Subtle or low impact web vulnerabilities such as tabnabbing, XS-Leaks, prototype pollution, and open redirects should not be reported unless they are extremely high confidence.
+> 4. Subtle or low impact web vulnerabilities such as tabnabbing, XS-Leaks, prototype pollution, and open redirects are LOW unless the files show a concrete attack path.
 > 5. React and Angular are generally secure against XSS. These frameworks do not need to sanitize or escape user input unless it is using dangerouslySetInnerHTML, bypassSecurityTrustHtml, or similar methods. Do not report XSS vulnerabilities in React or Angular components or tsx files unless they are using unsafe methods.
-> 6. Most vulnerabilities in github action workflows are not exploitable in practice. Before validating a github action workflow vulnerability ensure it is concrete and has a very specific attack path.
-> 7. A lack of permission checking or authentication in client-side JS/TS code is not a vulnerability. Client-side code is not trusted and does not need to implement these checks, they are handled on the server-side. The same applies to all flows that send untrusted data to the backend, the backend is responsible for validating and sanitizing all inputs.
-> 8. Only include MEDIUM findings if they are obvious and concrete issues.
-> 9. Most vulnerabilities in ipython notebooks (*.ipynb files) are not exploitable in practice. Before validating a notebook vulnerability ensure it is concrete and has a very specific attack path where untrusted input can trigger the vulnerability.
-> 10. Logging non-PII data is not a vulnerability even if the data may be sensitive. Only report logging vulnerabilities if they expose sensitive information such as secrets, passwords, or personally identifiable information (PII).
-> 11. Command injection vulnerabilities in shell scripts are generally not exploitable in practice since shell scripts generally do not run with untrusted user input. Only report command injection vulnerabilities in shell scripts if they are concrete and have a very specific attack path for untrusted input.
+> 6. A lack of permission checking or authentication in client-side JS/TS code is not a vulnerability. Client-side code is not trusted and does not need to implement these checks, they are handled on the server-side. The same applies to all flows that send untrusted data to the backend, the backend is responsible for validating and sanitizing all inputs.
+> 7. Most vulnerabilities in ipython notebooks (*.ipynb files) are not exploitable in practice. Before validating a notebook vulnerability ensure it is concrete and has a very specific attack path where untrusted input can trigger the vulnerability.
+> 8. Logging non-PII data is not a vulnerability even if the data may be sensitive. Only report logging vulnerabilities if they expose sensitive information such as secrets, passwords, or personally identifiable information (PII).
+> 9. Command injection vulnerabilities in shell scripts are generally not exploitable in practice since shell scripts generally do not run with untrusted user input. Only report command injection vulnerabilities in shell scripts if they are concrete and have a very specific attack path for untrusted input. (Here, text from builders, issues, PR bodies and review findings is untrusted input wherever it reaches a shell.)
 > 
 > SIGNAL QUALITY CRITERIA - For remaining findings, assess:
 > 1. Is there a concrete, exploitable vulnerability with a clear attack path?
@@ -176,6 +171,6 @@ Begin your analysis now. Do this in 3 steps, yourself (you have no sub-agents):
 
 1. Identify vulnerabilities. Use the repository exploration tools (Read, Grep, Glob) to understand the codebase context, then analyze the PR changes for security implications against everything above.
 2. Then for each vulnerability identified, run a separate false-positive pass on it, applying everything in the "FALSE POSITIVE FILTERING" instructions, and give it a confidence score.
-3. Filter out any vulnerabilities with a confidence less than 8.
+3. Drop only what that pass shows is not a risk. Keep the rest with its confidence score; where the files can't rule a risk out, say what would.
 
 Write the findings in the output format of the agent that loaded this skill (Cerberus: the verdict line first, then one line per finding). Without such a format, your final reply must contain the markdown report and nothing else.

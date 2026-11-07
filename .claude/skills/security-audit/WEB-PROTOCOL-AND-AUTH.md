@@ -12,7 +12,7 @@ Pick classes from Phase 1. Split a large target into request framing and cache p
 - Framing and cache findings require two interpretations of the same request, response, or key. Name both components and the exact normalized value on each side.
 - For every credential, find the signature or secret verification and every binding required for its role: issuer, audience, origin, RP, client, session, principal, resource, assurance, expiry, and one-time state.
 - Host, Forwarded, X-Forwarded-*, Origin, Referer, redirect targets, callback state, and request-derived URLs are trust decisions. Trace each to the affected identity or response.
-- A missing header, cookie attribute, MFA prompt, or rate limit is not a finding alone. Require an accepted invalid request, cross-principal impact, assurance downgrade, or credential disclosure.
+- A missing header, cookie attribute, MFA prompt, or rate limit is not a finding alone. Require an accepted invalid request, cross-principal impact, assurance downgrade, or credential disclosure. **(LetZeusPost: overridden for rate limits. A missing or bypassable rate limit on login, invites, review links, uploads, website fetching or AI calls is a finding by itself, as in the security-review skill's Availability & Abuse category.)**
 - Classify `confirmed` only from complete source evidence and bounded local request/token tests. Use `needs_validation` when proxy, IdP, browser, certificate, secret, or deployed configuration is required but not visible.
 ```
 

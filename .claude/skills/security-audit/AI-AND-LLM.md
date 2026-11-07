@@ -9,7 +9,7 @@ Use this alongside `ATTACK-CLASSES.md`, not instead of it. Transport, access con
 ## Core discipline (include in every agent prompt for this domain)
 
 ```
-- Prompt injection alone is not a finding. Require a code-level boundary failure: content reaches another principal's context, invokes authority the requester lacks, discloses data they cannot read, or drives a sink they cannot reach directly.
+- Prompt injection alone is not a finding. Require a code-level boundary failure: content reaches another principal's context, invokes authority the requester lacks, discloses data they cannot read, or drives a sink they cannot reach directly. **(LetZeusPost: overridden. Client or user text placed in a model's instructions instead of a delimited data block is a finding by itself, per §22 and Cerberus's rules.)**
 - Model output, memory, tool descriptions, and MCP responses are untrusted inputs. Point to the code that grants authority, trusts output, writes durable state, or feeds a sink.
 - A guardrail prompt is not a security boundary. Count only deterministic checks, resource-scoped authorization, isolation, binding, and constrained credentials.
 - State the attacker, affected principal, effective execution identity, resource, exact action, authority used, and observable impact. An intentional direct request to use the requester's existing authority is not a delegation defect merely because a model executes it.

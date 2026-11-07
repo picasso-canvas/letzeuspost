@@ -9,7 +9,7 @@ Split large targets into dependency resolution, CI isolation, artifact provenanc
 ## Core discipline (include in every agent prompt for this domain)
 
 ```
-- A mutable or known-vulnerable dependency is not a finding by itself. Show who can influence resolution, which build consumes it, and what execution or release boundary follows.
+- A mutable or known-vulnerable dependency is not a finding by itself. Show who can influence resolution, which build consumes it, and what execution or release boundary follows. **(LetZeusPost: overridden. An unpinned, mutable or known-vulnerable dependency is a finding by itself here: every dependency is pinned in the lockfile and workflow actions to SHAs.)**
 - Follow integrity across every handoff: source identity, resolved inputs, build worker, artifact identity, test result, signature/attestation, promotion, and update consumer.
 - CI configuration is authorization code. Establish which event triggered a workflow, whose code runs, which secrets and tokens exist, and what it may publish or mutate.
 - A checksum fetched from the same untrusted location as the artifact does not establish independent integrity. Identify the trusted root and failure behavior.

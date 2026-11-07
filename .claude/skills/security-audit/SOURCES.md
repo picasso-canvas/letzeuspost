@@ -14,14 +14,14 @@ From `skills/security-audit/`:
 |---|---|
 | `SKILL.md` | yes |
 | `ATTACK-CLASSES.md` | no |
-| `AI-AND-LLM.md` | no |
+| `AI-AND-LLM.md` | yes |
 | `CLIENT-SIDE.md` | no |
 | `CLOUD-AND-DEPLOYMENT.md` | no |
 | `DATA-ISOLATION-AND-LIFECYCLE.md` | no |
 | `PROTOCOLS-RPC-AND-MESSAGING.md` | no |
 | `RESOURCE-EXHAUSTION-AND-AVAILABILITY.md` | no |
-| `SUPPLY-CHAIN-AND-RELEASE.md` | no |
-| `WEB-PROTOCOL-AND-AUTH.md` | no |
+| `SUPPLY-CHAIN-AND-RELEASE.md` | yes |
+| `WEB-PROTOCOL-AND-AUTH.md` | yes |
 
 ## Left out
 
@@ -45,13 +45,24 @@ From `skills/security-audit/`:
    profiles, cost budget) and "Full audit workflow".
 4. "Universal execution safety": "apply in both operating modes" → "apply in guidance mode"; removed the sentence on
    promoting artifacts in full audit mode.
+5. "Operating modes" note: "say that this copy can't run one and stop" → "… and carry on in guidance mode (a reviewer
+   still gives its verdict)" (Cerberus's round-1 review of #53: a headless reviewer must not stop without a verdict).
+   The note now names the three overridden lines (change 6).
+6. Marked three upstream lines **overridden** where they appear, each with the rule that replaces it (Cerberus's
+   round-1 review of #53):
+   - `AI-AND-LLM.md` "Prompt injection alone is not a finding …": client text in a model's instructions is a finding
+     by itself (§22);
+   - `SUPPLY-CHAIN-AND-RELEASE.md` "A mutable or known-vulnerable dependency is not a finding by itself …": pinned
+     dependencies and SHA-pinned actions;
+   - `WEB-PROTOCOL-AND-AUTH.md` "A missing header, cookie attribute, MFA prompt, or rate limit is not a finding alone
+     …": overridden for rate limits only.
 
 ## Review notes
 
 Every copied file read in full, and the left-out README and `SKILL.md` too. Text only: no hooks, install steps,
 network calls or telemetry. Upstream's stance worth knowing: `AI-AND-LLM.md` says "prompt injection alone is not a
-finding" without a code-level boundary failure. LetZeusPost's §22 and Cerberus's rules are stricter, which is why
-change 2 says ours win.
+finding" without a code-level boundary failure. LetZeusPost's §22 and Cerberus's rules are stricter, so that line and
+two like it are marked overridden (change 6).
 
 ## Scan
 

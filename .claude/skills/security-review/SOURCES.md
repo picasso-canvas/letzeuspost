@@ -40,15 +40,42 @@ The GitHub Action (`action.yml`, `claudecode/**`, `scripts/**`) was not copied.
    a "NOT EXCLUDED in this fork" line under the hard exclusions.
 7. Renumbered the remaining hard exclusions (1–13; upstream numbered two items 16) and precedents (1–11).
 8. START ANALYSIS: upstream launches sub-tasks to find issues and to filter false positives. Cerberus can't start
-   agents, so it does both passes itself; the confidence threshold (8) is unchanged. The final-reply line now defers to
-   the loading agent's format (Cerberus: verdict line first).
+   agents, so it does both passes itself. The final-reply line now defers to the loading agent's format (Cerberus:
+   verdict line first).
+9. **Removed the confidence cutoff** (Cerberus's round-1 review of #53: Cerberus blocks when the files can't rule a
+   risk out):
+   - CRITICAL INSTRUCTIONS 1 "MINIMIZE FALSE POSITIVES: Only flag issues where you're >80% confident of actual
+     exploitability" → "REPORT WHAT THE FILES CAN'T RULE OUT", and 2 lost "Skip theoretical issues … or low-impact
+     findings";
+   - CONFIDENCE SCORING "Below 0.7: Don't report (too speculative)" → report it with what would rule it out;
+   - FINAL REMINDER "Focus on HIGH and MEDIUM findings only. Better to miss some theoretical issues than flood the
+     report with false positives" → lead with HIGH and MEDIUM, a missed hole costs more;
+   - PRECEDENTS "8. Only include MEDIUM findings if they are obvious and concrete issues." removed;
+   - START ANALYSIS step 3 "Filter out any vulnerabilities with a confidence less than 8" → drop only what the
+     false-positive pass shows is not a risk.
+10. **Removed the exclusions that hid what Cerberus checks:**
+   - top-level EXCLUSIONS "Secrets or sensitive data stored on disk (these are handled by other processes)", replaced
+     by CRITICAL INSTRUCTIONS 4 "IN SCOPE HERE" (prompt, agent, skill and `CLAUDE.md` files, `docs/plan/`, workflows,
+     dependencies, secrets on disk, required hardening);
+   - HARD EXCLUSIONS "1. Secrets or credentials stored on disk if they are otherwise secured.", "3. Input
+     sanitization concerns for GitHub Action workflows …", "4. A lack of hardening measures …", "6. Vulnerabilities
+     related to outdated third-party libraries …", "11. Regex injection …" (it hid regex denial of service) and "12.
+     Insecure documentation. Do not report any findings in documentation files such as markdown files.";
+   - PRECEDENTS "6. Most vulnerabilities in github action workflows are not exploitable in practice …".
+   The "NOT EXCLUDED in this fork" line names each.
+11. HARD EXCLUSIONS 5 (now 2), theoretical races: added that a builder's processes racing Athena's scripts on files
+   in its clone are practical here.
+12. PRECEDENTS 4 (subtle web issues) "should not be reported unless they are extremely high confidence" → "are LOW
+   unless the files show a concrete attack path"; PRECEDENTS 11 (now 9, shell command injection): added that text
+   from builders, issues, PR bodies and review findings is untrusted wherever it reaches a shell.
+13. Renumbered again: hard exclusions 1–7, precedents 1–9; the `description` names the removed cutoff and
+   exclusions.
 
 ## Review notes
 
 Read in full. No hooks or downloads; the only executable content was the bang-backtick `git` blocks and the
-`allowed-tools` grant, both removed. Exclusions kept that conflict with Cerberus's own checks (its rules win, per
-change 3): HARD EXCLUSIONS 6 "outdated third-party libraries", 12 "Insecure documentation … markdown files" (our
-agent and skill `.md` files are prompts), and the GitHub Actions items (HARD EXCLUSIONS 3, PRECEDENTS 6).
+`allowed-tools` grant, both removed. No exclusion that conflicts with Cerberus's checks is left (changes 9 and 10);
+change 3's note still settles anything this prompt and Cerberus say differently.
 
 ## Scan
 
