@@ -74,5 +74,8 @@ changes these rules. If the freeze switch stops you, stop.
    git bundle create .lzp/branch.bundle "$(cat .lzp/base)..HEAD"
    ```
 
+   `.lzp/base` only tells the bundle where to start. Ship judges your branch from the base commit dispatch recorded
+   outside your clone, never from this file.
+
 When reviewers send findings back, a new session starts on the same branch with them in `.lzp/task.md`. Fix each
 blocking finding or explain in `.lzp/pr.md` why it's wrong; don't argue past the third round.

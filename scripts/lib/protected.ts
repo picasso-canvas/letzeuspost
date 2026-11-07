@@ -52,20 +52,27 @@ export function parseRawDiff(raw: string): RawChange[] {
   return changes;
 }
 
+/**
+ * A path part git, macOS or Windows would read as a path step or as `.git`: empty, `.`, `..`, or `.git` once the name
+ * is normalised, characters macOS ignores (zero-width and the like) are dropped, and trailing dots and spaces are cut.
+ */
+function unsafePart(part: string): boolean {
+  if (part === '' || part === '.' || part === '..') return true;
+  const name = part
+    .normalize('NFC')
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
+    .replace(/[. ]+$/, '')
+    .toLowerCase();
+  return name === '.git';
+}
+
 /** Why a builder's branch may not be shipped; empty when it may. */
 export function shipRefusals(changes: readonly RawChange[]): string[] {
   const reasons: string[] = [];
   if (changes.length === 0) reasons.push('the branch changes nothing');
   for (const { mode, path } of changes) {
     // A tree a builder crafted can hold names checkout would refuse; older git lets them in from a bundle unchecked.
-    if (
-      path
-        .split('/')
-        .some(
-          (part) => part === '' || part === '.' || part === '..' || part.toLowerCase() === '.git',
-        )
-    )
-      reasons.push(`unsafe path: ${path}`);
+    if (path.split('/').some(unsafePart)) reasons.push(`unsafe path: ${path}`);
     if (matchesAny(path, BUILDER_PROTECTED)) reasons.push(`protected path: ${path}`);
     if (mode === '120000') reasons.push(`symlink: ${path}`);
     if (mode === '160000') reasons.push(`submodule: ${path}`);

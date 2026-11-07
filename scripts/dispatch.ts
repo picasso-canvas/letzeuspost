@@ -6,8 +6,9 @@
 // with main's builder settings (sandbox on), an allowlisted environment, LZP_ROLE=builder, LZP_HARNESS_DIR, no GitHub
 // credential and no Docker socket. pnpm's store, cache and state live in the clone. The builder runs in its own
 // process group: when it finishes, or as soon as the freeze switch is on, the whole group is killed, and so is any
-// process still working in the clone or carrying the run's random LZP_DISPATCH marker (the ones that left the group);
-// a supervision tick that fails, or a Ctrl-C, stops it too. While it runs,
+// process carrying the run's random LZP_DISPATCH marker (the ones that left the group); a supervision tick that fails,
+// or a Ctrl-C, stops it too. A process still working in the clone without the marker is listed, never killed blind,
+// and the next dispatch refuses until it's gone. An old clone is moved into ~/.letzeuspost/trash/ before deletion. While it runs,
 // AGENTS_PAUSED is copied into ~/.letzeuspost/paused every minute for the hooks (#29). Once the builder has started,
 // nothing here runs git inside its clone (its .git could point git at config the builder wrote); the builder hands its
 // work over as .lzp/branch.bundle, which ship.ts reads. Services (database, storage, mail) arrive in M0.
@@ -26,7 +27,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
-import { killBuilderProcesses } from './lib/handover.ts';
+import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -298,9 +299,16 @@ async function main(argv: string[]): Promise<number> {
   const old = existsSync(recordFile)
     ? parseDispatchRecord(readFileSync(recordFile, 'utf8'), issue)
     : null;
-  if (killBuilderProcesses(clone, old?.marker).length > 0)
+  if (old?.marker !== undefined && killMarkedProcesses(old.marker).length > 0)
     console.log('Killed processes left from the last run.');
-  if (existsSync(clone)) rmSync(clone, { recursive: true, force: true });
+  const left = builderProcesses(clone);
+  if (left.length > 0) {
+    console.error(
+      `Refused: processes still work in ${clone} (pids ${left.join(', ')}). They carry no marker, so they may not be the builder's: look, stop them, then dispatch again.`,
+    );
+    return 1;
+  }
+  trash(clone, join(STATE_DIR, 'trash')); // moved out of any leftover process's reach before it is deleted
   rmSync(takenPath(issue), { recursive: true, force: true }); // a hand-over taken from an earlier round
   const marker = randomBytes(16).toString('hex'); // in the builder's environment: finds processes that left the clone
   mkdirSync(dirname(recordFile), { recursive: true, mode: 0o700 });
@@ -397,7 +405,13 @@ async function main(argv: string[]): Promise<number> {
       // already gone
     }
     try {
-      killBuilderProcesses(clone, marker); // the ones that left the group (setsid, a detached spawn)
+      killMarkedProcesses(marker); // the builder's own that left the group (setsid, a detached spawn)
+      const left = builderProcesses(clone);
+      if (left.length > 0) {
+        console.error(
+          `Processes still work in ${clone} (pids ${left.join(', ')}), not killed: they carry no marker, so they may not be the builder's. Look before shipping; ship refuses while they run.`,
+        );
+      }
     } catch (error) {
       console.error(
         `Couldn't look for leftover builder processes: ${error instanceof Error ? error.message : String(error)}`,
@@ -420,6 +434,10 @@ async function main(argv: string[]): Promise<number> {
     onTick(refreshFlag, killGroup, state);
   }, 60_000);
   const code = await new Promise<number>((resolve) => {
+    child.on('error', (error) => {
+      console.error(`Couldn't start the builder: ${error.message}`);
+      resolve(1);
+    });
     child.on('close', (c) => {
       resolve(c ?? 1);
     });

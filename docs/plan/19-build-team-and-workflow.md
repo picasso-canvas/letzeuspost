@@ -45,8 +45,10 @@ Reviewers never review their own work and always start from a fresh context. The
    ([20](20-builder-guardrails.md#1-identity-and-access)). Dispatch records the task's base commit in
    `~/.letzeuspost/dispatch/<issue>.json`, never wipes a clone holding unshipped work (unless `--fresh`), and runs the
    builder in its own process group, killed when it finishes or as soon as the freeze switch is on, together with any
-   process that left the group but still works in the clone (`lsof`) or carries the run's random marker (`ps`); a
-   failed supervision tick or a Ctrl-C stops it too. Before it starts and
+   process that left the group but carries the run's random marker (`ps`); a failed supervision tick or a Ctrl-C
+   stops it too. A process still working in the clone without the marker (`lsof`) is listed, never killed blind (it
+   may be Zeus's), and dispatch and ship refuse until it's gone. An old clone is moved into `~/.letzeuspost/trash/`,
+   out of any leftover process's reach, before it is deleted. Before it starts and
    every minute while it runs, dispatch copies the repo variable `AGENTS_PAUSED` into `~/.letzeuspost/paused` with the
    time, which the builder's hooks read before every tool call (builders can't reach GitHub to read it themselves); a
    flag older than 3 minutes counts as frozen. One
