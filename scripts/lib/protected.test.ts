@@ -64,3 +64,20 @@ describe('shipRefusals: unsafe path parts', () => {
     expect(shipRefusals([{ mode: '100644', path: 'src/.gitkeep' }])).toEqual([]);
   });
 });
+
+describe('shipRefusals: names macOS or Windows treat as .git', () => {
+  it('refuses .git hidden by ignorable characters, a trailing dot or space, and decomposed forms', () => {
+    for (const path of [
+      '.g\u200cit/config',
+      'a/.GIT\u200d/hooks',
+      '.git./x',
+      'src/.git /x',
+      '.\u0067\u200bit',
+    ]) {
+      expect(shipRefusals([{ mode: '100644', path }]), JSON.stringify(path)).toContain(
+        `unsafe path: ${path}`,
+      );
+    }
+    expect(shipRefusals([{ mode: '100644', path: 'src/.github-notes.md' }])).toEqual([]);
+  });
+});

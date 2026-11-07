@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { pidsUnder, pidsWithMarker, takeHandover } from './handover.ts';
+import { pidsUnder, pidsWithMarker, takeHandover, trash } from './handover.ts';
 
 function setup(): { clone: string; taken: string; root: string } {
   const root = mkdtempSync(join(tmpdir(), 'lzp-handover-'));
@@ -99,5 +99,25 @@ describe('pidsWithMarker', () => {
 
   it('refuses a marker too short to be unique', () => {
     expect(() => pidsWithMarker(ps, 'abc', 1)).toThrow(/marker/);
+  });
+});
+
+describe('trash', () => {
+  it("moves a clone out of every builder process's reach, then deletes it without following links", () => {
+    const { clone, root } = setup();
+    const home = join(root, 'home');
+    mkdirSync(home);
+    writeFileSync(join(home, 'keep.txt'), 'Zeus');
+    mkdirSync(join(clone, 'src'));
+    writeFileSync(join(clone, 'src', 'a.ts'), 'x');
+    symlinkSync(home, join(clone, 'src', 'link'));
+    trash(clone, join(root, 'state', 'trash'));
+    expect(existsSync(clone)).toBe(false);
+    expect(readFileSync(join(home, 'keep.txt'), 'utf8')).toBe('Zeus');
+  });
+
+  it('does nothing when there is no clone', () => {
+    const { clone, root } = setup();
+    trash(join(clone, 'missing'), join(root, 'state', 'trash'));
   });
 });

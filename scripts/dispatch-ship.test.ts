@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import {
   branchFor,
   builderEnv,
@@ -195,7 +195,7 @@ describe('onTick', () => {
   });
 });
 
-function git(cwd: string, args: string[], input?: string): string {
+function git(cwd: string, args: string[], input?: string | Buffer): string {
   return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
     cwd,
     encoding: 'utf8',
@@ -215,6 +215,9 @@ function git(cwd: string, args: string[], input?: string): string {
 describe('fetchBundle', () => {
   it('fetches a sound bundle, and a malformed one never ships', () => {
     const root = mkdtempSync(join(tmpdir(), 'lzp-fsck-'));
+    onTestFinished(() => {
+      rmSync(root, { recursive: true, force: true });
+    });
     const builder = join(root, 'builder');
     const athena = join(root, 'athena');
     for (const dir of [builder, athena]) git(root, ['init', '--quiet', '-b', 'main', dir]);
@@ -227,14 +230,10 @@ describe('fetchBundle', () => {
 
     // A tree whose entry is named "..": git's fsck refuses it (the shape behind past path-traversal CVEs).
     const blob = git(builder, ['hash-object', '-w', 'a.txt']).trim();
-    const tree = execFileSync(
-      'git',
+    const tree = git(
+      builder,
       ['hash-object', '-t', 'tree', '--literally', '-w', '--stdin'],
-      {
-        cwd: builder,
-        input: Buffer.concat([Buffer.from('100644 ..\0'), Buffer.from(blob, 'hex')]),
-        encoding: 'utf8',
-      },
+      Buffer.concat([Buffer.from('100644 ..\0'), Buffer.from(blob, 'hex')]),
     ).trim();
     const commit = git(builder, ['commit-tree', tree, '-p', 'HEAD', '-m', 'bad']).trim();
     git(builder, ['update-ref', 'refs/heads/main', commit]);
