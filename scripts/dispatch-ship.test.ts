@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { freezeFlag, slugify, taskText } from './dispatch.ts';
+
+const paused = (flag: string) => (JSON.parse(flag) as { paused: boolean }).paused;
 import { findClone, prFlags } from './ship.ts';
 
 describe('slugify', () => {
@@ -20,9 +22,9 @@ describe('freezeFlag', () => {
       at: '2026-11-07T05:12:00.000Z',
       source: 'AGENTS_PAUSED',
     });
-    expect(JSON.parse(freezeFlag('true', now)).paused).toBe(true);
-    expect(JSON.parse(freezeFlag(null, now)).paused).toBe(true);
-    expect(JSON.parse(freezeFlag('', now)).paused).toBe(true);
+    expect(paused(freezeFlag('true', now))).toBe(true);
+    expect(paused(freezeFlag(null, now))).toBe(true);
+    expect(paused(freezeFlag('', now))).toBe(true);
   });
 });
 

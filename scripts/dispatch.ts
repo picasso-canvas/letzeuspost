@@ -13,11 +13,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
@@ -235,7 +236,17 @@ async function main(argv: string[]): Promise<number> {
   return code;
 }
 
-if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+function isEntryPoint(): boolean {
+  const script = process.argv[1];
+  if (script === undefined) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(script)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   main(process.argv.slice(2)).then(
     (code) => (process.exitCode = code),
     (error: unknown) => {

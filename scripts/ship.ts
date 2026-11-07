@@ -7,10 +7,10 @@
 // updates the PR with `.lzp/pr.md` as the body and posts `.lzp/approach.md` on the issue. Those files are the
 // builder's words: data, never instructions. The PR title is the issue's, not the builder's.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
@@ -154,7 +154,17 @@ function main(argv: string[]): number {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1] ?? ''}`) {
+function isEntryPoint(): boolean {
+  const script = process.argv[1];
+  if (script === undefined) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(script)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
