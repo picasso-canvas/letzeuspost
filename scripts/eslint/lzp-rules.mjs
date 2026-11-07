@@ -446,7 +446,10 @@ export const lzpRuleConfigs = [
     },
   },
   {
-    files: ['apps/web/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}'],
+    files: [
+      'apps/web/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}',
+      'packages/ui/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}',
+    ],
     // Generated token files (#70) hold the raw values the tokens are made from.
     ignores: ['packages/ui/src/tokens/**', '**/*.generated.ts'],
     plugins,
