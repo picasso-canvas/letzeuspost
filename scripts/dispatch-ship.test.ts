@@ -6,6 +6,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import {
   branchFor,
   builderEnv,
+  builderModel,
   freezeFlag,
   headsFrom,
   onTick,
@@ -260,5 +261,17 @@ describe('fetchBundle', () => {
     } else {
       expect(() => git(athena, ['rev-parse', '--verify', '--quiet', 'refs/lzp/ship-8'])).toThrow();
     }
+  });
+});
+
+describe('builderModel', () => {
+  it("builds routine tasks on Sonnet; sensitive, unknown or missing tiers keep the agent file's Opus", () => {
+    expect(builderModel('**Predicted tier:** `routine`\n')).toBe('claude-sonnet-5-5');
+    expect(builderModel('**Predicted tier:** `sensitive`')).toBeNull();
+    expect(builderModel('no tier here')).toBeNull();
+    expect(builderModel('**Predicted tier:** `routine` or `sensitive`')).toBeNull();
+    expect(
+      builderModel('**Predicted tier:** `routine`\n**Predicted tier:** `sensitive`'),
+    ).toBeNull();
   });
 });
