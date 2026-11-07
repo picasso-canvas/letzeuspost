@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Records a reviewer's verdict for the exact commit and PR text the reviewer was given (§19 merge gate, item 5):
 //   gh pr view <pr> -R picasso-canvas/letzeuspost --json headRefOid,body > snapshot.json   # before the review
-//   node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <pass|block> <summary-file> \
-//     --snapshot snapshot.json
-// A block can only be cleared by a new commit: records are append-only.
+//   node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <summary-file> --snapshot snapshot.json
+// The verdict is the summary's first line, `VERDICT: pass` or `VERDICT: block` (verdict.ts); anything else records a
+// block. A block can only be cleared by a new commit: records are append-only. scripts/review.ts runs all of this.
 // It refuses when the PR has moved on since the review started (a new push or edited text needs a new review).
 // The record lives in ~/.letzeuspost/reviews/ (append-only, outside every builder clone) and is posted on the PR.
 import { execFileSync } from 'node:child_process';
@@ -11,10 +11,11 @@ import { readFileSync } from 'node:fs';
 import { REPO } from './merge-gate/collect.ts';
 import { bodyHash } from './merge-gate/evaluate.ts';
 import { writeReview } from './merge-gate/reviews.ts';
-import { REVIEWERS, type Reviewer, type Verdict } from './merge-gate/types.ts';
+import { REVIEWERS, type Reviewer } from './merge-gate/types.ts';
+import { parseVerdict } from './merge-gate/verdict.ts';
 
 const USAGE =
-  'usage: node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <pass|block> <summary-file> ' +
+  'usage: node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <summary-file> ' +
   '--snapshot <gh pr view --json headRefOid,body output taken before the review>';
 
 const NAMES: Record<Reviewer, string> = {
@@ -38,26 +39,18 @@ function option(argv: string[], name: string): string | undefined {
 }
 
 function main(argv: string[]): number {
-  const [prArg, reviewerArg, verdictArg, summaryFile] = argv;
+  const [prArg, reviewerArg, summaryFile] = argv;
   const snapshotFile = option(argv, '--snapshot');
   const pr = Number(prArg);
   const reviewer = (REVIEWERS as readonly string[]).includes(reviewerArg ?? '')
     ? (reviewerArg as Reviewer)
     : null;
-  const verdict: Verdict | null =
-    verdictArg === 'pass' || verdictArg === 'block' ? verdictArg : null;
-  if (
-    !Number.isInteger(pr) ||
-    pr <= 0 ||
-    reviewer === null ||
-    verdict === null ||
-    !summaryFile ||
-    !snapshotFile
-  ) {
+  if (!Number.isInteger(pr) || pr <= 0 || reviewer === null || !summaryFile || !snapshotFile) {
     console.error(USAGE);
     return 2;
   }
   const summary = readFileSync(summaryFile, 'utf8').trim();
+  const { verdict, reason } = parseVerdict(summary);
   const snapshot = JSON.parse(readFileSync(snapshotFile, 'utf8')) as {
     headRefOid?: unknown;
     body?: unknown;
@@ -95,7 +88,7 @@ function main(argv: string[]): number {
   const comment = `🦉 Athena: review record: **${NAMES[reviewer]}**, **${verdict}** for \`${reviewedSha.slice(0, 7)}\`.\n\n${summary}`;
   gh(['pr', 'comment', String(pr), '-R', REPO, '--body-file', '-'], comment);
   console.log(
-    `Recorded ${reviewer} ${verdict} for PR #${String(pr)} at ${reviewedSha.slice(0, 7)}: ${file}`,
+    `Recorded ${reviewer} ${verdict} (${reason}) for PR #${String(pr)} at ${reviewedSha.slice(0, 7)}: ${file}`,
   );
   return 0;
 }
