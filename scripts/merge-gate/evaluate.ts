@@ -1,0 +1,183 @@
+import { createHash } from 'node:crypto';
+import { matchesAny } from '../lib/paths.ts';
+import type { Facts, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
+
+/** The PR text a review was given, normalised so only real edits change it. */
+export function bodyHash(body: string): string {
+  return createHash('sha256').update(body.replace(/\r\n/g, '\n')).digest('hex');
+}
+
+/** Markdown with code fences and HTML comments removed: boxes there aren't real. */
+function visibleLines(markdown: string): string[] {
+  const text = markdown.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?(-->|$)/g, '');
+  const lines: string[] = [];
+  let fence: string | null = null;
+  for (const line of text.split('\n')) {
+    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker !== undefined) {
+      const kind = marker.charAt(0);
+      if (fence === null) fence = kind;
+      else if (kind === fence) fence = null;
+      continue;
+    }
+    if (fence === null) lines.push(line);
+  }
+  return lines;
+}
+
+// A heading that ends the list must start at column 0: indented bold text inside an item doesn't.
+const HEADING = /^(#{1,6}\s+\S|\*\*[^*]+\*\*)/;
+const DONE_WHEN = /^\s{0,3}(#{1,6}\s*|\*\*)done[\s-]when/i;
+// Any task-list marker (`-`, `*`, `+`, `1.`), optionally inside a blockquote.
+const BOX = /^[\s>]*(?:[-*+]|\d+[.)])\s+\[( |x|X)\]/;
+
+/** Counts the checkboxes in a "Done when" list. */
+export function doneWhenBoxes(markdown: string): { ticked: number; unticked: number } {
+  let inList = false;
+  let ticked = 0;
+  let unticked = 0;
+  for (const line of visibleLines(markdown)) {
+    if (DONE_WHEN.test(line)) {
+      inList = true;
+      continue;
+    }
+    if (inList && HEADING.test(line)) inList = false;
+    const box = inList ? BOX.exec(line) : null;
+    if (box) {
+      if (box[1] === ' ') unticked++;
+      else ticked++;
+    }
+  }
+  return { ticked, unticked };
+}
+
+export function workOutTier(f: Facts): Tier {
+  if (f.sensitivePatterns === null) return 'sensitive';
+  const patterns = f.sensitivePatterns;
+  return f.changedFiles.some((file) => matchesAny(file, patterns)) ? 'sensitive' : 'routine';
+}
+
+// GitHub skips push CI on `main` when the merge commit's message carries one of these.
+const SKIP_CI = /\[(skip ci|ci skip|no ci|skip actions|actions skip)\]|skip-checks:\s*true/i;
+
+export function evaluate(f: Facts): GateResult {
+  const tier = workOutTier(f);
+  const labels = f.labels.map((label) => label.toLowerCase());
+  const items: ItemResult[] = [];
+  const add = (id: number, title: string, problems: string[]) => {
+    items.push({ id, title, ok: problems.length === 0, detail: problems.join('; ') || 'ok' });
+  };
+
+  // 1. Not frozen
+  const paused = f.paused?.trim().toLowerCase();
+  add(1, 'Not frozen', paused === 'false' ? [] : [`AGENTS_PAUSED is ${JSON.stringify(f.paused)}`]);
+
+  // 2. Linked and current
+  const linked: string[] = [];
+  if (f.state !== 'OPEN') linked.push(`state is ${f.state}`);
+  if (f.isDraft) linked.push('draft');
+  if (f.baseRef !== 'main') linked.push(`base is ${f.baseRef}`);
+  if (f.mergeable !== 'MERGEABLE')
+    linked.push(`mergeable is ${f.mergeable} (try again if UNKNOWN)`);
+  if (f.behindBy !== 0) linked.push(`branch is behind main by ${String(f.behindBy ?? 'unknown')}`);
+  if (f.changedFiles.length === 0) linked.push('no changed files');
+  if (SKIP_CI.test(f.title)) linked.push('the title would skip CI on main');
+  if (f.closingIssues.some((issue) => !issue.inRepo)) {
+    linked.push('closes an issue in another repository');
+  }
+  const tasks = f.closingIssues.filter(
+    (issue) =>
+      issue.inRepo &&
+      issue.labels.some((l) => l.toLowerCase() === 'build-task' || l.toLowerCase() === 'section'),
+  );
+  const onlyPlainMarkdown =
+    f.changedFiles.length > 0 &&
+    f.changedFiles.every(
+      (p) => p.toLowerCase().endsWith('.md') && !matchesAny(p, f.config.harnessPaths),
+    );
+  if (tasks.length === 0 && !onlyPlainMarkdown) {
+    linked.push('closes no build-task or section issue, and changes more than plain Markdown');
+  }
+  add(2, 'Linked and current', linked);
+
+  // 3. Checks green; required checks must come from GitHub Actions
+  const checks: string[] = [];
+  if (f.config.requiredChecks.length === 0) checks.push('no required checks configured on main');
+  for (const name of f.config.requiredChecks) {
+    const runs = f.checkRuns.filter((run) => run.name === name);
+    if (runs.length === 0) checks.push(`required check "${name}" missing`);
+    else if (runs.some((run) => run.app !== 'github-actions')) {
+      checks.push(`required check "${name}" didn't come from GitHub Actions`);
+    }
+  }
+  for (const run of f.checkRuns) {
+    if (run.status !== 'completed') checks.push(`"${run.name}" is ${run.status}`);
+    else if (run.conclusion !== 'success') {
+      checks.push(`"${run.name}" concluded ${String(run.conclusion)}`);
+    }
+  }
+  for (const status of f.statuses) {
+    if (status.state !== 'success') checks.push(`status "${status.context}" is ${status.state}`);
+  }
+  add(3, 'Checks green', checks);
+
+  // 4. Tier worked out, not read
+  const tierLabels = labels.filter((label) => label === 'sensitive' || label === 'routine');
+  const tierProblems: string[] = [];
+  if (tierLabels.length > 1) tierProblems.push('both tier labels are set');
+  else if (tierLabels.length === 1 && tierLabels[0] !== tier) {
+    tierProblems.push(`label says ${String(tierLabels[0])}, the paths say ${tier}`);
+  } else if (tierLabels.length === 0 && f.config.requireTierLabel) {
+    tierProblems.push('no tier label from the risk gate');
+  }
+  add(4, `Tier (${tier})`, tierProblems);
+
+  // 5. Fresh-context reviews for this commit and this PR text; any block on this commit refuses
+  const hash = bodyHash(f.body);
+  const current = f.reviews.filter((r) => r.pr === f.pr && r.sha === f.headSha);
+  const needed: Reviewer[] = ['argus'];
+  if (tier === 'sensitive') needed.push('cerberus');
+  if (f.config.requireIris && f.changedFiles.some((p) => matchesAny(p, f.config.uiPaths))) {
+    needed.push('iris');
+  }
+  const reviewProblems: string[] = [];
+  for (const r of current) {
+    if (r.verdict === 'block') reviewProblems.push(`${r.reviewer} blocked this commit`);
+  }
+  for (const reviewer of needed) {
+    const passes = current.filter((r) => r.reviewer === reviewer && r.verdict === 'pass');
+    if (passes.length === 0)
+      reviewProblems.push(`no ${reviewer} pass for ${f.headSha.slice(0, 7)}`);
+    else if (!passes.some((r) => r.bodyHash === hash)) {
+      reviewProblems.push(`PR text changed since ${reviewer} reviewed`);
+    }
+  }
+  add(5, `Reviews (${needed.join(', ')})`, reviewProblems);
+
+  // 6. Done-when complete, and at least as long as the issue's own list
+  const boxes = doneWhenBoxes(f.body);
+  const doneProblems: string[] = [];
+  if (boxes.ticked + boxes.unticked === 0)
+    doneProblems.push('no Done-when checklist in the PR text');
+  if (boxes.unticked > 0) doneProblems.push(`${String(boxes.unticked)} unticked`);
+  const expected = Math.max(0, ...tasks.map((issue) => issue.doneWhenBoxes));
+  if (boxes.ticked < expected) {
+    doneProblems.push(`${String(boxes.ticked)} ticked, the issue lists ${String(expected)}`);
+  }
+  add(6, 'Done-when complete', doneProblems);
+
+  // 7. Harness changes re-tested
+  const harness = f.changedFiles.filter((p) => matchesAny(p, f.config.harnessPaths));
+  const redTeam = current.filter((r) => r.reviewer === 'redteam' && r.verdict === 'pass');
+  const harnessProblems: string[] = [];
+  if (harness.length > 0) {
+    if (redTeam.length === 0) {
+      harnessProblems.push(`harness paths changed (${harness.join(', ')}), no red-team record`);
+    } else if (!redTeam.some((r) => r.bodyHash === hash)) {
+      harnessProblems.push('PR text changed since the red-team record');
+    }
+  }
+  add(7, 'Harness changes re-tested', harnessProblems);
+
+  return { ok: items.every((item) => item.ok), tier, items };
+}

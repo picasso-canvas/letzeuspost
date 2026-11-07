@@ -1,0 +1,76 @@
+export const REVIEWERS = ['argus', 'cerberus', 'iris', 'redteam'] as const;
+export type Reviewer = (typeof REVIEWERS)[number];
+export type Verdict = 'pass' | 'block';
+export type Tier = 'sensitive' | 'routine';
+
+/** One verdict in Athena's local record, for one PR at one head commit and one PR text. Records are append-only. */
+export interface ReviewRecord {
+  pr: number;
+  sha: string;
+  reviewer: Reviewer;
+  verdict: Verdict;
+  bodyHash: string;
+  summary: string;
+  at: string;
+}
+
+/** `.github/merge-gate.json`, always read from `main`. */
+export interface GateConfig {
+  requiredChecks: string[];
+  requireTierLabel: boolean;
+  requireIris: boolean;
+  uiPaths: string[];
+  harnessPaths: string[];
+}
+
+export interface CheckRun {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  /** The GitHub App that created the run; required checks must come from GitHub Actions. */
+  app: string | null;
+}
+
+export interface ClosingIssue {
+  number: number;
+  /** False when the PR closes an issue in another repository. */
+  inRepo: boolean;
+  labels: string[];
+  /** Boxes in the issue's own Done-when list, which Athena wrote. */
+  doneWhenBoxes: number;
+}
+
+/** Everything the gate looks at. Only check runs, `main`'s files and the local record count as proof. */
+export interface Facts {
+  pr: number;
+  paused: string | null;
+  state: string;
+  isDraft: boolean;
+  baseRef: string;
+  headSha: string;
+  title: string;
+  mergeable: string;
+  behindBy: number | null;
+  body: string;
+  closingIssues: ClosingIssue[];
+  changedFiles: string[];
+  labels: string[];
+  checkRuns: CheckRun[];
+  statuses: { context: string; state: string }[];
+  reviews: ReviewRecord[];
+  sensitivePatterns: string[] | null;
+  config: GateConfig;
+}
+
+export interface ItemResult {
+  id: number;
+  title: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface GateResult {
+  ok: boolean;
+  tier: Tier;
+  items: ItemResult[];
+}
