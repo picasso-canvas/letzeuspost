@@ -45,9 +45,10 @@ Metricool CSV needs public image links (§12), which need R2; until then, Athena
 through the studio's route (images to Dropbox links with rclone, then the Metricool connector). Picasso's Metricool is
 on the free plan: when the CSV is built, check that the plan accepts a CSV import.
 
-**Picasso's instance is not a build environment.** It runs as its own Compose project (own ports, volumes and
-database) on a Docker engine builders can't reach (OrbStack; builders only get Docker Desktop's socket), with a nightly
-`pg_dump`. Updating it is a deploy: from a `main` commit with green checks, and Athena asks Zeus first.
+**Picasso's instance is not a build environment.** It runs as its own Compose project (own volumes and database) on
+OrbStack, apart from the Docker Desktop engine dispatch uses for builders' service containers. It publishes no host
+ports: Zeus reaches it through OrbStack's container domain names (`*.orb.local`), which aren't on the builder allowlist.
+A nightly `pg_dump` backs it up. Updating it is a deploy: from a `main` commit with green checks, and Athena asks Zeus first.
 
 Not needed for Picasso: servers, the domain, billing, the public page, the legal documents (the studio's own brand, no
 outside client data), Google sign-in, invite codes. **Zeus's accounts for Picasso first** (Zeus saves the keys; never in

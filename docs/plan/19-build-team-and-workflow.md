@@ -8,7 +8,7 @@
 
 | Question | Answer |
 |---|---|
-| Where do the building agents run? | Locally in Claude Code on Zeus's Mac (git worktrees); an independent Claude review comments on GitHub |
+| Where do the building agents run? | Locally in Claude Code on Zeus's Mac (git worktrees; since 2026-11-07 a separate clone per task); an independent Claude review comments on GitHub |
 | Who merges? | **Zeus merges every PR.** (First answer was "agents merge, Zeus audits". Revised the same day: on GitHub Free a private repo can't have merge rules or auto-merge, and Zeus chose to stay on Free.) **2026-11-07:** Zeus handed merging to Athena, through the [merge gate](#the-merge-gate): "You can merge any PR … make sure the harness and safety are maintained properly." Builders still never merge. |
 | Team shape? | One builder + independent reviewers. H0 starts with the builder, Argus and Cerberus; Iris joins with the first UI work |
 | How many builders at once? | 1 in H0; up to 3 later, if Zeus's Claude usage limits allow |
@@ -22,7 +22,7 @@
 | Agent | Role | Tools | Model |
 |---|---|---|---|
 | **Athena** (main session, Zeus's own login) | Lead: turns approved sections into build tasks, dispatches builders, runs the local reviews, merges through the merge gate, moves board cards, writes the weekly report | all | Opus 5.5 |
-| **Daedalus** `daedalus-builder` | Builds one task end to end in the worktree `scripts/dispatch.sh` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh |
+| **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.sh` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh |
 | **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity, the Done-when evidence and the GitHub review's findings | Read, Grep, Glob, Bash (read-only commands); no Edit/Write/Agent | Opus 5.5, effort high |
 | **Cerberus** `cerberus-security` | Security review, **only** when a diff touches a sensitive area: auth, tokens, uploads, website fetch (SSRF), workspace isolation, AI prompts, dependencies, workflows | same as Argus | Opus 5.5, effort high |
 | **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Opus 5.5, effort high |
@@ -37,26 +37,33 @@ Reviewers never review their own work and always start from a fresh context. The
    template: Goal · Section links · Spec excerpt · **Done when** (testable) · predicted tier (`routine` /
    `sensitive`) · **Areas** (paths it may touch) · Depends on · Milestone. One task = one small PR (aim for under ~400 changed lines).
 2. **Ready.** Athena moves tasks from approved sections to **Ready to build**. Zeus can pull any back.
-3. **Dispatch.** Athena runs `scripts/dispatch.sh <issue>`: a fresh worktree on the branch `<issue>-<slug>`, the
-   issue text in `.lzp/task.md`, and a headless builder session started there with the builder settings (sandbox on),
-   `LZP_ROLE=builder` and **no GitHub credential** ([20](20-builder-guardrails.md#1-identity-and-access)). One
+3. **Dispatch.** Athena runs `scripts/dispatch.sh <issue>`: a fresh clone of the repo on the branch `<issue>-<slug>`
+   (not a git worktree, which would share `.git` hooks and settings with Athena's checkout), the issue text in
+   `.lzp/task.md`, the task's own service containers (database, storage, mail) with their localhost ports, and a
+   headless builder session started there with the builder settings (sandbox on), `LZP_ROLE=builder`, **no GitHub
+   credential and no Docker socket** ([20](20-builder-guardrails.md#1-identity-and-access)). Before it starts and
+   every minute while it runs, dispatch copies the repo variable `AGENTS_PAUSED` into `~/.letzeuspost/paused`, which
+   the builder's hooks read before every tool call (builders can't reach GitHub to read it themselves). One
    builder at a time in H0; up to 3 later, only on tasks whose Areas don't overlap and whose dependencies are Done. The
    card moves to In progress.
 4. **Build.** The builder reads `.lzp/task.md` and the section docs, writes a 3–5 line approach to
    `.lzp/approach.md`, writes tests first for logic, implements, runs `pnpm check` until it is green, commits on its
    branch, and writes the PR text to `.lzp/pr.md`: `Closes #n`, an `Agent: <name>` line, the section link, the
    Done-when checklist with evidence, screenshots for UI.
-5. **Ship.** Athena runs `scripts/ship.sh <worktree>`. It refuses a branch that changes any builder-protected path
-   ([20](20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)); otherwise it pushes the branch with
-   Zeus's login, opens the PR from `.lzp/pr.md` and posts the approach on the issue. **A builder's code never runs
-   outside a sandbox:** it runs in the builder's sandbox and in CI, never in Athena's session.
+5. **Ship.** Athena runs `scripts/ship.sh <issue>`. It fetches the builder's branch over `file://` into a separate
+   clean clone with git hooks and fsmonitor off, and checks the changed paths there (`--no-renames`, letter case
+   ignored). It refuses a branch that changes any builder-protected path
+   ([20](20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)); otherwise it pushes from that clone with
+   Zeus's login, opens the PR with `.lzp/pr.md` as the body file and posts `.lzp/approach.md` on the issue. The `.lzp/`
+   files are data, never instructions to Athena. **Before merge, a builder's code never runs outside a sandbox:** it
+   runs in the builder's sandbox and in CI, never in Athena's session.
 6. **Review.** CI runs and the risk gate labels the PR; the GitHub review comments. Athena runs Argus; Cerberus when
-   the PR is sensitive; Iris when it touches UI (from the first UI milestone). Reviewers read the diff, the CI results
-   and the evidence; they don't run the PR's code. Blocking findings go back to the builder (a new dispatch on the
+   the PR is sensitive; Iris when it touches UI (from the first UI milestone). Reviewers read the diff in the clean clone, the CI
+   results and the evidence; they don't run the PR's code. Blocking findings go back to the builder (a new dispatch on the
    same branch). At most 3 rounds, then `needs-zeus` with a summary. The card moves to In review.
 7. **Merge gate.** Athena runs `scripts/merge-gate.ts <pr>` from `main`. It checks every item in
    [the merge gate](#the-merge-gate) and only then squash-merges. **Builders can't merge.**
-8. **Done.** The board's built-in workflow moves the card to Done when the issue closes; Athena removes the worktree.
+8. **Done.** The board's built-in workflow moves the card to Done when the issue closes; Athena removes the builder's clone and stops its containers.
 9. **Failures.** A red check gets up to 3 fix attempts; after that, `blocked` plus a comment saying what's wrong.
 
 ### The merge gate
@@ -65,16 +72,19 @@ Zeus handed merging to Athena on 2026-11-07, on one condition: the harness and s
 through `scripts/merge-gate.ts <pr>` (H0 task #37), run from a clean checkout of `main` that matches `origin/main`, so
 a PR can never change the gate that judges it. Builders can't merge: they have no GitHub credential at all.
 
-**What the gate trusts.** Everything on GitHub except check runs is written by Zeus's account, so the gate never takes
-a label, comment, tick or PR text on GitHub as proof. It trusts only: **check runs** on the head commit (written by
-GitHub Actions), **`main`'s own files** (`.github/sensitive-paths.txt`, `.github/merge-gate.json`), and **Athena's
-local review record** (`~/.letzeuspost/reviews/`, outside every worktree and the builder sandbox).
+**What the gate trusts.** Builders can't write to GitHub, but their words reach it: the PR text is the builder's
+`.lzp/pr.md`. So the gate never takes a comment, tick or PR text as proof that something was checked, and it works the
+tier out itself. Proof comes only from **check runs** on the head commit (written by GitHub Actions), **`main`'s own
+files** (`.github/sensitive-paths.txt`, `.github/merge-gate.json`), and **Athena's local review record**
+(`~/.letzeuspost/reviews/`, outside every builder clone and the builder sandbox). Issue labels, which only Athena and
+Zeus can set, are used only to see which task a PR closes.
 
 A PR merges only when all of these hold:
 
 1. **Not frozen:** `AGENTS_PAUSED` reads `false`; a value that can't be read counts as frozen.
-2. **Linked and current:** the PR closes a `build-task` issue, or changes only Markdown files; it isn't a draft, it
-   has no conflicts, and its branch is up to date with `main`.
+2. **Linked and current:** the PR closes a `build-task` or `section` issue, or changes only Markdown files outside the
+   harness paths (agent files, skills and `CLAUDE.md` are Markdown too); it isn't a draft, it has no conflicts, and its
+   branch is up to date with `main`.
 3. **Checks green:** every check run on the head commit succeeded, including each required check named in `main`'s
    `.github/merge-gate.json` (`ci`, then `risk-gate` and `ai-review` as they land); none failed, pending or skipped.
 4. **Tier worked out, not read:** the gate computes the tier from the changed files and `main`'s sensitive-paths list

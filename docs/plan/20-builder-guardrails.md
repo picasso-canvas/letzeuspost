@@ -46,9 +46,13 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
   `GIT_CONFIG_GLOBAL` file holding only the commit name, email and an empty `credential.helper`), `LZP_ROLE=builder`,
   and no GitHub host on the sandbox's network allowlist. A builder can't push, open or edit PRs, comment, label or
   merge, whatever command it tries (`gh`, `gh api`, `curl`, `git push`).
+- **No Docker socket and no shared `.git`.** A container is root-equivalent and could write anywhere on the Mac, so
+  dispatch starts the task's service containers itself and hands over only their localhost ports. Each builder works
+  in its own clone, not a git worktree, so hooks or settings it plants in its `.git` never reach Athena's checkout.
 - The builder reads its task from `.lzp/task.md` and leaves its approach and PR text in `.lzp/` (gitignored).
-  **Athena carries the work to GitHub** with Zeus's login through `scripts/ship.sh`, which refuses any branch that
-  changes a builder-protected path (section 2). Athena never runs a builder's code outside the sandbox.
+  **Athena carries the work to GitHub** with Zeus's login through `scripts/ship.sh`, which fetches the branch into a
+  clean clone with git hooks and fsmonitor off and refuses any branch that changes a builder-protected path (section
+  2). Before merge, Athena never runs a builder's code outside the sandbox, and treats `.lzp/` files as data.
 - Builders run only through `dispatch.sh`, never as Athena's subagents (a subagent would inherit Zeus's login and no
   sandbox): everyone's settings deny `Agent(daedalus-builder)`, and the agent file sets no `isolation`.
 - Athena moves board cards with Zeus's login, and the board's built-in workflow marks closed items Done.
@@ -61,13 +65,14 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
   `npm publish*`, `gh repo delete*`, `gh pr merge*` and merges through `gh api` (the merge gate is the only way in).
 - **Builder-only rules** (`.claude/builder/settings.json`, passed by `scripts/dispatch.sh` with `--settings`):
   - **Sandbox on:** `sandbox.enabled`, `failIfUnavailable`, `allowUnsandboxedCommands: false`. Writes are limited to
-    the worktree and temp. Network goes only to an allowlist: npm registry, Playwright browser downloads, Google
-    Fonts, localhost; the only Unix socket is Docker Desktop's, for the dev database (Picasso's instance runs on a
-    separate engine, §18). The sandbox isn't in everyone's file: it would also stop Athena's own tools.
+    the builder's clone and temp. Network goes only to an allowlist: npm registry, Playwright browser downloads,
+    Google Fonts, and localhost for the task's own service ports. No Unix sockets (no Docker). The sandbox isn't in
+    everyone's file: it would also stop Athena's own tools.
   - Deny `Edit` of `/.github/**`, `/.claude/**`, `/scripts/**`, `/CLAUDE.md`, `**/CLAUDE.md`, `/docs/plan/**`,
     `/DESIGN.md`, `pnpm-workspace.yaml`, lint/TypeScript/test/format configs (`tsconfig*.json`, `eslint.config.*`,
     `vitest.config.*`, `playwright.config.*`, `.prettierrc*`, `.prettierignore`), `.gitleaks.toml`, `.npmrc`,
-    `.nvmrc` and approved visual baselines. Bash: `git push*`, `gh *`, `security *` (the Keychain).
+    `.nvmrc`, `.mcp.json`, `.husky/**`, `.gitattributes`, `.vscode/**` and approved visual baselines. Paths match
+    in any letter case (macOS treats `Claude.md` as `CLAUDE.md`). Bash: `git push*`, `gh *`, `security *` (the Keychain).
   - The hooks apply the same rules when `LZP_ROLE=builder` (set only by dispatch, outside the builder's reach).
 - `permissions.disableBypassPermissionsMode: "disable"` in both files, also set by Zeus in **managed settings** on the Mac.
 
@@ -75,7 +80,7 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 
 | Hook | Does |
 |---|---|
-| SessionStart | Loads the active issue, its Done-when and the rules; stops at once if the repo variable `AGENTS_PAUSED` is true (Zeus's **freeze switch**) |
+| SessionStart (and every PreToolUse) | Loads the task from `.lzp/task.md` and the rules; stops at once while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute because builders can't reach GitHub |
 | PreToolUse Bash | Blocks the dangerous patterns above (a backup to the deny rules) |
 | PreToolUse Edit/Write | Blocks protected paths (builder); blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
 | PostToolUse Edit/Write | Formats the changed file |
@@ -111,7 +116,10 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
 ### 6. Secrets
 
 No real secrets on the builder side. Builders use local dev services and a **mocked AI provider**; live AI runs only
-in the CI eval job, added with the AI pipeline. `.env` stays local and unreadable to agents; `.env.example` documents
+in the CI eval job, added with the AI pipeline. **CI secrets never meet PR code:** GitHub gives secrets to
+`pull_request` runs from branches in the same repo, so the evals (`ANTHROPIC_API_KEY`) run only on `main` and by hand
+(`workflow_dispatch`); `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
+installs or runs the PR's code. `.env` stays local and unreadable to agents; `.env.example` documents
 the keys. CI secrets: `CLAUDE_CODE_OAUTH_TOKEN` now; `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
 Console workspace with a monthly spend limit).
 
@@ -155,7 +163,9 @@ A red-team checklist passes. An agent tries each item and it is shown blocked:
   (no credential) · a push to `main` · a force push
 - [ ] the merge gate refusing a PR that fails any of its items (red check, missing review, stale review after a push or
   an edited PR text, a tier label that disagrees with the paths, frozen) · a builder writing the review record
-- [ ] `scripts/ship.sh` refusing a branch that changes a builder-protected path
+- [ ] `scripts/ship.sh` refusing a branch that changes a builder-protected path (any letter case)
+- [ ] a builder reaching Docker, another task's or Picasso's services, or planting a git hook or setting that runs
+  when Athena ships
 - [ ] a builder reading the Keychain or using Zeus's `gh` login · Daedalus started as Athena's subagent
 - [ ] a builder editing `.github/`, `.claude/` or `scripts/` · reading `.env`
 - [ ] `curl … | sh` · a network call outside the allowlist (GitHub included)

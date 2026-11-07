@@ -113,7 +113,7 @@ packages/db/**              packages/ai/prompts/**              packages/ai/poli
 config/models.ts            config/providers.ts                 config/plans.ts             config/env.ts
 package.json  **/package.json  pnpm-lock.yaml  pnpm-workspace.yaml  docker/**  .github/**  .claude/**
 **/CLAUDE.md  DESIGN.md  docs/plan/**  tsconfig*.json  eslint.config.*  vitest.config.*  playwright.config.*
-scripts/**  .prettierrc*  .prettierignore  .gitleaks.toml  .npmrc  .nvmrc
+scripts/**  .prettierrc*  .prettierignore  .gitleaks.toml  .npmrc  .nvmrc  .mcp.json  .husky/**  .gitattributes  .vscode/**
 tests/visual/approved/**    tests/golden/**                     packages/render/src/looks/**
 apps/fetcher/**             packages/storage/src/public-links/**  apps/web/src/app/r/**
 ```
