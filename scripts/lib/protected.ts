@@ -14,6 +14,7 @@ export const BUILDER_PROTECTED = [
   '**/.lzp/**',
   'tests/visual/approved/**',
   'tests/golden/**',
+  'tests/lint/**',
   '**/CLAUDE.md',
   '**/CLAUDE.local.md',
   '**/DESIGN.md',

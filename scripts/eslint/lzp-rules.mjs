@@ -28,6 +28,22 @@ function onImports(check) {
     ExportNamedDeclaration: visit,
     ExportAllDeclaration: visit,
     ImportExpression: visit,
+    /** require('x') @param {any} node */
+    CallExpression(node) {
+      const [arg] = node.arguments;
+      if (
+        node.callee.type === 'Identifier' &&
+        node.callee.name === 'require' &&
+        arg?.type === 'Literal'
+      )
+        if (typeof arg.value === 'string') check(arg.value, node);
+    },
+    /** import x = require('x') @param {any} node */
+    TSImportEqualsDeclaration(node) {
+      const ref = node.moduleReference;
+      if (ref?.type === 'TSExternalModuleReference' && typeof ref.expression?.value === 'string')
+        check(ref.expression.value, node);
+    },
   };
 }
 
@@ -73,13 +89,19 @@ const noUseCache = {
     type: 'problem',
     messages: {
       directive:
-        "'{{directive}}' is banned in apps/web: a cache shared across requests could leak workspace data (§13).",
-      api: "'{{name}}' from next/cache is banned in apps/web (§13).",
-      config: 'cacheComponents is banned in apps/web (§13).',
+        "'{{directive}}' is banned: a cache shared across requests could leak one workspace's data to another (§13).",
+      api: "'{{name}}' from next/cache is banned (§13).",
+      module:
+        'next/cache is banned in this form: import only the names you use, and none of its cache APIs (§13).',
+      config: 'cacheComponents is banned (§13).',
     },
     schema: [],
   },
   create(context) {
+    /** @param {any} spec */
+    const nameOf = (spec) => spec.imported?.name ?? spec.imported?.value ?? spec.local?.name;
+    /** @param {any} node */
+    const fromCache = (node) => node.source?.value === 'next/cache';
     return {
       /** @param {any} node */
       ExpressionStatement(node) {
@@ -89,13 +111,39 @@ const noUseCache = {
       },
       /** @param {any} node */
       ImportDeclaration(node) {
-        if (node.source.value !== 'next/cache') return;
+        if (!fromCache(node)) return;
         for (const spec of node.specifiers) {
-          const name =
-            spec.type === 'ImportSpecifier' ? (spec.imported.name ?? spec.imported.value) : null;
-          if (name !== null && CACHE_APIS.has(name))
+          if (spec.type !== 'ImportSpecifier') context.report({ node: spec, messageId: 'module' });
+          else if (CACHE_APIS.has(nameOf(spec)))
+            context.report({ node: spec, messageId: 'api', data: { name: nameOf(spec) } });
+        }
+      },
+      /** export { unstable_cache } from 'next/cache' @param {any} node */
+      ExportNamedDeclaration(node) {
+        if (!fromCache(node)) return;
+        for (const spec of node.specifiers) {
+          const name = spec.local?.name ?? spec.local?.value;
+          if (CACHE_APIS.has(name))
             context.report({ node: spec, messageId: 'api', data: { name } });
         }
+      },
+      /** @param {any} node */
+      ExportAllDeclaration(node) {
+        if (fromCache(node)) context.report({ node, messageId: 'module' });
+      },
+      /** @param {any} node */
+      ImportExpression(node) {
+        if (node.source?.value === 'next/cache') context.report({ node, messageId: 'module' });
+      },
+      /** @param {any} node */
+      CallExpression(node) {
+        const [arg] = node.arguments;
+        if (
+          node.callee.type === 'Identifier' &&
+          node.callee.name === 'require' &&
+          arg?.value === 'next/cache'
+        )
+          context.report({ node, messageId: 'module' });
       },
       /** @param {any} node */
       Property(node) {
@@ -154,7 +202,7 @@ function badClasses(/** @type {string} */ text) {
     .filter((token) => token !== '')
     .filter((token) => {
       const utility = token.slice(token.lastIndexOf(':') + 1).replace(/^!|!$/g, '');
-      return /\[.+\]/.test(token) || PALETTE.test(utility);
+      return /\[.+\]/.test(utility) || PALETTE.test(utility);
     });
 }
 
@@ -266,7 +314,10 @@ const lucideOnly = {
       const external =
         !source.startsWith('.') && !source.startsWith('/') && !source.startsWith('@lzp/');
       const lucide = source === 'lucide-react' || source.startsWith('lucide-react/');
-      if (external && !lucide && /icon/i.test(source))
+      const named = /^(?:@fortawesome\/|react-feather$|feather-icons$|@mui\/icons-material)/.test(
+        source,
+      );
+      if (external && !lucide && (named || /icon/i.test(source)))
         context.report({ node, messageId: 'banned', data: { source } });
     });
   },
@@ -324,14 +375,14 @@ const plugins = { lzp: lzpPlugin };
  */
 export const lzpRuleConfigs = [
   {
-    files: ['**/*.{ts,tsx,js,mjs}'],
+    files: ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'],
     plugins,
-    rules: { 'lzp/no-raw-db-client': 'error', 'lzp/no-dangerous-html': 'error' },
-  },
-  {
-    files: ['apps/web/**/*.{ts,tsx,js,mjs}'],
-    plugins,
-    rules: { 'lzp/no-use-cache': 'error' },
+    // no-use-cache everywhere: Next compiles the workspace packages apps/web imports.
+    rules: {
+      'lzp/no-raw-db-client': 'error',
+      'lzp/no-dangerous-html': 'error',
+      'lzp/no-use-cache': 'error',
+    },
   },
   {
     files: ['apps/web/**/*.{ts,tsx}', 'packages/ui/**/*.{ts,tsx}'],

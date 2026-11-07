@@ -15,6 +15,8 @@ export default defineConfig({
   outputDir: 'tests/visual/output',
   snapshotPathTemplate: 'tests/visual/approved/{projectName}/{testFilePath}/{arg}{ext}',
   forbidOnly: true,
+  // Never write baselines into tests/visual/approved: only Athena moves approved ones there (Q11).
+  updateSnapshots: 'none',
   reporter: ci ? 'github' : 'list',
   projects: [
     {

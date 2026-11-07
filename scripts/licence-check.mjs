@@ -86,6 +86,13 @@ export const EXCEPTIONS = [
     devOnly: false,
     why: 'mail transport for the worker, unchanged',
   },
+  {
+    // Zeus, 2026-11-08 (in chat, recorded on #64): public-domain CSS data under React Email's preview CLI.
+    names: ['mdn-data'],
+    license: 'CC0-1.0',
+    devOnly: true,
+    why: "CSS data inside React Email's dev-only preview CLI (via css-tree), unchanged",
+  },
 ];
 
 /**

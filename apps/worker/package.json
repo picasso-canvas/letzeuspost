@@ -17,6 +17,7 @@
     "@types/nodemailer": "8.0.2"
   },
   "scripts": {
+    "prestart": "pnpm --filter @lzp/email build",
     "start": "node src/index.ts"
   }
 }

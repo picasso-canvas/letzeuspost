@@ -1,20 +1,46 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { configDefaults, defineConfig } from 'vitest/config';
 
-/**
- * Tests that need running services (Postgres, storage, Mailpit): integration tests end in `.int.test.ts(x)`, and the
- * tenancy suite lives in `tests/tenancy/`. `pnpm check` leaves them out; `pnpm check:services` runs them (§17).
- */
-export const SERVICE_TESTS = ['**/*.int.test.{ts,tsx}', 'tests/tenancy/**'];
+/** Integration tests (they need Postgres, storage or Mailpit) end in `.int.test.ts(x)`. */
+const INTEGRATION = '**/*.int.test.{ts,tsx}';
+
+// One project per package, named like the package, so `pnpm vitest run --project @lzp/web` works. Tests that need
+// running services are left out; `pnpm check:services` sets LZP_SERVICES=1 and runs only those: the integration tests
+// and the tenancy suite (§17). This file is builder-protected, so a builder can't move a test out of either run.
+const dirs = [
+  ...['apps', 'packages'].flatMap((top) => readdirSync(top).map((name) => `${top}/${name}`)),
+  'config',
+  'scripts',
+  'tests/lint',
+];
+const nameOf = (dir: string): string =>
+  existsSync(`${dir}/package.json`)
+    ? (JSON.parse(readFileSync(`${dir}/package.json`, 'utf8')) as { name: string }).name
+    : dir;
 
 export default defineConfig({
   test: {
-    // #29 adds '.claude/hooks/**/*.test.ts' when the hooks and their tests exist.
-    include: [
-      '{apps,packages}/*/src/**/*.test.{ts,tsx}',
-      'config/**/*.test.ts',
-      'scripts/**/*.test.{ts,mjs}',
-      'tests/lint/**/*.test.ts',
-    ],
-    exclude: [...configDefaults.exclude, ...SERVICE_TESTS],
+    // The services run has no tests yet: #71 and #80 add the first.
+    passWithNoTests: process.env.LZP_SERVICES === '1',
+    // #29 adds '.claude/hooks' when the hooks and their tests exist.
+    projects:
+      process.env.LZP_SERVICES === '1'
+        ? [
+            {
+              test: {
+                name: 'services',
+                include: [INTEGRATION, 'tests/tenancy/**/*.test.{ts,tsx}'],
+                exclude: configDefaults.exclude,
+              },
+            },
+          ]
+        : dirs.map((dir) => ({
+            test: {
+              name: nameOf(dir),
+              root: dir,
+              include: ['**/*.test.{ts,tsx,mjs}'],
+              exclude: [...configDefaults.exclude, INTEGRATION],
+            },
+          })),
   },
 });
