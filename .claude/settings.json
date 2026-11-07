@@ -1,5 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "autoMemoryEnabled": false,
   "permissions": {
     "deny": [
       "Read(**/.env*)",
@@ -29,7 +30,7 @@
       "Bash(gh repo delete*)",
       "Bash(gh pr merge*)",
       "Bash(gh api *merge*)",
-      "Edit(~/.claude/projects/**/*.jsonl)",
+      "Edit(~/.claude/projects/**)",
       "Edit(~/.letzeuspost/**)"
     ],
     "disableBypassPermissionsMode": "disable"

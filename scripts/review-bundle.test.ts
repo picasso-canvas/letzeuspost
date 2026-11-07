@@ -205,7 +205,11 @@ describe('runReviews', () => {
         'Read(**/.env*)',
       ]),
     );
-    expect(calls[0]?.env).toEqual({ PATH: '/bin', ENABLE_CLAUDEAI_MCP_SERVERS: 'false' });
+    expect(calls[0]?.env).toEqual({
+      PATH: '/bin',
+      ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+    });
     expect(written['/o/iris.md']).toMatch(
       /^VERDICT: block\n\[blocking\] \.claude\/agents\/iris-design\.md/,
     );

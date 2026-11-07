@@ -169,6 +169,7 @@ export function reviewerEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.Proces
   return {
     ...Object.fromEntries(Object.entries(env).filter(([key]) => ENV_ALLOW.includes(key))),
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false', // no claude.ai connectors in a reviewer's session
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', // no notes from earlier sessions: each review starts from the bundle alone
   };
 }
 
