@@ -140,3 +140,11 @@ describe('historyRefusals', () => {
     ).toEqual([]);
   });
 });
+
+describe('shipRefusals: the lint rules and their tests (#82 review)', () => {
+  it('refuses tests/lint/, whose tests prove the lint bans work', () => {
+    expect(shipRefusals([{ mode: '100644', path: 'tests/lint/rules.test.ts' }])).toContain(
+      'protected path: tests/lint/rules.test.ts',
+    );
+  });
+});

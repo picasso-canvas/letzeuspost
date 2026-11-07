@@ -8,7 +8,7 @@ const eslint = new ESLint({
   overrideConfigFile: true,
   overrideConfig: [
     {
-      files: ['**/*.{ts,tsx}'],
+      files: ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'],
       languageOptions: {
         parser: tseslint.parser,
         parserOptions: { ecmaFeatures: { jsx: true } },
@@ -146,5 +146,61 @@ describe('lzp/inter-only (§21: the interface font is Inter)', () => {
     expect(await ruleIds("import '@fontsource-variable/inter';", 'packages/ui/src/a.ts')).toEqual(
       [],
     );
+  });
+});
+
+describe('round 2 of the #82 review', () => {
+  it('lets arbitrary variants through: only arbitrary values are banned (§21)', async () => {
+    const ok =
+      'export const A = () => <div className="data-[state=open]:bg-accent has-[>svg]:px-3 [&_svg]:size-4" />;';
+    expect(await ruleIds(ok, 'packages/ui/src/a.tsx')).toEqual([]);
+    expect(
+      await ruleIds(
+        'export const A = () => <div className="data-[state=open]:w-[13px]" />;',
+        'packages/ui/src/a.tsx',
+      ),
+    ).toContain('lzp/tokens-only');
+  });
+
+  it("bans next/cache's cache APIs in every import form, and 'use cache' in every package", async () => {
+    for (const code of [
+      "import * as c from 'next/cache';",
+      "export const f = () => import('next/cache');",
+      "export { unstable_cache } from 'next/cache';",
+      "export * from 'next/cache';",
+      "const c = require('next/cache');",
+    ]) {
+      expect(await ruleIds(code, 'apps/web/src/a.ts'), code).toContain('lzp/no-use-cache');
+    }
+    expect(await ruleIds("'use cache';\nexport const a = 1;", 'packages/core/src/a.ts')).toContain(
+      'lzp/no-use-cache',
+    );
+    expect(
+      await ruleIds('export default { cacheComponents: true };', 'apps/web/next.config.ts'),
+    ).toContain('lzp/no-use-cache');
+    expect(
+      await ruleIds("export default { output: 'standalone' };", 'apps/web/next.config.ts'),
+    ).toEqual([]);
+  });
+
+  it('catches the raw client through require, import-equals and other file types', async () => {
+    expect(await ruleIds("const pg = require('pg');", 'apps/web/src/a.cjs')).toContain(
+      'lzp/no-raw-db-client',
+    );
+    expect(await ruleIds("import pg = require('pg');", 'apps/web/src/a.cts')).toContain(
+      'lzp/no-raw-db-client',
+    );
+    expect(await ruleIds("import pg from 'pg';", 'apps/web/src/a.mts')).toContain(
+      'lzp/no-raw-db-client',
+    );
+  });
+
+  it('names icon sets the heuristic would miss', async () => {
+    for (const source of ['@fortawesome/react-fontawesome', 'react-feather']) {
+      expect(
+        await ruleIds(`import { X } from '${source}';`, 'apps/web/src/a.tsx'),
+        source,
+      ).toContain('lzp/lucide-only');
+    }
   });
 });
