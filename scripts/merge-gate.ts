@@ -13,7 +13,14 @@ import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
 import { evaluate, kindOf } from './merge-gate/evaluate.ts';
 import { transcriptPath } from './merge-gate/meta.ts';
-import { listReviewedShas, logMerge, readReviews, STATE_DIR } from './merge-gate/reviews.ts';
+import {
+  listReviewedShas,
+  logMerge,
+  readMergeLog,
+  readReviews,
+  STATE_DIR,
+} from './merge-gate/reviews.ts';
+import type { StagingLogEntry } from './merge-gate/staging.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -70,6 +77,12 @@ function main(argv: string[], pr: number): number {
     readMainFile: (path) => readMainFile(run, path),
     readReviews: (n, sha) => readReviews(n, sha),
     listReviewedShas: (n) => listReviewedShas(n),
+    readMergeLog: () =>
+      readMergeLog().map((e) => ({
+        result: String(e.result),
+        ...(typeof e.base === 'string' ? { base: e.base } : {}),
+        ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
+      })) satisfies StagingLogEntry[],
     // The gate re-verifies every runner-made review against Claude Code's own transcript.
     readTranscript: (sessionId) => {
       const file = transcriptPath(homedir(), ROOT, sessionId);
@@ -127,10 +140,10 @@ function main(argv: string[], pr: number): number {
     String(pr),
     '-R',
     REPO,
-    '--squash',
-    // Builder and harness branches go once merged; staging (the batch PR's head) stays. The repo's own
-    // auto-delete is off, or it would delete staging after a batch.
-    ...(kindOf(facts) === 'batch' ? [] : ['--delete-branch']),
+    // A batch merges with a merge commit, so main contains staging's task commits and the next batch counts only new
+    // ones; the rest are squashed. Builder and harness branches go once merged; staging (the batch's head) stays.
+    // The repo's own auto-delete is off, or it would delete staging after a batch.
+    ...(kindOf(facts) === 'batch' ? ['--merge'] : ['--squash', '--delete-branch']),
     '--match-head-commit',
     facts.headSha,
     '--subject',
@@ -157,6 +170,7 @@ function main(argv: string[], pr: number): number {
       pr,
       sha: facts.headSha,
       result: 'merge-commit',
+      base: facts.baseRef,
       mergeCommit: merged,
     });
     console.log(`Merged as ${merged.slice(0, 7)}.`);

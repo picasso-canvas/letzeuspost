@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { isEntryPoint } from './lib/entry.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
+import { ungatedStagingCommits } from './merge-gate/staging.ts';
 
 export interface MainCommit {
   sha: string;
@@ -50,13 +51,15 @@ export function isoWeek(date: Date): string {
  * PR's `(#n)`; each such number counts once.
  */
 export function auditMain(commits: readonly MainCommit[], log: readonly LogEntry[]): MainCommit[] {
+  // Only merges into main belong on main's line (older entries have no base: main).
+  const onMainLog = log.filter((e) => e.base === undefined || e.base === 'main');
   const mergeCommits = new Set(
-    log.filter((e) => e.result === 'merge-commit').map((e) => e.mergeCommit),
+    onMainLog.filter((e) => e.result === 'merge-commit').map((e) => e.mergeCommit),
   );
   // Every gated merge must still be on main's first-parent line: a crafted merge commit could otherwise step around
   // them and hide everything after it from this walk.
   const onMain = new Set(commits.map((c) => c.sha));
-  const missing: MainCommit[] = log
+  const missing: MainCommit[] = onMainLog
     .filter(
       (e) =>
         e.result === 'merge-commit' && e.mergeCommit !== undefined && !onMain.has(e.mergeCommit),
@@ -68,9 +71,9 @@ export function auditMain(commits: readonly MainCommit[], log: readonly LogEntry
     }));
   const anchor = commits.findLastIndex((c) => mergeCommits.has(c.sha));
   if (anchor < 0) return missing;
-  const withCommit = new Set(log.filter((e) => e.result === 'merge-commit').map((e) => e.pr));
+  const withCommit = new Set(onMainLog.filter((e) => e.result === 'merge-commit').map((e) => e.pr));
   const unmatched = new Set(
-    log.filter((e) => e.result === 'merged' && !withCommit.has(e.pr)).map((e) => e.pr),
+    onMainLog.filter((e) => e.result === 'merged' && !withCommit.has(e.pr)).map((e) => e.pr),
   );
   const unknown: MainCommit[] = [];
   for (const c of commits.slice(0, anchor).reverse()) {
@@ -234,6 +237,31 @@ function main(argv: string[]): number {
     });
   const log = readJsonLines<LogEntry>(join(STATE_DIR, 'merges.jsonl'));
   const unknown = auditMain(commits, log);
+  // Nobody pushes to staging either (no branch rules on the free plan): a commit there the gate didn't make counts too.
+  try {
+    run('git', ['fetch', '--quiet', 'origin', '+refs/heads/staging:refs/remotes/origin/staging']);
+    const onStaging = run('git', [
+      'log',
+      '--first-parent',
+      '--format=%H%x09%cI%x09%s',
+      'origin/main..origin/staging',
+    ])
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => {
+        const [sha = '', at = '', ...subject] = line.split('\t');
+        return { sha, at, subject: `on staging, not through the gate: ${subject.join('\t')}` };
+      });
+    const ungated = new Set(
+      ungatedStagingCommits(
+        onStaging.map((c) => c.sha),
+        log,
+      ),
+    );
+    unknown.push(...onStaging.filter((c) => ungated.has(c.sha)));
+  } catch {
+    // no staging branch yet
+  }
   let froze = false;
   if (unknown.length > 0 && args.freeze) {
     run('gh', ['variable', 'set', 'AGENTS_PAUSED', '-b', 'true', '-R', REPO]);

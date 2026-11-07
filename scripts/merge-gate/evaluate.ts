@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { shipRefusals } from '../lib/protected.ts';
 import { matchesAny } from '../lib/paths.ts';
 import type { Facts, GateConfig, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
 
@@ -77,9 +78,14 @@ export function requiredReviewers(
  * What kind of merge this is (Zeus, 2026-11-07): a builder PR into `staging`; the batch PR from `staging` into
  * `main`; or a harness PR (Athena's) straight into `main`. Anything else is refused.
  */
-export function kindOf(f: Pick<Facts, 'baseRef' | 'headRef'>): 'staging' | 'batch' | 'main' | null {
+export function kindOf(
+  f: Pick<Facts, 'baseRef' | 'headRef' | 'crossRepo'>,
+): 'staging' | 'batch' | 'main' | null {
   if (f.baseRef === 'staging') return 'staging';
-  if (f.baseRef === 'main') return f.headRef === 'staging' ? 'batch' : 'main';
+  if (f.baseRef === 'main') {
+    if (f.headRef !== 'staging') return 'main';
+    return f.crossRepo ? null : 'batch'; // a fork's branch named staging is never the batch
+  }
   return null;
 }
 
@@ -119,6 +125,11 @@ export function evaluate(f: Facts): GateResult {
   if (f.behindBy !== 0)
     linked.push(`branch is behind ${f.baseRef} by ${String(f.behindBy ?? 'unknown')}`);
   if (f.changedFiles.length === 0) linked.push('no changed files');
+  if (kind === 'batch' && f.ungatedStaging.length > 0) {
+    linked.push(
+      `staging holds commits that didn't come through the gate: ${f.ungatedStaging.map((sha) => sha.slice(0, 7)).join(', ')}`,
+    );
+  }
   if (SKIP_CI.test(f.title)) linked.push('the title would skip CI on main');
   if (f.closingIssues.some((issue) => !issue.inRepo)) {
     linked.push('closes an issue in another repository');
@@ -214,9 +225,14 @@ export function evaluate(f: Facts): GateResult {
   const harness = f.changedFiles.filter((p) => matchesAny(p, f.config.harnessPaths));
   const redTeam = current.filter((r) => r.reviewer === 'redteam' && r.verdict === 'pass');
   const harnessProblems: string[] = [];
-  if (harness.length > 0 && kind !== 'main') {
-    // Harness changes go straight to main with the full gate, never through staging (Zeus, 2026-11-07).
-    harnessProblems.push(`harness paths can't go through staging (${harness.join(', ')})`);
+  if (kind !== 'main') {
+    // Harness and builder-protected paths, symlinks and submodules never go through staging (Zeus, 2026-11-07):
+    // ship refuses them, and so does the gate, in case a branch changed after ship.
+    if (harness.length > 0)
+      harnessProblems.push(`harness paths can't go through staging (${harness.join(', ')})`);
+    harnessProblems.push(
+      ...shipRefusals(f.changes).filter((reason) => reason !== 'the branch changes nothing'),
+    );
   } else if (harness.length > 0) {
     if (redTeam.length === 0) {
       harnessProblems.push(`harness paths changed (${harness.join(', ')}), no red-team record`);

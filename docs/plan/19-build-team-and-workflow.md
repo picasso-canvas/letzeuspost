@@ -102,9 +102,14 @@ a PR can never change the gate that judges it. Builders can't merge: they have n
 **Three kinds of merge** ([Zeus, 2026-11-07](https://github.com/picasso-canvas/letzeuspost/issues/62#issuecomment-6709929106)): a builder PR into `staging`; the batch PR from `staging` into `main`; a
 harness PR (Athena's) straight into `main`. Any other target is refused. Into `staging`, item 5 needs only Cerberus,
 and only when the PR touches a path in `main`'s `.github/cerberus-paths.txt` (without that file, every staging PR
-needs him); harness paths are refused (item 7). Into `main`, items 5 and 7 are as below. A batch PR ticks one Done-when
-box per task issue it closes, ticked only when the merge log shows the gate merged that task into `staging`, and it
-may not carry a harness path.
+needs him); harness paths, builder-protected paths, symlinks and submodules are refused (item 7, as in ship). Into
+`main`, items 5 and 7 are as below. A batch PR ticks one Done-when box per task issue it closes, may not carry a
+harness or builder-protected path, and is refused while `staging` holds a first-parent commit the gate didn't make
+(a merge into `staging`, or its merge of `main` into `staging`): the ticks are never the proof. A batch merges into
+`main` with a merge commit, so `main` then contains its task commits and the next batch counts only new ones; every
+other PR is squash-merged. A PR from another repository is never a batch. Builder-protected work of Athena's goes
+straight into `main`. The free plan has no branch rules, so nothing technical stops a direct push to `staging`; the
+batch gate and the weekly audit (which walks `staging` too and freezes on a commit the gate didn't make) catch one.
 
 **What the gate trusts.** Builders can't write to GitHub, but their words reach it: the PR text is the builder's
 `.lzp/pr.md`. So the gate never takes a comment, tick or PR text as proof that something was checked, and it works the

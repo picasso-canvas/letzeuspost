@@ -431,7 +431,7 @@ describe('evaluate: round 2 of the #63 review', () => {
       ungatedStaging: ['d'.repeat(40)],
     });
     expect(evaluate(batch).items.find((i) => i.id === 2)?.detail).toMatch(
-      /dddddd.*didn't come through the gate/,
+      /didn't come through the gate: ddddddd/,
     );
     expect(failedIds({ ...batch, ungatedStaging: [] })).toEqual([]);
   });

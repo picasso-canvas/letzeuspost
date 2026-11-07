@@ -1,6 +1,8 @@
 import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
+import { ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
+import { parseRawDiff } from '../lib/protected.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
 import { parseVerdict } from './verdict.ts';
@@ -20,6 +22,8 @@ export interface CollectDeps {
   readReviews: (pr: number, sha: string) => ReviewRecord[];
   /** The PR's commits that have review records; their reviews carry to the head when the change is the same. */
   listReviewedShas?: (pr: number) => string[];
+  /** The gate's merge log (`merges.jsonl`); a batch is checked against it. Missing: nothing counts as gated. */
+  readMergeLog?: () => StagingLogEntry[];
   /** A Claude Code transcript by session id, or null. */
   readTranscript?: (sessionId: string) => string | null;
   /** Where bundles live (`~/.letzeuspost`). */
@@ -95,6 +99,7 @@ interface PrView {
   baseRefName: string;
   headRefName: string;
   headRefOid: string;
+  isCrossRepository: boolean;
   title: string;
   mergeable: string;
   body: string;
@@ -165,12 +170,31 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   }
 
   const fields =
-    'state,isDraft,baseRefName,headRefName,headRefOid,title,mergeable,body,labels,closingIssuesReferences';
+    'state,isDraft,baseRefName,headRefName,headRefOid,isCrossRepository,title,mergeable,body,labels,closingIssuesReferences';
   const view = JSON.parse(gh(['pr', 'view', String(pr), '-R', repo, '--json', fields])) as PrView;
   const sha = view.headRefOid;
   // Only main and staging are targets; anything else is refused by the gate before git sees the name.
   const base = view.baseRefName === 'staging' ? 'staging' : 'main';
   const changedFiles = changedFilesFromGit(deps.git, pr, sha, base);
+  const changes = parseRawDiff(
+    deps.git(['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/${base}...${sha}`]),
+  );
+  // A batch: every commit on staging must have come through the gate (merged into staging, or main synced into it).
+  let ungatedStaging: string[] = [];
+  if (base === 'main' && view.headRefName === 'staging' && !view.isCrossRepository) {
+    deps.git([
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      'origin',
+      '+refs/heads/staging:refs/remotes/origin/staging',
+    ]);
+    const shas = deps
+      .git(['log', '--first-parent', '--format=%H', 'origin/main..origin/staging'])
+      .split('\n')
+      .filter((line) => line !== '');
+    ungatedStaging = ungatedStagingCommits(shas, deps.readMergeLog?.() ?? []);
+  }
 
   let behindBy: number | null;
   try {
@@ -222,6 +246,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     isDraft: view.isDraft,
     baseRef: view.baseRefName,
     headRef: view.headRefName,
+    crossRepo: view.isCrossRepository,
     headSha: sha,
     title: view.title,
     mergeable: view.mergeable,
@@ -229,6 +254,8 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     body: view.body,
     closingIssues,
     changedFiles: [...new Set(changedFiles)],
+    changes,
+    ungatedStaging,
     labels: view.labels.map((label) => label.name),
     checkRuns,
     statuses,
