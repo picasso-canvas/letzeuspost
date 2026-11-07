@@ -96,15 +96,16 @@ describe('buildBundle', () => {
     ]) {
       expect(existsSync(join(result.bundle, name)), name).toBe(true);
     }
-    expect(result.outDir.startsWith(result.bundle)).toBe(false);
+    expect(result.outDir.startsWith(`${result.bundle}/`)).toBe(false); // summaries stay outside --add-dir
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toContain('Task seven');
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toContain(
       '#9 is in another repository',
     );
     expect(readFileSync(join(result.bundle, 'ci.txt'), 'utf8')).toContain('ci\tfail');
-    expect(
-      JSON.parse(readFileSync(join(result.bundle, 'comments.json'), 'utf8')).reviewComments,
-    ).toHaveLength(2);
+    const comments = JSON.parse(readFileSync(join(result.bundle, 'comments.json'), 'utf8')) as {
+      reviewComments: unknown[];
+    };
+    expect(comments.reviewComments).toHaveLength(2);
     expect(gitCalls.some((c) => c.startsWith('log --reverse -p --cc'))).toBe(true);
     expect(ghCalls.some((c) => c.startsWith('issue view 9'))).toBe(false);
   });

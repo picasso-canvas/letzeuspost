@@ -20,7 +20,8 @@ export function parseVerdict(summary: string): { verdict: Verdict; reason: strin
     };
   }
   if (match[1] === 'block') return { verdict: 'block', reason: 'the reviewer blocked' };
-  if (lines.slice(1).some((line) => line.startsWith('[blocking]'))) {
+  // A blocking finding in any markup: `[blocking]`, `- [blocking]`, `**[Blocking]**`, `1. [BLOCKING]`.
+  if (lines.slice(1).some((line) => /^(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*)?\[blocking\]/i.test(line))) {
     return { verdict: 'block', reason: 'says pass but lists a [blocking] finding' };
   }
   return { verdict: 'pass', reason: 'ok' };
