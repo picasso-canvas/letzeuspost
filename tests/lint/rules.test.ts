@@ -1,7 +1,7 @@
 import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
-import { lzpRuleConfigs } from '../../scripts/eslint/lzp-rules.js';
+import { lzpRuleConfigs } from '../../scripts/eslint/lzp-rules.mjs';
 
 // The six M0 lint rules (§13, §21), linted through ESLint's API on snippets, without type information.
 const eslint = new ESLint({
