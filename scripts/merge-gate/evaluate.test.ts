@@ -42,6 +42,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     changedFiles: ['packages/ui/src/button.ts'],
     changes: [{ mode: '100644', path: 'packages/ui/src/button.ts' }],
     ungatedStaging: [],
+    gatedIssues: [42, 43],
     labels: ['routine'],
     checkRuns: [
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
@@ -446,5 +447,24 @@ describe('evaluate: round 2 of the #63 review', () => {
 
   it('never treats a PR from another repository as the batch', () => {
     expect(failedIds(facts({ headRef: 'staging', crossRepo: true }))).toContain(2);
+  });
+});
+
+describe('evaluate: round 3 of the #63 review', () => {
+  it('refuses a batch that closes an issue no gated staging merge was for', () => {
+    const body =
+      'Closes #42\nCloses #99\n\n**Done when**\n- [x] #42 (PR #50): merged\n- [x] #99 (PR #51): merged';
+    const batch = facts({
+      headRef: 'staging',
+      body,
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
+        { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
+      ],
+      reviews: [review('argus', { bodyHash: bodyHash(body) })],
+    });
+    expect(evaluate(batch).items.find((i) => i.id === 2)?.detail).toMatch(
+      /#99 wasn't merged into staging/,
+    );
   });
 });
