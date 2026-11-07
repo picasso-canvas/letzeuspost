@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildBundle, exportTree, safeTreePath } from './review.ts';
+import { buildBundle, exportTree, reviewerEnv, runReviews, safeTreePath } from './review.ts';
 
 const SHA = 'c'.repeat(40);
 
@@ -15,6 +15,9 @@ describe('safeTreePath', () => {
       'apps/web/dot-claude/settings.json',
     );
     expect(safeTreePath('packages/core/src/a.ts')).toBe('packages/core/src/a.ts');
+    expect(safeTreePath('src/.ignore')).toBe('src/.ignore.txt');
+    expect(safeTreePath('.rgignore')).toBe('.rgignore.txt');
+    expect(safeTreePath('apps/web/.gitignore')).toBe('apps/web/.gitignore.txt');
   });
 });
 
@@ -96,7 +99,7 @@ describe('buildBundle', () => {
     ]) {
       expect(existsSync(join(result.bundle, name)), name).toBe(true);
     }
-    expect(result.outDir.startsWith(`${result.bundle}/`)).toBe(false); // summaries stay outside --add-dir
+    expect(result.outDir.startsWith(result.bundle)).toBe(false); // summaries stay outside --add-dir
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toContain('Task seven');
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toContain(
       '#9 is in another repository',
@@ -106,7 +109,109 @@ describe('buildBundle', () => {
       reviewComments: unknown[];
     };
     expect(comments.reviewComments).toHaveLength(2);
-    expect(gitCalls.some((c) => c.startsWith('log --reverse -p --cc'))).toBe(true);
+    expect(gitCalls).toContain(`ls-tree -r -z --full-tree ${SHA}`);
+    expect(gitCalls).toContain(`diff --text origin/main...${SHA}`);
+    expect(gitCalls).toContain(`log --reverse -p --cc --text origin/main..${SHA}`);
     expect(ghCalls.some((c) => c.startsWith('issue view 9'))).toBe(false);
+  });
+});
+
+describe('exportTree collisions', () => {
+  const src = (entries: string[], blobs: Record<string, string>) => ({
+    lsTree: () => `${entries.join('\0')}\0`,
+    blob: (sha: string) => Buffer.from(blobs[sha] ?? ''),
+  });
+
+  it('refuses a PR file that would overwrite a stub or a renamed file', () => {
+    const fakeStub = [
+      `120000 blob ${'1'.repeat(40)}\tdocs/x.md`,
+      `100644 blob ${'2'.repeat(40)}\tdocs/x.md.symlink.txt`,
+    ];
+    expect(() =>
+      exportTree(SHA, src(fakeStub, {}), mkdtempSync(join(tmpdir(), 'lzp-c1-'))),
+    ).toThrow(/already/);
+    const fakeRename = [
+      `100644 blob ${'3'.repeat(40)}\tCLAUDE.md`,
+      `100644 blob ${'4'.repeat(40)}\tCLAUDE.md.txt`,
+    ];
+    expect(() =>
+      exportTree(SHA, src(fakeRename, {}), mkdtempSync(join(tmpdir(), 'lzp-c2-'))),
+    ).toThrow(/already/);
+  });
+
+  it('refuses an ls-tree entry it cannot read, instead of skipping it', () => {
+    expect(() =>
+      exportTree(SHA, src(['100644 blob abc\tx.ts'], {}), mkdtempSync(join(tmpdir(), 'lzp-c3-'))),
+    ).toThrow(/ls-tree/);
+  });
+});
+
+describe('reviewerEnv', () => {
+  it('keeps only what a reviewer needs', () => {
+    const env = reviewerEnv({
+      PATH: '/bin',
+      HOME: '/h',
+      LANG: 'en_US.UTF-8',
+      CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+      LZP_ROLE: 'builder',
+      GH_TOKEN: 'secret',
+      ELEVENLABS_API_KEY: 'secret',
+    });
+    expect(env).toEqual({ PATH: '/bin', HOME: '/h', LANG: 'en_US.UTF-8' });
+  });
+});
+
+describe('runReviews', () => {
+  it('runs each reviewer with the bundle, no .env reads and a clean env; a missing agent is a block', () => {
+    const calls: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
+    const recorded: string[][] = [];
+    const written: Record<string, string> = {};
+    const failed = runReviews(48, { bundle: '/b', outDir: '/o' }, ['argus', 'iris'], {
+      claude: (args, env) => {
+        calls.push({ args, env });
+        return JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's-1' });
+      },
+      show: (path) => (path.endsWith('argus-reviewer.md') ? 'agent' : null),
+      record: (args) => {
+        recorded.push(args);
+        return 'ok';
+      },
+      write: (path, text) => {
+        written[path] = text;
+      },
+      env: { PATH: '/bin', LZP_ROLE: 'builder' },
+    });
+    expect(failed).toBe(0);
+    expect(calls).toHaveLength(1);
+    const args = calls[0]?.args ?? [];
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--agent',
+        'argus-reviewer',
+        '--add-dir',
+        '/b',
+        '--disallowedTools',
+        'Read(**/.env*)',
+      ]),
+    );
+    expect(calls[0]?.env).toEqual({ PATH: '/bin' });
+    expect(written['/o/iris.md']).toMatch(
+      /^VERDICT: block\n\[blocking\] \.claude\/agents\/iris-design\.md/,
+    );
+    expect(recorded[0]).toEqual(
+      expect.arrayContaining([
+        '48',
+        'argus',
+        '/o/argus.md',
+        '--snapshot',
+        '/b/snapshot.json',
+        '--meta',
+        '/o/argus.meta.json',
+      ]),
+    );
+    expect(JSON.parse(written['/o/argus.meta.json'] ?? '{}')).toEqual({
+      agent: 'argus-reviewer',
+      sessionId: 's-1',
+    });
   });
 });

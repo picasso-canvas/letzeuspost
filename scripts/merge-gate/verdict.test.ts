@@ -54,3 +54,19 @@ describe('parseVerdict: blocking findings in any markup', () => {
     }
   });
 });
+
+describe('parseVerdict: blocking behind any leading markup', () => {
+  it('catches quote, heading, italic, underline, code and bullet forms', () => {
+    for (const line of [
+      '> [blocking] a',
+      '### [blocking] a',
+      '*[blocking]* a',
+      '__[blocking]__ a',
+      '`[blocking]` a',
+      '• [blocking] a',
+      '- [ blocking ] a',
+    ]) {
+      expect(parseVerdict(`VERDICT: pass\n${line}`).verdict, line).toBe('block');
+    }
+  });
+});
