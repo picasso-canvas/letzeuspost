@@ -1,4 +1,5 @@
 import { parsePatternList } from '../lib/paths.ts';
+import { bundlePattern, checkTranscript } from './meta.ts';
 import { doneWhenBoxes } from './evaluate.ts';
 import type { CheckRun, ClosingIssue, Facts, GateConfig, ReviewRecord } from './types.ts';
 
@@ -14,6 +15,43 @@ export interface CollectDeps {
   /** A file from `main`'s tree (`git show HEAD:<path>`), or null when it doesn't exist. */
   readMainFile: (path: string) => string | null;
   readReviews: (pr: number, sha: string) => ReviewRecord[];
+  /** A Claude Code transcript by session id, or null. */
+  readTranscript?: (sessionId: string) => string | null;
+  /** Where bundles live (`~/.letzeuspost`). */
+  stateDir?: string;
+}
+
+const AGENTS: Record<string, string> = {
+  argus: 'argus-reviewer',
+  cerberus: 'cerberus-security',
+  iris: 'iris-design',
+};
+
+/** The gate re-checks every runner-made review against its transcript; anything that doesn't check out isn't verified. */
+function verify(r: ReviewRecord, pr: number, sha: string, deps: CollectDeps): ReviewRecord {
+  if (r.meta === undefined) return r;
+  let verified = false;
+  const { sessionId, bundle } = r.meta;
+  const agent = AGENTS[r.reviewer];
+  if (
+    agent !== undefined &&
+    r.meta.agent === agent &&
+    sessionId &&
+    bundle &&
+    deps.readTranscript &&
+    deps.stateDir
+  ) {
+    if (bundlePattern(deps.stateDir, pr, sha).test(bundle)) {
+      let text: string | null;
+      try {
+        text = deps.readTranscript(sessionId);
+      } catch {
+        text = null;
+      }
+      verified = checkTranscript(text, agent, bundle, r.summary) === null;
+    }
+  }
+  return { ...r, meta: { ...r.meta, verified } };
 }
 
 interface PrView {
@@ -144,7 +182,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     labels: view.labels.map((label) => label.name),
     checkRuns,
     statuses,
-    reviews: deps.readReviews(pr, sha),
+    reviews: deps.readReviews(pr, sha).map((r) => verify(r, pr, sha, deps)),
     sensitivePatterns: sensitiveList === null ? null : parsePatternList(sensitiveList),
     config,
   };

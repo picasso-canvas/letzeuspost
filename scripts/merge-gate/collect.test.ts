@@ -124,7 +124,7 @@ describe('collectFacts', () => {
 
 describe('collectFacts re-checks every pass against its transcript', () => {
   it('marks a pass verified only when its session checks out', () => {
-    const bundle = `${'/s'}/bundles/pr-7/${SHA.slice(0, 7)}-1`;
+    const bundle = `/s/bundles/pr-7/${SHA.slice(0, 7)}-1`;
     const good = {
       pr: 7,
       sha: SHA,

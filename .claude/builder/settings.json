@@ -140,7 +140,7 @@
         "~/.aws",
         "~/.docker",
         "~/.letzeuspost",
-        "./.env*"
+        "./**/.env*"
       ],
       "denyWrite": [
         "./.github",

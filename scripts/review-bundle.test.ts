@@ -362,7 +362,7 @@ describe('failure reasons and refusals', () => {
 
 describe('oversized blobs', () => {
   it('refuses a blob too large to read, naming the file', () => {
-    expect(() =>
+    expect(() => {
       exportTree(
         SHA,
         {
@@ -372,7 +372,7 @@ describe('oversized blobs', () => {
           },
         },
         mkdtempSync(join(tmpdir(), 'lzp-big-')),
-      ),
-    ).toThrow(/assets\/huge\.bin is too large/);
+      );
+    }).toThrow(/assets\/huge\.bin is too large/);
   });
 });

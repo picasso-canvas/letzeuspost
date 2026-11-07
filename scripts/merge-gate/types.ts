@@ -13,7 +13,7 @@ export interface ReviewRecord {
   summary: string;
   at: string;
   /** For runs by scripts/review.ts: which agent answered, in which Claude Code session. */
-  meta?: { agent: string; sessionId: string | null };
+  meta?: { agent: string; sessionId: string | null; bundle?: string; verified?: boolean };
 }
 
 /** `.github/merge-gate.json`, always read from `main`. */

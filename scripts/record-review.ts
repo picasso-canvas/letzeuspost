@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO } from './merge-gate/collect.ts';
 import { bodyHash } from './merge-gate/evaluate.ts';
-import { checkTranscript, transcriptPath } from './merge-gate/meta.ts';
+import { bundlePattern, checkTranscript, transcriptPath } from './merge-gate/meta.ts';
 import { STATE_DIR, writeReview } from './merge-gate/reviews.ts';
 import { REVIEWERS, type Reviewer } from './merge-gate/types.ts';
 import { parseVerdict } from './merge-gate/verdict.ts';
@@ -44,10 +44,11 @@ const AGENTS: Partial<Record<Reviewer, string>> = {
 function sessionUsed(pr: number, sessionId: string): boolean {
   const base = join(STATE_DIR, 'reviews', `pr-${String(pr)}`);
   if (!existsSync(base)) return false;
-  for (const sha of readdirSync(base)) {
-    for (const name of readdirSync(join(base, sha))) {
+  for (const sha of readdirSync(base, { withFileTypes: true })) {
+    if (!sha.isDirectory()) continue; // e.g. .DS_Store
+    for (const name of readdirSync(join(base, sha.name))) {
       try {
-        const record = JSON.parse(readFileSync(join(base, sha, name), 'utf8')) as {
+        const record = JSON.parse(readFileSync(join(base, sha.name, name), 'utf8')) as {
           meta?: { sessionId?: unknown };
         };
         if (record.meta?.sessionId === sessionId) return true;
@@ -111,7 +112,7 @@ function main(argv: string[]): number {
     return 1;
   }
 
-  let meta: { agent: string; sessionId: string | null } | undefined;
+  let meta: { agent: string; sessionId: string | null; bundle?: string } | undefined;
   if (metaFile !== undefined) {
     const raw = JSON.parse(readFileSync(metaFile, 'utf8')) as {
       agent?: unknown;
@@ -129,10 +130,19 @@ function main(argv: string[]): number {
         return 1;
       }
       const transcript = transcriptPath(homedir(), ROOT, meta.sessionId);
+      const bundle = dirname(resolve(snapshotFile));
+      if (!bundlePattern(STATE_DIR, pr, reviewedSha).test(bundle)) {
+        console.error(
+          `Not recorded: ${bundle} isn't a bundle for PR #${String(pr)} at ${reviewedSha.slice(0, 7)}.`,
+        );
+        return 1;
+      }
+      meta.bundle = bundle;
       const problem = checkTranscript(
         existsSync(transcript) ? readFileSync(transcript, 'utf8') : null,
         expected,
-        dirname(resolve(snapshotFile)),
+        bundle,
+        summary,
       );
       if (problem !== null) {
         console.error(`Not recorded: ${problem}.`);

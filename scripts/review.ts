@@ -77,10 +77,10 @@ export interface TreeSource {
   blob: (sha: string) => Buffer;
 }
 
-/** The PR's files as regular blobs only. Nothing from git's attributes or links applies, and nothing is overwritten. */
 /** A PR whose files can't be laid out safely: recorded as a block (the PR must change), never a hand review. */
 export class TreeRefusal extends Error {}
 
+/** The PR's files as regular blobs only. Nothing from git's attributes or links applies, and nothing is overwritten. */
 export function exportTree(sha: string, source: TreeSource, out: string): void {
   const write = (path: string, content: () => Buffer | string) => {
     const target = resolve(out, path);
@@ -91,6 +91,8 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
     try {
       mkdirSync(dirname(target), { recursive: true });
     } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      if (code !== 'EEXIST' && code !== 'ENOTDIR') throw error; // disk or permission trouble: the run fails
       throw new TreeRefusal(
         `${path} clashes with another path in the PR (a file and a folder of one name)`,
         { cause: error },
@@ -131,11 +133,7 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
           `A symlink in the PR at ${sha.slice(0, 7)}, pointing to:\n${source.blob(object).toString('utf8')}\n`,
       );
     } else if (mode === '160000') {
-      write(
-        `${safe}.submodule.txt`,
-        () => `A submodule in the PR, at commit ${object}.
-`,
-      );
+      write(`${safe}.submodule.txt`, () => `A submodule in the PR, at commit ${object}.\n`);
     } else {
       write(safe, () => source.blob(object));
     }

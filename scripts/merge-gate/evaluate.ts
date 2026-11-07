@@ -159,11 +159,7 @@ export function evaluate(f: Facts): GateResult {
   for (const reviewer of needed) {
     // A pass counts only when scripts/review.ts made it: a real Claude Code session, not a hand-written summary.
     const passes = current.filter(
-      (r) =>
-        r.reviewer === reviewer &&
-        r.verdict === 'pass' &&
-        typeof r.meta?.sessionId === 'string' &&
-        r.meta.sessionId !== '',
+      (r) => r.reviewer === reviewer && r.verdict === 'pass' && r.meta?.verified === true,
     );
     if (passes.length === 0) {
       reviewProblems.push(

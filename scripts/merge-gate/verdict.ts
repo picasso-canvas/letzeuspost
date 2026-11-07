@@ -37,7 +37,7 @@ export function parseVerdict(summary: string): { verdict: Verdict; reason: strin
  */
 function stripLeadingMarkup(line: string): string {
   // Order matters: tags, boxes and list markers before the catch-all, which would eat their first character.
-  const noise = /^(?:<[^>]*>|\[[ xX]\](?=\s)|\d+[.)]|[a-z][.)](?=\s)|[^\p{L}\p{N}[<]+)/iu;
+  const noise = /^(?:<[^<>[\]]*>|\[[ xX]\](?=\s)|\d+[.)]|[a-z][.)](?=\s)|[^\p{L}\p{N}[<]+|<)/iu;
   let rest = line;
   for (let match = noise.exec(rest); match && match[0] !== ''; match = noise.exec(rest)) {
     rest = rest.slice(match[0].length);

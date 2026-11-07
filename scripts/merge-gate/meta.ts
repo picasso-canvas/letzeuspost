@@ -16,26 +16,65 @@ export function transcriptPath(home: string, root: string, sessionId: string): s
   );
 }
 
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The only bundle a review of this PR at this head commit may name: `<state>/bundles/pr-<n>/<sha7>-<time>`. */
+export function bundlePattern(stateDir: string, pr: number, headSha: string): RegExp {
+  return new RegExp(`^${escape(stateDir)}/bundles/pr-${String(pr)}/${headSha.slice(0, 7)}-\\d+$`);
+}
+
+function textOf(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      const p = part as { type?: unknown; text?: unknown };
+      return p.type === 'text' && typeof p.text === 'string' ? p.text : '';
+    })
+    .join('');
+}
+
 /**
- * A review counts only if Claude Code really ran it: the session's transcript exists, its agent is the reviewer's,
- * and its prompt names this bundle. Returns why not, or null.
+ * A review counts only if Claude Code really ran it: the transcript exists, its agent is the reviewer's, its first
+ * prompt names this bundle, and its final answer is exactly the recorded summary. Returns why not, or null.
  */
-export function checkTranscript(text: string | null, agent: string, bundle: string): string | null {
+export function checkTranscript(
+  text: string | null,
+  agent: string,
+  bundle: string,
+  summary: string,
+): string | null {
   if (text === null) return 'no Claude Code transcript for that session';
   let setting: string | undefined;
+  let firstPrompt: string | undefined;
+  let lastAnswer: string | undefined;
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
+    let entry: { type?: unknown; agentSetting?: unknown; message?: { content?: unknown } };
     try {
-      const entry = JSON.parse(line) as { type?: unknown; agentSetting?: unknown };
-      if (entry.type === 'agent-setting' && typeof entry.agentSetting === 'string') {
-        setting = entry.agentSetting;
-        break;
-      }
+      entry = JSON.parse(line) as typeof entry;
     } catch {
-      // not JSON: skip
+      continue;
+    }
+    if (
+      entry.type === 'agent-setting' &&
+      setting === undefined &&
+      typeof entry.agentSetting === 'string'
+    ) {
+      setting = entry.agentSetting;
+    } else if (entry.type === 'user' && firstPrompt === undefined) {
+      firstPrompt = textOf(entry.message?.content);
+    } else if (entry.type === 'assistant') {
+      const answer = textOf(entry.message?.content);
+      if (answer.trim() !== '') lastAnswer = answer;
     }
   }
   if (setting !== agent) return `the session's agent is ${String(setting)}, not ${agent}`;
-  if (!text.includes(`${bundle}/`)) return 'the session did not review this bundle';
+  if (firstPrompt?.includes(`${bundle}/`) !== true)
+    return "the session's first prompt doesn't name this bundle";
+  if (lastAnswer?.trim() !== summary.trim())
+    return "the session's final answer isn't the recorded summary";
   return null;
 }
