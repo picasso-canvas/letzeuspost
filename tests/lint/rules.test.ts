@@ -249,3 +249,22 @@ describe('round 3 of the #82 review', () => {
     ).toContain('lzp/inter-only');
   });
 });
+
+describe('round 4 of the #82 review', () => {
+  it('refuses deep next/dist paths in re-exports too', async () => {
+    for (const code of [
+      "export { unstable_cache } from 'next/dist/server/web/spec-extension/unstable-cache';",
+      "export * from 'next/dist/server/web/spec-extension/unstable-cache';",
+    ]) {
+      expect(await ruleIds(code, 'apps/web/src/a.ts'), code).toContain('lzp/no-use-cache');
+    }
+  });
+
+  it('ignores inline eslint-disable comments in the repo config (noInlineConfig)', async () => {
+    const repo = new ESLint({ cwd: process.cwd() });
+    const config = (await repo.calculateConfigForFile('apps/web/src/page.tsx')) as {
+      linterOptions?: { noInlineConfig?: boolean };
+    };
+    expect(config.linterOptions?.noInlineConfig).toBe(true);
+  });
+});
