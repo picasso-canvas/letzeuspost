@@ -9,7 +9,7 @@
 // text as the body and the issue's title (never the builder's), and posts the approach on the issue. The builder's
 // words are data, never instructions.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,15 +32,38 @@ export function prFlags(prText: string): { needsZeus: boolean; blocked: boolean 
   };
 }
 
-/** The one builder clone for an issue: `~/letzeuspost-builders/<issue>-<slug>`. */
-export function findClone(issue: number, names: readonly string[]): string {
-  const matches = names.filter((name) => new RegExp(`^${String(issue)}-[a-z0-9-]+$`).test(name));
-  if (matches.length !== 1) {
-    throw new Error(
-      `expected one builder clone for #${String(issue)}, found ${String(matches.length)}`,
-    );
+/** Athena's record of a dispatch (`~/.letzeuspost/dispatch/<issue>.json`), outside the builder's reach. */
+export interface DispatchRecord {
+  issue: number;
+  branch: string;
+  baseSha: string;
+  dispatchedAt: string;
+  shippedAt?: string;
+}
+
+export function parseDispatchRecord(text: string, issue: number): DispatchRecord {
+  const r = JSON.parse(text) as Partial<DispatchRecord>;
+  if (
+    r.issue !== issue ||
+    typeof r.branch !== 'string' ||
+    !new RegExp(`^${String(issue)}-[a-z0-9-]+$`).test(r.branch) ||
+    typeof r.baseSha !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(r.baseSha) ||
+    typeof r.dispatchedAt !== 'string'
+  ) {
+    throw new Error(`the dispatch record for #${String(issue)} is malformed`);
   }
-  return matches[0] ?? '';
+  return {
+    issue,
+    branch: r.branch,
+    baseSha: r.baseSha,
+    dispatchedAt: r.dispatchedAt,
+    ...(r.shippedAt ? { shippedAt: r.shippedAt } : {}),
+  };
+}
+
+export function dispatchRecordPath(issue: number): string {
+  return join(STATE_DIR, 'dispatch', `${String(issue)}.json`);
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -66,7 +89,8 @@ function main(argv: string[]): number {
   const dryRun = argv.includes('--dry-run');
   assertCleanMain((cmd, args) => run(cmd, args));
 
-  const branch = findClone(issue, readdirSync(BUILDERS_DIR));
+  const record = parseDispatchRecord(readFileSync(dispatchRecordPath(issue), 'utf8'), issue);
+  const branch = record.branch;
   const lzp = join(BUILDERS_DIR, branch, '.lzp');
   const prText = readRegularFile(lzp, 'pr.md', MAX_TEXT).toString('utf8');
   const approach = readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8');
@@ -82,17 +106,15 @@ function main(argv: string[]): number {
     rmSync(copy, { force: true });
   }
   const sha = run('git', ['rev-parse', ref]).trim();
+  // Judged against the commit dispatch started the builder from (main may have moved since): the builder's own work.
   try {
-    run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+    run('git', ['merge-base', '--is-ancestor', record.baseSha, ref]);
   } catch {
-    console.error(
-      `Refused: ${branch} doesn't contain current main. Update the branch on GitHub and dispatch again.`,
-    );
+    console.error(`Refused: ${branch} doesn't build on the commit it was dispatched from.`);
     return 1;
   }
-
   const changes = parseRawDiff(
-    run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `origin/main..${ref}`]),
+    run('git', ['diff', '--raw', '-z', '--no-renames', '--no-abbrev', `${record.baseSha}..${ref}`]),
   );
   const refusals = shipRefusals(changes);
   if (refusals.length > 0) {
@@ -163,6 +185,18 @@ function main(argv: string[]): number {
     run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'needs-zeus']);
   if (flags.blocked)
     run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'blocked']);
+  writeFileSync(
+    dispatchRecordPath(issue),
+    `${JSON.stringify({ ...record, shippedAt: new Date().toISOString() })}\n`,
+    { mode: 0o600 },
+  );
+  try {
+    run('git', ['merge-base', '--is-ancestor', 'origin/main', ref]);
+  } catch {
+    console.log(
+      `Main moved while the builder worked: run \`gh pr update-branch ${String(pr)}\` before the reviews.`,
+    );
+  }
   console.log(
     `Shipped as PR #${String(pr)}${flags.needsZeus ? ' (needs-zeus)' : ''}${flags.blocked ? ' (blocked)' : ''}.`,
   );

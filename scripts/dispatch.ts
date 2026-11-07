@@ -26,7 +26,7 @@ import { isEntryPoint } from './lib/entry.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
-import { BUILDERS_DIR } from './ship.ts';
+import { BUILDERS_DIR, dispatchRecordPath, parseDispatchRecord } from './ship.ts';
 
 /** What a builder's environment may carry over from Athena's: enough to run Claude Code and tools, no tokens. */
 const ENV_ALLOW = [
@@ -52,21 +52,36 @@ export function builderEnv(from: NodeJS.ProcessEnv, extra: NodeJS.ProcessEnv): N
 export interface Args {
   issue: number;
   dryRun: boolean;
+  fresh: boolean;
   findings: string | undefined;
   maxTurns: string | undefined;
 }
 
 export function parseArgs(argv: readonly string[]): Args {
-  const args: Args = { issue: Number.NaN, dryRun: false, findings: undefined, maxTurns: undefined };
+  const args: Args = {
+    issue: Number.NaN,
+    dryRun: false,
+    fresh: false,
+    findings: undefined,
+    maxTurns: undefined,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--dry-run') args.dryRun = true;
+    else if (arg === '--fresh') args.fresh = true;
     else if (arg === '--findings') args.findings = argv[++i];
     else if (arg === '--max-turns') args.maxTurns = argv[++i];
     else if (arg !== undefined && !arg.startsWith('--') && Number.isNaN(args.issue))
       args.issue = Number(arg);
   }
   return args;
+}
+
+/** The branch an issue already has keeps its name (titles change); a new one is `<issue>-<slug>`. */
+export function branchFor(issue: number, title: string, existing: readonly string[]): string {
+  const mine = existing.filter((name) => name.startsWith(`${String(issue)}-`));
+  if (mine.length > 1) throw new Error(`#${String(issue)} has two branches: ${mine.join(', ')}`);
+  return mine[0] ?? `${String(issue)}-${slugify(title)}`;
 }
 
 /** `[M0] Sign-in with an email link` → `sign-in-with-an-email-link`, at most 40 characters. */
@@ -166,8 +181,34 @@ async function main(argv: string[]): Promise<number> {
     console.error(`#${String(issue)} isn't an open build-task issue.`);
     return 1;
   }
-  const branch = `${String(issue)}-${slugify(view.title)}`;
+  const remoteBranches = run('git', [
+    'ls-remote',
+    '--heads',
+    'origin',
+    `refs/heads/${String(issue)}-*`,
+  ])
+    .split('\n')
+    .map((line) => line.split('refs/heads/')[1] ?? '')
+    .filter((name) => name !== '');
+  const branch = branchFor(issue, view.title, remoteBranches);
   const clone = join(BUILDERS_DIR, branch);
+  // Never wipe work that hasn't been shipped yet.
+  const recordFile = dispatchRecordPath(issue);
+  if (existsSync(clone) && !args.fresh) {
+    const record = existsSync(recordFile)
+      ? parseDispatchRecord(readFileSync(recordFile, 'utf8'), issue)
+      : null;
+    if (
+      record === null ||
+      record.shippedAt === undefined ||
+      record.shippedAt < record.dispatchedAt
+    ) {
+      console.error(
+        `Refused: ${clone} holds work that hasn't been shipped. Ship it first, or pass --fresh to discard it.`,
+      );
+      return 1;
+    }
+  }
 
   // A review round: the branch must contain current main (so main's harness, not an old copy, loads) and must not
   // change any protected path (its .claude/ would load in the builder's session).
@@ -218,6 +259,12 @@ async function main(argv: string[]): Promise<number> {
   // A fresh clone every time, through git's own transport (--no-local): nothing a builder left behind carries over,
   // and no unrelated objects or refs come along.
   if (existsSync(clone)) rmSync(clone, { recursive: true, force: true });
+  mkdirSync(dirname(recordFile), { recursive: true, mode: 0o700 });
+  writeFileSync(
+    recordFile,
+    `${JSON.stringify({ issue, branch, baseSha, dispatchedAt: new Date().toISOString() })}\n`,
+    { mode: 0o600 },
+  );
   mkdirSync(BUILDERS_DIR, { recursive: true, mode: 0o700 });
   run(
     'git',

@@ -51,8 +51,21 @@ export function auditMain(commits: readonly MainCommit[], log: readonly LogEntry
   const mergeCommits = new Set(
     log.filter((e) => e.result === 'merge-commit').map((e) => e.mergeCommit),
   );
+  // Every gated merge must still be on main's first-parent line: a crafted merge commit could otherwise step around
+  // them and hide everything after it from this walk.
+  const onMain = new Set(commits.map((c) => c.sha));
+  const missing: MainCommit[] = log
+    .filter(
+      (e) =>
+        e.result === 'merge-commit' && e.mergeCommit !== undefined && !onMain.has(e.mergeCommit),
+    )
+    .map((e) => ({
+      sha: e.mergeCommit ?? '',
+      at: e.at,
+      subject: `gated merge of #${String(e.pr)} is missing from main's first-parent history`,
+    }));
   const anchor = commits.findLastIndex((c) => mergeCommits.has(c.sha));
-  if (anchor < 0) return [];
+  if (anchor < 0) return missing;
   const withCommit = new Set(log.filter((e) => e.result === 'merge-commit').map((e) => e.pr));
   const unmatched = new Set(
     log.filter((e) => e.result === 'merged' && !withCommit.has(e.pr)).map((e) => e.pr),
@@ -67,7 +80,7 @@ export function auditMain(commits: readonly MainCommit[], log: readonly LogEntry
     }
     unknown.push(c);
   }
-  return unknown.reverse();
+  return [...missing, ...unknown.reverse()];
 }
 
 export interface ReportData {

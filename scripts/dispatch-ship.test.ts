@@ -99,12 +99,14 @@ describe('parseArgs', () => {
     expect(parseArgs(['--dry-run', '7'])).toEqual({
       issue: 7,
       dryRun: true,
+      fresh: false,
       findings: undefined,
       maxTurns: undefined,
     });
-    expect(parseArgs(['7', '--findings', 'f.md', '--max-turns', '50'])).toEqual({
+    expect(parseArgs(['7', '--fresh', '--findings', 'f.md', '--max-turns', '50'])).toEqual({
       issue: 7,
       dryRun: false,
+      fresh: true,
       findings: 'f.md',
       maxTurns: '50',
     });
