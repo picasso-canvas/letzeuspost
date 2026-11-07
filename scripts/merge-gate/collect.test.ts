@@ -137,7 +137,10 @@ describe('collectFacts re-checks every pass against its transcript', () => {
       at: '',
       meta: { agent: 'argus-reviewer', sessionId: 's-ok', bundle },
     };
-    const forged = { ...good, meta: { agent: 'argus-reviewer', sessionId: 's-fake', bundle } };
+    const forged = {
+      ...good,
+      meta: { agent: 'argus-reviewer', sessionId: 's-fake', bundle, verified: true },
+    }; // a stored flag never counts
     const f = collectFacts(
       7,
       deps({

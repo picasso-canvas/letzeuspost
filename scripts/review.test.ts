@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { planReviewers, reviewPrompt, resultText } from './review.ts';
+import { reviewPrompt } from './merge-gate/meta.ts';
+import { planReviewers, resultText } from './review.ts';
 
 const CONFIG = { requireIris: false, uiPaths: ['packages/ui/**'] };
 
@@ -34,6 +35,7 @@ describe('reviewPrompt', () => {
       'issues.md',
       'ci.txt',
       'comments.json',
+      'binary.txt',
     ]) {
       expect(prompt).toContain(`/b/${name}`);
     }
@@ -53,5 +55,15 @@ describe('resultText', () => {
       /error_max_turns/,
     );
     expect(() => resultText('not json')).toThrow();
+  });
+});
+
+describe('resultText: errors reported as success', () => {
+  it('refuses a result marked is_error, with its reason', () => {
+    expect(() =>
+      resultText(
+        JSON.stringify({ subtype: 'success', is_error: true, result: 'Usage limit reached' }),
+      ),
+    ).toThrow(/Usage limit/);
   });
 });

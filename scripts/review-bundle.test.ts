@@ -398,3 +398,19 @@ describe('refusal text is safe to post', () => {
     expect(message).not.toContain('\n');
   });
 });
+
+describe("refusals name the PR's own path", () => {
+  it('says .Claude/x, not the renamed dot-claude/x', () => {
+    const tree = [
+      `100644 blob ${'1'.repeat(40)}\t.claude/x`,
+      `100644 blob ${'2'.repeat(40)}\t.Claude/x`,
+    ].join('\0');
+    expect(() =>
+      exportTree(
+        SHA,
+        { lsTree: () => `${tree}\0`, blob: () => Buffer.from('x') },
+        mkdtempSync(join(tmpdir(), 'lzp-orig-')),
+      ),
+    ).toThrow(/^`\.Claude\/x`/);
+  });
+});

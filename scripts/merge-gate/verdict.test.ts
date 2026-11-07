@@ -120,3 +120,9 @@ describe('parseVerdict: tight boxes and roman numerals', () => {
     expect(parseVerdict('VERDICT: pass\niv. [blocking] a').verdict).toBe('block');
   });
 });
+
+describe('parseVerdict: carriage returns', () => {
+  it('treats a bare \\r as a new line, as GitHub does', () => {
+    expect(parseVerdict('VERDICT: pass\n[nit] ok\r[blocking] x').verdict).toBe('block');
+  });
+});
