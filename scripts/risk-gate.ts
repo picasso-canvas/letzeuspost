@@ -5,15 +5,12 @@
 // The merge gate (#37) works the tier out the same way and only checks that the label agrees.
 import { readFileSync } from 'node:fs';
 import { matchesAny, parsePatternList } from './lib/paths.ts';
+import { safeName } from './lib/safe-name.ts';
+
+export { safeName };
 
 // The harness paths come from main's .github/merge-gate.json, the same list the merge gate uses.
 const DEFAULT_HARNESS = ['.github/**', '.claude/**', 'scripts/**', 'CLAUDE.md', '**/CLAUDE.md'];
-
-/** File names are builder-controlled: printable text only, so a name can't break out of the comment's code block. */
-export function safeName(name: string): string {
-  // Printable only: control and format characters (bidi, zero-width) would make a name display as another.
-  return name.replace(/[^\x20-\x7e\u00a0-\uffff]|\p{Cf}/gu, '?').replace(/`/g, "'");
-}
 
 export interface Judgement {
   tier: 'sensitive' | 'routine';

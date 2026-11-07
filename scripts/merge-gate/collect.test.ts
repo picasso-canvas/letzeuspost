@@ -131,7 +131,7 @@ describe('collectFacts re-checks every pass against its transcript', () => {
       sha: SHA,
       reviewer: 'argus' as const,
       verdict: 'pass' as const,
-      bodyHash: 'h',
+      bodyHash: bodyHash('text'),
       summary: 'VERDICT: pass',
       at: '',
       meta: { agent: 'argus-reviewer', sessionId: 's-ok', bundle },
@@ -153,6 +153,10 @@ describe('collectFacts re-checks every pass against its transcript', () => {
               ].join('\n')
             : null,
         stateDir: '/s',
+        readFile: (path) =>
+          path === `${bundle}/snapshot.json`
+            ? JSON.stringify({ headRefOid: SHA, body: 'text' })
+            : null,
       }),
     );
     expect(f.reviews.map((r) => r.meta?.verified)).toEqual([true, false]);

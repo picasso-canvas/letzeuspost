@@ -16,6 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO } from './merge-gate/collect.ts';
 import { bodyHash } from './merge-gate/evaluate.ts';
+import { agentFor } from './merge-gate/agents.ts';
 import { bundlePattern, checkTranscript, transcriptPath } from './merge-gate/meta.ts';
 import { STATE_DIR, writeReview } from './merge-gate/reviews.ts';
 import { REVIEWERS, type Reviewer } from './merge-gate/types.ts';
@@ -33,12 +34,6 @@ const NAMES: Record<Reviewer, string> = {
 };
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-const AGENTS: Partial<Record<Reviewer, string>> = {
-  argus: 'argus-reviewer',
-  cerberus: 'cerberus-security',
-  iris: 'iris-design',
-};
 
 /** True when any existing record for this PR (any commit) already names this session. */
 function sessionUsed(pr: number, sessionId: string): boolean {
@@ -122,9 +117,10 @@ function main(argv: string[]): number {
       agent: typeof raw.agent === 'string' ? raw.agent : '',
       sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : null,
     };
-    // A session id must be a real Claude Code run of this reviewer's agent, on this bundle, used once per PR.
-    if (meta.sessionId !== null) {
-      const expected = AGENTS[reviewer];
+    // A pass must come from a real Claude Code run of this reviewer's agent, on this bundle, used once per PR.
+    // A block is always recorded, verified or not: a block always counts.
+    if (meta.sessionId !== null && verdict === 'pass') {
+      const expected = agentFor(reviewer);
       if (meta.agent !== expected) {
         console.error(`--meta names agent ${meta.agent}, but ${reviewer} is ${String(expected)}.`);
         return 1;

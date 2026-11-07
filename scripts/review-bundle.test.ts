@@ -354,7 +354,7 @@ describe('failure reasons and refusals', () => {
       return '';
     };
     const result = buildBundle(9, { gh, git, blob: () => Buffer.from('x'), now: () => 2 }, state);
-    expect(result.refusal).toMatch(/^a\/b /);
+    expect(result.refusal).toMatch(/^`a\/b` /);
     expect(result.refusal).not.toContain(state);
     expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe('logo.png');
   });
@@ -373,7 +373,7 @@ describe('oversized blobs', () => {
         },
         mkdtempSync(join(tmpdir(), 'lzp-big-')),
       );
-    }).toThrow(/assets\/huge\.bin is too large/);
+    }).toThrow(/`assets\/huge\.bin` is too large/);
   });
 });
 

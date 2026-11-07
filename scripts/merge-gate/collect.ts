@@ -1,6 +1,7 @@
 import { parsePatternList } from '../lib/paths.ts';
+import { agentFor } from './agents.ts';
+import { bodyHash, doneWhenBoxes } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
-import { doneWhenBoxes } from './evaluate.ts';
 import type { CheckRun, ClosingIssue, Facts, GateConfig, ReviewRecord } from './types.ts';
 
 export const REPO = 'picasso-canvas/letzeuspost';
@@ -19,23 +20,22 @@ export interface CollectDeps {
   readTranscript?: (sessionId: string) => string | null;
   /** Where bundles live (`~/.letzeuspost`). */
   stateDir?: string;
+  /** A file's text, or null (bundle snapshots). */
+  readFile?: (path: string) => string | null;
 }
-
-const AGENTS: Record<string, string> = {
-  argus: 'argus-reviewer',
-  cerberus: 'cerberus-security',
-  iris: 'iris-design',
-};
 
 /** The gate re-checks every runner-made review against its transcript; anything that doesn't check out isn't verified. */
 function verify(r: ReviewRecord, pr: number, sha: string, deps: CollectDeps): ReviewRecord {
-  if (r.meta === undefined) return r;
+  const meta = r.meta as ReviewRecord['meta'] | null;
+  if (meta === undefined) return r;
+  if (meta === null || typeof meta !== 'object')
+    return { ...r, meta: { agent: '', sessionId: null, verified: false } };
   let verified = false;
-  const { sessionId, bundle } = r.meta;
-  const agent = AGENTS[r.reviewer];
+  const { sessionId, bundle } = meta;
+  const agent = agentFor(r.reviewer);
   if (
     agent !== undefined &&
-    r.meta.agent === agent &&
+    meta.agent === agent &&
     sessionId &&
     bundle &&
     deps.readTranscript &&
@@ -48,10 +48,27 @@ function verify(r: ReviewRecord, pr: number, sha: string, deps: CollectDeps): Re
       } catch {
         text = null;
       }
-      verified = checkTranscript(text, agent, bundle, r.summary) === null;
+      verified =
+        checkTranscript(text, agent, bundle, r.summary) === null &&
+        snapshotMatches(bundle, r, sha, deps);
     }
   }
-  return { ...r, meta: { ...r.meta, verified } };
+  return { ...r, meta: { ...meta, verified } };
+}
+
+/** The record's PR text and commit must be the ones in the bundle the reviewer was given. */
+function snapshotMatches(bundle: string, r: ReviewRecord, sha: string, deps: CollectDeps): boolean {
+  if (!deps.readFile) return false;
+  try {
+    const text = deps.readFile(`${bundle}/snapshot.json`);
+    if (text === null) return false;
+    const snap = JSON.parse(text) as { headRefOid?: unknown; body?: unknown };
+    return (
+      snap.headRefOid === sha && typeof snap.body === 'string' && bodyHash(snap.body) === r.bodyHash
+    );
+  } catch {
+    return false;
+  }
 }
 
 interface PrView {

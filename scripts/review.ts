@@ -15,17 +15,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { parsePatternList } from './lib/paths.ts';
 import { changedFilesFromGit, parseConfig, REPO } from './merge-gate/collect.ts';
+import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
 import { requiredReviewers } from './merge-gate/evaluate.ts';
+import { safeName } from './lib/safe-name.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 import type { Reviewer } from './merge-gate/types.ts';
 
 type Asker = Exclude<Reviewer, 'redteam'>;
 
-const AGENTS: Record<Asker, string> = {
-  argus: 'argus-reviewer',
-  cerberus: 'cerberus-security',
-  iris: 'iris-design',
-};
+const AGENTS = REVIEWER_AGENTS;
 const REVIEW_TIMEOUT_MS = 30 * 60 * 1000;
 /** The only environment a reviewer gets: enough to run Claude Code, nothing that could carry secrets or steer it. */
 const ENV_ALLOW = [
@@ -83,10 +81,11 @@ export class TreeRefusal extends Error {}
 /** The PR's files as regular blobs only. Nothing from git's attributes or links applies, and nothing is overwritten. */
 export function exportTree(sha: string, source: TreeSource, out: string): void {
   const write = (path: string, content: () => Buffer | string) => {
+    const name = `\`${safeName(path)}\``;
     const target = resolve(out, path);
     const rel = relative(out, target);
     if (rel === '' || rel === '..' || rel.startsWith('../') || isAbsolute(rel)) {
-      throw new TreeRefusal(`${path} points outside the bundle`);
+      throw new TreeRefusal(`${name} points outside the bundle`);
     }
     try {
       mkdirSync(dirname(target), { recursive: true });
@@ -94,7 +93,7 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
       const code = (error as { code?: unknown }).code;
       if (code !== 'EEXIST' && code !== 'ENOTDIR') throw error; // disk or permission trouble: the run fails
       throw new TreeRefusal(
-        `${path} clashes with another path in the PR (a file and a folder of one name)`,
+        `${name} clashes with another path in the PR (a file and a folder of one name)`,
         { cause: error },
       );
     }
@@ -103,7 +102,7 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
       bytes = content();
     } catch (error) {
       if ((error as { code?: unknown }).code === 'ENOBUFS') {
-        throw new TreeRefusal(`${path} is too large to review`, { cause: error });
+        throw new TreeRefusal(`${name} is too large to review`, { cause: error });
       }
       throw error;
     }
@@ -112,7 +111,7 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
     } catch (error) {
       if ((error as { code?: unknown }).code === 'EEXIST') {
         throw new TreeRefusal(
-          `${path} is already in the tree: it collides with another name in the PR`,
+          `${name} is already in the tree: it collides with another name in the PR`,
           { cause: error },
         );
       }
@@ -123,7 +122,7 @@ export function exportTree(sha: string, source: TreeSource, out: string): void {
     if (entry === '') continue;
     const match = /^(\d{6}) (\w+) ([0-9a-f]{40})\t([\s\S]+)$/.exec(entry);
     if (!match)
-      throw new TreeRefusal(`an unreadable ls-tree entry: ${JSON.stringify(entry.slice(0, 80))}`);
+      throw new TreeRefusal(`an unreadable ls-tree entry: \`${safeName(entry.slice(0, 80))}\``);
     const [, mode, , object, path] = match as unknown as [string, string, string, string, string];
     const safe = safeTreePath(path);
     if (mode === '120000') {

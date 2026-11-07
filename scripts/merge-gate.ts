@@ -37,6 +37,7 @@ function main(argv: string[], pr: number): number {
       return existsSync(file) ? readFileSync(file, 'utf8') : null;
     },
     stateDir: STATE_DIR,
+    readFile: (path) => (existsSync(path) ? readFileSync(path, 'utf8') : null),
   });
   const result = evaluate(facts);
 
