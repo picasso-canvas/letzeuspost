@@ -85,3 +85,28 @@ describe('renderReport', () => {
     expect(text).toContain('bash:git push | 2');
   });
 });
+
+describe('auditMain: first-parent history, not dates', () => {
+  // newest first, as `git log --first-parent` prints them
+  const gated = 'a'.repeat(40);
+  const log = [...merged(45, '2026-11-07T05:00:31Z', gated), ...merged(47, '2026-11-07T06:00:00Z')];
+
+  it('flags a backdated direct push made after the first gated merge', () => {
+    const commits = [
+      commit('z'.repeat(40), '2026-01-01T00:00:00Z', 'backdated push'),
+      commit(gated, '2026-11-07T05:00:35Z', '[H0] Settings (#45)'),
+      commit('b'.repeat(40), '2026-11-07T04:00:00Z', 'bootstrap (#42)'),
+    ];
+    expect(auditMain(commits, log).map((c) => c.sha[0])).toEqual(['z']);
+  });
+
+  it('accepts a (#n) only for a merged PR with no merge-commit entry, and only once', () => {
+    const commits = [
+      commit('d'.repeat(40), '2026-11-07T07:00:00Z', 'reuses (#47)'),
+      commit('c'.repeat(40), '2026-11-07T06:00:05Z', '[H0] Risk gate (#47)'),
+      commit('e'.repeat(40), '2026-11-07T05:30:00Z', 'pretends (#45)'),
+      commit(gated, '2026-11-07T05:00:35Z', '[H0] Settings (#45)'),
+    ];
+    expect(auditMain(commits, log).map((c) => c.sha[0])).toEqual(['d', 'e']);
+  });
+});

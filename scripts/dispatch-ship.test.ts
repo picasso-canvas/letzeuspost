@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { freezeFlag, slugify, taskText } from './dispatch.ts';
+import { builderEnv, freezeFlag, parseArgs, slugify, taskText } from './dispatch.ts';
+import { findClone, prFlags } from './ship.ts';
 
 const paused = (flag: string) => (JSON.parse(flag) as { paused: boolean }).paused;
-import { findClone, prFlags } from './ship.ts';
 
 describe('slugify', () => {
   it('drops the milestone tag and keeps a short safe slug', () => {
@@ -30,8 +30,10 @@ describe('freezeFlag', () => {
 
 describe('taskText', () => {
   it('holds the issue and, in a review round, the findings', () => {
-    expect(taskText(7, 'Thing', 'Body', null)).toBe('# Task #7: Thing\n\nBody\n');
-    expect(taskText(7, 'Thing', 'Body', '[blocking] a — b — c')).toContain(
+    expect(taskText(7, 'Thing', 'Body', null, 'b'.repeat(40))).toContain(
+      '# Task #7: Thing\n\nBody\n',
+    );
+    expect(taskText(7, 'Thing', 'Body', '[blocking] a — b — c', 'b'.repeat(40))).toContain(
       '## Review findings to fix (from Athena)\n\n[blocking] a — b — c',
     );
   });
@@ -56,5 +58,48 @@ describe('findClone', () => {
     expect(findClone(7, ['7-thing', '17-other', '7x'])).toBe('7-thing');
     expect(() => findClone(7, ['8-thing'])).toThrow(/found 0/);
     expect(() => findClone(7, ['7-a', '7-b'])).toThrow(/found 2/);
+  });
+});
+
+describe('builderEnv', () => {
+  it("starts from an allowlist, never from Athena's whole environment", () => {
+    const env = builderEnv(
+      {
+        PATH: '/bin',
+        HOME: '/h',
+        GH_ENTERPRISE_TOKEN: 't',
+        SSH_AUTH_SOCK: '/s',
+        GIT_ASKPASS: 'x',
+        ANTHROPIC_API_KEY: 'k',
+      },
+      { LZP_ROLE: 'builder' },
+    );
+    expect(env).toEqual({ PATH: '/bin', HOME: '/h', LZP_ROLE: 'builder' });
+  });
+});
+
+describe('parseArgs', () => {
+  it('reads the issue wherever it sits, and flags with values', () => {
+    expect(parseArgs(['--dry-run', '7'])).toEqual({
+      issue: 7,
+      dryRun: true,
+      findings: undefined,
+      maxTurns: undefined,
+    });
+    expect(parseArgs(['7', '--findings', 'f.md', '--max-turns', '50'])).toEqual({
+      issue: 7,
+      dryRun: false,
+      findings: 'f.md',
+      maxTurns: '50',
+    });
+    expect(parseArgs(['--findings', '7']).issue).toBeNaN();
+  });
+});
+
+describe('taskText', () => {
+  it('ends with the bundle step', () => {
+    expect(taskText(7, 'Thing', 'Body', null, 'b'.repeat(40))).toContain(
+      `git bundle create .lzp/branch.bundle ${'b'.repeat(40)}..HEAD`,
+    );
   });
 });
