@@ -38,7 +38,13 @@ export function takeHandover(clone: string, taken: string): string {
  * state, where no builder process can swap a folder for a link mid-walk; then deleted there. A link is removed, never
  * followed.
  */
-export function trash(path: string, trashDir: string): void {
+export function trash(
+  path: string,
+  trashDir: string,
+  remove: (path: string) => void = (p) => {
+    rmSync(p, { recursive: true, force: true });
+  },
+): void {
   if (lstatOrNull(path) === null) return;
   mkdirSync(trashDir, { recursive: true, mode: 0o700 });
   const dest = join(
@@ -46,7 +52,7 @@ export function trash(path: string, trashDir: string): void {
     `${basename(path)}-${String(Date.now())}-${randomBytes(4).toString('hex')}`,
   );
   renameSync(path, dest);
-  rmSync(dest, { recursive: true, force: true });
+  remove(dest);
 }
 
 /** The processes `lsof -F pn` lists with a working folder or an open file in `dir`, except `self`. */
@@ -76,14 +82,43 @@ export function pidsWithMarker(ps: string, marker: string, self: number): number
   return pids;
 }
 
-/** The processes carrying this dispatch's `LZP_DISPATCH` marker, wherever they went. */
+/**
+ * True when one process's own `ps -E` output carries the marker in the environment it adds after the arguments
+ * (`argsOnly`, from plain `ps`), never only in the arguments: Zeus's `grep LZP_DISPATCH=…` is not the builder's.
+ */
+export function markerInEnv(withEnv: string, argsOnly: string, marker: string): boolean {
+  if (!/^[0-9a-f]{32,}$/.test(marker)) return false;
+  const args = argsOnly.trimEnd();
+  const all = withEnv.trimEnd();
+  if (args === '' || !all.startsWith(args)) return false;
+  return new RegExp(`(?:^|\\s)LZP_DISPATCH=${marker}(?=\\s|$)`).test(all.slice(args.length));
+}
+
+function psOf(pid: number, withEnv: boolean): string {
+  try {
+    return execFileSync('ps', [withEnv ? '-wwE' : '-ww', '-p', String(pid), '-o', 'command='], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return ''; // gone
+  }
+}
+
+/**
+ * The processes carrying this dispatch's `LZP_DISPATCH` marker in their environment, wherever they went. Each pid
+ * the full listing names is checked again on its own, so a line can only ever name its own process. (macOS's ps
+ * prints a newline inside a value as `\012`, checked 2026-11-07, so one line is one process anyway.)
+ */
 export function markedProcesses(marker: string): number[] {
   const ps = execFileSync('ps', ['-axE', '-o', 'pid=,command='], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
     maxBuffer: 256 * 1024 * 1024,
   });
-  return pidsWithMarker(ps, marker, process.pid);
+  return pidsWithMarker(ps, marker, process.pid).filter((pid) =>
+    markerInEnv(psOf(pid, true), psOf(pid, false), marker),
+  );
 }
 
 /**

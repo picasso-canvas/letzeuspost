@@ -22,8 +22,8 @@
 | Agent | Role | Tools | Model |
 |---|---|---|---|
 | **Athena** (main session, Zeus's own login) | Lead: turns approved sections into build tasks, dispatches builders, runs the local reviews, merges through the merge gate, moves board cards, writes the weekly report | all | Opus 5.5 |
-| **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.ts` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh |
-| **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity, the Done-when evidence and the GitHub review's findings | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high |
+| **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.ts` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh; Sonnet 5.5 for `routine` tasks (Zeus, 2026-11-07) |
+| **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity, the Done-when evidence and the GitHub review's findings | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high; Sonnet 5.5 on `routine` PRs (Zeus, 2026-11-07) |
 | **Cerberus** `cerberus-security` | Security review, **only** when a diff touches a sensitive area: auth, tokens, uploads, website fetch (SSRF), workspace isolation, AI prompts, dependencies, workflows | same as Argus | Opus 5.5, effort high |
 | **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Opus 5.5, effort high |
 | **GitHub review** | A second, independent review that comments on every PR (claude-code-action + the code-review plugin). Not a gate on its own: the merge gate needs each of its findings fixed or answered | comments only | Zeus's subscription token |
@@ -108,7 +108,10 @@ A PR merges only when all of these hold:
    (until that list exists, every PR counts as sensitive). The risk-gate label must agree; a mismatch stops the merge.
 5. **Reviewed from a fresh context, for this exact PR:** Athena's record holds a pass from Argus, from Cerberus when
    the PR is sensitive, and from Iris when UI paths changed (from the first UI milestone), each for the head commit
-   and the hash of the PR text at review time. A new push or an edited PR text needs new reviews. A pass counts only
+   and the hash of the PR text at review time. A new push or an edited PR text needs new reviews, with one exception
+   (Zeus, 2026-11-07): an update from `main` that leaves the PR's own change identical (every changed path with its
+   old and new mode and blob, against its merge-base with `main`) keeps the reviews made before it; a reviewer with any
+   record at the new head is judged on those alone, and CI still runs on the new head. A pass counts only
    when `scripts/review.ts` made it: `record-review` checks that its session id is a real Claude Code transcript of
    that reviewer's agent, whose first prompt names this PR's bundle and whose final answer is the recorded summary,
    not already used for this PR; its first prompt must be the runner's exact prompt. At merge time the gate re-checks the

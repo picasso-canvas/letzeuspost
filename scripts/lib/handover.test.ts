@@ -3,13 +3,15 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { pidsUnder, pidsWithMarker, takeHandover, trash } from './handover.ts';
+import { markerInEnv, pidsUnder, pidsWithMarker, takeHandover, trash } from './handover.ts';
 
 function setup(): { clone: string; taken: string; root: string } {
   const root = mkdtempSync(join(tmpdir(), 'lzp-handover-'));
@@ -111,13 +113,41 @@ describe('trash', () => {
     mkdirSync(join(clone, 'src'));
     writeFileSync(join(clone, 'src', 'a.ts'), 'x');
     symlinkSync(home, join(clone, 'src', 'link'));
-    trash(clone, join(root, 'state', 'trash'));
-    expect(existsSync(clone)).toBe(false);
+    const trashDir = join(root, 'state', 'trash');
+    const removed: string[] = [];
+    trash(clone, trashDir, (path) => {
+      // By the time anything is deleted, the clone has left its own folder for one in the trash.
+      expect(existsSync(clone)).toBe(false);
+      expect(dirname(path)).toBe(trashDir);
+      expect(existsSync(join(path, 'src', 'a.ts'))).toBe(true);
+      removed.push(path);
+      rmSync(path, { recursive: true, force: true });
+    });
+    expect(removed).toHaveLength(1);
+    expect(readdirSync(trashDir)).toEqual([]);
     expect(readFileSync(join(home, 'keep.txt'), 'utf8')).toBe('Zeus');
   });
 
   it('does nothing when there is no clone', () => {
     const { clone, root } = setup();
     trash(join(clone, 'missing'), join(root, 'state', 'trash'));
+  });
+});
+
+describe('markerInEnv', () => {
+  const marker = 'a'.repeat(32);
+  it('counts the marker only in the environment ps -E adds after the arguments', () => {
+    const args = 'node build.js --watch';
+    expect(markerInEnv(`${args} PATH=/bin LZP_DISPATCH=${marker} HOME=/h`, args, marker)).toBe(
+      true,
+    );
+    // Zeus's own grep, with the marker only in its arguments.
+    const grep = `grep LZP_DISPATCH=${marker}`;
+    expect(markerInEnv(`${grep} PATH=/bin HOME=/h`, grep, marker)).toBe(false);
+    // A pid named on a line it doesn't own: its own ps output doesn't carry the marker.
+    expect(markerInEnv('vim notes.md PATH=/bin', 'vim notes.md', marker)).toBe(false);
+    // Output that doesn't start with the arguments (the process changed in between): never trusted.
+    expect(markerInEnv(`other LZP_DISPATCH=${marker}`, 'node build.js', marker)).toBe(false);
+    expect(markerInEnv('', '', marker)).toBe(false);
   });
 });

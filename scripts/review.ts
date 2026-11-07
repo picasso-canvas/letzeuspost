@@ -16,7 +16,7 @@ import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { parsePatternList } from './lib/paths.ts';
 import { changedFilesFromGit, parseConfig, REPO } from './merge-gate/collect.ts';
 import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
-import { requiredReviewers } from './merge-gate/evaluate.ts';
+import { requiredReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -314,16 +314,26 @@ function failureReason(error: unknown): string {
   return 'unknown';
 }
 
+/**
+ * The model a reviewer runs on, or null for its agent file's (Opus). Zeus, 2026-11-07: Argus reviews routine PRs on
+ * Sonnet; Cerberus, Iris and every sensitive review stay on Opus.
+ */
+export function reviewerModel(reviewer: Asker, tier: 'routine' | 'sensitive'): string | null {
+  return reviewer === 'argus' && tier === 'routine' ? 'claude-sonnet-5-5' : null;
+}
+
 /** Runs each reviewer and records its verdict; returns how many reviewers failed to run or record. */
 export function runReviews(
   pr: number,
   where: { bundle: string; outDir: string; refusal: string | null },
   reviewers: readonly Asker[],
   deps: ReviewDeps,
+  tier: 'routine' | 'sensitive' = 'sensitive',
 ): number {
   let failed = 0;
   for (const reviewer of reviewers) {
     const agent = REVIEWER_AGENTS[reviewer];
+    const model = reviewerModel(reviewer, tier);
     let summary: string;
     let sessionId: string | null = null;
     if (where.refusal !== null) {
@@ -339,6 +349,7 @@ export function runReviews(
               '-p',
               '--agent',
               agent,
+              ...(model === null ? [] : ['--model', model]),
               '--add-dir',
               where.bundle,
               '--disallowedTools',
@@ -425,32 +436,43 @@ function main(argv: string[]): number {
       execFileSync('git', ['cat-file', 'blob', object], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }),
     now: () => Date.now(),
   });
+  const sensitiveList = show('.github/sensitive-paths.txt');
   const reviewers = planReviewers(
     where.changed,
-    show('.github/sensitive-paths.txt'),
+    sensitiveList,
     parseConfig(show('.github/merge-gate.json')),
   );
+  const tier = tierOf(
+    where.changed,
+    sensitiveList === null ? null : parsePatternList(sensitiveList),
+  );
   console.log(
-    `PR #${String(pr)} at ${where.sha.slice(0, 7)}: bundle ${where.bundle}; reviewers ${reviewers.join(', ')}`,
+    `PR #${String(pr)} at ${where.sha.slice(0, 7)} (${tier}): bundle ${where.bundle}; reviewers ${reviewers.map((r) => `${r}${reviewerModel(r, tier) === null ? '' : ' on Sonnet'}`).join(', ')}`,
   );
   if (argv.includes('--dry-run')) return 0;
-  const failed = runReviews(pr, where, reviewers, {
-    claude: (args, env, timeoutMs) =>
-      execFileSync('claude', args, {
-        cwd: ROOT,
-        env,
-        encoding: 'utf8',
-        timeout: timeoutMs,
-        maxBuffer: 64 * 1024 * 1024,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }),
-    show,
-    record: (args) => run('node', [join(ROOT, 'scripts/record-review.ts'), ...args]),
-    write: (path, text) => {
-      writeFileSync(path, text, { mode: 0o600 });
+  const failed = runReviews(
+    pr,
+    where,
+    reviewers,
+    {
+      claude: (args, env, timeoutMs) =>
+        execFileSync('claude', args, {
+          cwd: ROOT,
+          env,
+          encoding: 'utf8',
+          timeout: timeoutMs,
+          maxBuffer: 64 * 1024 * 1024,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      show,
+      record: (args) => run('node', [join(ROOT, 'scripts/record-review.ts'), ...args]),
+      write: (path, text) => {
+        writeFileSync(path, text, { mode: 0o600 });
+      },
+      env: process.env,
     },
-    env: process.env,
-  });
+    tier,
+  );
   return failed === 0 ? 0 : 1;
 }
 
