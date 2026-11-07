@@ -62,8 +62,10 @@ export function pidsWithMarker(ps: string, marker: string, self: number): number
 /**
  * Every process of this user still at work for a builder: one with its working folder or an open file in the clone,
  * or one carrying the dispatch's marker in its environment. A child that left the builder's process group (`setsid`,
- * a detached spawn) survives the group kill but not this. One that also leaves the clone and drops the marker can
- * still escape: the sandbox confines its writes, and ship's rename of `.lzp` is the real control for the hand-over.
+ * a detached spawn) survives the group kill but not this, as long as one of the two shows. macOS shows the environment
+ * of node and other non-system programs only (not of `sh`, `sleep` or `perl`), so a process that leaves the clone
+ * through a system program can still escape: the sandbox confines its writes, and ship's rename of `.lzp` is the real
+ * control for the hand-over. A separate macOS user for builders would close this (kill by user).
  */
 export function builderProcesses(clone: string, marker?: string): number[] {
   const pids = new Set<number>();
