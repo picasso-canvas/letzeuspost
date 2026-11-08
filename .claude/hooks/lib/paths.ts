@@ -1,20 +1,34 @@
 // Protected paths for builders (§20 section 2), read from the builder settings' `Edit(./…)` deny rules so the two
-// lists can't drift. Self-contained on purpose: hooks run unsandboxed with Zeus's login, so they import nothing a
-// builder could write (no node_modules, no scripts/).
-import { existsSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, matchesGlob, relative, resolve, sep } from 'node:path';
+// lists can't drift, plus where an edit may land. Self-contained on purpose: hooks run unsandboxed with Zeus's login,
+// so they import nothing a builder could write (no node_modules, no scripts/).
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+
+/** Paths the hooks protect beyond the settings: a builder must never touch git's own files. */
+export const EXTRA_PROTECTED = ['**/.git', '**/.git/**'];
 
 /**
- * Node's glob never lets `*` or `**` match a segment that starts with a dot, and macOS ignores letter case, so both
- * sides are lowercased and leading dots dropped from every segment (same idea as scripts/lib/paths.ts on main).
- * Over-matching (`github/x` matches `.github/**`) fails closed.
+ * A glob as a case-insensitive regular expression (macOS ignores letter case). Unlike Node's matchesGlob, `*` and
+ * `**` here also match segments that start with a dot (`scripts/**` covers `scripts/.x/y`), and dots in the pattern
+ * match only dots (`.claude/**` doesn't cover `src/claude/`).
  */
-function normalise(path: string): string {
-  return path
-    .toLowerCase()
-    .split('/')
-    .map((segment) => segment.replace(/^\.+(?=.)/, ''))
-    .join('/');
+export function globToRegExp(glob: string): RegExp {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob.charAt(i);
+    if (c === '*' && glob.charAt(i + 1) === '*') {
+      if (glob.charAt(i + 2) === '/') {
+        re += '(?:.*/)?';
+        i += 2;
+      } else {
+        re += '.*';
+        i += 1;
+      }
+    } else if (c === '*') re += '[^/]*';
+    else if (c === '?') re += '[^/]';
+    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}$`, 'i');
 }
 
 /**
@@ -37,16 +51,11 @@ export function protectedPatterns(builderSettings: unknown): string[] {
     patterns.add(anchored ? path : `**/${path}`);
   }
   if (patterns.size === 0) throw new Error('builder settings list no Edit(./…) rules');
-  return [...patterns];
+  return [...patterns, ...EXTRA_PROTECTED];
 }
 
 export function matchesAny(relPath: string, patterns: readonly string[]): boolean {
-  const path = normalise(relPath);
-  return patterns.some((pattern) => {
-    const glob = normalise(pattern);
-    // `**/x` also covers `x` at the root.
-    return matchesGlob(path, glob) || (glob.startsWith('**/') && matchesGlob(path, glob.slice(3)));
-  });
+  return patterns.some((pattern) => globToRegExp(pattern).test(relPath));
 }
 
 /** The real path of `target`, resolving symlinks through the nearest folder that exists. */
@@ -60,10 +69,48 @@ export function realTarget(target: string): string {
   return resolve(realpathSync(dir), ...rest);
 }
 
-/** `target` relative to `root` (both resolved through symlinks), or null when it lies outside `root`. */
+/** `target`'s folder resolved through symlinks, relative to `root`, or null when it lies outside `root`. */
 export function insideRoot(target: string, root: string): string | null {
   const abs = realTarget(isAbsolute(target) ? target : resolve(root, target));
   const rel = relative(realpathSync(root), abs);
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
   return rel.split(sep).join('/');
+}
+
+export type Target = { rel: string } | { id: string; reason: string };
+
+/**
+ * Where an unsandboxed tool may write or read on a builder's behalf: inside the clone, and a regular file with one
+ * link, or a file that doesn't exist yet. A symlink (even one pointing inside), a hard link, a folder, a FIFO or a
+ * device is refused, so nothing the builder planted can redirect the write. (A builder swapping the file between this
+ * check and the write is a race the hooks can't close; the builder settings' Edit scope is the other line.)
+ */
+export function safeTarget(target: string, root: string): Target {
+  const abs = isAbsolute(target) ? target : resolve(root, target);
+  let rel: string | null;
+  try {
+    rel = insideRoot(abs, root);
+  } catch {
+    rel = null;
+  }
+  if (rel === null)
+    return {
+      id: 'edit:outside-clone',
+      reason: `builders work only inside their own clone, not ${target}`,
+    };
+  let stat;
+  try {
+    stat = lstatSync(abs);
+  } catch {
+    return { rel };
+  }
+  if (stat.isSymbolicLink())
+    return { id: 'edit:symlink', reason: `${rel} is a symlink; builders edit regular files only` };
+  if (!stat.isFile()) return { id: 'edit:not-a-file', reason: `${rel} is not a regular file` };
+  if (stat.nlink > 1)
+    return {
+      id: 'edit:hardlink',
+      reason: `${rel} has other hard links; builders edit regular files only`,
+    };
+  return { rel };
 }

@@ -1,13 +1,24 @@
-// Shared plumbing for the hook entry points: input, role, Athena's state folder, the guardrail log.
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+// Shared plumbing for the hook entry points: input, role, Athena's state folder, safe reads, the guardrail log.
+import {
+  appendFileSync,
+  closeSync,
+  constants,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { redact } from './content.ts';
 import type { Role } from './freeze.ts';
 
 export interface HookInput {
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
+  source?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   tool_response?: Record<string, unknown>;
@@ -23,7 +34,7 @@ export function readInput(): HookInput {
   return value;
 }
 
-/** Set only by scripts/dispatch.sh, outside the builder's reach. */
+/** Set only by scripts/dispatch.ts, outside the builder's reach. */
 export function role(): Role {
   return process.env.LZP_ROLE === 'builder' ? 'builder' : 'other';
 }
@@ -37,11 +48,36 @@ export function stateDir(): string {
   return join(process.env.HOME ?? homedir(), '.letzeuspost');
 }
 
+/** Athena's own files (state folder, main's checkout): read as they are. */
 export function readText(path: string): string | null {
   try {
     return readFileSync(path, 'utf8');
   } catch {
     return null;
+  }
+}
+
+/**
+ * A file a builder could have planted: opened without following a symlink, read only when it is a regular file
+ * (not a FIFO or device) with a single link, and at most `limit` bytes of it. Otherwise null.
+ */
+export function readPlanted(path: string, limit = 2_000_000): string | null {
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    return null;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink > 1) return null;
+    const buffer = Buffer.alloc(Math.min(stat.size, limit));
+    const read = readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, read).toString('utf8');
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
   }
 }
 
@@ -62,7 +98,7 @@ export function logHit(input: HookInput, hit: Hit): void {
     agent: input.agent_type ?? null,
     project: projectDir(input),
     ...hit,
-    detail: hit.detail?.slice(0, 300),
+    detail: hit.detail === undefined ? undefined : redact(hit.detail).slice(0, 300),
   };
   try {
     const dir = join(stateDir(), 'logs');

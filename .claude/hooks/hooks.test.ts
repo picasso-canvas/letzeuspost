@@ -420,11 +420,20 @@ describe('PreToolUse hook', () => {
 
   it('fails closed for a builder without the harness, and on unreadable input', () => {
     expect(decision(run('pre-tool-use.ts', bash('ls'), { harness: null }))).toBe('deny');
-    const bad = spawnSync('node', [join(HOOKS, 'pre-tool-use.ts')], {
-      input: 'not json',
-      encoding: 'utf8',
-    });
-    expect(bad.status).not.toBe(0); // with "onFailure": "block", Claude Code refuses the call
+    const bad = (builder: boolean): ReturnType<typeof spawnSync> =>
+      spawnSync('node', [join(HOOKS, 'pre-tool-use.ts')], {
+        input: 'not json',
+        env: { PATH: process.env.PATH, HOME: home, ...(builder ? { LZP_ROLE: 'builder' } : {}) },
+        encoding: 'utf8',
+      });
+    expect(decision(bad(true))).toBe('deny');
+    // Anyone else gets a log line, not a lockout: a hook bug must not stop Athena fixing it.
+    expect(decision(bad(false))).toBeNull();
+    expect(logLines().map((l) => l.rule)).toEqual([
+      'builder:no-harness',
+      'hook-error',
+      'hook-error',
+    ]);
   });
 
   it('writes exactly one log line per block, none when allowed', () => {
