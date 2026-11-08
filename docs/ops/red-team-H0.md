@@ -101,3 +101,10 @@ The test files above passed on `main` at `b3bc81f`: `scripts/merge-gate`, `prote
    settings make that hold even if the settings files changed. Re-run the bypass row once #35 is done.
 3. Nothing else got through. Every refusal names its rule, and the builder-side refusals were written to
    `~/.letzeuspost/logs/guardrail-hits.jsonl`.
+
+## Re-runs
+
+- **Finding 1, after #97 merged** (`0efda22`, 2026-11-08): the hook tests on `main` → `Tests 113 passed (113)`.
+  Inside the builder sandbox, #97's own run: `pnpm check` passed three times in a row (380 tests each).
+- **Finding 2, the bypass row:** still to re-run once Zeus has installed the managed settings. It's on #35's Done-when
+  list, so H0 isn't fully closed until then.
