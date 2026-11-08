@@ -1,20 +1,30 @@
-// Tree stamps in ~/.letzeuspost/stamps/, where the builder can't write:
+// Tree stamps in ~/.letzeuspost/stamps/, where the builder can't write, one set per clone (named by its folder and a
+// hash of its real path, so two clones with the same folder name never share one):
 // - `<clone>.json`: the tree when the builder's own (sandboxed) `pnpm check` last passed;
+// - `<clone>.pending.json`: the tree when that `pnpm check` started (PreToolUse);
 // - `<clone>.base.json`: the tree when the session started.
 // The hooks never run the check themselves: they run outside the sandbox, and running a builder's code there is
 // exactly what §20 forbids.
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { readPlanted, readText, stateDir } from './hook-io.ts';
 
-export type StampKind = 'green' | 'base';
+export type StampKind = 'green' | 'pending' | 'base';
 
 export function stampPath(projectDir: string, kind: StampKind): string {
+  let real = projectDir;
+  try {
+    real = realpathSync(projectDir);
+  } catch {
+    // A folder that's gone still gets a stable name.
+  }
+  const id = createHash('sha256').update(real).digest('hex').slice(0, 12);
   return join(
     stateDir(),
     'stamps',
-    `${basename(projectDir)}${kind === 'base' ? '.base' : ''}.json`,
+    `${basename(real)}-${id}${kind === 'green' ? '' : `.${kind}`}.json`,
   );
 }
 
@@ -37,6 +47,11 @@ export function stampedTree(projectDir: string, kind: StampKind): string | null 
   } catch {
     return null;
   }
+}
+
+/** The only command that can stamp a tree green: a bare `pnpm check` (or `pnpm run check`). */
+export function isCheckCommand(command: string): boolean {
+  return /^\s*pnpm\s+(?:run\s+)?check\s*$/.test(command);
 }
 
 export interface CheckRun {
@@ -72,7 +87,7 @@ function sameDir(a: string | undefined, b: string): boolean {
  * pnpm's failure banner in the output is a last check.
  */
 export function isGreenCheck(run: CheckRun, clone: string, harness: string): boolean {
-  if (!/^\s*pnpm\s+(?:run\s+)?check\s*$/.test(run.command)) return false;
+  if (!isCheckCommand(run.command)) return false;
   if (run.background || run.response?.interrupted === true) return false;
   if (!sameDir(run.cwd, clone)) return false;
   const ours = scripts(readPlanted(join(clone, 'package.json')));

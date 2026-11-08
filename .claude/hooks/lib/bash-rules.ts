@@ -110,7 +110,7 @@ export const BASH_RULES: readonly BashRule[] = [
   rule(
     'builder-env-file',
     'builder',
-    String.raw`(?:^|[\s<>=:'"(])(?:\S*/)?\.env(?:rc|\.(?!example\b)[\w.-]+)?(?=$|[\s;&|)'"\x60>])`,
+    String.raw`(?:^|[\s<>=:'"(])(?:\S*/)?\.env(?:rc|\.(?!example(?=$|[\s;&|)'"\x60>]))[\w.-]+)?(?=$|[\s;&|)'"\x60>])`,
     'builders never read or write .env files (only .env.example)',
     'i',
   ),

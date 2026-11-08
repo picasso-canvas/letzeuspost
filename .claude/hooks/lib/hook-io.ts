@@ -34,9 +34,14 @@ export function readInput(): HookInput {
   return value;
 }
 
-/** Set only by scripts/dispatch.ts, outside the builder's reach. */
+/**
+ * A builder when the builder settings' hook command says so (`--builder`, in main's file) or dispatch set
+ * LZP_ROLE=builder; either one is enough, so a lost variable never turns a builder's hook into anyone else's.
+ */
 export function role(): Role {
-  return process.env.LZP_ROLE === 'builder' ? 'builder' : 'other';
+  return process.argv.includes('--builder') || process.env.LZP_ROLE === 'builder'
+    ? 'builder'
+    : 'other';
 }
 
 export function projectDir(input: HookInput): string {

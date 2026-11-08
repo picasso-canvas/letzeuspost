@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { checkBash } from './lib/bash-rules.ts';
 import { checkEdit, editChange, EDIT_TOOLS } from './lib/edit-check.ts';
 import { decideFreeze } from './lib/freeze.ts';
+import { workingTree } from './lib/git-tree.ts';
 import {
   denyTool,
   logHit,
@@ -18,6 +19,7 @@ import {
   type HookInput,
 } from './lib/hook-io.ts';
 import { protectedPatterns } from './lib/paths.ts';
+import { isCheckCommand, writeStamp } from './lib/stamp.ts';
 
 function builderPatterns(): string[] | null {
   const harness = process.env.LZP_HARNESS_DIR;
@@ -51,6 +53,16 @@ function check(
     const command = typeof toolInput.command === 'string' ? toolInput.command : '';
     const hit = checkBash(command, who);
     if (hit) block(`bash:${hit.rule.id}`, hit.rule.reason, command);
+    else if (who === 'builder' && isCheckCommand(command)) {
+      // The tree this check starts on; PostToolUse stamps it green only if the tree is still the same at the end.
+      // An unhashable tree just gets no pending stamp: the check runs, and can't stamp green.
+      const root = projectDir(input);
+      try {
+        writeStamp(root, 'pending', workingTree(root), input.session_id ?? null);
+      } catch {
+        // No pending stamp.
+      }
+    }
     return;
   }
   if (EDIT_TOOLS.has(tool)) {

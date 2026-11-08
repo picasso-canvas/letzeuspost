@@ -5,10 +5,11 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { EDIT_TOOLS } from './lib/edit-check.ts';
+import { formatFile } from './lib/format.ts';
 import { workingTree } from './lib/git-tree.ts';
 import { projectDir, readInput, role, type HookInput } from './lib/hook-io.ts';
 import { safeTarget } from './lib/paths.ts';
-import { isGreenCheck, writeStamp } from './lib/stamp.ts';
+import { isGreenCheck, stampedTree, writeStamp } from './lib/stamp.ts';
 
 const FORMATTED = /\.(?:[cm]?[jt]sx?|json|css|scss|ya?ml|html)$/i;
 const NOT_FORMATTED =
@@ -16,8 +17,9 @@ const NOT_FORMATTED =
 
 /**
  * Builders get Athena's prettier and config from main's checkout ($LZP_HARNESS_DIR), never the clone's: hooks run
- * unsandboxed, and the clone's node_modules (or a config naming plugins) is code the builder could have written. The
- * file goes after `--` as an absolute path, so a name like `--plugin=x.mjs` can never be read as an option.
+ * unsandboxed, and the clone's node_modules (or a config naming plugins) is code the builder could have written.
+ * prettier only formats text from stdin (the path is a name for its parser and ignore file, never an option, never
+ * written to); formatFile reads and writes the file itself, so a link swapped in mid-format can't redirect the write.
  */
 function format(input: HookInput, file: string): void {
   const root = projectDir(input);
@@ -45,19 +47,20 @@ function format(input: HookInput, file: string): void {
         join(root, '.prettierignore'),
       ]
     : [];
-  execFileSync(
-    prettier,
-    [
-      ...args,
-      '--write',
-      '--ignore-unknown',
-      '--log-level',
-      'silent',
-      '--',
-      join(realpathSync(root), rel),
-    ],
-    { cwd: root, stdio: 'ignore', timeout: 20_000 },
-  );
+  const path = join(realpathSync(root), rel);
+  formatFile(path, (text) => {
+    try {
+      return execFileSync(prettier, [...args, '--stdin-filepath', path], {
+        cwd: root,
+        input: text,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+        timeout: 20_000,
+      });
+    } catch {
+      return null;
+    }
+  });
 }
 
 function stamp(input: HookInput, toolInput: Record<string, unknown>): void {
@@ -70,8 +73,11 @@ function stamp(input: HookInput, toolInput: Record<string, unknown>): void {
     cwd: input.cwd,
     response: input.tool_response,
   };
-  if (isGreenCheck(run, root, harness))
-    writeStamp(root, 'green', workingTree(root), input.session_id ?? null);
+  if (!isGreenCheck(run, root, harness)) return;
+  // Green only for the tree the check started on (PreToolUse stamped it): a change made while it ran isn't covered.
+  const tree = workingTree(root);
+  if (tree === stampedTree(root, 'pending'))
+    writeStamp(root, 'green', tree, input.session_id ?? null);
 }
 
 function main(): void {

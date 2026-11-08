@@ -260,7 +260,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/session-start.ts\"",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/session-start.ts\" --builder",
             "timeout": 30
           }
         ]
@@ -272,7 +272,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/pre-tool-use.ts\"",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/pre-tool-use.ts\" --builder",
             "timeout": 15,
             "onFailure": "block"
           }
@@ -285,7 +285,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/post-tool-use.ts\"",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/post-tool-use.ts\" --builder",
             "timeout": 60
           }
         ]
@@ -296,7 +296,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/stop.ts\"",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/stop.ts\" --builder",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/stop.ts\" --builder",
             "timeout": 60
           }
         ]
