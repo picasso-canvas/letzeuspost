@@ -117,8 +117,10 @@ Round 3, from Argus and Cerberus on #100:
 15. `SKILL.md` note and `cli.md` "IMPORTANT": change 8's "isn't a dependency yet … `needs-zeus`" → the CLI is the
     pinned dev dependency in `packages/ui`; Athena runs it and adds components adapted to the token lint; a builder
     whose task needs a component that isn't in `packages/ui/src/components/` writes `needs-zeus`. The note names this
-    repo's `components.json` (`base-vega`, `lucide`, the `@lzp/ui/…` aliases) and the `cn` package the registry's
-    components import.
+    repo's `components.json` (`base-vega`, `lucide`, the `@lzp/ui/…` aliases); says to point the registry's `cn`
+    imports at `@lzp/ui/lib/utils` instead of adding the `cn` package; and says to run the CLI only with a minimal
+    environment in a checkout with no `.env` file (it loads `.env` files, and its deepmerge advisory is accepted for
+    this use only). Argus and Cerberus on #108.
 
 ## Review notes
 

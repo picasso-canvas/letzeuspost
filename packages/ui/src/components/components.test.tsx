@@ -32,14 +32,60 @@ describe('components.json (#107)', () => {
   });
 });
 
+const classesOf = (html: string): string[] => /class="([^"]*)"/.exec(html)?.[1]?.split(' ') ?? [];
+
 describe('the shadcn components', () => {
-  it('renders a button in each of the §05 variants', () => {
-    for (const variant of ['default', 'secondary', 'ghost', 'destructive'] as const) {
+  it('renders a button in each variant, each with its own look', () => {
+    const own = {
+      default: 'bg-primary',
+      secondary: 'bg-secondary',
+      ghost: 'dark:hover:bg-muted/50',
+      destructive: 'bg-destructive/10',
+      outline: 'border-border',
+      link: 'underline',
+    } as const;
+    for (const [variant, cls] of Object.entries(own) as [keyof typeof own, string][]) {
       const html = renderToStaticMarkup(<Button variant={variant}>Approve</Button>);
       expect(html).toMatch(/^<button /);
       expect(html).toContain('data-slot="button"');
       expect(html).toContain('>Approve</button>');
+      expect(classesOf(html), variant).toContain(cls);
+      for (const [other, otherCls] of Object.entries(own))
+        if (other !== variant && otherCls !== 'underline')
+          expect(classesOf(html), `${variant} has ${other}'s ${otherCls}`).not.toContain(otherCls);
     }
+  });
+
+  it('draws focus as a solid 2 px outline with a 2 px gap, never a see-through ring (§05 mockup)', () => {
+    for (const html of [
+      renderToStaticMarkup(<Button>Approve</Button>),
+      renderToStaticMarkup(<Input aria-label="Brand name" />),
+    ]) {
+      const classes = classesOf(html);
+      for (const cls of [
+        'focus-visible:outline-2',
+        'focus-visible:outline-offset-2',
+        'focus-visible:outline-solid',
+        'focus-visible:outline-ring',
+      ])
+        expect(classes).toContain(cls);
+      expect(classes.filter((c) => /^focus-visible:ring/.test(c))).toEqual([]);
+    }
+  });
+
+  it('keeps gold off text in light mode: the link is ink, gold only in dark (§05, §21)', () => {
+    const classes = classesOf(renderToStaticMarkup(<Button variant="link">Open</Button>));
+    expect(classes).toContain('text-foreground');
+    expect(classes).toContain('dark:text-primary');
+    expect(classes).not.toContain('text-primary');
+  });
+
+  it('moves nothing when reduced motion is asked for', () => {
+    const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
+    expect(classes).toContain('motion-reduce:transition-none');
+    expect(classes.filter((c) => c.includes('translate') && !c.startsWith('motion-safe:'))).toEqual(
+      [],
+    );
   });
 
   it('renders an input with its label, description and error text', () => {

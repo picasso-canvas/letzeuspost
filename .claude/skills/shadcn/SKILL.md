@@ -14,8 +14,12 @@ user-invocable: false
 >   shadcn component that isn't in `packages/ui/src/components/` yet writes that under `needs-zeus` in `.lzp/pr.md`
 >   and stops. Restyling, composing and testing the components that are there is builder work.
 > - **Athena runs the CLI** as `pnpm exec shadcn` in `packages/ui`, the pinned dev dependency `shadcn@4.23.0`; never
->   `pnpm dlx`, `npx` or `@latest`. `packages/ui/components.json`: style `base-vega` (Base UI), `lucide`, aliases
->   `@lzp/ui/components`, `@lzp/ui/lib`, `@lzp/ui/hooks`. Components import `cn` from the `cn` package (shadcn's, pinned).
+>   `pnpm dlx`, `npx` or `@latest`. Only with a minimal environment (`env -i PATH="$PATH" HOME="$HOME"`, no tokens) and
+>   in a checkout with no `.env` file: it loads `.env` files, and it processes registry JSON from the network with
+>   deepmerge, whose advisory Zeus accepted for this use only (`osv-scanner.toml`). `packages/ui/components.json`: style
+>   `base-vega` (Base UI), `lucide`, aliases `@lzp/ui/components`, `@lzp/ui/lib`, `@lzp/ui/hooks`. The registry's
+>   components import `cn` from the `cn` npm package: point them at `@lzp/ui/lib/utils` instead, and don't add the
+>   package. Then fit them to `DESIGN.md` and the token lint, and list each change in `packages/ui/src/components/SOURCES.md`.
 > - **Components come only from the official `@shadcn` registry:** nothing from other namespaces, GitHub addresses or
 >   URLs, and no extra entries in `components.json`. Don't fetch the URLs `docs` prints; builders can't reach those
 >   hosts.
