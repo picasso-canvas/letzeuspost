@@ -44,8 +44,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${LZP_HARNESS_DIR:-$CLAUDE_PROJECT_DIR}/.claude/hooks/session-start.ts\"",
-            "timeout": 15
+            "command": "[ \"$LZP_ROLE\" = builder ] || node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.ts\"",
+            "timeout": 30
           }
         ]
       }
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${LZP_HARNESS_DIR:-$CLAUDE_PROJECT_DIR}/.claude/hooks/pre-tool-use.ts\"",
+            "command": "[ \"$LZP_ROLE\" = builder ] || node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-tool-use.ts\"",
             "timeout": 15,
             "onFailure": "block"
           }
@@ -69,7 +69,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${LZP_HARNESS_DIR:-$CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use.ts\"",
+            "command": "[ \"$LZP_ROLE\" = builder ] || node \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-tool-use.ts\"",
             "timeout": 60
           }
         ]
@@ -80,7 +80,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${LZP_HARNESS_DIR:-$CLAUDE_PROJECT_DIR}/.claude/hooks/stop.ts\"",
+            "command": "[ \"$LZP_ROLE\" = builder ] || node \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop.ts\"",
             "timeout": 60
           }
         ]

@@ -1,36 +1,37 @@
 #!/usr/bin/env node
-// Stop, builders only (§20 section 3): no finishing while the code differs from the last green `pnpm check`.
+// Stop, builders only (§20 section 3): no finishing while the tree differs from both the tree the session started
+// with and the tree of the last green `pnpm check` (both stamped in ~/.letzeuspost/stamps/, out of the builder's
+// reach; never from git refs, which the builder can move).
 // Loop guard: when this turn is already continuing because of a Stop block (`stop_hook_active`), let it end. Claude
 // Code also ends a turn after 8 blocks in a row; this guard makes it one nudge, not eight.
-import { baseTree, workingTree } from './lib/git-tree.ts';
-import { logHit, printJson, projectDir, readInput, readText, role } from './lib/hook-io.ts';
-import { stampPath } from './lib/stamp.ts';
-
-function stampedTree(root: string): string | null {
-  try {
-    const value: unknown = JSON.parse(readText(stampPath(root)) ?? 'null');
-    const tree = (value as { tree?: unknown } | null)?.tree;
-    return typeof tree === 'string' ? tree : null;
-  } catch {
-    return null;
-  }
-}
+import { workingTree } from './lib/git-tree.ts';
+import { logHit, printJson, projectDir, readInput, role } from './lib/hook-io.ts';
+import { stampedTree } from './lib/stamp.ts';
 
 function main(): void {
   const input = readInput();
   if (role() !== 'builder' || input.stop_hook_active === true) return;
   const root = projectDir(input);
-  let tree: string;
+  let tree: string | null;
   try {
     tree = workingTree(root);
   } catch {
-    return; // Not a git clone: nothing to compare. CI still runs the check.
+    tree = null;
   }
-  if (tree === baseTree(root) || tree === stampedTree(root)) return;
+  if (tree !== null && (tree === stampedTree(root, 'base') || tree === stampedTree(root, 'green')))
+    return;
   const reason =
-    'Code changed after the last green `pnpm check`. Run `pnpm check` (exactly that command, no pipes) until it ' +
-    'is green, then finish. If you are stopping on purpose (needs-zeus), say so in .lzp/pr.md.';
-  logHit(input, { hook: 'Stop', rule: 'stop:unchecked', reason, detail: tree });
+    tree === null
+      ? 'The guardrail could not hash your clone, so it cannot confirm a green `pnpm check`. Say so in .lzp/pr.md.'
+      : 'Code changed after the last green `pnpm check`. Run `pnpm check` (exactly that command, in the clone root, ' +
+        'not in the background) until it is green, then finish. If you are stopping on purpose (needs-zeus), say so ' +
+        'in .lzp/pr.md.';
+  logHit(input, {
+    hook: 'Stop',
+    rule: tree === null ? 'stop:no-hash' : 'stop:unchecked',
+    reason,
+    detail: tree ?? '',
+  });
   printJson({ decision: 'block', reason });
 }
 

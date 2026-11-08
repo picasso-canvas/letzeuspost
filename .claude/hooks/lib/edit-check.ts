@@ -1,14 +1,17 @@
 // PreToolUse Edit/Write/MultiEdit/NotebookEdit: where a change may land and what it may contain.
-import type { Role } from './freeze.ts';
 import { findSecret, findSilencing, type ContentHit } from './content.ts';
-import { insideRoot, matchesAny } from './paths.ts';
+import type { Role } from './freeze.ts';
+import { matchesAny, safeTarget } from './paths.ts';
 
 export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
 export interface EditChange {
   file: string;
-  before: string;
   after: string;
+  /** The text being replaced; read only after the target passed its checks. */
+  before: () => string;
+  /** The file as it is now; read only after the target passed its checks. */
+  fileText: () => string;
 }
 
 function str(value: unknown): string {
@@ -22,21 +25,28 @@ export function editChange(
   current: (file: string) => string | null,
 ): EditChange {
   const file = str(input.file_path) || str(input.notebook_path);
+  const now = (): string => current(file) ?? '';
   switch (tool) {
     case 'Write':
-      return { file, before: current(file) ?? '', after: str(input.content) };
+      return { file, after: str(input.content), before: now, fileText: now };
     case 'Edit':
-      return { file, before: str(input.old_string), after: str(input.new_string) };
+      return {
+        file,
+        after: str(input.new_string),
+        before: () => str(input.old_string),
+        fileText: now,
+      };
     case 'MultiEdit': {
       const edits = Array.isArray(input.edits) ? (input.edits as Record<string, unknown>[]) : [];
       return {
         file,
-        before: edits.map((e) => str(e.old_string)).join('\n'),
         after: edits.map((e) => str(e.new_string)).join('\n'),
+        before: () => edits.map((e) => str(e.old_string)).join('\n'),
+        fileText: now,
       };
     }
     default:
-      return { file, before: '', after: str(input.new_source) };
+      return { file, after: str(input.new_source), before: () => '', fileText: () => '' };
   }
 }
 
@@ -56,24 +66,17 @@ export function checkEdit(change: EditChange, ctx: EditContext): ContentHit | nu
         reason: 'the builder rules could not be read, so no edit is allowed',
       };
     }
-    let rel: string | null;
-    try {
-      rel = insideRoot(change.file, ctx.projectDir);
-    } catch {
-      rel = null;
-    }
-    if (rel === null) {
-      return {
-        id: 'edit:outside-clone',
-        reason: `builders edit only inside their own clone, not ${change.file}`,
-      };
-    }
-    if (matchesAny(rel, ctx.protectedPaths)) {
+    const target = safeTarget(change.file, ctx.projectDir);
+    if ('id' in target) return target;
+    if (matchesAny(target.rel, ctx.protectedPaths)) {
       return {
         id: 'edit:protected-path',
-        reason: `${rel} is a protected harness path; if it must change, write it in .lzp/pr.md under needs-zeus and stop`,
+        reason: `${target.rel} is a protected harness path; if it must change, write it in .lzp/pr.md under needs-zeus and stop`,
       };
     }
   }
-  return findSecret(change.after) ?? findSilencing(change.file, change.before, change.after);
+  return (
+    findSecret(change.after) ??
+    findSilencing(change.file, change.before(), change.after, change.fileText())
+  );
 }

@@ -36,41 +36,99 @@ export function findSecret(text: string): ContentHit | null {
   return null;
 }
 
-const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/i;
-
-/** A comment with at least `min` characters of text, on the line or (for tests) the line above. */
-function commentText(line: string): string {
-  const m = /(?:\/\/|\/\*)(.*?)(?:\*\/)?\s*$/.exec(line);
-  return (m?.[1] ?? '').trim();
+/** Text for the guardrail log: secret shapes and credential-looking values replaced. */
+export function redact(text: string): string {
+  let out = text;
+  for (const { pattern } of SECRET_PATTERNS)
+    out = out.replace(new RegExp(pattern, 'g'), '[redacted]');
+  // `Authorization: Bearer <token>`: the scheme word is kept and the value after it redacted, not the scheme itself.
+  return out.replace(
+    /\b(authorization|bearer|token|password|passwd|secret|api[_-]?key)(\s*[:=]\s*|\s+)(["']?)((?:bearer|basic|token)\s+)?[^\s"']{6,}/gi,
+    '$1$2$3$4[redacted]',
+  );
 }
 
-const DIRECTIVES: readonly {
+const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/i;
+
+/** A line split into its code (string contents blanked) and its comment text, so quotes never count as either. */
+function splitLine(line: string): { code: string; comment: string } {
+  let quote: string | null = null;
+  let code = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line.charAt(i);
+    if (quote !== null) {
+      if (c === '\\') {
+        code += '  ';
+        i++;
+      } else if (c === quote) {
+        quote = null;
+        code += c;
+      } else code += ' ';
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+      code += c;
+      continue;
+    }
+    const next = line.charAt(i + 1);
+    if (c === '/' && (next === '/' || next === '*')) {
+      return {
+        code,
+        comment: line
+          .slice(i + 2)
+          .replace(/\*\/\s*$/, '')
+          .trim(),
+      };
+    }
+    code += c;
+  }
+  return { code, comment: '' };
+}
+
+/** A comment line just above: `// why`, or a line inside a block comment (`* why`). */
+function commentAbove(prev: string): string {
+  const { code, comment } = splitLine(prev);
+  if (code.trim() === '') return comment;
+  return /^\s*\*\s?/.test(prev) ? prev.replace(/^\s*\*\s?/, '').trim() : '';
+}
+
+interface Directive {
   id: string;
-  find: RegExp;
-  explained: (line: string, prev: string) => boolean;
-}[] = [
+  /** null: never acceptable, whatever the comment says. */
+  explained: ((comment: string, above: string) => boolean) | null;
+  find: (code: string, comment: string) => boolean;
+}
+
+const DIRECTIVES: readonly Directive[] = [
   {
     // ESLint's own reason syntax: `// eslint-disable-next-line rule -- why`
     id: 'eslint-disable',
-    find: /eslint-disable(?:-next-line|-line)?\b/,
-    explained: (line) => /eslint-disable\S*[^\n]*?\s--\s+\S.{8,}/.test(line),
+    find: (_code, comment) => /\beslint-disable(?:-next-line|-line)?\b/.test(comment),
+    explained: (comment) => /\beslint-disable\S*.*?\s--\s+\S.{8,}/.test(comment),
   },
   {
     // TypeScript allows text after the directive: `// @ts-expect-error: the lib's types miss this overload`
     id: 'ts-directive',
-    find: /@ts-(?:ignore|nocheck|expect-error)\b/,
-    explained: (line) => /@ts-(?:ignore|nocheck|expect-error)\b[\s:—-]*\S.{9,}/.test(line),
+    find: (_code, comment) => /@ts-(?:ignore|nocheck|expect-error)\b/.test(comment),
+    explained: (comment) => /@ts-(?:ignore|nocheck|expect-error)\b[\s:—-]*\S.{9,}/.test(comment),
   },
   {
-    id: 'test-skip-only',
-    find: /\b(?:describe|it|test|suite|bench)(?:\.\w+)*\.(?:skip|only|skipIf|runIf)\b|\b(?:xit|xdescribe|xtest|fit|fdescribe)\s*\(/,
-    explained: (line, prev) => {
-      const same = commentText(line);
-      const above = /^\s*(?:\/\/|\/\*|\*)/.test(prev)
-        ? commentText(prev) || prev.replace(/^\s*\*\s?/, '').trim()
-        : '';
-      return same.length >= 10 || above.length >= 10;
-    },
+    id: 'test-skip',
+    find: (code) =>
+      /\b(?:describe|it|test|suite|bench)(?:\.\w+)*\.(?:skip|skipIf|runIf)\b|\b(?:xit|xdescribe|xtest)\s*\(/.test(
+        code,
+      ),
+    explained: (comment, above) => comment.length >= 10 || above.length >= 10,
+  },
+  {
+    // A focused test silently skips every other test: never committed (§20 red team).
+    id: 'test-only',
+    find: (code) =>
+      /\b(?:describe|it|test|suite|bench)(?:\.\w+)*\.only\b|\b(?:fit|fdescribe|ftest)\s*\(/.test(
+        code,
+      ),
+    explained: null,
   },
 ];
 
@@ -78,9 +136,12 @@ function unexplainedDirectives(text: string): Map<string, number> {
   const counts = new Map<string, number>();
   const lines = text.split('\n');
   lines.forEach((line, i) => {
+    const { code, comment } = splitLine(line);
+    const above = commentAbove(lines[i - 1] ?? '');
     for (const d of DIRECTIVES) {
-      if (d.find.test(line) && !d.explained(line, lines[i - 1] ?? ''))
+      if (d.find(code, comment) && !(d.explained?.(comment, above) ?? false)) {
         counts.set(d.id, (counts.get(d.id) ?? 0) + 1);
+      }
     }
   });
   return counts;
@@ -91,7 +152,6 @@ const THRESHOLD =
 
 function thresholds(text: string): Map<string, string> {
   const found = new Map<string, string>();
-  if (!/thresholds|coverage/.test(text)) return found;
   for (const m of text.matchAll(new RegExp(THRESHOLD, 'g')))
     if (m[1] && m[2]) found.set(m[1], m[2]);
   return found;
@@ -100,13 +160,13 @@ function thresholds(text: string): Map<string, string> {
 /** Every threshold line in `after` carries a comment of at least 10 characters. */
 function thresholdsExplained(after: string): boolean {
   const lines = after.split('\n').filter((line) => THRESHOLD.test(line));
-  return lines.length > 0 && lines.every((line) => commentText(line).length >= 10);
+  return lines.length > 0 && lines.every((line) => splitLine(line).comment.length >= 10);
 }
 
 function loweredThreshold(before: string, after: string): string | null {
+  if (/thresholds/.test(before) && !/thresholds/.test(after)) return 'coverage thresholds removed';
   const old = thresholds(before);
   const now = thresholds(after);
-  if (/thresholds/.test(before) && !/thresholds/.test(after)) return 'coverage thresholds removed';
   for (const [key, value] of old) {
     const next = now.get(key);
     if (next === undefined) continue;
@@ -119,11 +179,20 @@ function loweredThreshold(before: string, after: string): string | null {
 }
 
 /**
- * Silencing introduced by this change: more unexplained directives after than before, or a lowered coverage
- * threshold. `before` is the text being replaced (Edit's old_string, or the file's current content for Write).
+ * Silencing introduced by this change: more unexplained directives after than before, a focused test, or a lowered
+ * coverage threshold. `before` is the text being replaced (Edit's old_string, or the whole file for Write);
+ * `fileText` is the file as it is now, which says whether it holds coverage settings at all.
  */
-export function findSilencing(file: string, before: string, after: string): ContentHit | null {
-  if (/vitest\.config\.|vite\.config\.|coverage/i.test(file) || /thresholds/.test(before)) {
+export function findSilencing(
+  file: string,
+  before: string,
+  after: string,
+  fileText = '',
+): ContentHit | null {
+  const coverageFile =
+    /(?:^|\/)(?:vitest|vite|jest)\.config\.|(?:^|\/)coverage/i.test(file) ||
+    /thresholds/.test(fileText + before);
+  if (coverageFile) {
     const lowered = loweredThreshold(before, after);
     if (lowered && !thresholdsExplained(after)) {
       return {
@@ -139,9 +208,11 @@ export function findSilencing(file: string, before: string, after: string): Cont
       return {
         id: `silence:${id}`,
         reason:
-          `adds ${id} without a reason; write why on the same line ` +
-          '(`// eslint-disable-next-line rule -- why`, `// @ts-expect-error: why`, or a comment above a .skip), ' +
-          'or fix the code instead',
+          id === 'test-only'
+            ? 'adds a focused test (.only / fit), which silently skips every other test; remove it'
+            : `adds ${id} without a reason; write why on the same line ` +
+              '(`// eslint-disable-next-line rule -- why`, `// @ts-expect-error: why`, or a comment above a .skip), ' +
+              'or fix the code instead',
       };
     }
   }
