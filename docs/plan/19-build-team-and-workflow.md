@@ -1,4 +1,4 @@
-# Section 19: Build team and workflow (Approved 2026-11-06, revised 2026-11-06 and 2026-11-07)
+# Section 19: Build team and workflow (Approved 2026-11-06, revised 2026-11-06, 2026-11-07 and 2026-11-08)
 
 > **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
@@ -8,7 +8,7 @@
 
 | Question | Answer |
 |---|---|
-| Where do the building agents run? | Locally in Claude Code on Zeus's Mac (git worktrees; since 2026-11-07 a separate clone per task); an independent Claude review comments on GitHub |
+| Where do the building agents run? | Locally in Claude Code on Zeus's Mac (git worktrees; since 2026-11-07 a separate clone per task). **2026-11-08:** the reviews run there too, on Zeus's subscription; the planned GitHub AI review is dropped (Zeus: "Run the review here on my mac only", then "Drop it"; #27) |
 | Who merges? | **Zeus merges every PR.** (First answer was "agents merge, Zeus audits". Revised the same day: on GitHub Free a private repo can't have merge rules or auto-merge, and Zeus chose to stay on Free.) **2026-11-07:** Zeus handed merging to Athena, through the [merge gate](#the-merge-gate): "You can merge any PR … make sure the harness and safety are maintained properly." Builders still never merge. |
 | Team shape? | One builder + independent reviewers. H0 starts with the builder, Argus and Cerberus; Iris joins with the first UI work |
 | How many builders at once? | 1 in H0; up to 3 later, if Zeus's Claude usage limits allow |
@@ -23,10 +23,9 @@
 |---|---|---|---|
 | **Athena** (main session, Zeus's own login) | Lead: turns approved sections into build tasks, dispatches builders, runs the local reviews, merges through the merge gate, moves board cards, writes the weekly report | all | Opus 5.5 |
 | **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.ts` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh; Sonnet 5.5 for `routine` tasks (Zeus, 2026-11-07) |
-| **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity, the Done-when evidence and the GitHub review's findings | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high; Sonnet 5.5 on `routine` PRs (Zeus, 2026-11-07) |
+| **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity and the Done-when evidence | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high; Sonnet 5.5 on `routine` PRs (Zeus, 2026-11-07) |
 | **Cerberus** `cerberus-security` | Security review, **only** when a diff touches a sensitive area: auth, tokens, uploads, website fetch (SSRF), workspace isolation, AI prompts, dependencies, workflows | same as Argus | Opus 5.5, effort high |
 | **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Opus 5.5, effort high |
-| **GitHub review** | A second, independent review that comments on every PR (claude-code-action + the code-review plugin). Not a gate on its own: the merge gate needs each of its findings fixed or answered | comments only | Zeus's subscription token |
 
 Reviewers never review their own work and always start from a fresh context. The builder cannot spawn agents
 (`disallowedTools: Agent`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`), so it never picks its own reviewers.
@@ -78,7 +77,7 @@ Reviewers never review their own work and always start from a fresh context. The
    merges into `staging` on the automatic checks; only a PR that touches a risky area (`.github/cerberus-paths.txt`:
    auth, workspace isolation, billing, uploads, website fetching, AI prompts) first gets Cerberus. When `staging` is
    5 task PRs or ~1,500 changed lines ahead of `main`, `scripts/batch.ts --open` opens the batch PR from `staging` into
-   `main`, and that PR gets the full review: the GitHub review comments, and Athena runs `scripts/review.ts <pr>`,
+   `main`, and that PR gets the full review: Athena runs `scripts/review.ts <pr>`,
    which runs Argus (Sonnet 5.5 on a `routine` batch); Cerberus when it is sensitive; Iris when it touches UI (from the
    first UI milestone). Harness changes (Athena's) skip `staging` and go straight into `main` with the full review.
    Reviewers read a bundle: the PR's files as regular blobs (no `.git`, symlinks as stubs, `CLAUDE.md` and `.claude/` renamed),
@@ -129,7 +128,7 @@ A PR merges only when all of these hold:
    harness paths (agent files, skills and `CLAUDE.md` are Markdown too); it isn't a draft, it has no conflicts, and its
    branch is up to date with `main`.
 3. **Checks green:** every check run on the head commit succeeded, including each required check named in `main`'s
-   `.github/merge-gate.json` (`ci`, then `risk-gate` and `ai-review` as they land), and the AI evals when the PR
+   `.github/merge-gate.json` (`ci` and `risk-gate`), and the AI evals when the PR
    touches AI paths (§17); none failed, pending or skipped.
 4. **Tier worked out, not read:** the gate computes the tier from the changed files and `main`'s sensitive-paths list
    (until that list exists, every PR counts as sensitive). The risk-gate label must agree; a mismatch stops the merge.
@@ -151,8 +150,8 @@ A PR merges only when all of these hold:
    cover her Edit and Write tools only; her shell can still write those files, so the weekly report's audit is the
    backstop. Auto-memory is off for every session in the repo (`autoMemoryEnabled: false`) and for reviewers
    (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`), so no note left in `~/.claude/projects/*/memory/` reaches a review. The reviewers
-   confirm the Done-when evidence and that each GitHub review finding is fixed or answered. Each verdict is also posted
-   on the PR, for the record.
+   confirm the Done-when evidence and that each comment on the PR that raises a problem is fixed or answered. Each
+   verdict is also posted on the PR, for the record.
 6. **Done-when complete:** no unticked box in the PR's Done-when list.
 7. **Harness changes re-tested:** when the PR touches a harness path (`.github/`, `.claude/`, any `CLAUDE.md`,
    `scripts/`, the sensitive-paths list), Athena's record holds the red-team items it affects, run again, with their
