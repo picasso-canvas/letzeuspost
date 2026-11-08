@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkBash } from './lib/bash-rules.ts';
 import { findSecret, findSilencing } from './lib/content.ts';
 import { decideFreeze, STALE_AFTER_MS } from './lib/freeze.ts';
@@ -25,6 +25,10 @@ import { isGreenCheck, stampPath } from './lib/stamp.ts';
 
 const HOOKS = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HOOKS, '..', '..');
+
+// These tests start real hook processes, each hashing a tree with git. Inside a builder's sandbox that is slow: the
+// slowest took 4 s alone and over 5 s in a full `pnpm check` (#96). vitest's default 5 s is a hang guard, not a bar.
+vi.setConfig({ testTimeout: 30_000 });
 const builderSettings: unknown = JSON.parse(
   readFileSync(join(REPO, '.claude', 'builder', 'settings.json'), 'utf8'),
 );
