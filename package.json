@@ -14,11 +14,14 @@
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm licence-check",
     "check:services": "LZP_SERVICES=1 vitest run && playwright test --pass-with-no-tests",
-    "licence-check": "node scripts/licence-check.mjs"
+    "licence-check": "node scripts/licence-check.mjs",
+    "tokens": "design.md export --format css-tailwind DESIGN.md | node packages/ui/src/tokens/generate.ts && prettier --write --log-level warn packages/ui/src/tokens/theme.css packages/ui/src/tokens/dark.css",
+    "design:lint": "node scripts/design-lint.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
     "@eslint/js": "10.0.1",
+    "@google/design.md": "0.4.0",
     "@next/eslint-plugin-next": "16.4.5",
     "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
