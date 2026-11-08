@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -684,7 +685,8 @@ describe('formatting a file the builder can swap (Cerberus on #86)', () => {
   it('never writes to another file swapped in, or to one that gained a second link', () => {
     expect(
       formatFile(file, (text) => {
-        rmSync(file);
+        // Moved aside, not deleted: Linux hands a freed inode number to the next new file (see format.ts).
+        renameSync(file, join(clone, 'moved.ts'));
         writeFileSync(file, 'other\n');
         return formatted(text);
       }),

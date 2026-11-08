@@ -2,7 +2,8 @@
 // prettier a path to write: the file is read once without following a link, prettier formats that text from stdin,
 // and the result goes back through a descriptor opened without following a link, only while it is still the same
 // regular file (device and inode) with a single link. A file swapped for a link, another file or a second link in the
-// meantime is left alone.
+// meantime is left alone. (If the builder deletes the file, Linux may give its inode number to the next new file; that
+// file can only be one the builder itself created where its sandbox lets it write, so the write still lands there.)
 import {
   closeSync,
   constants,
