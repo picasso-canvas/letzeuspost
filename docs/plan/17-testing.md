@@ -7,7 +7,7 @@ they run, which ones block a merge, the test data, and how quality is watched on
 
 | Topic | Decision | Where |
 |---|---|---|
-| The gate | `pnpm check` locally = the CI job; only green PRs pass the merge gate | §19, §20 |
+| The gate | CI runs `pnpm check` plus scanners, licences and (later) service, end-to-end, visual and golden tests; only green PRs pass the merge gate | §19, §20 |
 | How builders work | Tests first for logic (the `tdd` skill); every bug fix comes with a test that failed before it | §19, §20 |
 | Design | Visual tests of every screen × state × theme; approved baselines change only with Zeus; axe on every screen | §21 |
 | Renders | 560 golden renders + hard cases, identical on two runs, in the same Docker image as production | §08 |
@@ -110,7 +110,8 @@ real sites, 5 of them Bangladeshi, and file reading on 5 Facebook-only businesse
 **Where they run (2026-11-07):** builders have no Docker (§20), so the local `pnpm check` holds static, unit and the
 checks that need no services. Integration, tenancy, end-to-end, visual and golden tests run in CI, or on the Mac in
 the service containers dispatch starts for the task (`pnpm check:services`, which the builder may run when dispatch
-has handed it the ports). The builder's Stop hook asks only for a green `pnpm check`.
+has handed it the ports). The builder's Stop hook asks only for a green `pnpm check`. **CI is what counts:** the merge
+gate trusts only check runs, so a run on the Mac is the builder's own feedback, never evidence.
 
 **GitHub Actions budget:** about 1,400 of the free ~2,000 minutes a month at the expected pace (about 60 PRs a month
 at ~10 minutes, plus nightly runs). If it runs over, a self-hosted runner on its own small server takes the heavy

@@ -1,18 +1,14 @@
 #!/usr/bin/env node
 // The risk gate (§20 part 5): judges a PR `sensitive` or `routine` from its changed paths and `main`'s list.
-//   node scripts/risk-gate.ts <sensitive-paths-file> < changed-files (one JSON string per line)
+//   node scripts/risk-gate.ts <sensitive-paths-file> <merge-gate.json> < changed-files (one JSON string per line)
 // Prints a JSON verdict. CI runs `main`'s copy of this script on the file list from git, never the PR's code.
 // The merge gate (#37) works the tier out the same way and only checks that the label agrees.
 import { readFileSync } from 'node:fs';
 import { matchesAny, parsePatternList } from './lib/paths.ts';
+import { safeName } from './lib/safe-name.ts';
 
 // The harness paths come from main's .github/merge-gate.json, the same list the merge gate uses.
 const DEFAULT_HARNESS = ['.github/**', '.claude/**', 'scripts/**', 'CLAUDE.md', '**/CLAUDE.md'];
-
-/** File names are builder-controlled: printable text only, so a name can't break out of the comment's code block. */
-export function safeName(name: string): string {
-  return name.replace(/[^\x20-\x7e\u00a0-\uffff]/g, '?').replace(/`/g, "'");
-}
 
 export interface Judgement {
   tier: 'sensitive' | 'routine';
@@ -45,7 +41,8 @@ export function judge(
   }
   const patterns = parsePatternList(list);
   const sensitive = changedFiles.filter((file) => matchesAny(file, patterns));
-  const harness = changedFiles.some((file) => matchesAny(file, harnessPaths));
+  const harnessFiles = changedFiles.filter((file) => matchesAny(file, harnessPaths));
+  const harness = harnessFiles.length > 0;
   if (sensitive.length === 0) {
     return { tier: 'routine', sensitive, harness, summary: 'No sensitive paths changed.' };
   }
@@ -54,7 +51,13 @@ export function judge(
   const lines = [
     `**Sensitive:** ${String(sensitive.length)} of ${String(changedFiles.length)} changed files are in sensitive areas (§13).`,
     ...(harness
-      ? ['**This PR changes the harness** (`.github/`, `.claude/`, `scripts/` or a `CLAUDE.md`).']
+      ? [
+          '**This PR changes the harness:**',
+          '```text',
+          ...harnessFiles.slice(0, 10).map(safeName),
+          ...(harnessFiles.length > 10 ? [`… and ${String(harnessFiles.length - 10)} more`] : []),
+          '```',
+        ]
       : []),
     '',
     '```text',

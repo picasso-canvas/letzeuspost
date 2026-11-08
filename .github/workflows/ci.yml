@@ -12,7 +12,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, staging]
 
 permissions:
   contents: read
@@ -92,11 +92,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm install --frozen-lockfile
 
-      - name: pnpm check (typecheck, lint, format, unit tests, licences)
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: pnpm check
-
-      # Again on its own, so a failing test or lint error can't hide a licence problem.
+      # On its own and first, so neither a failing test nor the branch's test code can hide a licence problem.
       - name: Licences (every workspace package)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm licence-check
+
+      - name: pnpm check (typecheck, lint, format, unit tests, licences)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check

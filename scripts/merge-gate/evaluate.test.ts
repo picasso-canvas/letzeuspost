@@ -17,6 +17,9 @@ function review(
     bodyHash: bodyHash(BODY),
     summary: 'ok',
     at: '2026-11-07T00:00:00Z',
+    ...(reviewer === 'redteam'
+      ? {}
+      : { meta: { agent: `${reviewer}-agent`, sessionId: 's-1', verified: true } }),
     ...over,
   };
 }
@@ -28,6 +31,8 @@ function facts(over: Partial<Facts> = {}): Facts {
     state: 'OPEN',
     isDraft: false,
     baseRef: 'main',
+    headRef: '42-something',
+    crossRepo: false,
     headSha: SHA,
     title: '[H0] Something',
     mergeable: 'MERGEABLE',
@@ -35,6 +40,9 @@ function facts(over: Partial<Facts> = {}): Facts {
     body: BODY,
     closingIssues: [{ number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 }],
     changedFiles: ['packages/ui/src/button.ts'],
+    changes: [{ mode: '100644', path: 'packages/ui/src/button.ts' }],
+    ungatedStaging: [],
+    gatedIssues: [42, 43],
     labels: ['routine'],
     checkRuns: [
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
@@ -43,6 +51,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     statuses: [],
     reviews: [review('argus')],
     sensitivePatterns: ['packages/auth/**', 'scripts/**', '.github/**', '**/CLAUDE.md'],
+    cerberusPatterns: ['packages/auth/**', 'packages/db/**'],
     config: {
       requiredChecks: ['ci', 'risk-gate'],
       requireTierLabel: true,
@@ -287,5 +296,175 @@ describe('bodyHash', () => {
   it('ignores line-ending differences only', () => {
     expect(bodyHash('a\r\nb')).toBe(bodyHash('a\nb'));
     expect(bodyHash('a\nb')).not.toBe(bodyHash('a\nc'));
+  });
+});
+
+describe('evaluate: reviews must come from the runner', () => {
+  it('ignores an argus or cerberus pass without a Claude Code session (hand-written)', () => {
+    const handWritten = review('argus', { meta: undefined });
+    expect(evaluate({ ...facts(), reviews: [handWritten] }).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
+    const noSession = review('argus', { meta: { agent: 'argus-reviewer', sessionId: null } });
+    expect(evaluate({ ...facts(), reviews: [noSession] }).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
+  });
+
+  it('still counts a hand-written block (blocks always count)', () => {
+    const blocks = [
+      review('argus'),
+      review('cerberus'),
+      review('cerberus', { verdict: 'block', meta: undefined }),
+    ];
+    expect(
+      evaluate({
+        ...facts(),
+        labels: ['sensitive'],
+        changedFiles: ['packages/auth/x.ts'],
+        reviews: blocks,
+      }).items.find((i) => i.id === 5)?.ok,
+    ).toBe(false);
+  });
+});
+
+describe('evaluate: only verified sessions count', () => {
+  it('ignores a pass whose transcript did not check out', () => {
+    const unverified = review('argus', {
+      meta: { agent: 'argus-reviewer', sessionId: 's-x', verified: false },
+    });
+    expect(evaluate(facts({ reviews: [unverified] })).items.find((i) => i.id === 5)?.ok).toBe(
+      false,
+    );
+  });
+});
+
+describe('evaluate: a builder PR into staging (Zeus, 2026-11-07)', () => {
+  const toStaging = (over: Partial<Facts> = {}) =>
+    facts({ baseRef: 'staging', reviews: [], ...over });
+
+  it('merges on the automatic checks alone: no Argus', () => {
+    expect(failedIds(toStaging())).toEqual([]);
+  });
+
+  it('still needs Cerberus when the PR touches a risky area', () => {
+    const risky = toStaging({
+      changedFiles: ['packages/db/src/schema.ts'],
+      sensitivePatterns: ['packages/db/**'],
+      labels: ['sensitive'],
+    });
+    expect(failedIds(risky)).toEqual([5]);
+    expect(failedIds({ ...risky, reviews: [review('cerberus')] })).toEqual([]);
+    // Without the risky-area list on main, every staging PR needs Cerberus (fail safe).
+    expect(failedIds(toStaging({ cerberusPatterns: null }))).toEqual([5]);
+  });
+
+  it('refuses harness paths (they go straight to main) and a branch behind staging', () => {
+    const harness = toStaging({
+      changedFiles: ['scripts/x.ts'],
+      labels: ['sensitive'],
+      reviews: [review('cerberus')],
+    });
+    expect(failedIds(harness)).toContain(7);
+    expect(evaluate(toStaging({ behindBy: 2 })).items.find((i) => i.id === 2)?.detail).toMatch(
+      /behind staging/,
+    );
+  });
+});
+
+describe('evaluate: the batch PR from staging into main', () => {
+  const batchBody =
+    'Closes #42\nCloses #43\n\n**Done when**\n- [x] #42 (PR #50): merged into staging through the gate\n- [x] #43 (PR #51): merged into staging through the gate';
+  const batch = (over: Partial<Facts> = {}) =>
+    facts({
+      headRef: 'staging',
+      body: batchBody,
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 6 },
+        { number: 43, inRepo: true, labels: ['build-task'], doneWhenBoxes: 4 },
+      ],
+      reviews: [review('argus', { bodyHash: bodyHash(batchBody) })],
+      ...over,
+    });
+
+  it('gets the full review, with one ticked box per task', () => {
+    expect(failedIds(batch())).toEqual([]);
+    expect(failedIds(batch({ reviews: [] }))).toEqual([5]);
+  });
+
+  it('refuses a batch that carries a harness path, or misses a task box', () => {
+    expect(
+      failedIds(
+        batch({
+          changedFiles: ['packages/ui/src/button.ts', 'scripts/x.ts'],
+          labels: ['sensitive'],
+          reviews: [
+            review('argus', { bodyHash: bodyHash(batchBody) }),
+            review('cerberus', { bodyHash: bodyHash(batchBody) }),
+            review('redteam', { bodyHash: bodyHash(batchBody) }),
+          ],
+        }),
+      ),
+    ).toEqual([7]);
+    const oneBox = 'Closes #42\nCloses #43\n\n**Done when**\n- [x] #42 (PR #50): merged';
+    expect(
+      failedIds(
+        batch({ body: oneBox, reviews: [review('argus', { bodyHash: bodyHash(oneBox) })] }),
+      ),
+    ).toEqual([6]);
+  });
+});
+
+describe('evaluate: targets', () => {
+  it('refuses any base but main and staging', () => {
+    expect(failedIds(facts({ baseRef: 'release' }))).toContain(2);
+  });
+});
+
+describe('evaluate: round 2 of the #63 review', () => {
+  it("refuses a batch while staging holds a commit the gate didn't merge or sync", () => {
+    const batchBody =
+      'Closes #42\n\n**Done when**\n- [x] #42 (PR #50): merged into staging through the gate';
+    const batch = facts({
+      headRef: 'staging',
+      body: batchBody,
+      reviews: [review('argus', { bodyHash: bodyHash(batchBody) })],
+      ungatedStaging: ['d'.repeat(40)],
+    });
+    expect(evaluate(batch).items.find((i) => i.id === 2)?.detail).toMatch(
+      /didn't come through the gate: ddddddd/,
+    );
+    expect(failedIds({ ...batch, ungatedStaging: [] })).toEqual([]);
+  });
+
+  it('refuses a builder-protected path or a symlink into staging, not only harness paths', () => {
+    const toStaging = (path: string, mode = '100644') =>
+      facts({ baseRef: 'staging', reviews: [], changedFiles: [path], changes: [{ mode, path }] });
+    expect(failedIds(toStaging('packages/web/tsconfig.json'))).toEqual([7]);
+    expect(failedIds(toStaging('apps/web/src/link', '120000'))).toEqual([7]);
+    expect(failedIds(toStaging('apps/web/src/page.tsx'))).toEqual([]);
+  });
+
+  it('never treats a PR from another repository as the batch', () => {
+    expect(failedIds(facts({ headRef: 'staging', crossRepo: true }))).toContain(2);
+  });
+});
+
+describe('evaluate: round 3 of the #63 review', () => {
+  it('refuses a batch that closes an issue no gated staging merge was for', () => {
+    const body =
+      'Closes #42\nCloses #99\n\n**Done when**\n- [x] #42 (PR #50): merged\n- [x] #99 (PR #51): merged';
+    const batch = facts({
+      headRef: 'staging',
+      body,
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
+        { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
+      ],
+      reviews: [review('argus', { bodyHash: bodyHash(body) })],
+    });
+    expect(evaluate(batch).items.find((i) => i.id === 2)?.detail).toMatch(
+      /#99 wasn't merged into staging/,
+    );
   });
 });

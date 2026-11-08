@@ -58,15 +58,16 @@ Created by Athena only after the sections they need are approved. The first mile
 | When | Athena does |
 |---|---|
 | A builder starts | Status → In progress |
-| Athena ships the builder's branch (PR opened) | Status → In review |
+| Athena ships the builder's branch (PR into `staging` opened) | Status → In review |
+| The gate merges the task PR into `staging` | Stays In review until its batch merges into `main` |
 | The builder's `.lzp/pr.md` says `needs-zeus` or `blocked` | Add the label; tell Zeus in chat |
-| Athena merges through the merge gate | The issue closes from the PR; the board's built-in workflow sets Done (otherwise Athena does) |
+| Athena merges through the merge gate into `main` (a batch, or her own harness PR) | The issues close from the PR; the board's built-in workflow sets Done (otherwise Athena does) |
 
 ## Weekly report (Athena, Fridays)
 
 Open an issue titled `Week <year>-W<week>` with label `audit`, assigned to `picasso-canvas`:
 - what merged, and which `sensitive` PRs are still waiting
-- guardrail hits (`.claude/logs/guardrail-hits.jsonl`)
+- guardrail hits (`~/.letzeuspost/logs/guardrail-hits.jsonl`; `node scripts/weekly-report.ts` drafts the whole report)
 - AI usage against Zeus's Claude limits
 - flaky tests and product eval results
 

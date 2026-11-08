@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { judge, parseJsonLines, safeName } from './risk-gate.ts';
+import { safeName } from './lib/safe-name.ts';
+import { judge, parseJsonLines } from './risk-gate.ts';
 
 const LIST = `# sensitive
 packages/auth/**   packages/db/**   .github/**   scripts/**   **/CLAUDE.md   docs/plan/**`;
@@ -54,5 +55,32 @@ describe('comment safety', () => {
   it('takes the harness paths it is given', () => {
     expect(judge(['.husky/pre-commit'], LIST, ['.husky/**']).harness).toBe(true);
     expect(judge(['.husky/pre-commit'], LIST, ['.github/**']).harness).toBe(false);
+  });
+});
+
+describe('safeName format characters', () => {
+  it('replaces bidi and zero-width characters', () => {
+    expect(safeName('a\u202eb\u200bc.ts')).toBe('a?b?c.ts');
+  });
+});
+
+describe('the harness line', () => {
+  it('names the changed harness files, safely', () => {
+    const summary = judge(['.husky/pre-commit', 'packages/auth/a.ts', '.github/x`y.yml'], LIST, [
+      '.husky/**',
+      '.github/**',
+    ]).summary;
+    expect(summary).toContain('.husky/pre-commit');
+    expect(summary).toContain(".github/x'y.yml");
+  });
+});
+
+describe('the harness list cap', () => {
+  it('shows ten harness files and counts the rest', () => {
+    const files = Array.from({ length: 12 }, (_, i) => `.husky/h${String(i)}`);
+    const summary = judge([...files, 'packages/auth/a.ts'], LIST, ['.husky/**']).summary;
+    expect(summary).toContain('.husky/h9');
+    expect(summary).not.toContain('.husky/h10');
+    expect(summary).toContain('… and 2 more');
   });
 });

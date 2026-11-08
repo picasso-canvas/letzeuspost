@@ -2,7 +2,6 @@
 node_modules/
 .env
 .env.*
-!.env.example
 .claude/logs/
 dist/
 .next/
@@ -12,3 +11,8 @@ coverage/
 .claude/settings.local.json
 CLAUDE.local.md
 .lzp/
+storybook-static/
+tests/visual/output/
+playwright-report/
+test-results/
+next-env.d.ts

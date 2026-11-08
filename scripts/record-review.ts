@@ -1,21 +1,30 @@
 #!/usr/bin/env node
 // Records a reviewer's verdict for the exact commit and PR text the reviewer was given (§19 merge gate, item 5):
 //   gh pr view <pr> -R picasso-canvas/letzeuspost --json headRefOid,body > snapshot.json   # before the review
-//   node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <pass|block> <summary-file> \
-//     --snapshot snapshot.json
-// A block can only be cleared by a new commit: records are append-only.
+//   node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <summary-file> --snapshot snapshot.json \
+//     [--meta <file>]
+// scripts/review.ts passes --meta (the agent and its Claude Code session id), so runs it made can be told apart from
+// summaries written by hand (Athena's red-team re-runs).
+// The verdict is the summary's first line, `VERDICT: pass` or `VERDICT: block` (verdict.ts); anything else records a
+// block. A block can only be cleared by a new commit: records are append-only. scripts/review.ts runs all of this.
 // It refuses when the PR has moved on since the review started (a new push or edited text needs a new review).
 // The record lives in ~/.letzeuspost/reviews/ (append-only, outside every builder clone) and is posted on the PR.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { REPO } from './merge-gate/collect.ts';
 import { bodyHash } from './merge-gate/evaluate.ts';
-import { writeReview } from './merge-gate/reviews.ts';
-import { REVIEWERS, type Reviewer, type Verdict } from './merge-gate/types.ts';
+import { agentFor } from './merge-gate/agents.ts';
+import { bundlePattern, checkTranscript, transcriptPath } from './merge-gate/meta.ts';
+import { STATE_DIR, writeReview } from './merge-gate/reviews.ts';
+import { REVIEWERS, type Reviewer } from './merge-gate/types.ts';
+import { parseVerdict } from './merge-gate/verdict.ts';
 
 const USAGE =
-  'usage: node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <pass|block> <summary-file> ' +
-  '--snapshot <gh pr view --json headRefOid,body output taken before the review>';
+  'usage: node scripts/record-review.ts <pr> <argus|cerberus|iris|redteam> <summary-file> ' +
+  '--snapshot <gh pr view --json headRefOid,body output taken before the review> [--meta <file>]';
 
 const NAMES: Record<Reviewer, string> = {
   argus: 'Argus',
@@ -23,6 +32,28 @@ const NAMES: Record<Reviewer, string> = {
   iris: 'Iris',
   redteam: 'Red-team re-run',
 };
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/** True when any existing record for this PR (any commit) already names this session. */
+function sessionUsed(pr: number, sessionId: string): boolean {
+  const base = join(STATE_DIR, 'reviews', `pr-${String(pr)}`);
+  if (!existsSync(base)) return false;
+  for (const sha of readdirSync(base, { withFileTypes: true })) {
+    if (!sha.isDirectory()) continue; // e.g. .DS_Store
+    for (const name of readdirSync(join(base, sha.name))) {
+      try {
+        const record = JSON.parse(readFileSync(join(base, sha.name, name), 'utf8')) as {
+          meta?: { sessionId?: unknown };
+        };
+        if (record.meta?.sessionId === sessionId) return true;
+      } catch {
+        // unreadable records are blocks anyway
+      }
+    }
+  }
+  return false;
+}
 
 function gh(args: string[], input?: string): string {
   return execFileSync('gh', args, {
@@ -38,26 +69,19 @@ function option(argv: string[], name: string): string | undefined {
 }
 
 function main(argv: string[]): number {
-  const [prArg, reviewerArg, verdictArg, summaryFile] = argv;
+  const [prArg, reviewerArg, summaryFile] = argv;
   const snapshotFile = option(argv, '--snapshot');
+  const metaFile = option(argv, '--meta');
   const pr = Number(prArg);
   const reviewer = (REVIEWERS as readonly string[]).includes(reviewerArg ?? '')
     ? (reviewerArg as Reviewer)
     : null;
-  const verdict: Verdict | null =
-    verdictArg === 'pass' || verdictArg === 'block' ? verdictArg : null;
-  if (
-    !Number.isInteger(pr) ||
-    pr <= 0 ||
-    reviewer === null ||
-    verdict === null ||
-    !summaryFile ||
-    !snapshotFile
-  ) {
+  if (!Number.isInteger(pr) || pr <= 0 || reviewer === null || !summaryFile || !snapshotFile) {
     console.error(USAGE);
     return 2;
   }
   const summary = readFileSync(summaryFile, 'utf8').trim();
+  const { verdict, reason } = parseVerdict(summary);
   const snapshot = JSON.parse(readFileSync(snapshotFile, 'utf8')) as {
     headRefOid?: unknown;
     body?: unknown;
@@ -83,6 +107,51 @@ function main(argv: string[]): number {
     return 1;
   }
 
+  let meta: { agent: string; sessionId: string | null; bundle?: string } | undefined;
+  if (metaFile !== undefined) {
+    const raw = JSON.parse(readFileSync(metaFile, 'utf8')) as {
+      agent?: unknown;
+      sessionId?: unknown;
+    };
+    meta = {
+      agent: typeof raw.agent === 'string' ? raw.agent : '',
+      sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : null,
+    };
+    // A pass must come from a real Claude Code run of this reviewer's agent, on this bundle, used once per PR.
+    // A block is always recorded, verified or not: a block always counts.
+    if (meta.sessionId !== null && verdict === 'pass') {
+      const expected = agentFor(reviewer);
+      if (meta.agent !== expected) {
+        console.error(`--meta names agent ${meta.agent}, but ${reviewer} is ${String(expected)}.`);
+        return 1;
+      }
+      const transcript = transcriptPath(homedir(), ROOT, meta.sessionId);
+      const bundle = dirname(resolve(snapshotFile));
+      if (!bundlePattern(STATE_DIR, pr, reviewedSha).test(bundle)) {
+        console.error(
+          `Not recorded: ${bundle} isn't a bundle for PR #${String(pr)} at ${reviewedSha.slice(0, 7)}.`,
+        );
+        return 1;
+      }
+      meta.bundle = bundle;
+      const problem = checkTranscript(
+        existsSync(transcript) ? readFileSync(transcript, 'utf8') : null,
+        expected,
+        bundle,
+        summary,
+      );
+      if (problem !== null) {
+        console.error(`Not recorded: ${problem}.`);
+        return 1;
+      }
+      if (sessionUsed(pr, meta.sessionId)) {
+        console.error(
+          `Not recorded: session ${meta.sessionId} already backs another review of PR #${String(pr)}.`,
+        );
+        return 1;
+      }
+    }
+  }
   const file = writeReview({
     pr,
     sha: reviewedSha,
@@ -91,11 +160,12 @@ function main(argv: string[]): number {
     bodyHash: reviewedHash,
     summary,
     at: new Date().toISOString(),
+    ...(meta ? { meta } : {}),
   });
   const comment = `🦉 Athena: review record: **${NAMES[reviewer]}**, **${verdict}** for \`${reviewedSha.slice(0, 7)}\`.\n\n${summary}`;
   gh(['pr', 'comment', String(pr), '-R', REPO, '--body-file', '-'], comment);
   console.log(
-    `Recorded ${reviewer} ${verdict} for PR #${String(pr)} at ${reviewedSha.slice(0, 7)}: ${file}`,
+    `Recorded ${reviewer} ${verdict} (${reason}) for PR #${String(pr)} at ${reviewedSha.slice(0, 7)}: ${file}`,
   );
   return 0;
 }

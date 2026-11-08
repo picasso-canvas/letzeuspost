@@ -2,12 +2,25 @@
 // The merge gate (§19): Athena merges only through this script. Usage:
 //   node scripts/merge-gate.ts <pr> [--dry-run]
 // It runs from a clean checkout of `main` that matches `origin/main`, so a PR can't change the gate that judges it.
+// It merges builder PRs into `staging`, and the batch PR from `staging` or Athena's harness PRs into `main`; after every
+// merge into `main` it merges `main` into `staging` on GitHub, so builders always start from main's harness (§19).
 import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
-import { evaluate } from './merge-gate/evaluate.ts';
-import { logMerge, readReviews } from './merge-gate/reviews.ts';
+import { evaluate, kindOf } from './merge-gate/evaluate.ts';
+import { transcriptPath } from './merge-gate/meta.ts';
+import {
+  listReviewedShas,
+  logMerge,
+  readMergeLog,
+  readReviews,
+  STATE_DIR,
+} from './merge-gate/reviews.ts';
+import { issueFromBranch, mergeArgs, type StagingLogEntry } from './merge-gate/staging.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -19,37 +32,68 @@ function run(cmd: string, args: string[]): string {
   });
 }
 
-function assertCleanMain(): void {
-  run('git', ['fetch', '--quiet', 'origin', 'main']);
-  const branch = run('git', ['symbolic-ref', '--short', 'HEAD']).trim();
-  const head = run('git', ['rev-parse', 'HEAD']).trim();
-  const remote = run('git', ['rev-parse', 'origin/main']).trim();
-  const dirty = run('git', ['status', '--porcelain', '--untracked-files=no']).trim();
-  if (branch !== 'main' || head !== remote || dirty !== '') {
-    throw new Error(
-      `the gate must run from a clean main that matches origin/main (branch ${branch}, ` +
-        `HEAD ${head.slice(0, 7)}, origin/main ${remote.slice(0, 7)}, ${dirty === '' ? 'clean' : 'dirty'})`,
-    );
-  }
-}
-
-/** Committed files only: an untracked draft in the checkout must never count as main's. */
-function readMainFile(path: string): string | null {
+/**
+ * After a merge into main, main is merged into staging on GitHub (never the other way outside a batch PR), so builders
+ * always start from main's harness. A conflict is reported for Athena to settle; dispatch refuses until staging
+ * contains main again.
+ */
+function syncStaging(): boolean {
   try {
-    return run('git', ['show', `HEAD:${path}`]);
-  } catch {
-    return null;
+    // 201 with the new merge commit, or 204 with no body when staging already contains main.
+    const out = run('gh', [
+      'api',
+      '-X',
+      'POST',
+      `repos/${REPO}/merges`,
+      '-f',
+      'base=staging',
+      '-f',
+      'head=main',
+      '-f',
+      'commit_message=Merge main into staging (merge gate)',
+    ]).trim();
+    const parsed = out === '' ? {} : (JSON.parse(out) as { sha?: unknown });
+    const sha = typeof parsed.sha === 'string' ? parsed.sha : '';
+    console.log(
+      sha === ''
+        ? 'staging already contains main.'
+        : `Merged main into staging as ${sha.slice(0, 7)}.`,
+    );
+    logMerge({ at: new Date().toISOString(), result: 'staging-sync', mergeCommit: sha });
+    return true;
+  } catch (error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    console.error(
+      `Couldn't merge main into staging: ${typeof stderr === 'string' ? stderr.trim() : 'unknown'}. Settle it before dispatching builders.`,
+    );
+    logMerge({ at: new Date().toISOString(), result: 'staging-sync-failed' });
+    return false;
   }
 }
 
 function main(argv: string[], pr: number): number {
   const dryRun = argv.includes('--dry-run');
-  assertCleanMain();
+  assertCleanMain(run);
   const facts = collectFacts(pr, {
     gh: (args) => run('gh', args),
     git: (args) => run('git', args),
-    readMainFile,
+    readMainFile: (path) => readMainFile(run, path),
     readReviews: (n, sha) => readReviews(n, sha),
+    listReviewedShas: (n) => listReviewedShas(n),
+    readMergeLog: () =>
+      readMergeLog().map((e) => ({
+        result: String(e.result),
+        ...(typeof e.base === 'string' ? { base: e.base } : {}),
+        ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
+        ...(typeof e.issue === 'number' ? { issue: e.issue } : {}),
+      })) satisfies StagingLogEntry[],
+    // The gate re-verifies every runner-made review against Claude Code's own transcript.
+    readTranscript: (sessionId) => {
+      const file = transcriptPath(homedir(), ROOT, sessionId);
+      return existsSync(file) ? readFileSync(file, 'utf8') : null;
+    },
+    stateDir: STATE_DIR,
+    readFile: (path) => (existsSync(path) ? readFileSync(path, 'utf8') : null),
   });
   const result = evaluate(facts);
 
@@ -62,7 +106,15 @@ function main(argv: string[], pr: number): number {
     pr,
     sha: facts.headSha,
     tier: result.tier,
-    reviewers: facts.reviews.map((r) => `${r.reviewer}:${r.verdict}`),
+    base: facts.baseRef,
+    kind: kindOf(facts),
+    // A merge into staging records its task issue (from the branch name): a batch may close only these.
+    ...(facts.baseRef === 'staging' ? { issue: issueFromBranch(facts.headRef) } : {}),
+    // A review made before an update from main says where it came from, for Zeus's audit.
+    reviewers: facts.reviews.map(
+      (r) =>
+        `${r.reviewer}:${r.verdict}${r.carriedFrom === undefined ? '' : `@${r.carriedFrom.slice(0, 7)}`}`,
+    ),
     failed: result.items.filter((item) => !item.ok).map((item) => item.id),
   };
 
@@ -75,11 +127,16 @@ function main(argv: string[], pr: number): number {
     console.log('Would merge (dry run).');
     return 0;
   }
-  // Narrow the base race: refuse if main moved while the gate was checking.
-  const base = run('git', ['rev-parse', 'HEAD']).trim();
-  run('git', ['fetch', '--quiet', 'origin', 'main']);
-  if (run('git', ['rev-parse', 'origin/main']).trim() !== base) {
+  // Narrow the base race: refuse if main moved while the gate was checking (and staging, for a PR into it).
+  const main0 = run('git', ['rev-parse', 'HEAD']).trim();
+  const staging0 =
+    facts.baseRef === 'staging' ? run('git', ['rev-parse', 'origin/staging']).trim() : null;
+  run('git', ['fetch', '--quiet', 'origin', 'main', ...(staging0 === null ? [] : ['staging'])]);
+  if (run('git', ['rev-parse', 'origin/main']).trim() !== main0) {
     throw new Error('main moved while the gate was checking; pull main and run the gate again');
+  }
+  if (staging0 !== null && run('git', ['rev-parse', 'origin/staging']).trim() !== staging0) {
+    throw new Error('staging moved while the gate was checking; run the gate again');
   }
   // The message is ours, never the builder's commits or PR text (which could carry "[skip ci]").
   // --match-head-commit: a push between the checks and the merge makes GitHub refuse it.
@@ -89,7 +146,10 @@ function main(argv: string[], pr: number): number {
     String(pr),
     '-R',
     REPO,
-    '--squash',
+    // A batch merges with a merge commit, so main contains staging's task commits and the next batch counts only new
+    // ones; the rest are squashed. Builder and harness branches go once merged; staging (the batch's head) stays.
+    // The repo's own auto-delete is off, or it would delete staging after a batch.
+    ...mergeArgs(kindOf(facts) ?? 'main'),
     '--match-head-commit',
     facts.headSha,
     '--subject',
@@ -98,6 +158,8 @@ function main(argv: string[], pr: number): number {
     `Merged through the merge gate (tier ${result.tier}; reviews ${entry.reviewers.join(', ')}).`,
   ]);
   logMerge({ ...entry, result: 'merged' });
+  // The merge stands either way; a failed sync makes the gate exit non-zero so it gets settled before dispatch.
+  const synced = facts.baseRef !== 'main' || syncStaging();
   try {
     const merged = run('gh', [
       'pr',
@@ -115,6 +177,7 @@ function main(argv: string[], pr: number): number {
       pr,
       sha: facts.headSha,
       result: 'merge-commit',
+      base: facts.baseRef,
       mergeCommit: merged,
     });
     console.log(`Merged as ${merged.slice(0, 7)}.`);
@@ -123,7 +186,7 @@ function main(argv: string[], pr: number): number {
       'Merged (the merge commit could not be read back; the weekly audit will match it by PR).',
     );
   }
-  return 0;
+  return synced ? 0 : 1;
 }
 
 const argv = process.argv.slice(2);

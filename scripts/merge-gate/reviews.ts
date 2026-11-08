@@ -76,6 +76,39 @@ export function readReviews(pr: number, sha: string, stateDir = STATE_DIR): Revi
   });
 }
 
+/** The commits of a PR that have any review record, from the folder names (only full SHAs count). */
+export function listReviewedShas(pr: number, stateDir = STATE_DIR): string[] {
+  if (!Number.isInteger(pr) || pr <= 0) throw new Error(`bad PR number: ${String(pr)}`);
+  try {
+    return readdirSync(join(stateDir, 'reviews', `pr-${String(pr)}`)).filter((name) =>
+      SHA.test(name),
+    );
+  } catch {
+    return [];
+  }
+}
+
+const isLogEntry = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+/** The merge log's lines, unparseable ones skipped. */
+export function readMergeLog(stateDir = STATE_DIR): Record<string, unknown>[] {
+  let text: string;
+  try {
+    text = readFileSync(join(stateDir, 'merges.jsonl'), 'utf8');
+  } catch {
+    return [];
+  }
+  return text.split('\n').flatMap((line) => {
+    try {
+      const entry: unknown = JSON.parse(line);
+      return isLogEntry(entry) ? [entry] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
 export function logMerge(entry: Record<string, unknown>, stateDir = STATE_DIR): void {
   mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   appendFileSync(join(stateDir, 'merges.jsonl'), `${JSON.stringify(entry)}\n`, { mode: 0o600 });

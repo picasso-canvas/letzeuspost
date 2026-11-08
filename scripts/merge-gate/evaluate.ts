@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import { shipRefusals } from '../lib/protected.ts';
 import { matchesAny } from '../lib/paths.ts';
-import type { Facts, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
+import type { Facts, GateConfig, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
 
 /** The PR text a review was given, normalised so only real edits change it. */
 export function bodyHash(body: string): string {
@@ -52,9 +53,49 @@ export function doneWhenBoxes(markdown: string): { ticked: number; unticked: num
 }
 
 export function workOutTier(f: Facts): Tier {
-  if (f.sensitivePatterns === null) return 'sensitive';
-  const patterns = f.sensitivePatterns;
-  return f.changedFiles.some((file) => matchesAny(file, patterns)) ? 'sensitive' : 'routine';
+  return tierOf(f.changedFiles, f.sensitivePatterns);
+}
+
+export function tierOf(changedFiles: readonly string[], sensitivePatterns: string[] | null): Tier {
+  if (sensitivePatterns === null) return 'sensitive';
+  return changedFiles.some((file) => matchesAny(file, sensitivePatterns)) ? 'sensitive' : 'routine';
+}
+
+/** The reviewers the gate needs: Argus; Cerberus when sensitive; Iris for UI paths once enabled. */
+export function requiredReviewers(
+  changedFiles: readonly string[],
+  sensitivePatterns: string[] | null,
+  config: Pick<GateConfig, 'requireIris' | 'uiPaths'>,
+): Exclude<Reviewer, 'redteam'>[] {
+  const needed: Exclude<Reviewer, 'redteam'>[] = ['argus'];
+  if (tierOf(changedFiles, sensitivePatterns) === 'sensitive') needed.push('cerberus');
+  if (config.requireIris && changedFiles.some((p) => matchesAny(p, config.uiPaths)))
+    needed.push('iris');
+  return needed;
+}
+
+/**
+ * What kind of merge this is (Zeus, 2026-11-07): a builder PR into `staging`; the batch PR from `staging` into
+ * `main`; or a harness PR (Athena's) straight into `main`. Anything else is refused.
+ */
+export function kindOf(
+  f: Pick<Facts, 'baseRef' | 'headRef' | 'crossRepo'>,
+): 'staging' | 'batch' | 'main' | null {
+  if (f.baseRef === 'staging') return 'staging';
+  if (f.baseRef === 'main') {
+    if (f.headRef !== 'staging') return 'main';
+    return f.crossRepo ? null : 'batch'; // a fork's branch named staging is never the batch
+  }
+  return null;
+}
+
+/** Into staging, only Cerberus reviews, and only a PR touching a risky area; without the list on main, every PR. */
+export function stagingReviewers(
+  changedFiles: readonly string[],
+  cerberusPatterns: string[] | null,
+): Exclude<Reviewer, 'redteam'>[] {
+  if (cerberusPatterns === null) return ['cerberus'];
+  return changedFiles.some((file) => matchesAny(file, cerberusPatterns)) ? ['cerberus'] : [];
 }
 
 // GitHub skips push CI on `main` when the merge commit's message carries one of these.
@@ -73,14 +114,28 @@ export function evaluate(f: Facts): GateResult {
   add(1, 'Not frozen', paused === 'false' ? [] : [`AGENTS_PAUSED is ${JSON.stringify(f.paused)}`]);
 
   // 2. Linked and current
+  const kind = kindOf(f);
   const linked: string[] = [];
   if (f.state !== 'OPEN') linked.push(`state is ${f.state}`);
   if (f.isDraft) linked.push('draft');
-  if (f.baseRef !== 'main') linked.push(`base is ${f.baseRef}`);
+  if (kind === null)
+    linked.push(`base is ${f.baseRef}: PRs go into staging, or into main as a batch or harness PR`);
   if (f.mergeable !== 'MERGEABLE')
     linked.push(`mergeable is ${f.mergeable} (try again if UNKNOWN)`);
-  if (f.behindBy !== 0) linked.push(`branch is behind main by ${String(f.behindBy ?? 'unknown')}`);
+  if (f.behindBy !== 0)
+    linked.push(`branch is behind ${f.baseRef} by ${String(f.behindBy ?? 'unknown')}`);
   if (f.changedFiles.length === 0) linked.push('no changed files');
+  if (kind === 'batch') {
+    for (const issue of f.closingIssues) {
+      if (!f.gatedIssues.includes(issue.number))
+        linked.push(`#${String(issue.number)} wasn't merged into staging through the gate`);
+    }
+  }
+  if (kind === 'batch' && f.ungatedStaging.length > 0) {
+    linked.push(
+      `staging holds commits that didn't come through the gate: ${f.ungatedStaging.map((sha) => sha.slice(0, 7)).join(', ')}`,
+    );
+  }
   if (SKIP_CI.test(f.title)) linked.push('the title would skip CI on main');
   if (f.closingIssues.some((issue) => !issue.inRepo)) {
     linked.push('closes an issue in another repository');
@@ -135,20 +190,24 @@ export function evaluate(f: Facts): GateResult {
   // 5. Fresh-context reviews for this commit and this PR text; any block on this commit refuses
   const hash = bodyHash(f.body);
   const current = f.reviews.filter((r) => r.pr === f.pr && r.sha === f.headSha);
-  const needed: Reviewer[] = ['argus'];
-  if (tier === 'sensitive') needed.push('cerberus');
-  if (f.config.requireIris && f.changedFiles.some((p) => matchesAny(p, f.config.uiPaths))) {
-    needed.push('iris');
-  }
+  const needed: Reviewer[] =
+    kind === 'staging'
+      ? stagingReviewers(f.changedFiles, f.cerberusPatterns)
+      : requiredReviewers(f.changedFiles, f.sensitivePatterns, f.config);
   const reviewProblems: string[] = [];
   for (const r of current) {
     if (r.verdict === 'block') reviewProblems.push(`${r.reviewer} blocked this commit`);
   }
   for (const reviewer of needed) {
-    const passes = current.filter((r) => r.reviewer === reviewer && r.verdict === 'pass');
-    if (passes.length === 0)
-      reviewProblems.push(`no ${reviewer} pass for ${f.headSha.slice(0, 7)}`);
-    else if (!passes.some((r) => r.bodyHash === hash)) {
+    // A pass counts only when scripts/review.ts made it: a real Claude Code session, not a hand-written summary.
+    const passes = current.filter(
+      (r) => r.reviewer === reviewer && r.verdict === 'pass' && r.meta?.verified === true,
+    );
+    if (passes.length === 0) {
+      reviewProblems.push(
+        `no ${reviewer} pass from scripts/review.ts for ${f.headSha.slice(0, 7)}`,
+      );
+    } else if (!passes.some((r) => r.bodyHash === hash)) {
       reviewProblems.push(`PR text changed since ${reviewer} reviewed`);
     }
   }
@@ -160,7 +219,9 @@ export function evaluate(f: Facts): GateResult {
   if (boxes.ticked + boxes.unticked === 0)
     doneProblems.push('no Done-when checklist in the PR text');
   if (boxes.unticked > 0) doneProblems.push(`${String(boxes.unticked)} unticked`);
-  const expected = Math.max(0, ...tasks.map((issue) => issue.doneWhenBoxes));
+  // A batch PR ticks one box per task (each task's own list was checked when it merged into staging).
+  const expected =
+    kind === 'batch' ? tasks.length : Math.max(0, ...tasks.map((issue) => issue.doneWhenBoxes));
   if (boxes.ticked < expected) {
     doneProblems.push(`${String(boxes.ticked)} ticked, the issue lists ${String(expected)}`);
   }
@@ -170,7 +231,15 @@ export function evaluate(f: Facts): GateResult {
   const harness = f.changedFiles.filter((p) => matchesAny(p, f.config.harnessPaths));
   const redTeam = current.filter((r) => r.reviewer === 'redteam' && r.verdict === 'pass');
   const harnessProblems: string[] = [];
-  if (harness.length > 0) {
+  if (kind !== 'main') {
+    // Harness and builder-protected paths, symlinks and submodules never go through staging (Zeus, 2026-11-07):
+    // ship refuses them, and so does the gate, in case a branch changed after ship.
+    if (harness.length > 0)
+      harnessProblems.push(`harness paths can't go through staging (${harness.join(', ')})`);
+    harnessProblems.push(
+      ...shipRefusals(f.changes).filter((reason) => reason !== 'the branch changes nothing'),
+    );
+  } else if (harness.length > 0) {
     if (redTeam.length === 0) {
       harnessProblems.push(`harness paths changed (${harness.join(', ')}), no red-team record`);
     } else if (!redTeam.some((r) => r.bodyHash === hash)) {
