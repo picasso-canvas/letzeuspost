@@ -87,9 +87,9 @@ jobs:
           git show HEAD^1:DESIGN.md > "$RUNNER_TEMP/DESIGN.base.md"
           status=0
           pnpm exec design.md diff --format json "$RUNNER_TEMP/DESIGN.base.md" DESIGN.md > "$RUNNER_TEMP/design-diff.json" || status=$?
-          cat "$RUNNER_TEMP/design-diff.json"
           [ "$status" -le 1 ]
-          # Backticks are dropped from the summary's copy, so a token name can't close the code block and add markdown.
+          # Only in the step summary, never the log, where a token name could read as a workflow command (::…::).
+          # Backticks are dropped, so a token name can't close the code block and add markdown.
           {
             echo '### DESIGN.md changes'
             echo '```json'
