@@ -1,0 +1,126 @@
+# The CI job `design` (§21 Pipeline and Visual tests, #70): DESIGN.md's lint, its generated tokens and its diff; from
+# #74 on, the component gallery (the Storybook build, its screenshot tests and axe). It runs in the Playwright image
+# pinned to the version in package.json, so screenshots get the same browser and fonts every time.
+#
+# Required by the merge gate (.github/merge-gate.json), so it runs on every PR, not only on ones that touch the design.
+# No repository secrets, as in `ci`: this job runs the branch's code.
+name: design
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # runs on main are never cancelled
+
+jobs:
+  design:
+    name: design
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    container:
+      # v1.65.0-noble (@playwright/test 1.65.0), its multi-arch index digest from mcr.microsoft.com on 2026-11-08.
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
+      options: --user 1001 # the runner's user, as Playwright's CI guide has it: owns the workspace, not root
+    defaults:
+      run:
+        shell: bash # in a container the default is sh (dash), which has no pipefail
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2 # a PR's merge commit and its base, for the DESIGN.md diff
+
+      - name: Set up pnpm (version from packageManager)
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install dependencies (frozen lockfile)
+        id: install
+        run: pnpm install --frozen-lockfile
+
+      # Every error, and every warning except an unused token: a text pair under WCAG AA is only a warning in
+      # `design.md lint`, and §05 says every pair passes AA. Each check below runs even when an earlier one failed.
+      - name: DESIGN.md lint (references and WCAG AA contrast)
+        run: pnpm design:lint
+
+      - name: Generated tokens match a fresh export
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          pnpm tokens
+          if [ -n "$(git status --porcelain -- packages/ui/src/tokens)" ]; then
+            git --no-pager diff -- packages/ui/src/tokens
+            git status --short -- packages/ui/src/tokens
+            echo "::error::packages/ui/src/tokens differs from DESIGN.md's export: run pnpm tokens and commit the result"
+            exit 1
+          fi
+
+      # The tokens and components the PR changes, against its base. Its own `regression` flag isn't the gate: it counts
+      # unused-token warnings, which every border or ring colour adds (no component can name one), and the lint step
+      # above already fails on any other new warning or error. A file it can't read (exit 2) still fails.
+      - name: DESIGN.md diff against the base
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet HEAD^1 HEAD -- DESIGN.md; then
+            echo "DESIGN.md is unchanged"
+            exit 0
+          fi
+          if ! git cat-file -e HEAD^1:DESIGN.md 2>/dev/null; then
+            echo "::notice::the base has no DESIGN.md yet; nothing to compare"
+            exit 0
+          fi
+          git show HEAD^1:DESIGN.md > "$RUNNER_TEMP/DESIGN.base.md"
+          status=0
+          pnpm exec design.md diff --format json "$RUNNER_TEMP/DESIGN.base.md" DESIGN.md > "$RUNNER_TEMP/design-diff.json" || status=$?
+          [ "$status" -le 1 ]
+          # Only in the step summary, never the log, where a token name could read as a workflow command (::…::).
+          # Backticks are dropped, so a token name can't close the code block and add markdown.
+          {
+            echo '### DESIGN.md changes'
+            echo '```json'
+            tr -d '`' < "$RUNNER_TEMP/design-diff.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # From #74 on: the component gallery, built and uploaded, then its screenshot and axe tests (playwright.config.ts,
+      # project `gallery`). Each step starts once its files exist.
+      - name: Build the component gallery (Storybook)
+        id: gallery
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && hashFiles('packages/ui/.storybook/**') != '' }}
+        run: pnpm --filter @lzp/ui build-storybook
+
+      - name: Upload the component gallery
+        if: ${{ !cancelled() && steps.gallery.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gallery
+          path: packages/ui/storybook-static
+          retention-days: 14
+
+      - name: Gallery screenshots and axe
+        if: ${{ !cancelled() && steps.gallery.outcome == 'success' && hashFiles('tests/gallery/**') != '' }}
+        run: pnpm exec playwright test --project gallery
+
+      # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines.
+      - name: Upload the gallery screenshots
+        if: ${{ !cancelled() && hashFiles('tests/visual/output/**') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gallery-screenshots
+          path: tests/visual/output
+          retention-days: 14

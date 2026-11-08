@@ -1,0 +1,33 @@
+/* Generated from DESIGN.md by packages/ui/src/tokens/generate.ts (pnpm tokens). Don’t edit. */
+.dark {
+  --color-background: #11100e;
+  --color-foreground: #f3f1ec;
+  --color-card: #191815;
+  --color-card-foreground: #f3f1ec;
+  --color-popover: #191815;
+  --color-popover-foreground: #f3f1ec;
+  --color-primary: #f5b301;
+  --color-primary-foreground: #1c1a17;
+  --color-secondary: #22201c;
+  --color-secondary-foreground: #f3f1ec;
+  --color-muted: #22201c;
+  --color-muted-foreground: #b3aea4;
+  --color-accent: #22201c;
+  --color-accent-foreground: #f3f1ec;
+  --color-destructive: #f87171;
+  --color-border: #2f2c27;
+  --color-border-strong: #3e3a33;
+  --color-input: #706b63;
+  --color-ring: #f5b301;
+  --color-faint: #8c877e;
+  --color-accent-text: #f5b301;
+  --color-status-generating: #94a3b8;
+  --color-status-needs-fix: #f87171;
+  --color-status-in-review: #f5b301;
+  --color-status-with-client: #b39dfa;
+  --color-status-approved: #4ade80;
+  --color-status-exported: #a8a29e;
+  --color-qc-pass: #4ade80;
+  --color-qc-warn: #fbbf24;
+  --color-qc-fail: #f87171;
+}
