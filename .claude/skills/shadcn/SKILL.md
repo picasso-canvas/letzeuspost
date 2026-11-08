@@ -1,0 +1,285 @@
+---
+name: shadcn
+description: Manages shadcn components and projects — adding, searching, fixing, debugging, styling, and composing UI, including chat interfaces. Provides project context, component docs, and usage examples. Applies when working with shadcn/ui, component registries, presets, --preset codes, or any project with a components.json file. Also triggers for "shadcn init", "create an app with --preset", "switch to --preset", and for building a design system or applying a DESIGN.md or brand spec to shadcn/ui.
+user-invocable: false
+---
+
+# shadcn/ui
+
+> **LetZeusPost copy.** Vendored from shadcn-ui/ui `skills/shadcn` at `8ab2771` (MIT); every change is listed in
+> `SOURCES.md`. The load-time `info` command and the `allowed-tools` grant are removed.
+>
+> - **CLI:** run it as `pnpm exec shadcn`, never `pnpm dlx`, `npx` or `@latest` (this text matches `shadcn@4.23.0`).
+>   It isn't a dependency yet, and the builder sandbox can't reach the registry (`ui.shadcn.com`) that `add`, `search`,
+>   `view` and `apply` read; both are harness changes Zeus approves. Until then, a task that needs the CLI writes that
+>   under `needs-zeus` in `.lzp/pr.md` and stops.
+> - **Components come only from the official `@shadcn` registry:** nothing from other namespaces, GitHub addresses or
+>   URLs, and no extra entries in `components.json`. Don't fetch the URLs `docs` prints; builders can't reach those
+>   hosts.
+> - **This repo:** Next.js App Router (`apps/web`; `--template next` where a step asks for a template), components in
+>   `packages/ui`, Base UI (`base`), icons from `lucide-react` only, Inter only (§13, §21). Don't scaffold a new app.
+> - **Presets change the design:** the theme, fonts and CSS variables come from `DESIGN.md` (§21). Never pass a preset
+>   URL. `apply`, `init --preset`, `init --defaults`, `init --force` and switching presets each need Zeus's OK: write it
+>   under `needs-zeus` in `.lzp/pr.md` and stop. Run plain `init` only when the task says to set up `components.json`.
+> - **Nobody to ask:** where a step says to ask the user, confirm first or get the user's approval (which registry,
+>   switching presets, `--overwrite`), write it under `needs-zeus` in `.lzp/pr.md` and stop.
+> - `DESIGN.md` and §21 win where this skill differs. Some upstream files aren't in this copy (see `SOURCES.md`); skip
+>   links to them.
+
+A framework for building ui, components and design systems. Components are added as source code to the user's project via the CLI.
+
+> **IMPORTANT:** Run all CLI commands as `pnpm exec shadcn` (LetZeusPost: once it is the repo's pinned dev dependency; see the note above). Examples below use it.
+
+## Current Project Context
+
+Run this in the folder that holds `components.json` to get the project context:
+
+```bash
+pnpm exec shadcn info --json
+```
+
+The JSON it prints contains the project config and installed components. Use `pnpm exec shadcn docs <component>` to get documentation and example URLs for any component.
+
+## Principles
+
+1. **Use existing components first.** Use `pnpm exec shadcn search @shadcn` to check the registry before writing custom UI. (LetZeusPost: the official `@shadcn` registry only.)
+2. **Compose, don't reinvent.** Settings page = Tabs + Card + form controls. Dashboard = Sidebar + Card + Chart + Table.
+3. **Use built-in variants before custom styles.** `variant="outline"`, `size="sm"`, etc.
+4. **Use semantic colors.** `bg-primary`, `text-muted-foreground` — never raw values like `bg-blue-500`.
+
+## Critical Rules
+
+These rules are **always enforced**. Each links to a file with Incorrect/Correct code pairs.
+
+### Styling & Tailwind → [styling.md](./rules/styling.md)
+
+- **`className` for layout, not styling.** Never override component colors or typography.
+- **No `space-x-*` or `space-y-*`.** Use `flex` with `gap-*`. For vertical stacks, `flex flex-col gap-*`.
+- **Use `size-*` when width and height are equal.** `size-10` not `w-10 h-10`.
+- **Use `truncate` shorthand.** Not `overflow-hidden text-ellipsis whitespace-nowrap`.
+- **No manual `dark:` color overrides.** Use semantic tokens (`bg-background`, `text-muted-foreground`).
+- **Use `cn()` for conditional classes.** Don't write manual template literal ternaries.
+- **No manual `z-index` on overlay components.** Dialog, Sheet, Popover, etc. handle their own stacking.
+
+### Forms & Inputs → [forms.md](./rules/forms.md)
+
+- **Forms use `FieldGroup` + `Field`.** Never use raw `div` with `space-y-*` or `grid gap-*` for form layout.
+- **`InputGroup` uses `InputGroupInput`/`InputGroupTextarea`.** Never raw `Input`/`Textarea` inside `InputGroup`.
+- **Buttons inside inputs use `InputGroup` + `InputGroupAddon`.**
+- **Option sets (2–7 choices) use `ToggleGroup`.** Don't loop `Button` with manual active state.
+- **`FieldSet` + `FieldLegend` for grouping related checkboxes/radios.** Don't use a `div` with a heading.
+- **Field validation uses `data-invalid` + `aria-invalid`.** `data-invalid` on `Field`, `aria-invalid` on the control. For disabled: `data-disabled` on `Field`, `disabled` on the control.
+
+### Component Structure → [composition.md](./rules/composition.md)
+
+- **Items always inside their Group.** `SelectItem` → `SelectGroup`. `DropdownMenuItem` → `DropdownMenuGroup`. `CommandItem` → `CommandGroup`.
+- **Use `asChild` (radix) or `render` (base) for custom triggers.** Check `base` field from `pnpm exec shadcn info`. → [base-vs-radix.md](./rules/base-vs-radix.md)
+- **Dialog, Sheet, and Drawer always need a Title.** `DialogTitle`, `SheetTitle`, `DrawerTitle` required for accessibility. Use `className="sr-only"` if visually hidden.
+- **Use full Card composition.** `CardHeader`/`CardTitle`/`CardDescription`/`CardContent`/`CardFooter`. Don't dump everything in `CardContent`.
+- **Button has no `isPending`/`isLoading`.** Compose with `Spinner` + `data-icon` + `disabled`.
+- **`TabsTrigger` must be inside `TabsList`.** Never render triggers directly in `Tabs`.
+- **`Avatar` always needs `AvatarFallback`.** For when the image fails to load.
+
+### Use Components, Not Custom Markup → [composition.md](./rules/composition.md)
+
+- **Use existing components before custom markup.** Check if a component exists before writing a styled `div`.
+- **Callouts use `Alert`.** Don't build custom styled divs.
+- **Empty states use `Empty`.** Don't build custom empty state markup.
+- **Toast follows the project base.** Use `toast` from the `toast` component for
+  Base UI projects. Use `toast()` from `sonner` for Radix and React Aria
+  projects.
+- **Use `Separator`** instead of `<hr>` or `<div className="border-t">`.
+- **Use `Skeleton`** for loading placeholders. No custom `animate-pulse` divs.
+- **Use `Badge`** instead of custom styled spans.
+
+### Icons → [icons.md](./rules/icons.md)
+
+- **Icons in `Button` use `data-icon`.** `data-icon="inline-start"` or `data-icon="inline-end"` on the icon.
+- **No sizing classes on icons inside components.** Components handle icon sizing via CSS. No `size-4` or `w-4 h-4`.
+- **Pass icons as objects, not string keys.** `icon={CheckIcon}`, not a string lookup.
+
+### CLI
+
+- **Never decode preset codes or build preset URLs manually.** Use `pnpm exec shadcn preset decode <code>`, `preset url <code>`, or `preset open <code>`. For project-aware preset detection, use `pnpm exec shadcn preset resolve`.
+- **Apply preset codes directly with the CLI.** Use `pnpm exec shadcn apply <code>` for existing projects, or `pnpm exec shadcn init --preset <code>` when initializing.
+
+## Key Patterns
+
+These are the most common patterns that differentiate correct shadcn/ui code. For edge cases, see the linked rule files above.
+
+```tsx
+// Form layout: FieldGroup + Field, not div + Label.
+<FieldGroup>
+  <Field>
+    <FieldLabel htmlFor="email">Email</FieldLabel>
+    <Input id="email" />
+  </Field>
+</FieldGroup>
+
+// Validation: data-invalid on Field, aria-invalid on the control.
+<Field data-invalid>
+  <FieldLabel>Email</FieldLabel>
+  <Input aria-invalid />
+  <FieldDescription>Invalid email.</FieldDescription>
+</Field>
+
+// Icons in buttons: data-icon, no sizing classes.
+<Button>
+  <SearchIcon data-icon="inline-start" />
+  Search
+</Button>
+
+// Spacing: gap-*, not space-y-*.
+<div className="flex flex-col gap-4">  // correct
+<div className="space-y-4">           // wrong
+
+// Equal dimensions: size-*, not w-* h-*.
+<Avatar className="size-10">   // correct
+<Avatar className="w-10 h-10"> // wrong
+
+// Status colors: Badge variants or semantic tokens, not raw colors.
+<Badge variant="secondary">+20.1%</Badge>    // correct
+<span className="text-emerald-600">+20.1%</span> // wrong
+```
+
+## Component Selection
+
+| Need                       | Use                                                                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------- |
+| Button/action              | `Button` with appropriate variant                                                                   |
+| Form inputs                | `Input`, `Select`, `Combobox`, `Switch`, `Checkbox`, `RadioGroup`, `Textarea`, `InputOTP`, `Slider` |
+| Toggle between 2–5 options | `ToggleGroup` + `ToggleGroupItem`                                                                   |
+| Data display               | `Table`, `Card`, `Badge`, `Avatar`                                                                  |
+| Navigation                 | `Sidebar`, `NavigationMenu`, `Breadcrumb`, `Tabs`, `Pagination`                                     |
+| Overlays                   | `Dialog` (modal), `Sheet` (side panel), `Drawer` (bottom sheet), `AlertDialog` (confirmation)       |
+| Feedback                   | `toast` (Base UI), `sonner` (Radix/Aria), `Alert`, `Progress`, `Skeleton`, `Spinner`                 |
+| Command palette            | `Command` inside `Dialog`                                                                           |
+| Charts                     | `Chart` (wraps Recharts)                                                                            |
+| Layout                     | `Card`, `Separator`, `Resizable`, `ScrollArea`, `Accordion`, `Collapsible`                          |
+| Empty states               | `Empty`                                                                                             |
+| Menus                      | `DropdownMenu`, `ContextMenu`, `Menubar`                                                            |
+| Tooltips/info              | `Tooltip`, `HoverCard`, `Popover`                                                                   |
+| Chat / conversation UI     | `MessageScroller`, `Message`, `Bubble`, `Attachment`, `Marker`, `Trace`                             |
+
+## Key Fields
+
+The project context (`info --json`) contains these key fields:
+
+- **`aliases`** → use the actual alias prefix for imports (e.g. `@/`, `~/`), never hardcode.
+- **`isRSC`** → when `true`, components using `useState`, `useEffect`, event handlers, or browser APIs need `"use client"` at the top of the file. Always reference this field when advising on the directive.
+- **`tailwindVersion`** → `"v4"` uses `@theme inline` blocks; `"v3"` uses `tailwind.config.js`.
+- **`tailwindCssFile`** → the global CSS file where custom CSS variables are defined. Always edit this file, never create a new one.
+- **`style`** → component visual treatment (e.g. `nova`, `vega`).
+- **`base`** → primitive library (`radix` or `base`). Affects component APIs and available props.
+- **`iconLibrary`** → determines icon imports. LetZeusPost: it is `lucide`, so import icons from `lucide-react` only; no other icon set (§13, §21).
+- **`resolvedPaths`** → exact file-system destinations for components, utils, hooks, etc.
+- **`framework`** → routing and file conventions (e.g. Next.js App Router).
+- **`packageManager`** → use this for any non-shadcn dependency installs (e.g. `pnpm add date-fns` vs `npm install date-fns`).
+- **`preset`** → resolved preset code and values for the current project. Use `pnpm exec shadcn preset resolve --json` when you only need preset information.
+
+See [cli.md — `info` command](./cli.md) for the full field reference.
+
+## Component Docs, Examples, and Usage
+
+Run `pnpm exec shadcn docs <component>` to get the URLs for a component's documentation, examples, and API reference.
+
+```bash
+pnpm exec shadcn docs button dialog select
+```
+
+LetZeusPost: don't fetch these URLs; builders can't reach those hosts. **When creating, fixing, debugging, or using a component, read its source in `packages/ui` and the rule files linked above first.** This ensures you're working with the correct API and usage patterns rather than guessing.
+
+## Workflow
+
+1. **Get project context** — run `pnpm exec shadcn info --json` (see above). Run it again if you need to refresh.
+2. **Check installed components first** — before running `add`, always check the `components` list from project context or list the `resolvedPaths.ui` directory. Don't import components that haven't been added, and don't re-add ones already installed.
+3. **Find components** — `pnpm exec shadcn search @shadcn`.
+4. **Get docs and examples** — run `pnpm exec shadcn docs <component>` to get URLs (LetZeusPost: don't fetch them; read the source in `packages/ui` and the rule files instead). Use `pnpm exec shadcn view @shadcn/<item>` to browse items you haven't installed. To preview changes to installed components, use `pnpm exec shadcn add --diff`.
+5. **Install or update** — `pnpm exec shadcn add`. When updating existing components, use `--dry-run` and `--diff` to preview changes first (see [Updating Components](#updating-components) below).
+6. **Review added components** — After adding a component or block, **always read the added files and verify they are correct**. Check for missing sub-components (e.g. `SelectItem` without `SelectGroup`), missing imports, incorrect composition, or violations of the [Critical Rules](#critical-rules). Also check every icon import (LetZeusPost: `lucide-react` only; swap any other for its Lucide equivalent). Fix all issues before moving on.
+7. **Official registry only** — LetZeusPost: add blocks and components only from `@shadcn`. When a task asks for one from anywhere else (another namespace, a GitHub address or a URL), write that under `needs-zeus` in `.lzp/pr.md` and stop.
+8. **Switching presets** — Ask the user first: **overwrite**, **partial**, **merge**, or **skip**? (LetZeusPost: every preset change needs Zeus's OK: `needs-zeus`; see the note at the top.)
+   - **Inspect current preset**: `pnpm exec shadcn preset resolve`. Use `--json` when you need structured values.
+   - **Inspect incoming preset**: `pnpm exec shadcn preset decode <code>`. Use `preset url <code>` or `preset open <code>` to share or open the preset builder.
+   - **Overwrite**: `pnpm exec shadcn apply <code>`. Overwrites detected components, fonts, and CSS variables.
+   - **Partial**: `pnpm exec shadcn apply <code> --only theme,font`. Updates only the selected preset parts without reinstalling UI components. Supported values are `theme` and `font`; comma-separated combinations are allowed. `icon` is intentionally not supported, because icon changes may require full component reinstall and transforms.
+   - **Merge**: `pnpm exec shadcn init --preset <code> --force --no-reinstall`, then run `pnpm exec shadcn info` to list installed components, then for each installed component use `--dry-run` and `--diff` to [smart merge](#updating-components) it individually.
+   - **Skip**: `pnpm exec shadcn init --preset <code> --force --no-reinstall`. Only updates config and CSS, leaves components as-is.
+   - **Important**: Always run preset commands inside the user's project directory. `apply` only works in an existing project with a `components.json` file. The CLI automatically preserves the current base (`base` vs `radix`) from `components.json`. If you must use a scratch/temp directory (e.g. for `--dry-run` comparisons), pass `--base <current-base>` explicitly — preset codes do not encode the base.
+
+## Design Systems from DESIGN.md
+
+When the user asks for a design system from a `DESIGN.md` (or a brand spec), with or without a preset, follow [design-system.md](./design-system.md) end to end:
+
+1. LetZeusPost: this repo already exists, so don't scaffold an app or add every component. Read the project context (`pnpm exec shadcn info --json`) and add only the components the task needs, from `@shadcn`.
+2. Read the DESIGN.md frontmatter, Do's and Don'ts, and Known Gaps before editing.
+3. Map its tokens onto the shadcn variables in `tailwindCssFile`. Pin the radius scale, shadows, fonts and `type-*` utilities.
+4. Restyle components by editing their `cva` variants. Change control heights together.
+5. Build the design system page per [design-system-page.md](./design-system-page.md): contrast-checked color roles, type specimens, pinned state matrices, edge cases, do/don't pairs, recipes.
+6. Verify in a browser: typecheck, no console errors, loads at the top, no horizontal overflow, dark mode.
+
+## Updating Components
+
+When the user asks to update a component from upstream while keeping their local changes, use `--dry-run` and `--diff` to intelligently merge. **NEVER fetch raw files from GitHub manually — always use the CLI.**
+
+1. Run `pnpm exec shadcn add <component> --dry-run` to see all files that would be affected.
+2. For each file, run `pnpm exec shadcn add <component> --diff <file>` to see what changed upstream vs local.
+3. Decide per file based on the diff:
+   - No local changes → safe to overwrite.
+   - Has local changes → read the local file, analyze the diff, and apply upstream updates while preserving local modifications.
+   - User says "just update everything" → use `--overwrite`, but confirm first.
+4. **Never use `--overwrite` without the user's explicit approval.** (LetZeusPost: a builder has nobody to confirm with, so `--overwrite` means `needs-zeus`.)
+
+## Quick Reference
+
+```bash
+# Initialize existing project (LetZeusPost: don't use; the repo is already set up, and a preset needs Zeus's OK).
+pnpm exec shadcn init --preset base-nova
+pnpm exec shadcn init --defaults  # shortcut: --template=next --preset=nova (base style implied)
+
+# Apply a preset to an existing project (LetZeusPost: needs Zeus's OK).
+pnpm exec shadcn apply a2r6bw
+pnpm exec shadcn apply a2r6bw --only theme
+pnpm exec shadcn apply a2r6bw --only font
+pnpm exec shadcn apply a2r6bw --only theme,font
+
+# Inspect preset codes and project preset state.
+pnpm exec shadcn preset decode a2r6bw
+pnpm exec shadcn preset url a2r6bw
+pnpm exec shadcn preset open a2r6bw
+pnpm exec shadcn preset resolve
+pnpm exec shadcn preset resolve --json
+
+# Add components.
+pnpm exec shadcn add button card dialog
+
+# Preview changes before adding/updating.
+pnpm exec shadcn add button --dry-run
+pnpm exec shadcn add button --diff button.tsx
+
+# Search the official registry (LetZeusPost: @shadcn only).
+pnpm exec shadcn search @shadcn -q "sidebar"
+pnpm exec shadcn search @shadcn -q "menu" -t ui  # filter by item type
+
+# Get component docs and example URLs (LetZeusPost: don't fetch them).
+pnpm exec shadcn docs button dialog select
+
+# View item details (for items not yet installed).
+pnpm exec shadcn view @shadcn/button
+```
+
+**Named presets:** `nova`, `vega`, `maia`, `lyra`, `mira`, `luma`
+**Templates:** `next`, `start`, `react-router`, `astro` (all support `--monorepo`) and `laravel` (not supported for monorepo). LetZeusPost: this repo uses `next`.
+**Preset codes:** Version-prefixed base62 strings (e.g. `a2r6bw` or `b0`), from [ui.shadcn.com](https://ui.shadcn.com).
+
+## Detailed References
+
+- [rules/forms.md](./rules/forms.md) — FieldGroup, Field, InputGroup, ToggleGroup, FieldSet, validation states
+- [rules/composition.md](./rules/composition.md) — Groups, overlays, Card, Tabs, Avatar, Alert, Empty, Toast, Separator, Skeleton, Badge, Button loading
+- [rules/icons.md](./rules/icons.md) — data-icon, icon sizing, passing icons as objects
+- [rules/styling.md](./rules/styling.md) — Semantic colors, variants, className, spacing, size, truncate, dark mode, cn(), z-index
+- [rules/base-vs-radix.md](./rules/base-vs-radix.md) — asChild vs render, Select, ToggleGroup, Slider, Accordion
+- [cli.md](./cli.md) — Commands, flags, presets, templates
+- [customization.md](./customization.md) — Theming, CSS variables, extending components
+- [design-system.md](./design-system.md): DESIGN.md (with or without a preset) to a themed app: style picking, token mapping, radius, fonts, type scale, control heights, showcase traps, verification
+- [design-system-page.md](./design-system-page.md): What goes on a design system page and how: foundations, component tiers, pinned state matrices, contrast pairs, edge cases, do/don't, recipes

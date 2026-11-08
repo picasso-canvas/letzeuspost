@@ -4,6 +4,10 @@
     "conventions": { "source": "local", "path": ".claude/skills/conventions" },
     "tdd": { "source": "local", "path": ".claude/skills/tdd" },
     "review-checklist": { "source": "local", "path": ".claude/skills/review-checklist" },
+    "tenant-isolation": { "source": "local", "path": ".claude/skills/tenant-isolation" },
+    "safe-migrations": { "source": "local", "path": ".claude/skills/safe-migrations" },
+    "jobs": { "source": "local", "path": ".claude/skills/jobs" },
+    "design-system": { "source": "local", "path": ".claude/skills/design-system" },
     "systematic-debugging": {
       "source": "obra/superpowers",
       "path": "skills/systematic-debugging",
@@ -21,6 +25,42 @@
       "path": "skills/security-audit",
       "commit": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
       "licence": "MIT"
+    },
+    "shadcn": {
+      "source": "shadcn-ui/ui",
+      "path": "skills/shadcn",
+      "commit": "8ab27715521cbd4f87ae6886cd989cbb678f6de7",
+      "licence": "MIT"
+    },
+    "baseline-ui": {
+      "source": "ibelick/ui-skills",
+      "path": "skills/baseline-ui",
+      "commit": "97dea9e747ea94d5671ef1468cbb8f9bd5f32542",
+      "licence": "MIT"
+    },
+    "fixing-accessibility": {
+      "source": "ibelick/ui-skills",
+      "path": "skills/fixing-accessibility",
+      "commit": "97dea9e747ea94d5671ef1468cbb8f9bd5f32542",
+      "licence": "MIT"
+    },
+    "web-interface-guidelines": {
+      "source": "vercel-labs/web-interface-guidelines",
+      "path": "command.md",
+      "commit": "434b7f91364665f2f733b310ec54809bf8f37937",
+      "licence": "MIT"
+    },
+    "accessibility": {
+      "source": "addyosmani/web-quality-skills",
+      "path": "skills/accessibility",
+      "commit": "afa8da942115f2961fdbfa80807ea0b232ff6c00",
+      "licence": "MIT"
+    },
+    "playwright-cli": {
+      "source": "microsoft/playwright-cli",
+      "path": "skills/playwright-cli",
+      "commit": "4bc00fb7fa5b4329f2fb53ac4743a066c2c664e8",
+      "licence": "Apache-2.0"
     },
     "security-review": {
       "source": "anthropics/claude-code-security-review",
