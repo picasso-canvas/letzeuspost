@@ -150,7 +150,8 @@ A PR merges only when all of these hold:
    cover her Edit and Write tools only; her shell can still write those files, so the weekly report's audit is the
    backstop. Auto-memory is off for every session in the repo (`autoMemoryEnabled: false`) and for reviewers
    (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`), so no note left in `~/.claude/projects/*/memory/` reaches a review. The reviewers
-   confirm the Done-when evidence. Each verdict is also posted on the PR, for the record.
+   confirm the Done-when evidence and that each comment on the PR that raises a problem is fixed or answered. Each
+   verdict is also posted on the PR, for the record.
 6. **Done-when complete:** no unticked box in the PR's Done-when list.
 7. **Harness changes re-tested:** when the PR touches a harness path (`.github/`, `.claude/`, any `CLAUDE.md`,
    `scripts/`, the sensitive-paths list), Athena's record holds the red-team items it affects, run again, with their
