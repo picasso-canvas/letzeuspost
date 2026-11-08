@@ -54,6 +54,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     cerberusPatterns: ['packages/auth/**', 'packages/db/**'],
     config: {
       requiredChecks: ['ci', 'risk-gate'],
+      requiredChecksIntoMain: [],
       requireTierLabel: true,
       requireIris: false,
       uiPaths: ['apps/web/**', 'packages/ui/**'],

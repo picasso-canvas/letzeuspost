@@ -1,5 +1,6 @@
 {
   "requiredChecks": ["ci", "risk-gate"],
+  "requiredChecksIntoMain": ["ai-review"],
   "requireTierLabel": true,
   "requireIris": false,
   "uiPaths": ["apps/web/**", "packages/ui/**", "packages/render/src/looks/**", "DESIGN.md"],

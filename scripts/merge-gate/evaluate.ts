@@ -158,7 +158,11 @@ export function evaluate(f: Facts): GateResult {
   // 3. Checks green; required checks must come from GitHub Actions
   const checks: string[] = [];
   if (f.config.requiredChecks.length === 0) checks.push('no required checks configured on main');
-  for (const name of f.config.requiredChecks) {
+  const required = [
+    ...f.config.requiredChecks,
+    ...(f.baseRef === 'main' ? f.config.requiredChecksIntoMain : []),
+  ];
+  for (const name of required) {
     const runs = f.checkRuns.filter((run) => run.name === name);
     if (runs.length === 0) checks.push(`required check "${name}" missing`);
     else if (runs.some((run) => run.app !== 'github-actions')) {

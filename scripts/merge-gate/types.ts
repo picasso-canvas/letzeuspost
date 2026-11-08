@@ -22,6 +22,8 @@ export interface ReviewRecord {
 /** `.github/merge-gate.json`, always read from `main`. */
 export interface GateConfig {
   requiredChecks: string[];
+  /** Also required on PRs into `main` only: `ai-review` never runs on builder PRs into `staging`. */
+  requiredChecksIntoMain: string[];
   requireTierLabel: boolean;
   requireIris: boolean;
   uiPaths: string[];

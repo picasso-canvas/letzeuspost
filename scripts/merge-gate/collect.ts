@@ -125,6 +125,10 @@ export function parseConfig(text: string | null): GateConfig {
   };
   return {
     requiredChecks: list(raw.requiredChecks, 'requiredChecks'),
+    requiredChecksIntoMain:
+      raw.requiredChecksIntoMain === undefined
+        ? []
+        : list(raw.requiredChecksIntoMain, 'requiredChecksIntoMain'),
     requireTierLabel: raw.requireTierLabel === true,
     requireIris: raw.requireIris === true,
     uiPaths: list(raw.uiPaths, 'uiPaths'),
