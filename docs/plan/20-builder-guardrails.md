@@ -1,4 +1,4 @@
-# Section 20: Builder guardrails (Approved 2026-11-06, revised 2026-11-06 and 2026-11-07)
+# Section 20: Builder guardrails (Approved 2026-11-06, revised 2026-11-06, 2026-11-07 and 2026-11-08)
 
 > **Stack:** decided in [§13](13-architecture.md) (approved 2026-11-06). Where this doc differs, §13 wins.
 
@@ -26,6 +26,9 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
    Zeus's account, however narrow, could still merge through the API, push to `main`, and write labels, ticks and
    comments that look like Zeus's. Athena now pushes builders' branches and opens their PRs; the token in #35 isn't
    needed. The sandbox lives in the builder settings only, and `scripts/` joins the protected paths.
+7. **2026-11-08: no GitHub AI review** (Zeus, in chat: "Run the review here on my mac only", then "Drop it"; #27).
+   Reviews run only on Zeus's Mac, on his subscription: Argus and Cerberus through `scripts/review.ts` (Iris from the
+   first UI milestone). No `ai-review` workflow, GitHub environment or CI token; PR #58 closed unmerged.
 
 ## Questions for Zeus (answered 2026-11-06)
 
@@ -110,8 +113,6 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
   `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, Dockerfiles · AI prompts, AI policy, model/provider/plan
   config · `.github/**`, `.claude/**`, every `CLAUDE.md`, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` ·
   baselines of **approved** screens and look presets. The exact paths are listed in [§13](13-architecture.md).
-- **`ai-review`**: `anthropics/claude-code-action@v1` with Zeus's `claude_code_oauth_token` and the code-review plugin
-  posts inline comments on every PR. It doesn't block on its own, but the merge gate needs each finding fixed or answered.
 - **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`),
   so GitHub enforces the merge gate's checks too.
 
@@ -121,16 +122,16 @@ No real secrets on the builder side. Builders use local dev services and a **moc
 in the CI eval job, added with the AI pipeline. **CI secrets never meet PR code:** GitHub gives secrets to
 `pull_request` runs from branches in the same repo, so the evals (`ANTHROPIC_API_KEY`) run only on `main` and by hand
 (`workflow_dispatch`): for a PR that touches AI paths, Athena starts them on the PR branch after the reviews pass,
-and the merge gate requires that check on the head commit; `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
+and the merge gate requires that check on the head commit; `ci` and `risk-gate` use no secrets, and `risk-gate` never
 installs or runs the PR's code. `.env` stays local and unreadable to agents; `env.example` documents
-the keys. CI secrets: `CLAUDE_CODE_OAUTH_TOKEN` now; `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
+the keys. CI secrets: none yet (no GitHub AI review, 2026-11-08); `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
 Console workspace with a monthly spend limit).
 
 ### 7. Cost and usage
 
 Builders and reviewers run on Zeus's Claude subscription, so its usage limits are the real cap. H0 runs **1 builder**;
 Athena only adds a second or third when the weekly report shows room. Any headless run on an API key gets
-`--max-budget-usd`. The GitHub review has a turn limit.
+`--max-budget-usd`.
 
 ### Outside skills
 

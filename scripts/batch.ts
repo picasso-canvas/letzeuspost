@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // The batch (§19, Zeus 2026-11-07): builder PRs merge into `staging` on the automatic checks; the full review
-// (Argus, Cerberus, the GitHub AI review) happens once per batch, on the PR from `staging` into `main`.
+// (Argus, Cerberus, and Iris from the first UI milestone) happens once per batch, on the PR from `staging` into
+// `main`.
 //   node scripts/batch.ts [--open]
 // It runs from a clean `main` and reports how far `staging` is ahead: the task PRs the gate merged there and the
 // changed lines. The batch is due at 5 tasks or ~1,500 changed lines, whichever comes first. With --open, a due
