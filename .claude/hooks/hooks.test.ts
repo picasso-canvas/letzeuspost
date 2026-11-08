@@ -134,17 +134,28 @@ describe('protected paths', () => {
 });
 
 // Claude Code also applies Edit deny rules to the sandbox's writes, so an Edit rule over `.git` stops git itself: the
-// #33 dry run couldn't create `.git/index.lock` (#89). The builder's git must write its own data; hooks, config and
-// info stay denied, in the Edit rules and the sandbox alike, and the PreToolUse hook refuses any Edit-tool write there.
+// #33 dry run couldn't create `.git/index.lock` (#89). The builder's git must write its own data. What points git at
+// code stays denied, in the Edit rules and the sandbox alike: hooks, config and info, and the files that send git to
+// another config or hooks folder (commondir, config.worktree, modules, worktrees; Cerberus on #90). The PreToolUse
+// hook refuses any Edit-tool write in `.git`.
 describe("builder settings and the clone's .git (#89)", () => {
   const settings = builderSettings as {
     permissions: { deny: string[] };
-    sandbox: { filesystem: { denyWrite: string[] } };
+    sandbox: { filesystem: { denyWrite: string[]; allowWrite?: string[] } };
   };
-  const editGlobs = settings.permissions.deny.flatMap((rule) => {
-    const m = /^Edit\(\.\/(.+)\)$/.exec(rule);
-    return m?.[1] ? [m[1]] : [];
-  });
+  const editRules = settings.permissions.deny.filter((rule) => rule.startsWith('Edit('));
+  const editGlobs = editRules.map((rule) => rule.slice('Edit('.length, -1).replace(/^\.\//, ''));
+  /** Names `.git` itself, not `.github`, `.gitattributes` or `.gitleaks.toml`. */
+  const namesGit = (path: string): boolean => /(?:^|\/)\.git(?=\/|\)|$)/.test(path);
+  const GUARDED = [
+    'hooks',
+    'config',
+    'info',
+    'commondir',
+    'config.worktree',
+    'modules',
+    'worktrees',
+  ];
 
   it("leaves git's own data writable, so a builder can commit", () => {
     for (const path of [
@@ -152,6 +163,8 @@ describe("builder settings and the clone's .git (#89)", () => {
       '.git/objects/ab/cdef',
       '.git/refs/heads/33-x',
       '.git/HEAD',
+      '.git/ORIG_HEAD',
+      '.git/packed-refs',
       '.git/logs/HEAD',
       '.git/COMMIT_EDITMSG',
     ]) {
@@ -159,13 +172,23 @@ describe("builder settings and the clone's .git (#89)", () => {
     }
   });
 
-  it('keeps hooks, config and info denied in the Edit rules and the sandbox', () => {
-    for (const path of ['.git/hooks/pre-commit', '.git/config', '.git/info/attributes']) {
-      expect(matchesAny(path, editGlobs), path).toBe(true);
-    }
-    expect(settings.sandbox.filesystem.denyWrite).toEqual(
-      expect.arrayContaining(['./.git/hooks', './.git/config', './.git/info']),
+  it('denies exactly the parts of .git that point git at code, in the Edit rules and the sandbox', () => {
+    expect(editRules.filter(namesGit).sort()).toEqual(
+      GUARDED.map((part) =>
+        ['config', 'commondir', 'config.worktree'].includes(part)
+          ? `Edit(./.git/${part})`
+          : `Edit(./.git/${part}/**)`,
+      ).sort(),
     );
+    expect(settings.sandbox.filesystem.denyWrite.filter(namesGit).sort()).toEqual(
+      GUARDED.map((part) => `./.git/${part}`).sort(),
+    );
+  });
+
+  it('allows no write back into .git or over the whole clone', () => {
+    for (const path of settings.sandbox.filesystem.allowWrite ?? []) {
+      expect(namesGit(path) || ['.', './', '/', '~', '~/'].includes(path), path).toBe(false);
+    }
   });
 
   it('still has the PreToolUse hook refuse an Edit-tool write anywhere in .git', () => {
@@ -175,6 +198,7 @@ describe("builder settings and the clone's .git (#89)", () => {
       '.git/objects/ab/cdef',
       '.git/HEAD',
       '.git/hooks/pre-commit',
+      '.git/commondir',
     ]) {
       expect(matchesAny(path, patterns), path).toBe(true);
     }
