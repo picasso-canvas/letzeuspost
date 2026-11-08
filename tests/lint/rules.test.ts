@@ -328,3 +328,69 @@ describe('the design rules on JavaScript files too', () => {
     ).toContain('lzp/inter-only');
   });
 });
+
+describe('round 6 of the #82 review', () => {
+  it('refuses createRequire under any name, and getBuiltinModule', async () => {
+    for (const code of [
+      "import { createRequire as cr } from 'node:module';",
+      "export const f = async () => (await import('node:module')).createRequire;",
+      "export const m = process.getBuiltinModule('module');",
+    ]) {
+      expect(await ruleIds(code, 'apps/web/src/a.ts'), code).toContain('lzp/no-raw-db-client');
+    }
+  });
+
+  it('reads module.require and require.call', async () => {
+    expect(await ruleIds("const pg = module.require('pg');", 'apps/web/src/a.cjs')).toContain(
+      'lzp/no-raw-db-client',
+    );
+    expect(await ruleIds("const pg = require.call(null, 'pg');", 'apps/web/src/a.cjs')).toContain(
+      'lzp/no-raw-db-client',
+    );
+  });
+
+  it('catches dangerouslySetInnerHTML set by assignment, Reflect or a key held in a variable', async () => {
+    for (const code of [
+      "const p = {}; p.dangerouslySetInnerHTML = { __html: 'x' };",
+      "const p = {}; p['dangerously' + 'SetInnerHTML'] = { __html: 'x' };",
+      "const p = {}; Reflect.set(p, 'dangerouslySetInnerHTML', { __html: 'x' });",
+      "const k = 'dangerouslySetInnerHTML'; export const p = { [k]: { __html: 'x' } };",
+    ]) {
+      expect(await ruleIds(code, 'packages/ui/src/a.tsx'), code).toContain('lzp/no-dangerous-html');
+    }
+  });
+
+  it("bans Next's other shared caches in apps/web: fetch caching and route-segment settings", async () => {
+    for (const code of [
+      "export const f = () => fetch('/api', { cache: 'force-cache' });",
+      "export const f = () => fetch('/api', { next: { revalidate: 60 } });",
+      'export const revalidate = 60;',
+      "export const dynamic = 'force-static';",
+      "export const fetchCache = 'force-cache';",
+    ]) {
+      expect(await ruleIds(code, 'apps/web/src/app/page.ts'), code).toContain('lzp/no-use-cache');
+    }
+    expect(
+      await ruleIds(
+        "export const f = () => fetch('/api', { cache: 'no-store' });",
+        'apps/web/src/a.ts',
+      ),
+    ).toEqual([]);
+    expect(
+      await ruleIds("export const dynamic = 'force-dynamic';", 'apps/web/src/app/page.ts'),
+    ).toEqual([]);
+  });
+
+  it('still fails a file that tries to switch a rule off with a comment', async () => {
+    const repo = new ESLint({ cwd: process.cwd() });
+    const [result] = await repo.lintText(
+      "// eslint-disable-next-line lzp/no-use-cache\nimport { unstable_cache } from 'next/cache';\nexport { unstable_cache };\n",
+      { filePath: 'apps/web/src/index.ts' },
+    );
+    const messages = result?.messages ?? [];
+    expect(messages.some((m) => m.ruleId === 'lzp/no-use-cache' && m.severity === 2)).toBe(true);
+    expect(
+      messages.some((m) => m.severity === 1 && /no-?inline-?config|has no effect/i.test(m.message)),
+    ).toBe(true);
+  });
+});
