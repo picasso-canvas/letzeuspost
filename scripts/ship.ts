@@ -9,10 +9,12 @@
 // hooks and fsmonitor off and fsck on (newer git checks every object; older git skips bundles, so a path part that is
 // empty, `.`, `..` or `.git` is refused too). Every changed path is checked at any depth and in any letter case; protected paths,
 // symlinks and submodules are refused. Then it pushes the branch (never forced), opens or updates the PR with the PR
-// text as the body and the issue's title (never the builder's), against `staging`, and posts the approach on the issue. The builder's
-// words are data, never instructions.
+// text as the body and the issue's title (never the builder's), against `staging`, and posts the approach on the issue. A round
+// with no new commits hands over no bundle (#94): then only its PR text ships, onto the PR the branch already has, and
+// only while the branch on GitHub is still the commit the round started from. The builder's words are data, never
+// instructions.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,6 +75,36 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
 
 export function dispatchRecordPath(issue: number): string {
   return join(STATE_DIR, 'dispatch', `${String(issue)}.json`);
+}
+
+/** The commit `git ls-remote origin refs/heads/<branch>` gives for exactly that branch, or null. */
+export function remoteHead(lsRemote: string, branch: string): string | null {
+  for (const line of lsRemote.split('\n')) {
+    const [sha, ref] = line.split('\t');
+    if (ref === `refs/heads/${branch}` && sha !== undefined && /^[0-9a-f]{40}$/.test(sha))
+      return sha;
+  }
+  return null;
+}
+
+/**
+ * Where a round with no new commits (no bundle) may ship its PR text (#94): onto the PR the branch already has, and only
+ * while the branch on GitHub is still the commit the round started from, so the text describes the code the builder had.
+ */
+export function textOnlyTarget(
+  openPr: number | undefined,
+  head: string | null,
+  baseSha: string,
+): { pr: number } | { refusal: string } {
+  if (head === null)
+    return { refusal: 'no bundle, and the branch is not on GitHub: nothing to ship' };
+  if (openPr === undefined)
+    return { refusal: 'no bundle, and the branch has no open PR to take the text' };
+  if (head !== baseSha)
+    return {
+      refusal: `no bundle, and the branch moved since dispatch (${head.slice(0, 7)}, not ${baseSha.slice(0, 7)}): dispatch again`,
+    };
+  return { pr: openPr };
 }
 
 /** Where ship keeps a builder's `.lzp` once it has taken it out of the clone. */
@@ -159,6 +191,44 @@ function main(argv: string[]): number {
   const lzp = takeHandover(clone, takenPath(issue));
   const prText = readRegularFile(lzp, 'pr.md', MAX_TEXT).toString('utf8');
   const approach = readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8');
+  const openPr = (): number | undefined =>
+    (
+      JSON.parse(
+        run('gh', [
+          'pr',
+          'list',
+          '-R',
+          REPO,
+          '--head',
+          branch,
+          '--state',
+          'open',
+          '--json',
+          'number',
+        ]),
+      ) as { number: number }[]
+    )[0]?.number;
+
+  // Any entry named branch.bundle, even a link, goes the bundle's way and its checks.
+  if (!hasEntry(lzp, 'branch.bundle')) {
+    const target = textOnlyTarget(
+      openPr(),
+      remoteHead(run('git', ['ls-remote', 'origin', `refs/heads/${branch}`]), branch),
+      record.baseSha,
+    );
+    if ('refusal' in target) {
+      console.error(`Refused to ship #${String(issue)}: ${target.refusal}.`);
+      return 1;
+    }
+    console.log(
+      `#${String(issue)} ${branch}: no new commits this round, so only the PR text ships; the branch stays at ${record.baseSha.slice(0, 7)}.`,
+    );
+    if (dryRun) return 0;
+    run('gh', ['pr', 'edit', String(target.pr), '-R', REPO, '--body-file', '-'], prText);
+    const flags = afterShip(issue, prText, approach, record, lzp);
+    console.log(`Shipped the text of PR #${String(target.pr)} only${flagNote(flags)}.`);
+    return 0;
+  }
 
   // The bundle is copied out of the clone first, so git only ever reads a file Athena owns.
   const copy = join(STATE_DIR, 'ship', `${branch}-${String(Date.now())}.bundle`);
@@ -233,10 +303,7 @@ function main(argv: string[]): number {
     );
     return 1;
   }
-  const open = JSON.parse(
-    run('gh', ['pr', 'list', '-R', REPO, '--head', branch, '--state', 'open', '--json', 'number']),
-  ) as { number: number }[];
-  let pr = open[0]?.number;
+  let pr = openPr();
   if (pr === undefined) {
     const url = run(
       'gh',
@@ -260,22 +327,7 @@ function main(argv: string[]): number {
   } else {
     run('gh', ['pr', 'edit', String(pr), '-R', REPO, '--body-file', '-'], prText);
   }
-  run(
-    'gh',
-    ['issue', 'comment', String(issue), '-R', REPO, '--body-file', '-'],
-    `Daedalus's approach (builder's text, shipped by 🦉 Athena):\n\n${approach}`,
-  );
-  const flags = prFlags(prText);
-  if (flags.needsZeus)
-    run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'needs-zeus']);
-  if (flags.blocked)
-    run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'blocked']);
-  writeFileSync(
-    dispatchRecordPath(issue),
-    `${JSON.stringify({ ...record, shippedAt: new Date().toISOString() })}\n`,
-    { mode: 0o600 },
-  );
-  rmSync(lzp, { recursive: true, force: true }); // shipped: the PR body and the issue comment keep its words
+  const flags = afterShip(issue, prText, approach, record, lzp);
   try {
     run('git', [
       ...SAFE_GIT,
@@ -291,10 +343,51 @@ function main(argv: string[]): number {
       `Staging moved while the builder worked: run \`gh pr update-branch ${String(pr)}\` before the gate.`,
     );
   }
-  console.log(
-    `Shipped as PR #${String(pr)}${flags.needsZeus ? ' (needs-zeus)' : ''}${flags.blocked ? ' (blocked)' : ''}.`,
-  );
+  console.log(`Shipped as PR #${String(pr)}${flagNote(flags)}.`);
   return 0;
+}
+
+function hasEntry(dir: string, name: string): boolean {
+  try {
+    lstatSync(join(dir, name));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Once the PR text is on GitHub: the approach goes on the issue, the builder's flags become labels, the dispatch record
+ * is marked shipped and the hand-over is removed (the PR body and the issue comment keep its words).
+ */
+function afterShip(
+  issue: number,
+  prText: string,
+  approach: string,
+  record: DispatchRecord,
+  lzp: string,
+): { needsZeus: boolean; blocked: boolean } {
+  run(
+    'gh',
+    ['issue', 'comment', String(issue), '-R', REPO, '--body-file', '-'],
+    `Daedalus's approach (builder's text, shipped by 🦉 Athena):\n\n${approach}`,
+  );
+  const flags = prFlags(prText);
+  if (flags.needsZeus)
+    run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'needs-zeus']);
+  if (flags.blocked)
+    run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'blocked']);
+  writeFileSync(
+    dispatchRecordPath(issue),
+    `${JSON.stringify({ ...record, shippedAt: new Date().toISOString() })}\n`,
+    { mode: 0o600 },
+  );
+  rmSync(lzp, { recursive: true, force: true });
+  return flags;
+}
+
+function flagNote(flags: { needsZeus: boolean; blocked: boolean }): string {
+  return `${flags.needsZeus ? ' (needs-zeus)' : ''}${flags.blocked ? ' (blocked)' : ''}`;
 }
 
 if (isEntryPoint(import.meta.url)) {
