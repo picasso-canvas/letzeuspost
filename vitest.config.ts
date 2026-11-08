@@ -16,6 +16,7 @@ const dirs = [
   'config',
   'scripts',
   'tests/lint',
+  '.claude/hooks',
 ];
 const nameOf = (dir: string): string =>
   existsSync(`${dir}/package.json`)
@@ -26,7 +27,6 @@ export default defineConfig({
   test: {
     // The services run has no tests yet: #71 and #80 add the first.
     passWithNoTests: process.env.LZP_SERVICES === '1',
-    // #29 adds '.claude/hooks' when the hooks and their tests exist.
     projects:
       process.env.LZP_SERVICES === '1'
         ? [
