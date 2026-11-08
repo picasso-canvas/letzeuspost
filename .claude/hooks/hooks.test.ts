@@ -13,12 +13,12 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { checkBash } from './lib/bash-rules.ts';
 import { findSecret, findSilencing } from './lib/content.ts';
 import { decideFreeze, STALE_AFTER_MS } from './lib/freeze.ts';
 import { matchesAny, protectedPatterns } from './lib/paths.ts';
-import { isGreenCheck } from './lib/stamp.ts';
+import { isGreenCheck, stampPath } from './lib/stamp.ts';
 
 const HOOKS = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HOOKS, '..', '..');
@@ -85,6 +85,7 @@ describe('Bash rules', () => {
     ['git add docker/compose.yml', false, false],
     ['git status && echo main', false, false],
     ['cat .env.example', false, false],
+    ['cat .env.example.local', false, true],
     ['pnpm check', false, false],
     ['git log --oneline -5', false, false],
     ['pnpm exec vitest run packages/core', false, false],
@@ -286,17 +287,19 @@ function writeFlag(paused: boolean, ageMs = 10_000): void {
 interface RunOptions {
   builder?: boolean;
   harness?: string | null;
+  /** Arguments after the script, as the settings' hook command passes them. */
+  args?: string[];
 }
 
 function run(
   script: string,
   input: object,
-  { builder = true, harness = REPO }: RunOptions = {},
+  { builder = true, harness = REPO, args = [] }: RunOptions = {},
 ): ReturnType<typeof spawnSync> {
   const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: home, CLAUDE_PROJECT_DIR: clone };
   if (builder) env.LZP_ROLE = 'builder';
   if (harness) env.LZP_HARNESS_DIR = harness;
-  return spawnSync('node', [join(HOOKS, script)], {
+  return spawnSync('node', [join(HOOKS, script), ...args], {
     input: JSON.stringify(input),
     env,
     encoding: 'utf8',
@@ -463,9 +466,10 @@ describe('Stop hook and the green-check stamp', () => {
     expect(decision(run('stop.ts', stop()))).toBe('block');
     expect(logLines().map((l) => l.rule)).toEqual(['stop:unchecked']);
 
-    // A red run (piped, so Bash still "succeeds") doesn't stamp; a bare green run does.
+    // A red run (piped, so Bash still "succeeds") doesn't stamp; a bare green run does, when PreToolUse saw it start.
     run('post-tool-use.ts', check('pnpm check | tail'));
     expect(decision(run('stop.ts', stop()))).toBe('block');
+    run('pre-tool-use.ts', bash('pnpm check'));
     run('post-tool-use.ts', check());
     expect(decision(run('stop.ts', stop()))).toBeNull();
 
@@ -481,10 +485,9 @@ describe('Stop hook and the green-check stamp', () => {
   it('never applies to anyone but a builder', () => {
     writeFileSync(join(clone, 'b.ts'), 'export const b = 2;\n');
     expect(decision(run('stop.ts', stop(), { builder: false }))).toBeNull();
+    run('pre-tool-use.ts', bash('pnpm check'), { builder: false });
     run('post-tool-use.ts', check(), { builder: false });
-    expect(() =>
-      readFileSync(join(home, '.letzeuspost', 'stamps', `${clone.split('/').pop() ?? ''}.json`)),
-    ).toThrow();
+    expect(existsSync(join(home, '.letzeuspost', 'stamps'))).toBe(false);
   });
 });
 
@@ -614,11 +617,20 @@ describe('where the hooks are registered', () => {
       (JSON.parse(readFileSync(join(REPO, path), 'utf8')) as Settings).hooks ?? {},
     ).flatMap((groups) => groups.flatMap((group) => group.hooks.map((hook) => hook.command)));
 
-  it("runs a builder's hooks from main's checkout ($LZP_HARNESS_DIR), never from its clone", () => {
+  it("runs a builder's hooks from main's checkout ($LZP_HARNESS_DIR) as a builder, never from its clone", () => {
     const builder = commands('.claude/builder/settings.json');
-    expect(builder).toHaveLength(4);
+    expect(builder).toHaveLength(5);
     for (const command of builder) {
-      expect(command).toMatch(/^node "\$LZP_HARNESS_DIR\/\.claude\/hooks\/[a-z-]+\.ts"$/);
+      expect(command).toMatch(/^node "\$LZP_HARNESS_DIR\/\.claude\/hooks\/[a-z-]+\.ts" --builder$/);
+    }
+  });
+
+  it('registers Stop and SubagentStop for builders, as §20 part 3 plans', () => {
+    const hooks = (
+      JSON.parse(readFileSync(join(REPO, '.claude/builder/settings.json'), 'utf8')) as Settings
+    ).hooks;
+    for (const event of ['Stop', 'SubagentStop']) {
+      expect(hooks?.[event]?.[0]?.hooks[0]?.command).toContain('/.claude/hooks/stop.ts"');
     }
   });
 
@@ -633,6 +645,92 @@ describe('where the hooks are registered', () => {
         }).status;
       expect(shell({ LZP_ROLE: 'builder', LZP_HARNESS_DIR: '/nonexistent' })).toBe(0);
       expect(shell({})).not.toBe(0); // it tried to run /nonexistent/.claude/hooks/…
+    }
+  });
+});
+
+// ---------------------------------------------------------------- round 3: Cerberus and Argus on #86
+
+describe('formatting a file the builder can swap (Cerberus on #86)', () => {
+  let formatFile: (path: string, format: (text: string) => string | null) => boolean;
+  let victim: string;
+  let file: string;
+  beforeAll(async () => {
+    ({ formatFile } = await import('./lib/format.ts'));
+  });
+  beforeEach(() => {
+    victim = join(home, 'victim.ts');
+    writeFileSync(victim, 'SAFE\n');
+    file = join(clone, 'x.ts');
+    writeFileSync(file, 'export const x={a:1}\n');
+  });
+  const formatted = (text: string): string => text.replace('{a:1}', '{ a: 1 };');
+
+  it('writes the formatted text back to the same file', () => {
+    expect(formatFile(file, formatted)).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe('export const x={ a: 1 };\n');
+  });
+
+  it('never writes through a link swapped in while prettier runs', () => {
+    const swapped = formatFile(file, (text) => {
+      rmSync(file);
+      symlinkSync(victim, file); // the builder's background loop, mid-format
+      return formatted(text);
+    });
+    expect(swapped).toBe(false);
+    expect(readFileSync(victim, 'utf8')).toBe('SAFE\n');
+  });
+
+  it('never writes to another file swapped in, or to one that gained a second link', () => {
+    expect(
+      formatFile(file, (text) => {
+        rmSync(file);
+        writeFileSync(file, 'other\n');
+        return formatted(text);
+      }),
+    ).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe('other\n');
+    expect(
+      formatFile(file, (text) => {
+        linkSync(file, join(home, 'second-link.ts'));
+        return text + '// changed\n';
+      }),
+    ).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe('other\n');
+  });
+
+  it('formats through the real hook and prettier, the file staying a plain file', () => {
+    writeFileSync(file, 'export const x = {a:1,b:"two"}\n');
+    run('post-tool-use.ts', { tool_name: 'Write', tool_input: { file_path: file, content: '' } });
+    expect(readFileSync(file, 'utf8')).toBe("export const x = { a: 1, b: 'two' };\n");
+  });
+});
+
+describe('the green stamp and the builder role (Cerberus and Argus on #86)', () => {
+  it('stamps only a tree that stayed the same from the start of pnpm check to its end', () => {
+    run('session-start.ts', start);
+    writeFileSync(join(clone, 'b.ts'), 'export const b = 2;\n');
+    run('pre-tool-use.ts', bash('pnpm check'));
+    writeFileSync(join(clone, 'b.ts'), 'export const b = 3;\n'); // changed while the check ran
+    run('post-tool-use.ts', check());
+    expect(decision(run('stop.ts', stop()))).toBe('block');
+  });
+
+  it('treats --builder from the builder settings as a builder, whatever the environment says', () => {
+    const asBuilder = { builder: false, args: ['--builder'] };
+    expect(decision(run('pre-tool-use.ts', bash('gh pr view 1'), asBuilder))).toBe('deny');
+    expect(decision(run('pre-tool-use.ts', bash('gh pr view 1'), { builder: false }))).toBeNull();
+  });
+
+  it('keeps one stamp per clone, even for clones with the same folder name', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'lzp-other-'));
+    const twin = join(parent, clone.split('/').pop() ?? 'x');
+    mkdirSync(twin);
+    try {
+      expect(stampPath(twin, 'green')).not.toBe(stampPath(clone, 'green'));
+      expect(stampPath(twin, 'base')).not.toBe(stampPath(clone, 'base'));
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
     }
   });
 });
