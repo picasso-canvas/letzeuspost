@@ -491,6 +491,7 @@ async function main(argv: string[]): Promise<number> {
       );
     }
   };
+  const noGit = `Don't run git in ${clone} yourself: its .git is the builder's, and git outside the sandbox would run what it planted there.`;
   // The builder has its own process group, so a Ctrl-C here wouldn't reach it: stop it before dispatch exits.
   for (const [signal, code] of [
     ['SIGINT', 130],
@@ -499,6 +500,7 @@ async function main(argv: string[]): Promise<number> {
   ] as const) {
     process.on(signal, () => {
       killGroup();
+      console.log(noGit);
       process.exit(code);
     });
   }
@@ -525,9 +527,7 @@ async function main(argv: string[]): Promise<number> {
     (name) => `${name}: ${isRegularFile(join(lzp, name)) ? 'yes' : 'no'}`,
   );
   console.log(`Handed over: ${ready.join(', ')}. Next: node scripts/ship.ts ${String(issue)}`);
-  console.log(
-    `Don't run git in ${clone} yourself: its .git is the builder's, and git outside the sandbox would run what it planted there.`,
-  );
+  console.log(noGit);
   return state.frozen ? 1 : code;
 }
 
