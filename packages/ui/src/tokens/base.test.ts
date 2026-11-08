@@ -48,7 +48,10 @@ describe('base.css (#70)', () => {
     );
   });
 
-  it('times transitions at 150 ms (§05: 150–200 ms)', () => {
+  it('times transitions at 150 ms (§05: 150–200 ms), and at none under reduced motion', () => {
     expect(declared(base, '@theme', 'default-transition-duration')).toBe('150ms');
+    expect(
+      declared(base, '@media (prefers-reduced-motion: reduce)', 'default-transition-duration'),
+    ).toBe('0ms');
   });
 });
