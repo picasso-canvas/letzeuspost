@@ -154,6 +154,24 @@ describe('evaluate', () => {
     expect(failedIds({ ...f, config: { ...f.config, requiredChecks: [] } })).toEqual([3]);
   });
 
+  it('needs the into-main checks on PRs into main only: ai-review never runs on PRs into staging', () => {
+    const f = facts();
+    const config = { ...f.config, requiredChecksIntoMain: ['ai-review'] };
+    const ai = {
+      name: 'ai-review',
+      status: 'completed',
+      conclusion: 'success',
+      app: 'github-actions',
+    };
+    expect(failedIds({ ...f, config })).toEqual([3]);
+    expect(evaluate({ ...f, config }).items.find((i) => i.id === 3)?.detail).toContain(
+      'required check "ai-review" missing',
+    );
+    expect(failedIds({ ...f, config, checkRuns: [...f.checkRuns, ai] })).toEqual([]);
+    const toStaging = facts({ baseRef: 'staging', reviews: [] });
+    expect(failedIds({ ...toStaging, config })).toEqual([]);
+  });
+
   it('works the tier out from the paths and refuses a label that disagrees', () => {
     const auth = { changedFiles: ['packages/auth/src/session.ts'] };
     expect(failedIds(facts({ ...auth, labels: ['routine'] }))).toContain(4);

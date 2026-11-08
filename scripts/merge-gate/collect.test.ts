@@ -122,6 +122,15 @@ describe('collectFacts', () => {
     expect(() => collectFacts(7, deps({ readMainFile: () => null }))).toThrow(/missing on main/);
     expect(() => parseConfig('{"requiredChecks":"ci"}')).toThrow(/requiredChecks/);
   });
+
+  it('reads the checks only PRs into main need, none when the config names none', () => {
+    const base = JSON.parse(CONFIG) as Record<string, unknown>;
+    expect(parseConfig(CONFIG).requiredChecksIntoMain).toEqual([]);
+    const withAi = JSON.stringify({ ...base, requiredChecksIntoMain: ['ai-review'] });
+    expect(parseConfig(withAi).requiredChecksIntoMain).toEqual(['ai-review']);
+    const malformed = JSON.stringify({ ...base, requiredChecksIntoMain: 'ai-review' });
+    expect(() => parseConfig(malformed)).toThrow(/requiredChecksIntoMain/);
+  });
 });
 
 describe('collectFacts re-checks every pass against its transcript', () => {
