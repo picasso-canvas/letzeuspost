@@ -1,0 +1,9 @@
+# Advisories Zeus accepted, for CI's OSV-Scanner (§20). Each entry says who decided, when and why, and stops counting
+# on its `ignoreUntil` date, when it is looked at again. An ignore matches the advisory id anywhere in the lockfile, so
+# scripts/accepted-advisories.test.ts keeps each one to the path it was accepted on. Builders can't edit this file; a
+# change is sensitive.
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2026-12-08T00:00:00Z
+reason = "deepmerge 4.3.1 (prototype poisoning in mergeObject; no fixed version), only through shadcn@4.23.0 and @shadcn/registry: the dev-only CLI in packages/ui, which only Athena runs to add components. It merges registry JSON fetched from ui.shadcn.com, which isn't trusted input, on a Mac that holds GitHub credentials; so Athena runs it only with a minimal environment (no tokens), in a checkout with no .env file, and the files it writes are reviewed in the PR. Accepted by Zeus, 2026-11-08 (#107); looked at again on 2026-12-08."

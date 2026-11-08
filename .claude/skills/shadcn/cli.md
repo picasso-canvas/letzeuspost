@@ -2,7 +2,7 @@
 
 Configuration is read from `components.json`.
 
-> **IMPORTANT:** Always run commands as `pnpm exec shadcn` (LetZeusPost: once it is the repo's pinned dev dependency, never `pnpm dlx`, `npx` or `@latest`; until then, and while the builder sandbox can't reach `ui.shadcn.com`, a task that needs it writes that under `needs-zeus` in `.lzp/pr.md` and stops). Examples below use it.
+> **IMPORTANT:** Always run commands as `pnpm exec shadcn` (LetZeusPost: the pinned dev dependency in `packages/ui`, never `pnpm dlx`, `npx` or `@latest`. Athena runs it; builders don't, and a task that needs a new shadcn component writes that under `needs-zeus` in `.lzp/pr.md` and stops). Examples below use it.
 >
 > **LetZeusPost:** components come only from the official `@shadcn` registry; see the note at the top of `SKILL.md`.
 
