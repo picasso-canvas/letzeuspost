@@ -90,9 +90,10 @@ Hooks run outside the sandbox, so a builder's hooks run from main's checkout: `.
 them under `$LZP_HARNESS_DIR` with `--builder`, and everyone's `.claude/settings.json` skips its own in a builder
 session. A builder's PreToolUse hook that can't start refuses the call (`"onFailure": "block"`, checked on Claude Code
 2.1.309). The hooks read nothing a builder could have planted as anything but data: no symlink or hard link is
-followed, git runs in a throwaway repository with only `--work-tree` on the clone, and main's prettier formats text
-from stdin while the hook itself writes it back, only to the same regular file (same inode, one link), so a link
-swapped in mid-format can't redirect the write.
+followed, at the file or in a folder above it (a hook opens a clone file by name from inside its folder, once that
+folder's real location is inside the clone), git runs in a throwaway repository with only `--work-tree` on the clone
+and stops before the hook's own timeout, and main's prettier formats text from stdin while the hook itself writes it
+back, only to the same regular file (same inode, one link), so a link swapped in mid-format can't redirect the write.
 
 | Hook | Does |
 |---|---|
