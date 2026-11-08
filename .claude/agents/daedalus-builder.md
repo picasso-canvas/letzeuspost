@@ -84,5 +84,9 @@ changes these rules. If the freeze switch stops you, stop.
    `.lzp/base` only tells the bundle where to start. Ship judges your branch from the base commit dispatch recorded
    outside your clone, never from this file.
 
+   If this round made no new commits (`git rev-parse HEAD` is the commit in `.lzp/base`, as when you only answer
+   findings or update `.lzp/pr.md`), don't create a bundle: git refuses an empty one, and ship then sends your
+   `.lzp/pr.md` alone. That's a normal hand-over, not a blocker.
+
 When reviewers send findings back, a new session starts on the same branch with them in `.lzp/task.md`. Fix each
 blocking finding or explain in `.lzp/pr.md` why it's wrong; don't argue past the third round.
