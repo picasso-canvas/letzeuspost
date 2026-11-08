@@ -61,9 +61,12 @@ describe('buildBundle', () => {
       const joined = args.join(' ');
       ghCalls.push(joined);
       if (joined.includes('headRefOid,body'))
-        return JSON.stringify({ headRefOid: SHA, body: 'Closes #7' });
-      if (joined.includes('baseRefName,headRefName'))
-        return JSON.stringify({ baseRefName: 'main', headRefName: '7-task-seven' });
+        return JSON.stringify({
+          headRefOid: SHA,
+          body: 'Closes #7',
+          baseRefName: 'main',
+          headRefName: '7-task-seven',
+        });
       if (joined.includes('closingIssuesReferences')) {
         return JSON.stringify({
           closingIssuesReferences: [
@@ -354,9 +357,9 @@ describe('failure reasons and refusals', () => {
     const gh = (args: string[]) => {
       const j = args.join(' ');
       if (j.includes('headRefOid,body'))
-        return JSON.stringify({ headRefOid: SHA, body: 'Closes #65' });
-      if (j.includes('baseRefName,headRefName'))
         return JSON.stringify({
+          headRefOid: SHA,
+          body: 'Closes #65',
           baseRefName: 'staging',
           headRefName: '65-config-env-ts-and-env-example',
         });
@@ -390,9 +393,13 @@ describe('failure reasons and refusals', () => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-refuse-'));
     const gh = (args: string[]) => {
       const j = args.join(' ');
-      if (j.includes('headRefOid,body')) return JSON.stringify({ headRefOid: SHA, body: 'x' });
-      if (j.includes('baseRefName,headRefName'))
-        return JSON.stringify({ baseRefName: 'main', headRefName: '9-x' });
+      if (j.includes('headRefOid,body'))
+        return JSON.stringify({
+          headRefOid: SHA,
+          body: 'x',
+          baseRefName: 'main',
+          headRefName: '9-x',
+        });
       if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';
@@ -445,9 +452,13 @@ describe('failure reasons and bundle file names', () => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-binary-'));
     const gh = (args: string[]) => {
       const j = args.join(' ');
-      if (j.includes('headRefOid,body')) return JSON.stringify({ headRefOid: SHA, body: 'x' });
-      if (j.includes('baseRefName,headRefName'))
-        return JSON.stringify({ baseRefName: 'main', headRefName: '9-x' });
+      if (j.includes('headRefOid,body'))
+        return JSON.stringify({
+          headRefOid: SHA,
+          body: 'x',
+          baseRefName: 'main',
+          headRefName: '9-x',
+        });
       if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';

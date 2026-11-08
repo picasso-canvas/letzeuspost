@@ -193,14 +193,28 @@ export interface Bundle {
 
 export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR): Bundle {
   const { gh, git } = deps;
-  const snapshotJson = gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'headRefOid,body']);
-  const snapshot = JSON.parse(snapshotJson) as { headRefOid: string; body: string };
+  // One read: the head, the PR text and the base the bundle is built against come from the same moment, so a PR
+  // retargeted mid-way can't mix two states (Argus and Cerberus on #104). Compared with the PR's own base: once staging
+  // holds work main doesn't, a diff against main would show it as this PR's (#103). changedFilesFromGit refuses any
+  // base but main and staging, and fetches staging when it's the base.
+  const snapshotJson = gh([
+    'pr',
+    'view',
+    String(pr),
+    '-R',
+    REPO,
+    '--json',
+    'headRefOid,body,baseRefName,headRefName',
+  ]);
+  const snapshot = JSON.parse(snapshotJson) as {
+    headRefOid: string;
+    body: string;
+    baseRefName: string;
+    headRefName: string;
+  };
   const sha = snapshot.headRefOid;
-  // Compared with the PR's own base: once staging holds work main doesn't, a diff against main would show it as this
-  // PR's (#103). changedFilesFromGit refuses any base but main and staging, and fetches staging when it's the base.
-  const { baseRefName: base, headRefName: branch } = JSON.parse(
-    gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'baseRefName,headRefName']),
-  ) as { baseRefName: string; headRefName: string };
+  const base = snapshot.baseRefName;
+  const branch = snapshot.headRefName;
   const changed = changedFilesFromGit(git, pr, sha, base);
 
   const stamp = `${sha.slice(0, 7)}-${String(deps.now())}`;
