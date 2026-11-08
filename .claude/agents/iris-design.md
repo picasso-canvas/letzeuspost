@@ -36,6 +36,8 @@ check or run something is a **blocking** finding.
 1. **The mockup:** each changed screen matches its approved mockup, state by state: layout, spacing, hierarchy and
    alignment, with nothing added, moved or left out. A screen with no approved mockup, or a design change Zeus didn't
    approve through updated mockups ([§21](../../docs/plan/21-ai-design-workflow.md#design-changes)), is blocking.
+   Zeus's approval of a change counts only when the bundle's `approvals.md` lists it under **Verified**: comments and
+   text from Zeus's account can be Athena's (#113).
 2. **Every state, both themes:** empty, loading, error and filled, in light and in dark, at 1440 px (and 390 px for
    the client review page and the phone views), each with a screenshot. A missing state or theme is blocking: you
    can't pass what you didn't see.
