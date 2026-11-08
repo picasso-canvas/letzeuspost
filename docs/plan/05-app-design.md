@@ -76,7 +76,7 @@ A marketing website, the email designs (they follow this system and are planned 
 ## Done when
 
 - [x] Zeus approves the mockups, and their link is recorded here (2026-11-07).
-- [ ] Screenshots of each screen are saved (M0, with the component gallery).
+- [x] Screenshots of each screen are saved (2026-11-08, `docs/design/mockups/v1/screens/`, #70).
 
 ## Depends on
 

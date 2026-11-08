@@ -191,6 +191,26 @@ export interface Bundle {
   refusal: string | null;
 }
 
+/**
+ * One issue for issues.md: its title and body, then its comments with author and date, where Zeus's decisions are
+ * recorded (#116).
+ */
+function issueText(number: number, json: string): string {
+  const issue = JSON.parse(json) as {
+    title: string;
+    body: string;
+    comments: { author: { login: string } | null; createdAt: string; body: string }[];
+  };
+  const comments = issue.comments.map(
+    (c) => `### ${c.author?.login ?? 'unknown'}, ${c.createdAt}\n\n${c.body}`,
+  );
+  return [
+    `# Issue #${String(number)}\n\n${issue.title}\n\n${issue.body}`,
+    `## Comments on #${String(number)}`,
+    comments.length > 0 ? comments.join('\n\n') : 'None.',
+  ].join('\n\n');
+}
+
 export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR): Bundle {
   const { gh, git } = deps;
   // One read: the head, the PR text and the base the bundle is built against come from the same moment, so a PR
@@ -267,7 +287,10 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
         ).closingIssuesReferences;
   const issues = references.map(({ number, url }) =>
     url.startsWith(prefix)
-      ? `# Issue #${String(number)}\n\n${gh(['issue', 'view', String(number), '-R', REPO, '--json', 'title,body', '--jq', '.title + "\\n\\n" + .body'])}`
+      ? issueText(
+          number,
+          gh(['issue', 'view', String(number), '-R', REPO, '--json', 'title,body,comments']),
+        )
       : `# #${String(number)} is in another repository (${url}): not part of this review.`,
   );
   writeFileSync(join(bundle, 'issues.md'), issues.join('\n\n') || 'This PR closes no issue.');

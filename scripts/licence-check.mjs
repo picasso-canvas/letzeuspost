@@ -94,6 +94,14 @@ export const EXCEPTIONS = [
     devOnly: true,
     why: "CSS data inside React Email's dev-only preview CLI (via css-tree), unchanged",
   },
+  {
+    // Zeus, 2026-11-07 (Q2, #18 comment 6710134630): Apache-2.0 by the LICENSE file in its repo and its npm package;
+    // its package.json has no `license`, so pnpm reports it as Unknown.
+    names: ['@google/design.md'],
+    license: 'Unknown',
+    devOnly: true,
+    why: 'lints and exports DESIGN.md (§21); Apache-2.0 per its LICENSE file, used unchanged',
+  },
 ];
 
 /**

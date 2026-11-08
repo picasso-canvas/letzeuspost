@@ -209,6 +209,16 @@ describe('checkLicences', () => {
     ]);
   });
 
+  it('allows @google/design.md, whose npm metadata has no licence, as a dev tool only (Q2, #70)', () => {
+    const all = list([pkg('@google/design.md', 'Unknown', '0.4.0')]);
+    expect(checkLicences(all, {})).toEqual([]);
+    expect(checkLicences(all, all).map((v) => v.reason)).toEqual([
+      'exception is for dev tooling only, but this is a production dependency',
+    ]);
+    const others = list([pkg('@google/other', 'Unknown'), pkg('design.md', 'Unknown')]);
+    expect(checkLicences(others, {}).map((v) => v.name)).toEqual(['@google/other', 'design.md']);
+  });
+
   it('fails a dev-only exception that reaches production dependencies', () => {
     const all = list([pkg('lightningcss', 'MPL-2.0')]);
     expect(checkLicences(all, all)).toEqual([
