@@ -1,8 +1,13 @@
+/**
+ * §15's "Who can do what" as one table. It lives only here (§13, §15); `can` reads it. A sensitive path: a change to a
+ * cell is a change to who can do what.
+ */
+
 /** §15's five columns, in its order. The first four are a member's role in a workspace (§13's `member.role`). */
 export const ROLES = ['owner', 'admin', 'editor', 'viewer', 'client-reviewer'] as const;
 export type Role = (typeof ROLES)[number];
 
-/** §15's rows, in its order: one action per row. */
+/** §15's rows, in its order: one action per row (the table below gives each row's wording). */
 export const ACTIONS = [
   // Workspace
   'see-workspace',
@@ -32,37 +37,75 @@ export const ACTIONS = [
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
+/** A cell: allowed, refused, or allowed only on the posts sent to the client reviewer's review link. */
 export type Cell = 'yes' | 'no' | 'sent-posts';
 type Row = Readonly<Record<Role, Cell>>;
 
+/** §15's ✓. */
+const YES = 'yes';
+/** §15's blank cell. */
 const NO = 'no';
+/**
+ * The client reviewer, only on the posts sent to their link: §15's "only the posts sent to them" and "on sent posts".
+ * Approving or requesting changes as the client is the same: §11's review page shows only the posts sent, and §13's
+ * link cookie reaches nothing else.
+ */
+const SENT = 'sent-posts';
 
+/** One row, its cells in §15's column order. */
 function row(owner: Cell, admin: Cell, editor: Cell, viewer: Cell, clientReviewer: Cell): Row {
-  return { owner, admin, editor, viewer, 'client-reviewer': clientReviewer };
+  return Object.freeze({ owner, admin, editor, viewer, 'client-reviewer': clientReviewer });
 }
 
-// Not filled in yet: every cell is refused.
-export const PERMISSION_MATRIX: Readonly<Record<Action, Row>> = {
-  'see-workspace': row(NO, NO, NO, NO, NO),
-  'edit-workspace-settings': row(NO, NO, NO, NO, NO),
-  'manage-editors-and-viewers': row(NO, NO, NO, NO, NO),
-  'manage-admins': row(NO, NO, NO, NO, NO),
-  'manage-billing': row(NO, NO, NO, NO, NO),
-  'hand-over-or-delete-workspace': row(NO, NO, NO, NO, NO),
-  'see-usage': row(NO, NO, NO, NO, NO),
-  'see-support-log': row(NO, NO, NO, NO, NO),
-  'edit-brands': row(NO, NO, NO, NO, NO),
-  'approve-client-photos': row(NO, NO, NO, NO, NO),
-  'set-approval-mode': row(NO, NO, NO, NO, NO),
-  'edit-brand-reviewers': row(NO, NO, NO, NO, NO),
-  'delete-brand': row(NO, NO, NO, NO, NO),
-  'make-posts': row(NO, NO, NO, NO, NO),
-  'confirm-claims-and-consent': row(NO, NO, NO, NO, NO),
-  'approve-for-agency': row(NO, NO, NO, NO, NO),
-  'send-to-client': row(NO, NO, NO, NO, NO),
-  'approve-on-clients-behalf': row(NO, NO, NO, NO, NO),
-  comment: row(NO, NO, NO, NO, NO),
-  'review-as-client': row(NO, NO, NO, NO, NO),
-  'send-photos': row(NO, NO, NO, NO, NO),
-  export: row(NO, NO, NO, NO, NO),
-};
+// Columns: Owner, Admin, Editor, Viewer, Client reviewer (link).
+export const PERMISSION_MATRIX: Readonly<Record<Action, Row>> = Object.freeze({
+  // Workspace
+  // See everything in the workspace (all brands); the client reviewer only the posts sent to them
+  'see-workspace': row(YES, YES, YES, YES, SENT),
+  // Workspace settings (name, logo, review-page name, timezone)
+  'edit-workspace-settings': row(YES, YES, NO, NO, NO),
+  // Invite and manage Editors and Viewers
+  'manage-editors-and-viewers': row(YES, YES, NO, NO, NO),
+  // Invite and manage Admins
+  'manage-admins': row(YES, NO, NO, NO, NO),
+  // Plan, billing and invoices
+  'manage-billing': row(YES, NO, NO, NO, NO),
+  // Hand over ownership, delete the workspace
+  'hand-over-or-delete-workspace': row(YES, NO, NO, NO, NO),
+  // See the usage meters
+  'see-usage': row(YES, YES, YES, YES, NO),
+  // See Zeus's support-access log
+  'see-support-log': row(YES, YES, NO, NO, NO),
+
+  // Brands
+  // Create a brand, edit its kit, manage its asset library
+  'edit-brands': row(YES, YES, YES, NO, NO),
+  // Approve photos the client sent (§10)
+  'approve-client-photos': row(YES, YES, YES, NO, NO),
+  // Set the approval mode
+  'set-approval-mode': row(YES, YES, NO, NO, NO),
+  // Edit the brand's client reviewers
+  'edit-brand-reviewers': row(YES, YES, YES, NO, NO),
+  // Delete a brand
+  'delete-brand': row(YES, YES, NO, NO, NO),
+
+  // Posts
+  // Make batches, generate, edit, AI rewrite, regenerate
+  'make-posts': row(YES, YES, YES, NO, NO),
+  // Confirm claims and tick consent (§22, §07, §10)
+  'confirm-claims-and-consent': row(YES, YES, YES, NO, NO),
+  // Approve for the agency
+  'approve-for-agency': row(YES, YES, YES, NO, NO),
+  // Send to the client; revoke or replace a review link
+  'send-to-client': row(YES, YES, YES, NO, NO),
+  // Approve on the client's behalf (with a reason)
+  'approve-on-clients-behalf': row(YES, YES, NO, NO, NO),
+  // Comment; the client reviewer on sent posts
+  comment: row(YES, YES, YES, YES, SENT),
+  // Approve or request changes as the client
+  'review-as-client': row(NO, NO, NO, NO, SENT),
+  // Send photos (§10)
+  'send-photos': row(NO, NO, NO, NO, YES),
+  // Export
+  export: row(YES, YES, YES, NO, NO),
+} satisfies Record<Action, Row>);
