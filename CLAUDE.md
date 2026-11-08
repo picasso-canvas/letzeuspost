@@ -54,8 +54,9 @@ the merge gate, agent files, the core skills). It must pass its red-team checkli
   approved visual baselines, `docs/plan/`).
 - Never weaken a guardrail, skip or silence a check, or work around a block. If a guardrail is in the way, write it in
   `.lzp/pr.md` under `needs-zeus` and stop.
-- **Freeze switch:** if `~/.letzeuspost/paused` says `true`, or is older than 3 minutes (dispatch refreshes it from the
-  repo variable `AGENTS_PAUSED` every minute), stop all work at once.
+- **Freeze switch:** if `~/.letzeuspost/paused` says `true`, stop all work at once. A builder also stops when the flag
+  is missing or older than 3 minutes (dispatch refreshes it from the repo variable `AGENTS_PAUSED` every minute while
+  a builder runs); Athena and the reviewers stop only on `true` (Zeus, 2026-11-08).
 
 ## When the plan doesn't say
 
