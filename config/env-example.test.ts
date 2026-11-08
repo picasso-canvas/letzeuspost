@@ -26,7 +26,7 @@ describe('env.example', () => {
 
   it.each(names)('has a short note right above %s', (name) => {
     expect(noteFor(name)).toMatch(/^# \S.{9,}$/);
-    expect(noteFor(name)?.length).toBeLessThanOrEqual(160);
+    expect(noteFor(name)?.length).toBeLessThanOrEqual(130);
   });
 
   it('says which processes read each setting', () => {

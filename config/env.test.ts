@@ -158,7 +158,10 @@ describe('a missing or malformed setting stops the process at startup', () => {
   });
 
   it('names every problem at once', () => {
-    const source = { ...without('DATABASE_URL'), APP_URL: `https://${LEAK}.example/` };
+    const source: Record<string, string> = {
+      ...without('DATABASE_URL'),
+      APP_URL: `https://${LEAK}.example/`,
+    };
     delete source.AUTH_SECRET;
     const { message } = thrownBy(() => loadEnv('web', source));
     expect(message).toContain('DATABASE_URL is missing');
