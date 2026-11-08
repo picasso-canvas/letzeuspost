@@ -19,6 +19,7 @@ import { changedFilesFromGit, parseConfig, REPO } from './merge-gate/collect.ts'
 import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
 import { requiredReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
+import { approvalsFor } from './lib/zeus-approvals.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -180,6 +181,8 @@ export interface BundleDeps {
   git: (args: string[]) => string;
   blob: (sha: string) => Buffer;
   now: () => number;
+  /** approvals.md: Zeus's signed decisions on the PR and these issues, each checked (#113). */
+  decisions: (pr: number, issues: number[]) => string;
 }
 
 export interface Bundle {
@@ -271,6 +274,14 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
       : `# #${String(number)} is in another repository (${url}): not part of this review.`,
   );
   writeFileSync(join(bundle, 'issues.md'), issues.join('\n\n') || 'This PR closes no issue.');
+  // Comments from Zeus's account can't show who wrote them; a signature checked here can (#113).
+  writeFileSync(
+    join(bundle, 'approvals.md'),
+    deps.decisions(
+      pr,
+      references.filter(({ url }) => url.startsWith(prefix)).map(({ number }) => number),
+    ),
+  );
 
   let checks: string;
   try {
@@ -476,6 +487,7 @@ async function main(argv: string[]): Promise<number> {
     blob: (object) =>
       execFileSync('git', ['cat-file', 'blob', object], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }),
     now: () => Date.now(),
+    decisions: (number, issues) => approvalsFor((args) => run('gh', args), REPO, number, issues),
   });
   const sensitiveList = show('.github/sensitive-paths.txt');
   const reviewers = planReviewers(
