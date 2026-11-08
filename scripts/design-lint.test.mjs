@@ -55,6 +55,14 @@ describe('designLintProblems (#70)', () => {
     ).toEqual(['components.b: {colors.nope} does not resolve']);
   });
 
+  it('fails a severity it does not know, so a renamed level cannot slip through', () => {
+    expect(
+      designLintProblems(
+        report([{ severity: 'fatal', rule: 'broken-ref', path: 'components.b', message: 'x' }]),
+      ),
+    ).toEqual(['components.b: x']);
+  });
+
   it('fails output that is not a lint report', () => {
     expect(designLintProblems({})).toEqual(['design.md lint printed no findings list']);
     expect(designLintProblems(null)).toEqual(['design.md lint printed no findings list']);
