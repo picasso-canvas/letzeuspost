@@ -26,7 +26,7 @@
 | **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity, the Done-when evidence and the GitHub review's findings | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high; Sonnet 5.5 on `routine` PRs (Zeus, 2026-11-07) |
 | **Cerberus** `cerberus-security` | Security review, **only** when a diff touches a sensitive area: auth, tokens, uploads, website fetch (SSRF), workspace isolation, AI prompts, dependencies, workflows | same as Argus | Opus 5.5, effort high |
 | **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Opus 5.5, effort high |
-| **GitHub review** | A second, independent review that comments on every PR (claude-code-action with our own review prompt, no Bash). Not a gate on its own: the merge gate needs each of its findings fixed or answered | comments only | Zeus's subscription token |
+| **GitHub review** | A second, independent review that comments on every PR into `main`: batches and harness PRs; builder PRs into `staging` aren't AI-reviewed ([Zeus, 2026-11-07](https://github.com/picasso-canvas/letzeuspost/issues/62#issuecomment-6709929106)). claude-code-action with our own review prompt, no Bash. Not a gate on its own: the merge gate needs its check green on PRs into `main` and each of its findings fixed or answered | comments only | Zeus's subscription token |
 
 Reviewers never review their own work and always start from a fresh context. The builder cannot spawn agents
 (`disallowedTools: Agent`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`), so it never picks its own reviewers.
@@ -129,7 +129,7 @@ A PR merges only when all of these hold:
    harness paths (agent files, skills and `CLAUDE.md` are Markdown too); it isn't a draft, it has no conflicts, and its
    branch is up to date with `main`.
 3. **Checks green:** every check run on the head commit succeeded, including each required check named in `main`'s
-   `.github/merge-gate.json` (`ci`, then `risk-gate` and `ai-review` as they land), and the AI evals when the PR
+   `.github/merge-gate.json` (`ci` and `risk-gate` on every PR, and `ai-review` on PRs into `main`), and the AI evals when the PR
    touches AI paths (§17); none failed, pending or skipped.
 4. **Tier worked out, not read:** the gate computes the tier from the changed files and `main`'s sensitive-paths list
    (until that list exists, every PR counts as sensitive). The risk-gate label must agree; a mismatch stops the merge.

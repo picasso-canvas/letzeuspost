@@ -1,15 +1,20 @@
-# The GitHub AI review (§19 "GitHub review", §20 part 5): an independent Claude review that comments on every PR. It
-# never approves or blocks on its own: the merge gate needs this check green on the head commit, and Argus checks that
-# each of its findings is fixed or answered.
+# The GitHub AI review (§19 "GitHub review", §20 part 5): an independent Claude review that comments on every PR into
+# main. It never approves or blocks on its own: the merge gate needs this check green on the head commit of every PR
+# into main (`requiredChecksIntoMain` in .github/merge-gate.json), and Argus checks that each of its findings is fixed
+# or answered.
 #
 # It runs anthropics/claude-code-action (pinned to a commit) on Zeus's subscription token, CLAUDE_CODE_OAUTH_TOKEN, a
 # secret of the `ai-review` environment, so only this job can read it (never ci or risk-gate).
 # Claude gets no Bash, no web, no file writes and no subagents. It may read only inside the checkout, so never /proc,
-# the runner's environment or the token, and it may post inline comments on this PR. Settings, hooks, MCP servers and
-# CLAUDE.md from the PR don't load on their own (--setting-sources user, --strict-mcp-config); the prompt hands it
-# CLAUDE.md to read as data. Nothing from the PR is installed or run. A last step posts Claude's final answer as one
-# comment that names the commit it reviewed. Without the secret the job fails: a review that didn't run is never green.
-# The workflow file comes from the PR; builders can't change it (ship refuses .github/).
+# the runner's environment or the token, and it may post inline comments on this PR. The pinned action sets no
+# permission mode (base-action/src/parse-sdk-options.ts), so a headless call outside --allowedTools is refused; the
+# Read denies repeat that for the places a token or transcript could be (Read rules also cover Grep and Glob).
+# Settings, hooks, MCP servers and CLAUDE.md from the PR don't load on their own (--setting-sources user,
+# --strict-mcp-config); the prompt hands it CLAUDE.md to read as data. Nothing from the PR is installed or run. A last
+# step posts Claude's final answer as one comment that names the commit it reviewed. Without the secret the job fails:
+# a review that didn't run is never green.
+# The workflow file comes from the PR, so the token stays safe only while builders can't change .github/: ship and the
+# staging gate refuse it, and a batch into main may not carry it, so only Athena's harness PRs can (§20 part 6).
 name: ai-review
 
 on:
@@ -32,7 +37,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read # check out the PR and diff it against main
-      pull-requests: write # inline comments and the answer comment; no merge (that needs contents: write)
+      pull-requests: write # inline comments and the answer comment; no merge (that needs contents: write). It could approve, but the merge gate never reads approvals
       issues: read # the issues the PR closes: Done-when, Areas, section links
     steps:
       - name: Check out the PR's head commit
@@ -87,15 +92,19 @@ jobs:
             mcp__github_inline_comment__create_inline_comment. Start it with [blocking], [should-fix] or [nit], then
             the problem and the fix. Only real findings: no praise, no summary of the change.
 
+            You have at most 80 turns; keep the last 10 for comments and your final answer. If a large diff (a batch)
+            needs more, review the riskiest files first (harness, auth, database, uploads, AI prompts) and name the
+            files you didn't reach in your final answer.
+
             Your final answer is posted on the PR as one comment: the number of findings of each kind, then one line per
             finding (path:line, the problem). If you found nothing, say "No findings."
           claude_args: |
             --model claude-opus-5-5
-            --max-turns 40
+            --max-turns 80
             --setting-sources user
             --strict-mcp-config
             --allowedTools "Read(./**)" "Grep(./**)" "Glob(./**)" "mcp__github_inline_comment__create_inline_comment"
-            --disallowedTools "Bash" "Write" "Edit" "MultiEdit" "NotebookEdit" "WebFetch" "WebSearch" "Agent" "Task" "Read(//proc/**)" "Read(//sys/**)"
+            --disallowedTools "Bash" "Write" "Edit" "MultiEdit" "NotebookEdit" "WebFetch" "WebSearch" "Agent" "Task" "Read(//proc/**)" "Read(//sys/**)" "Read(//dev/**)" "Read(//tmp/**)" "Read(//etc/**)" "Read(//home/runner/work/_temp/**)" "Read(~/.claude/**)"
 
       - name: Post the answer, naming the commit reviewed
         if: ${{ always() && steps.review.outputs.execution_file != '' }}
@@ -107,7 +116,8 @@ jobs:
           CONCLUSION: ${{ steps.review.outputs.conclusion }}
         run: |
           set -euo pipefail
-          answer=$(jq -r '[.[] | select(.type == "result")] | last | .result // empty' "$EXECUTION_FILE")
+          # A zero-width space after each @, so text a PR planted can't @mention anyone under this account.
+          answer=$(jq -r '[.[] | select(.type == "result")] | last | .result // empty | gsub("@"; "@​")' "$EXECUTION_FILE")
           {
             printf '**AI review of %s** (%s)\n\n' "$HEAD_SHA" "${CONCLUSION:-unknown}"
             printf '%s\n' "${answer:-The reviewer gave no final answer.}"

@@ -111,8 +111,10 @@ render engine (§17) · Semgrep custom rules when the same bug pattern shows up 
   config · `.github/**`, `.claude/**`, every `CLAUDE.md`, lint/TS/test configs · `docs/plan/**`, `DESIGN.md` ·
   baselines of **approved** screens and look presets. The exact paths are listed in [§13](13-architecture.md).
 - **`ai-review`**: `anthropics/claude-code-action@v1` (pinned to a commit) with Zeus's `claude_code_oauth_token` and our
-  own review prompt posts inline comments on every PR. Claude reads only inside the checkout and has no Bash, so not the
-  code-review plugin, which runs `gh` through Bash (amended 2026-11-07, #27). It doesn't block on its own, but the merge gate needs each finding fixed or answered.
+  own review prompt posts inline comments on every PR into `main` (batches and harness PRs; builder PRs into `staging`
+  aren't AI-reviewed, Zeus 2026-11-07). Claude reads only inside the checkout and has no Bash, so not the
+  code-review plugin, which runs `gh` through Bash (amended 2026-11-07, #27). It doesn't block on its own, but the merge
+  gate needs its check green on PRs into `main` and each finding fixed or answered.
 - **If Zeus upgrades to GitHub Pro later:** add a ruleset (required checks, no force pushes, no direct pushes to `main`),
   so GitHub enforces the merge gate's checks too.
 
@@ -122,7 +124,9 @@ No real secrets on the builder side. Builders use local dev services and a **moc
 in the CI eval job, added with the AI pipeline. **CI secrets never meet PR code:** GitHub gives secrets to
 `pull_request` runs from branches in the same repo, so the evals (`ANTHROPIC_API_KEY`) run only on `main` and by hand
 (`workflow_dispatch`): for a PR that touches AI paths, Athena starts them on the PR branch after the reviews pass,
-and the merge gate requires that check on the head commit; `ai-review` runs without Bash; `ci` and `risk-gate` use no secrets, and `risk-gate` never
+and the merge gate requires that check on the head commit; `ai-review` runs without Bash, and since its workflow file
+comes from the PR, its token is safe only while builders can't change `.github/`: ship and the staging gate refuse it,
+and a batch into `main` may not carry it, so only Athena's harness PRs can; `ci` and `risk-gate` use no secrets, and `risk-gate` never
 installs or runs the PR's code. `.env` stays local and unreadable to agents; `env.example` documents
 the keys. CI secrets: `CLAUDE_CODE_OAUTH_TOKEN` now; `ANTHROPIC_API_KEY` for evals later (a dedicated Anthropic
 Console workspace with a monthly spend limit).
