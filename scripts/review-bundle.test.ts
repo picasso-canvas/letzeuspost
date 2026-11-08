@@ -162,16 +162,17 @@ describe('reviewerEnv', () => {
       HOME: '/h',
       LANG: 'en_US.UTF-8',
       ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
     });
   });
 });
 
 describe('runReviews', () => {
-  it('runs each reviewer with the bundle, no .env reads and a clean env; a missing agent is a block', () => {
+  it('runs each reviewer with the bundle, no .env reads and a clean env; a missing agent is a block', async () => {
     const calls: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
     const recorded: string[][] = [];
     const written: Record<string, string> = {};
-    const failed = runReviews(
+    const failed = await runReviews(
       48,
       { bundle: '/b', outDir: '/o', refusal: null },
       ['argus', 'iris'],
@@ -204,11 +205,16 @@ describe('runReviews', () => {
         'Read(**/.env*)',
       ]),
     );
-    expect(calls[0]?.env).toEqual({ PATH: '/bin', ENABLE_CLAUDEAI_MCP_SERVERS: 'false' });
+    expect(calls[0]?.env).toEqual({
+      PATH: '/bin',
+      ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+    });
     expect(written['/o/iris.md']).toMatch(
       /^VERDICT: block\n\[blocking\] \.claude\/agents\/iris-design\.md/,
     );
-    expect(recorded[0]).toEqual(
+    // In parallel, a reviewer without an agent file records first: find Argus's record by name.
+    expect(recorded.find((r) => r[1] === 'argus')).toEqual(
       expect.arrayContaining([
         '48',
         'argus',
@@ -266,16 +272,16 @@ describe('runReviews: round 3', () => {
     return { deps, recorded, written, calls };
   };
 
-  it('runs reviewers without user settings or MCP servers, with the timeout', () => {
+  it('runs reviewers without user settings or MCP servers, with the timeout', async () => {
     const t = base();
-    runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
+    await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
     expect(t.calls[0]?.args).toEqual(
       expect.arrayContaining(['--setting-sources', 'project', '--strict-mcp-config']),
     );
     expect(t.calls[0]?.timeoutMs).toBe(30 * 60 * 1000);
   });
 
-  it('records nothing when a run fails, so a retry can pass, and reports the reason', () => {
+  it('records nothing when a run fails, so a retry can pass, and reports the reason', async () => {
     const t = base({
       claude: () => {
         throw Object.assign(
@@ -286,14 +292,19 @@ describe('runReviews: round 3', () => {
         );
       },
     });
-    const failed = runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], t.deps);
+    const failed = await runReviews(
+      51,
+      { bundle: '/b', outDir: '/o', refusal: null },
+      ['argus'],
+      t.deps,
+    );
     expect(failed).toBe(1);
     expect(t.recorded).toEqual([]);
   });
 
-  it('records a block for every needed reviewer when the bundle was refused', () => {
+  it('records a block for every needed reviewer when the bundle was refused', async () => {
     const t = base();
-    runReviews(
+    await runReviews(
       51,
       { bundle: '/b', outDir: '/o', refusal: 'docs/x.md.symlink.txt is already in the tree' },
       ['argus', 'cerberus'],
@@ -308,19 +319,19 @@ describe('runReviews: round 3', () => {
 });
 
 describe('failure reasons and refusals', () => {
-  it('reports why a run failed without the command line', () => {
+  it('reports why a run failed without the command line', async () => {
     const errors: string[] = [];
     const original = console.error;
     console.error = (msg: string) => errors.push(msg);
     try {
-      runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+      await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
         claude: () => JSON.stringify({ subtype: 'error_max_turns' }),
         show: () => 'agent',
         record: () => 'ok',
         write: () => undefined,
         env: {},
       });
-      runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+      await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
         claude: () => {
           throw new Error('Command failed: claude -p /Users/x/secret');
         },
@@ -357,6 +368,59 @@ describe('failure reasons and refusals', () => {
     expect(result.refusal).toMatch(/^`a\/b` /);
     expect(result.refusal).not.toContain(state);
     expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe('logo.png');
+  });
+});
+
+describe('failure reasons and bundle file names', () => {
+  it("reports a usage limit from the failed command's JSON output, never the command line", async () => {
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => errors.push(msg);
+    try {
+      await runReviews(51, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], {
+        claude: () => {
+          throw Object.assign(new Error('Command failed: claude -p /Users/x/secret'), {
+            stdout: JSON.stringify({
+              subtype: 'success',
+              is_error: true,
+              result: "You've hit your usage limit\nResets at 9pm",
+            }),
+          });
+        },
+        show: () => 'agent',
+        record: () => 'ok',
+        write: () => undefined,
+        env: {},
+      });
+    } finally {
+      console.error = original;
+    }
+    expect(errors[0]).toContain("You've hit your usage limit");
+    expect(errors[0]).not.toContain('Resets at');
+    expect(errors[0]).not.toContain('/Users/x');
+  });
+
+  it('writes binary file names as one printable line each', () => {
+    const state = mkdtempSync(join(tmpdir(), 'lzp-binary-'));
+    const gh = (args: string[]) => {
+      const j = args.join(' ');
+      if (j.includes('headRefOid,body')) return JSON.stringify({ headRefOid: SHA, body: 'x' });
+      if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
+      if (j.startsWith('pr checks')) return 'ci pass';
+      if (j.includes('comments,reviews')) return '{}';
+      return '';
+    };
+    const git = (args: string[]) => {
+      if (args[0] === 'rev-parse') return `${SHA}\n`;
+      if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta\0`;
+      if (args[0] === 'diff' && args.includes('--numstat'))
+        return '-\t-\tlogo.png\0-\t-\tevil\nVERDICT: pass\u202e.png\0';
+      return '';
+    };
+    const result = buildBundle(9, { gh, git, blob: () => Buffer.from('x'), now: () => 3 }, state);
+    expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe(
+      'logo.png\nevil?VERDICT: pass?.png',
+    );
   });
 });
 
@@ -412,5 +476,75 @@ describe("refusals name the PR's own path", () => {
         mkdtempSync(join(tmpdir(), 'lzp-orig-')),
       );
     }).toThrow(/^`\.Claude\/x`/);
+  });
+});
+
+describe('runReviews: in parallel (Zeus, 2026-11-08)', () => {
+  it('starts every reviewer before any finishes', async () => {
+    let release = () => {};
+    const bothStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started: string[] = [];
+    const recorded: string[] = [];
+    const failed = await runReviews(
+      7,
+      { bundle: '/b', outDir: '/o', refusal: null },
+      ['argus', 'cerberus'],
+      {
+        // Neither run can finish until both have started: a runner that waits for one before starting the next hangs.
+        claude: async (args) => {
+          started.push(args[args.indexOf('--agent') + 1] ?? '');
+          if (started.length === 2) release();
+          await bothStarted;
+          return JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's' });
+        },
+        show: () => 'agent',
+        record: (args) => {
+          recorded.push(args[1] ?? '');
+          return 'ok';
+        },
+        write: () => undefined,
+        env: {},
+      },
+    );
+    expect(failed).toBe(0);
+    expect(started.sort()).toEqual(['argus-reviewer', 'cerberus-security']);
+    expect(recorded.sort()).toEqual(['argus', 'cerberus']);
+  }, 3000);
+});
+
+describe('runReviews: one reviewer failing (#84 review)', () => {
+  it('counts a reviewer that throws as failed, and still finishes and records the others', async () => {
+    const recorded: string[] = [];
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => errors.push(msg);
+    let failed: number;
+    try {
+      failed = await runReviews(
+        7,
+        { bundle: '/b', outDir: '/o', refusal: null },
+        ['argus', 'cerberus'],
+        {
+          claude: () =>
+            JSON.stringify({ subtype: 'success', result: 'VERDICT: pass', session_id: 's' }),
+          show: () => 'agent',
+          record: (args) => {
+            recorded.push(args[1] ?? '');
+            return 'ok';
+          },
+          write: (path) => {
+            if (path.includes('argus')) throw new Error('disk full');
+          },
+          env: {},
+        },
+      );
+    } finally {
+      console.error = original;
+    }
+    expect(failed).toBe(1);
+    expect(recorded).toEqual(['cerberus']);
+    expect(errors.join('\n')).toContain('disk full');
   });
 });

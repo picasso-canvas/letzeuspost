@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reviewPrompt } from './merge-gate/meta.ts';
-import { planReviewers, resultText } from './review.ts';
+import { planReviewers, resultText, reviewerModel } from './review.ts';
 
 const CONFIG = { requireIris: false, uiPaths: ['packages/ui/**'] };
 
@@ -65,5 +65,15 @@ describe('resultText: errors reported as success', () => {
         JSON.stringify({ subtype: 'success', is_error: true, result: 'Usage limit reached' }),
       ),
     ).toThrow(/Usage limit/);
+  });
+});
+
+describe('reviewerModel', () => {
+  it('runs Argus on Sonnet for routine PRs; every other review keeps its agent file model (Opus)', () => {
+    expect(reviewerModel('argus', 'routine')).toBe('claude-sonnet-5-5');
+    expect(reviewerModel('argus', 'sensitive')).toBeNull();
+    expect(reviewerModel('cerberus', 'sensitive')).toBeNull();
+    expect(reviewerModel('cerberus', 'routine')).toBeNull();
+    expect(reviewerModel('iris', 'routine')).toBeNull();
   });
 });

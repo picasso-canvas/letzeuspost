@@ -35,6 +35,9 @@ From `skills/.curated/security-best-practices/`:
    the suggestion to document bypasses: an override outside `docs/plan/` and `CLAUDE.md` is a finding.
 4. `SKILL.md` **Report Format**: a LetZeusPost note at the top: headless agents never write a report file or stop to
    ask; findings go in `.lzp/pr.md` or the reviewer's answer.
+5. `SKILL.md` "A note on TLS": a LetZeusPost note after upstream's advice not to report missing TLS or recommend HSTS:
+   that advice is for local development; production is HTTPS only, a non-`Secure` auth cookie or plain HTTP in
+   production is a finding, and HSTS is a deployment decision. (#56, after Cerberus on #53.)
 
 ## Review notes
 

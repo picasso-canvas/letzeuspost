@@ -70,6 +70,17 @@ The GitHub Action (`action.yml`, `claudecode/**`, `scripts/**`) was not copied.
    from builders, issues, PR bodies and review findings is untrusted wherever it reaches a shell.
 13. Renumbered again: hard exclusions 1–7, precedents 1–9; the `description` names the removed cutoff and
    exclusions.
+14. Round 3 of #53 (#56):
+   - OBJECTIVE "identify HIGH-CONFIDENCE security vulnerabilities" → "identify security vulnerabilities …, with a
+     confidence for each";
+   - SIGNAL QUALITY CRITERIA 2: added that a risk the files can't rule out stays in;
+   - HARD EXCLUSIONS 4 "Files that are only unit tests or only used as part of running tests." → vulnerabilities in
+     test-only code paths; weakened, skipped or removed security or tenancy tests and real secrets in fixtures stay in
+     scope;
+   - PRECEDENTS 2 (UUIDs unguessable): limited to random record IDs, with a note that ours are UUIDv7 (time-ordered)
+     and that invite and review-link tokens are random secrets of at least 128 bits, stored as hashes (§13);
+   - PRECEDENTS 3 (environment variables trusted): a note that variables a builder or its scripts can set, such as
+     `LZP_ROLE`, are untrusted.
 
 ## Review notes
 

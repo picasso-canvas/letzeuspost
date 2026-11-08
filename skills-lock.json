@@ -3,6 +3,7 @@
     "board": { "source": "local", "path": ".claude/skills/board" },
     "conventions": { "source": "local", "path": ".claude/skills/conventions" },
     "tdd": { "source": "local", "path": ".claude/skills/tdd" },
+    "review-checklist": { "source": "local", "path": ".claude/skills/review-checklist" },
     "systematic-debugging": {
       "source": "obra/superpowers",
       "path": "skills/systematic-debugging",

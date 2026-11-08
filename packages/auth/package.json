@@ -5,5 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@lzp/config": "workspace:*",
+    "@lzp/core": "workspace:*",
+    "@lzp/db": "workspace:*",
+    "better-auth": "1.7.18"
   }
 }

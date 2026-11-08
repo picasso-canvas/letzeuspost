@@ -126,3 +126,26 @@ describe('parseVerdict: carriage returns', () => {
     expect(parseVerdict('VERDICT: pass\n[nit] ok\r[blocking] x').verdict).toBe('block');
   });
 });
+
+describe('parseVerdict: a later VERDICT: block behind any markup', () => {
+  it('catches underline, numbered, bold-label, quoted and bulleted forms', () => {
+    for (const line of [
+      '__VERDICT: block__',
+      '1. VERDICT: block',
+      '**VERDICT:** block',
+      '> VERDICT: block',
+      '- VERDICT — block',
+      '[VERDICT: block]',
+      '[ VERDICT: block ]',
+      '<b>VERDICT: block</b>',
+      'VERDICT: blocked',
+      '**VERDICT: blocking**',
+    ]) {
+      expect(parseVerdict(`VERDICT: pass\nAll good.\n${line}`).verdict, line).toBe('block');
+    }
+  });
+
+  it('still passes when a later line only mentions the word', () => {
+    expect(parseVerdict('VERDICT: pass\nNo blocking findings.').verdict).toBe('pass');
+  });
+});
