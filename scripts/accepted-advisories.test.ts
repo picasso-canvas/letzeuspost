@@ -52,35 +52,52 @@ function edges(lockfile: string): Edge[] {
 }
 
 const all = edges(LOCKFILE);
-const dependents = (name: string): Edge[] => all.filter((e) => e.to === name);
+
+/** What keeps GHSA-gcqx-w48m-w2h4's ignore from covering more than Zeus accepted; empty when deepmerge stays put. */
+function deepmergeOffPath(lockfile: string): string[] {
+  const graph = edges(lockfile);
+  const dependents = (name: string): string[] =>
+    graph.filter((e) => e.to === name).map((e) => `${e.from} ${e.group}`);
+  const problems: string[] = [];
+  const through = [...new Set(graph.filter((e) => e.to === 'deepmerge').map((e) => e.from))].sort();
+  if (through.length === 0)
+    problems.push('deepmerge is gone: remove its ignore from osv-scanner.toml and this test');
+  else if (JSON.stringify(through) !== JSON.stringify(['@shadcn/registry', 'shadcn']))
+    problems.push(`deepmerge comes through ${through.join(', ')}`);
+  if (JSON.stringify(dependents('@shadcn/registry')) !== JSON.stringify(['shadcn dependencies']))
+    problems.push(`@shadcn/registry is used by ${dependents('@shadcn/registry').join(', ')}`);
+  if (
+    JSON.stringify(dependents('shadcn')) !==
+    JSON.stringify(['importer:packages/ui devDependencies'])
+  )
+    problems.push(`shadcn is used by ${dependents('shadcn').join(', ')}`);
+  return problems;
+}
 
 describe('accepted advisories stay on their accepted path', () => {
-  it('reads the lockfile (the parser finds the edges it relies on)', () => {
+  it('reads the lockfile (the parser finds the edges it relies on, in both sections)', () => {
     expect(all.some((e) => e.from === 'importer:packages/ui' && e.to === 'react')).toBe(true);
     expect(all.some((e) => e.from === 'importer:.' && e.group === 'devDependencies')).toBe(true);
+    expect(all.filter((e) => !e.from.startsWith('importer:')).length).toBeGreaterThan(100);
   });
 
   it('GHSA-gcqx-w48m-w2h4: deepmerge comes only through the shadcn CLI, a dev dependency of packages/ui', () => {
     expect(OSV_CONFIG).toContain('id = "GHSA-gcqx-w48m-w2h4"');
-    const through = new Set(dependents('deepmerge').map((e) => e.from));
-    expect(
-      through.size,
-      'deepmerge is gone: remove its ignore from osv-scanner.toml and this test',
-    ).toBeGreaterThan(0);
-    expect([...through].sort()).toEqual(['@shadcn/registry', 'shadcn']);
-    expect(dependents('@shadcn/registry').map((e) => e.from)).toEqual(['shadcn']);
-    expect(dependents('shadcn').map((e) => `${e.from} ${e.group}`)).toEqual([
-      'importer:packages/ui devDependencies',
-    ]);
+    expect(deepmergeOffPath(LOCKFILE)).toEqual([]);
   });
 
-  it('fails when deepmerge arrives another way', () => {
-    const extra = `${LOCKFILE}\n  some-runtime-lib@1.0.0:\n    dependencies:\n      deepmerge: 4.3.1\n`;
-    const through = new Set(
-      edges(extra)
-        .filter((e) => e.to === 'deepmerge')
-        .map((e) => e.from),
+  it('catches deepmerge arriving another way, and shadcn becoming a runtime dependency', () => {
+    const viaRuntime = `${LOCKFILE}\n  some-runtime-lib@1.0.0:\n    dependencies:\n      deepmerge: 4.3.1\n`;
+    expect(deepmergeOffPath(viaRuntime)).toEqual([
+      'deepmerge comes through @shadcn/registry, shadcn, some-runtime-lib',
+    ]);
+    const shadcnAtRuntime = LOCKFILE.replace(
+      /(\n {2}packages\/ui:\n {4}dependencies:\n)/,
+      '$1      shadcn:\n        specifier: 4.23.0\n        version: 4.23.0\n',
     );
-    expect([...through].sort()).not.toEqual(['@shadcn/registry', 'shadcn']);
+    expect(shadcnAtRuntime).not.toBe(LOCKFILE);
+    expect(deepmergeOffPath(shadcnAtRuntime)).toEqual([
+      'shadcn is used by importer:packages/ui dependencies, importer:packages/ui devDependencies',
+    ]);
   });
 });

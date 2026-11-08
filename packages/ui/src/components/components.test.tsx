@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Button } from '@lzp/ui/components/button';
@@ -8,6 +8,7 @@ import { Label } from '@lzp/ui/components/label';
 
 interface ComponentsJson {
   style: string;
+  rsc: boolean;
   iconLibrary: string;
   registries?: unknown;
   aliases: Record<string, string>;
@@ -29,6 +30,23 @@ describe('components.json (#107)', () => {
 
   it('resolves every alias inside packages/ui', () => {
     for (const alias of Object.values(config.aliases)) expect(alias).toMatch(/^@lzp\/ui\//);
+  });
+
+  it('is set for React Server Components, as apps/web (Next.js App Router) uses them', () => {
+    expect(config.rsc).toBe(true);
+  });
+});
+
+describe('client components (Next.js App Router)', () => {
+  it("marks every component that uses a React hook with 'use client'", () => {
+    const files = readdirSync(new URL('.', import.meta.url)).filter(
+      (f) => f.endsWith('.tsx') && !f.endsWith('.test.tsx'),
+    );
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      if (/\buse[A-Z]\w*\(/.test(source)) expect(source, file).toMatch(/^'use client';/);
+    }
   });
 });
 
