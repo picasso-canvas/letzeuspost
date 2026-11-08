@@ -15,7 +15,14 @@ import {
   taskText,
 } from './dispatch.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
-import { fetchBundle, parseDispatchRecord, parseShipArgs, prFlags } from './ship.ts';
+import {
+  fetchBundle,
+  parseDispatchRecord,
+  parseShipArgs,
+  prFlags,
+  remoteHead,
+  textOnlyTarget,
+} from './ship.ts';
 
 const paused = (flag: string) => (JSON.parse(flag) as { paused: boolean }).paused;
 
@@ -69,6 +76,36 @@ describe('prFlags', () => {
       blocked: false,
     });
     expect(prFlags('**Blocked:** the database isn’t up').blocked).toBe(true);
+  });
+});
+
+describe('textOnlyTarget (#94)', () => {
+  const base = 'a'.repeat(40);
+
+  it('ships the text alone onto an open PR whose branch is still where the round started', () => {
+    expect(textOnlyTarget(93, base, base)).toEqual({ pr: 93 });
+  });
+
+  it('refuses with no open PR, a branch missing on GitHub, or a branch that moved since dispatch', () => {
+    expect(textOnlyTarget(undefined, base, base)).toEqual({
+      refusal: expect.stringMatching(/no open PR/) as unknown,
+    });
+    expect(textOnlyTarget(93, null, base)).toEqual({
+      refusal: expect.stringMatching(/not on GitHub/) as unknown,
+    });
+    expect(textOnlyTarget(93, 'b'.repeat(40), base)).toEqual({
+      refusal: expect.stringMatching(/moved/) as unknown,
+    });
+  });
+});
+
+describe('remoteHead', () => {
+  it("reads the branch's commit from git ls-remote, and nothing else", () => {
+    const sha = 'c'.repeat(40);
+    expect(remoteHead(`${sha}\trefs/heads/33-x\n`, '33-x')).toBe(sha);
+    expect(remoteHead('', '33-x')).toBeNull();
+    expect(remoteHead(`${sha}\trefs/heads/33-xy\n`, '33-x')).toBeNull();
+    expect(remoteHead('not-a-sha\trefs/heads/33-x\n', '33-x')).toBeNull();
   });
 });
 
