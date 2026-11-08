@@ -50,7 +50,7 @@ describe('lzp/no-raw-db-client (§13: the raw client stays in packages/db)', () 
   });
 });
 
-describe('lzp/no-use-cache (Q17: banned in apps/web for now)', () => {
+describe('lzp/no-use-cache (Q17, §13: banned in every package)', () => {
   it("refuses a 'use cache' directive and Next's cache APIs in apps/web", async () => {
     expect(await ruleIds("'use cache';\nexport const a = 1;", 'apps/web/src/a.ts')).toContain(
       'lzp/no-use-cache',
@@ -392,5 +392,40 @@ describe('round 6 of the #82 review', () => {
     expect(
       messages.some((m) => m.severity === 1 && /no-?inline-?config|has no effect/i.test(m.message)),
     ).toBe(true);
+  });
+});
+
+describe('round 7 of the #82 review', () => {
+  it('treats revalidate: false as caching forever, which it is in Next.js; only 0 is off', async () => {
+    expect(
+      await ruleIds(
+        "export const f = () => fetch('/api', { next: { revalidate: false } });",
+        'apps/web/src/a.ts',
+      ),
+    ).toContain('lzp/no-use-cache');
+    expect(await ruleIds('export const revalidate = false;', 'apps/web/src/app/page.ts')).toContain(
+      'lzp/no-use-cache',
+    );
+    expect(await ruleIds('export const revalidate = 0;', 'apps/web/src/app/page.ts')).toEqual([]);
+  });
+
+  it('asks for fetch and Request options inline in apps/web, so their cache setting is visible', async () => {
+    for (const code of [
+      "const init = { cache: 'force-cache' } as const; export const f = () => fetch('/api', init);",
+      "const shared = {}; export const f = () => fetch('/api', { ...shared });",
+      "export const r = new Request('/api', { cache: 'force-cache' });",
+    ]) {
+      expect(await ruleIds(code, 'apps/web/src/a.ts'), code).toContain('lzp/no-use-cache');
+    }
+    expect(await ruleIds("export const f = () => fetch('/api');", 'apps/web/src/a.ts')).toEqual([]);
+  });
+
+  it('refuses a destructured createRequire', async () => {
+    expect(
+      await ruleIds(
+        "import mod from 'node:module';\nconst { createRequire: r } = mod;\nexport { r };",
+        'apps/web/src/a.ts',
+      ),
+    ).toContain('lzp/no-raw-db-client');
   });
 });
