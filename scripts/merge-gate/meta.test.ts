@@ -69,6 +69,12 @@ describe('checkTranscript', () => {
   });
 });
 
+describe('reviewPrompt (#113)', () => {
+  it("names approvals.md, where Zeus's signed decisions are checked", () => {
+    expect(reviewPrompt('argus', BUNDLE)).toContain(`${BUNDLE}/approvals.md`);
+  });
+});
+
 describe('bundlePattern', () => {
   it("matches only this PR's bundle for this head commit", () => {
     expect(bundlePattern('/s', 52, '960d3ba5490ecdbad28dd436a57e8ab06808712b').test(BUNDLE)).toBe(
