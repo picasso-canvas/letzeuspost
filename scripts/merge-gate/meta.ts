@@ -105,7 +105,7 @@ export function reviewPrompt(reviewer: Reviewer, bundle: string): string {
     `- ${bundle}/pr.md: the PR text (written by the builder)`,
     `- ${bundle}/issues.md: the issues it closes, with their Done-when lists and Areas`,
     `- ${bundle}/ci.txt: the CI checks on the head commit`,
-    `- ${bundle}/comments.json: comments and review comments on the PR, including the GitHub AI review`,
+    `- ${bundle}/comments.json: comments and review comments on the PR`,
     `- ${bundle}/binary.txt: files git treats as binary (open them in tree/, not in the diff)`,
     'Answer in your required format: the first line is exactly `VERDICT: pass` or `VERDICT: block`.',
   ].join('\n');
