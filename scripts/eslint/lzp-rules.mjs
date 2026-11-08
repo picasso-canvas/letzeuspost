@@ -125,6 +125,15 @@ const noRawDbClient = {
         if (name === 'createRequire' || name === 'getBuiltinModule')
           context.report({ node, messageId: 'dynamic' });
       },
+      /** const { createRequire: r } = mod @param {any} node */
+      Property(node) {
+        const key = node.computed ? staticString(node.key) : (node.key?.name ?? node.key?.value);
+        if (
+          node.parent?.type === 'ObjectPattern' &&
+          (key === 'createRequire' || key === 'getBuiltinModule')
+        )
+          context.report({ node, messageId: 'dynamic' });
+      },
       /** import { createRequire as anything } from 'node:module' @param {any} node */
       ImportSpecifier(node) {
         const name = node.imported?.name ?? node.imported?.value;
@@ -160,6 +169,8 @@ const noUseCache = {
       module:
         "This form of next/cache, and Next's internals (next/dist/…), are banned: import only names you use, none of the cache APIs (§13).",
       config: 'cacheComponents is banned (§13).',
+      inline:
+        "Write fetch's and Request's options inline, so their cache setting is visible (§13).",
       fetch:
         "fetch's {{option}} puts the response in Next's shared Data Cache: use cache: 'no-store' (§13).",
       segment:
@@ -177,8 +188,13 @@ const noUseCache = {
     /** fetch(url, { cache: 'force-cache' }) or { next: { revalidate, tags } } @param {any} node */
     const fetchCache = (node) => {
       const options = node.arguments[1];
-      if (options?.type !== 'ObjectExpression') return;
+      if (options === undefined) return;
+      if (options.type !== 'ObjectExpression') {
+        context.report({ node: options, messageId: 'inline' });
+        return;
+      }
       for (const prop of options.properties) {
+        if (prop.type === 'SpreadElement') context.report({ node: prop, messageId: 'inline' });
         if (prop.type !== 'Property') continue;
         const key = prop.computed ? staticString(prop.key) : (prop.key?.name ?? prop.key?.value);
         if (key === 'cache' && staticString(prop.value) !== 'no-store')
@@ -190,9 +206,8 @@ const noUseCache = {
         if (key === 'next' && prop.value.type === 'ObjectExpression') {
           for (const inner of prop.value.properties) {
             const name = inner.key?.name ?? inner.key?.value;
-            const off =
-              inner.value?.type === 'Literal' &&
-              (inner.value.value === 0 || inner.value.value === false);
+            // Only 0 turns caching off: false means cache forever in Next.js.
+            const off = inner.value?.type === 'Literal' && inner.value.value === 0;
             if ((name === 'revalidate' && !off) || name === 'tags')
               context.report({
                 node: inner,
@@ -211,7 +226,7 @@ const noUseCache = {
         const init = decl.init;
         const value = init?.type === 'Literal' ? init.value : staticString(init);
         const caches =
-          (name === 'revalidate' && !(value === 0 || value === false)) ||
+          (name === 'revalidate' && value !== 0) || // false caches forever
           (name === 'dynamic' && (value === 'force-static' || value === 'error')) ||
           (name === 'fetchCache' &&
             typeof value === 'string' &&
@@ -277,6 +292,11 @@ const noUseCache = {
           (isCacheModule(staticString(arg)) || isDeepNext(staticString(arg)))
         )
           context.report({ node, messageId: 'module' });
+      },
+      /** new Request(url, { cache: … }) is read like fetch @param {any} node */
+      NewExpression(node) {
+        if (inWeb && node.callee.type === 'Identifier' && node.callee.name === 'Request')
+          fetchCache(node);
       },
       /** @param {any} node */
       Property(node) {
