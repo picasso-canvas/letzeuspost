@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parseConfig } from './collect.ts';
 import { bodyHash, doneWhenBoxes, evaluate } from './evaluate.ts';
 import type { Facts, ReviewRecord } from './types.ts';
 
@@ -199,6 +201,15 @@ describe('evaluate', () => {
     expect(failedIds(withIris)).toEqual([5]);
     expect(failedIds({ ...withIris, reviews: [review('argus'), review('iris')] })).toEqual([]);
     expect(failedIds({ ...withIris, changedFiles: ['packages/core/src/a.ts'] })).toEqual([]);
+  });
+
+  it("refuses a UI PR without Iris's pass under the repo's own merge-gate.json (#68)", () => {
+    const config = parseConfig(
+      readFileSync(new URL('../../.github/merge-gate.json', import.meta.url), 'utf8'),
+    );
+    const ui = facts({ config });
+    expect(failedIds(ui)).toEqual([5]);
+    expect(failedIds({ ...ui, reviews: [review('argus'), review('iris')] })).toEqual([]);
   });
 
   it('refuses an unticked or missing Done-when list', () => {
