@@ -25,6 +25,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { athenaGitEnv } from './lib/athena-git.ts';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
@@ -176,7 +177,7 @@ function run(cmd: string, args: string[], cwd = ROOT): string {
   return execFileSync(cmd, args, {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' },
+    env: athenaGitEnv(process.env),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
