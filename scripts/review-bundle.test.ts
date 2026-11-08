@@ -62,6 +62,8 @@ describe('buildBundle', () => {
       ghCalls.push(joined);
       if (joined.includes('headRefOid,body'))
         return JSON.stringify({ headRefOid: SHA, body: 'Closes #7' });
+      if (joined.includes('baseRefName,headRefName'))
+        return JSON.stringify({ baseRefName: 'main', headRefName: '7-task-seven' });
       if (joined.includes('closingIssuesReferences')) {
         return JSON.stringify({
           closingIssuesReferences: [
@@ -347,11 +349,50 @@ describe('failure reasons and refusals', () => {
     expect(errors[1]).not.toContain('/Users/x');
   });
 
+  it("takes a staging PR's issue from its branch name and diffs it against staging (#103)", () => {
+    const state = mkdtempSync(join(tmpdir(), 'lzp-staging-'));
+    const gh = (args: string[]) => {
+      const j = args.join(' ');
+      if (j.includes('headRefOid,body'))
+        return JSON.stringify({ headRefOid: SHA, body: 'Closes #65' });
+      if (j.includes('baseRefName,headRefName'))
+        return JSON.stringify({
+          baseRefName: 'staging',
+          headRefName: '65-config-env-ts-and-env-example',
+        });
+      // GitHub links "Closes #n" only for PRs into the default branch.
+      if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
+      if (j.startsWith('issue view 65')) return 'Config env\n\n**Done when**\n- [ ] x';
+      if (j.startsWith('pr checks')) return 'ci pass';
+      if (j.includes('comments,reviews')) return '{}';
+      return '';
+    };
+    const gitCalls: string[] = [];
+    const git = (args: string[]) => {
+      gitCalls.push(args.join(' '));
+      if (args[0] === 'rev-parse') return `${SHA}\n`;
+      if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta.ts\0`;
+      return '';
+    };
+    const result = buildBundle(99, { gh, git, blob: () => Buffer.from('a'), now: () => 4 }, state);
+    const issues = readFileSync(join(result.bundle, 'issues.md'), 'utf8');
+    expect(issues).toContain('# Issue #65');
+    expect(issues).toContain('Config env');
+    const compared = gitCalls.filter((c) => c.startsWith('diff') || c.startsWith('log'));
+    expect(compared.length).toBeGreaterThanOrEqual(4); // changed files, binaries, diff, history
+    for (const call of compared) {
+      expect(call).toContain('origin/staging');
+      expect(call).not.toContain('origin/main');
+    }
+  });
+
   it('refuses with a PR-relative path, never a local one, and lists binaries', () => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-refuse-'));
     const gh = (args: string[]) => {
       const j = args.join(' ');
       if (j.includes('headRefOid,body')) return JSON.stringify({ headRefOid: SHA, body: 'x' });
+      if (j.includes('baseRefName,headRefName'))
+        return JSON.stringify({ baseRefName: 'main', headRefName: '9-x' });
       if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';
@@ -405,6 +446,8 @@ describe('failure reasons and bundle file names', () => {
     const gh = (args: string[]) => {
       const j = args.join(' ');
       if (j.includes('headRefOid,body')) return JSON.stringify({ headRefOid: SHA, body: 'x' });
+      if (j.includes('baseRefName,headRefName'))
+        return JSON.stringify({ baseRefName: 'main', headRefName: '9-x' });
       if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';
