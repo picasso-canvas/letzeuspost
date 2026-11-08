@@ -19,12 +19,12 @@ Comprehensive accessibility guidelines based on WCAG 2.2 and Lighthouse accessib
 
 When a rendered page is available:
 
-1. Run a live Lighthouse Accessibility audit when that capability is available; with Chrome DevTools MCP, use `lighthouse_audit`. Use mobile navigation mode for a general public page or snapshot mode when reloading would lose authenticated or user-created state.
+1. LetZeusPost: run the axe check, through the repo's pinned `@axe-core/playwright` in the screen's Playwright test (`pnpm exec playwright test`); CI runs it on every screen.
 2. Use failed audit nodes to localize the relevant component or template instead of searching the whole repository for generic patterns.
 3. Inspect a rendered accessibility-tree snapshot for names, roles, states, landmarks, and heading structure; with Chrome DevTools MCP, use `take_snapshot`. Exercise the affected flow with the keyboard.
 4. Fix the source, then re-run the same audit and manual interaction.
 
-If the live tools are unavailable, use Lighthouse CLI or axe for automated coverage and complete the same manual checks. Automated tools detect only a subset of accessibility barriers: a score of 100 is not WCAG conformance, and a low score does not replace issue-level evidence.
+LetZeusPost: axe in Playwright is the automated coverage here; don't install or download other audit tools. Complete the same manual checks. Automated tools detect only a subset of accessibility barriers: a score of 100 is not WCAG conformance, and a low score does not replace issue-level evidence.
 
 ## WCAG Principles: POUR
 
@@ -410,13 +410,9 @@ Use `aria-live` regions to announce dynamic content changes without moving focus
 
 ### Automated testing
 
-Prefer a live Lighthouse audit that returns failing rendered nodes directly to the agent. With Chrome DevTools MCP, this is `lighthouse_audit`. Otherwise:
+LetZeusPost: accessibility is checked with axe, through the repo's pinned `@axe-core/playwright` in Playwright tests, which CI runs on every screen.
 
 ```bash
-# Lighthouse accessibility audit
-# LetZeusPost: pinned (upstream ran `npx lighthouse`, unpinned).
-pnpm dlx lighthouse@13.6.0 https://example.com --only-categories=accessibility
-
 # axe-core
 # LetZeusPost: use the repo's pinned `@axe-core/playwright` inside a Playwright test
 # (upstream ran `npm install @axe-core/cli -g`, a global unpinned install).

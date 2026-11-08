@@ -26,8 +26,8 @@ first, then a build task with new baselines ([§21](../../../docs/plan/21-ai-des
   ([§20](../../../docs/plan/20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)). A token you need
   that isn't there is a `needs-zeus` item, never a one-off value in a component.
 - `pnpm check` lint refuses raw colors and arbitrary values outside the tokens (`lzp/tokens-only`), any icon set but
-  Lucide (`lzp/lucide-only`) and any interface font but Inter (`lzp/inter-only`). CI runs `design.md lint`
-  (contrast, broken references) and `diff` (regressions).
+  Lucide (`lzp/lucide-only`) and any interface font but Inter (`lzp/inter-only`). CI will run `design.md lint`
+  (contrast, broken references) and `diff` (regressions) once the `DESIGN.md` task (#70) adds the `design` job.
 
 ## The look ([§05](../../../docs/plan/05-app-design.md#design-system))
 
@@ -57,8 +57,9 @@ first, then a build task with new baselines ([§21](../../../docs/plan/21-ai-des
   skeleton, comment thread, caption box with character counter, image picker, color and font pickers, size tabs.
 - Look in `packages/ui` and the gallery before making one. A screen that needs a new component adds it to
   `packages/ui` and the gallery first; screens never hold one-off components.
-- Add shadcn components with the CLI at a pinned version, never `@latest`. A new dependency is a sensitive change:
-  say why in the PR text.
+- Add shadcn components with the CLI (`pnpm exec shadcn`, from the official `@shadcn` registry only), never `pnpm dlx`
+  or `@latest`; the `shadcn` skill says when that is possible yet. A new dependency is a sensitive change: say why in
+  the PR text.
 - Every component is in the component gallery (Storybook) in all its states (default, hover, focus, disabled, empty,
   loading, error), in light and dark, with a screenshot test
   ([§21](../../../docs/plan/21-ai-design-workflow.md#visual-tests)).
@@ -107,7 +108,8 @@ first, then a build task with new baselines ([§21](../../../docs/plan/21-ai-des
 
 ## What Iris checks
 
-Iris reviews from a fresh context, read-only, on the batch PR into `main` when it touches UI; the merge gate needs
+Iris reviews from a fresh context, read-only, on every PR into `main` that touches UI (the batch from `staging`, where
+your work arrives); the merge gate needs
 her pass ([§19](../../../docs/plan/19-build-team-and-workflow.md#the-merge-gate)). She doesn't run the app: she reads
 the PR's files, diff, text and CI results, so every screen and state you changed needs its screenshot there. She
 compares them with the approved mockups and tokens

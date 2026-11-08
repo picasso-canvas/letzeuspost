@@ -7,10 +7,10 @@
 - **Vendored:** 2026-11-08 by Athena (task #68). Zeus approved the UI start set on 2026-11-08. Used pinned (§21).
 - **Discovery:** the skill lives directly at `.claude/skills/playwright-cli/` (Claude Code finds skills one level deep; no symlinks, no `vendor/` folder).
 - **Pinned:** the CLI runs as `pnpm exec playwright cli` from the repo's own Playwright (`@playwright/test` pinned in
-  `package.json`, 1.65.0 today; its `playwright-core` includes the `cli` command). A standalone copy, if ever needed:
-  `@playwright/cli@0.1.23`, the latest release (marked in `0a80807`, 2026-10-31; published to npm the same day). The
-  pinned commit's skill differs from the `0a80807` one by one sentence ("Event listener errors are reported as console
-  errors." in `references/running-code.md`).
+  `package.json`, 1.65.0 today; its `playwright-core` includes the `cli` command). No standalone copy (change 10).
+  The latest standalone release is `@playwright/cli@0.1.23` (marked in `0a80807`, 2026-10-31); the pinned commit's
+  skill differs from the `0a80807` one by one sentence ("Event listener errors are reported as console errors." in
+  `references/running-code.md`).
 
 ## Paths copied
 
@@ -48,7 +48,7 @@ From `skills/playwright-cli/`:
    `--debug=cli` run is fine.
 3. `SKILL.md` "Installation": `npx --no-install playwright --version`, "use `npx playwright cli`" and
    `npm install -g @playwright/cli@latest` → `pnpm exec playwright --version`, `pnpm exec playwright cli …`, never a
-   global or `@latest` install, and `pnpm dlx @playwright/cli@0.1.23` if a standalone copy is ever needed.
+   global or `@latest` install (the `pnpm dlx` fallback this change first added is gone: change 10).
 4. `SKILL.md` "Example: Interactive session": a LetZeusPost line: not in headless runs (builders, Iris).
 5. `SKILL.md` "Attaching screenshots and videos to pull requests": the `gh pr comment --attach` example and the link to
    `references/pr-attachments.md` → save the screenshot and list it in `.lzp/pr.md`; Athena opens the PR. Removed the
@@ -63,6 +63,12 @@ From `skills/playwright-cli/`:
      never `test.fixme`, `.skip` or `.only` (the research verdict on Playwright's healer: remove the fixme fallback).
 8. `references/video-recording.md` section 3: the `gh pr create/comment` and `gh issue comment --attach` commands and
    the `pr-attachments.md` link → list the recording in `.lzp/pr.md`; kept the size advice. Plus the notice at the top.
+9. `SKILL.md` LetZeusPost note: "Only throwaway browser state": no `--profile` outside the clone, no real Chrome or
+   Edge profile, and saved state, traces and snapshots stay uncommitted (`.playwright-cli/` and `*.auth.json` are in
+   the repo's `.gitignore`). Cerberus on #100.
+10. `SKILL.md` "Installation": removed "run it pinned: `pnpm dlx @playwright/cli@0.1.23`" for a standalone copy.
+    `pnpm dlx` pins only the top package; its dependencies resolve outside the lockfile, the licence check and the
+    audits. A standalone copy is now a `needs-zeus` item. Cerberus on #100.
 
 ## Review notes
 

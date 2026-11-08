@@ -12,6 +12,10 @@ description: Automate browser interactions, test web pages and work with Playwri
 >   Playwright, pinned in `package.json`, includes the CLI). See Installation. The `allowed-tools` grant is removed.
 > - **No `gh`:** builders have no GitHub access. The pull-request attachment steps are replaced, and
 >   `references/pr-attachments.md` isn't in this copy.
+> - **Only throwaway browser state:** use the default in-memory profile, or a `--profile` folder inside your clone
+>   that you made for the task; never a profile folder outside it, and never `--browser=chrome` or `msedge` with a
+>   real profile (it holds a person's logins). Saved state (`state-save`), traces and snapshots hold session cookies:
+>   they go under `.playwright-cli/` or into a `*.auth.json` file, which git ignores; never commit them.
 > - **Headless runs never use `show --annotate`:** it waits for a person at the screen.
 > - **Never `attach` to a browser you didn't `open`** (`attach --cdp=…`, `attach --extension`): a running Chrome or
 >   Edge holds a person's logins. Attaching to your own `--debug=cli` test run (`attach tw-…`) is fine.
@@ -420,7 +424,7 @@ pnpm exec playwright --version
 pnpm exec playwright cli open http://localhost:3000
 ```
 
-Never install `playwright-cli` globally or with `@latest` (upstream: `npm install -g @playwright/cli@latest`). If a standalone copy is ever needed, run it pinned: `pnpm dlx @playwright/cli@0.1.23 …`.
+Never install `playwright-cli` globally, with `@latest` or with `pnpm dlx` (upstream: `npm install -g @playwright/cli@latest`). If the repo's Playwright isn't enough and a standalone copy seems needed, write that under `needs-zeus` in `.lzp/pr.md` and stop.
 
 ## Example: Form submission
 

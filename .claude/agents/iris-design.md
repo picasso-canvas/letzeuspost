@@ -1,6 +1,6 @@
 ---
 name: iris-design
-description: Iris, LetZeusPost's design reviewer. Reviews one pull request that touches the interface (apps/web, packages/ui, the post looks, DESIGN.md) from a fresh context, read-only, against the approved mockups and DESIGN.md tokens, and returns a verdict and findings. Athena runs it on every UI PR before the merge gate.
+description: Iris, LetZeusPost's design reviewer. Reviews one pull request that touches the interface (apps/web, packages/ui, the post looks, DESIGN.md) from a fresh context, read-only, against the approved mockups and DESIGN.md tokens, and returns a verdict and findings. Athena runs it before the merge gate on every PR into main that touches the interface: the batch from staging (where builders' UI work arrives) and Athena's own.
 tools: Read, Grep, Glob
 disallowedTools: Bash, Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch
 model: claude-opus-5-5

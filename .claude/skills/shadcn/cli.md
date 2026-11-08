@@ -2,14 +2,16 @@
 
 Configuration is read from `components.json`.
 
-> **IMPORTANT:** Always run commands as `pnpm dlx shadcn@4.23.0` (LetZeusPost: this repo uses pnpm; the version is pinned, never `@latest`). Examples below use it.
+> **IMPORTANT:** Always run commands as `pnpm exec shadcn` (LetZeusPost: once it is the repo's pinned dev dependency, never `pnpm dlx`, `npx` or `@latest`; until then, and while the builder sandbox can't reach `ui.shadcn.com`, a task that needs it writes that under `needs-zeus` in `.lzp/pr.md` and stops). Examples below use it.
+>
+> **LetZeusPost:** components come only from the official `@shadcn` registry; see the note at the top of `SKILL.md`.
 
 > **IMPORTANT:** Only use the flags documented below. Do not invent or guess flags — if a flag isn't listed here, it doesn't exist. The CLI auto-detects the package manager from the project's lockfile; there is no `--package-manager` flag.
 
 ## Contents
 
-- Commands: init, apply, add (dry-run, smart merge), search, view, docs, info, build
-- Templates: next, vite, start, react-router, astro
+- Commands: init, apply, add (dry-run, smart merge), search, view, docs, info
+- Templates: next, start, react-router, astro
 - Presets: named, code, URL formats and fields
 - Switching presets
 
@@ -20,14 +22,14 @@ Configuration is read from `components.json`.
 ### `init` — Initialize or create a project
 
 ```bash
-pnpm dlx shadcn@4.23.0 init [components...] [options]
+pnpm exec shadcn init [components...] [options]
 ```
 
 Initializes shadcn/ui in an existing project or creates a new project (when `--name` is provided). Optionally installs components in the same step.
 
 | Flag                    | Short | Description                                               | Default |
 | ----------------------- | ----- | --------------------------------------------------------- | ------- |
-| `--template <template>` | `-t`  | Template (next, start, vite, next-monorepo, react-router) | —       |
+| `--template <template>` | `-t`  | Template (next, start, next-monorepo, react-router)       | —       |
 | `--preset [name]`       | `-p`  | Preset configuration (named, code, or URL)                | —       |
 | `--yes`                 | `-y`  | Skip confirmation prompt                                  | `true`  |
 | `--defaults`            | `-d`  | Use defaults (`--template=next --preset=base-nova`)       | `false` |
@@ -40,12 +42,12 @@ Initializes shadcn/ui in an existing project or creates a new project (when `--n
 | `--monorepo`            |       | Scaffold a monorepo project                               | —       |
 | `--no-monorepo`         |       | Skip the monorepo prompt                                  | —       |
 
-`pnpm dlx shadcn@4.23.0 create` is an alias for `pnpm dlx shadcn@4.23.0 init`.
+`pnpm exec shadcn create` is an alias for `pnpm exec shadcn init`.
 
 ### `apply` — Apply a preset to an existing project
 
 ```bash
-pnpm dlx shadcn@4.23.0 apply [preset] [options]
+pnpm exec shadcn apply [preset] [options]
 ```
 
 Applies a preset to an existing project, overwriting preset-driven config, fonts, CSS variables, and detected UI components.
@@ -62,21 +64,21 @@ If no preset is provided, the CLI offers to open the custom preset builder on `u
 
 ### `add` — Add components
 
-> **IMPORTANT:** To compare local components against upstream or to preview changes, ALWAYS use `pnpm dlx shadcn@4.23.0 add <component> --dry-run`, `--diff`, or `--view`. NEVER fetch raw files from GitHub or other sources manually. The CLI handles registry resolution, file paths, and CSS diffing automatically.
+> **IMPORTANT:** To compare local components against upstream or to preview changes, ALWAYS use `pnpm exec shadcn add <component> --dry-run`, `--diff`, or `--view`. NEVER fetch raw files from GitHub or other sources manually. The CLI handles registry resolution, file paths, and CSS diffing automatically.
 
 ```bash
-pnpm dlx shadcn@4.23.0 add [components...] [options]
+pnpm exec shadcn add [components...] [options]
 ```
 
-Accepts component names, registry-prefixed names (`@magicui/shimmer-button`),
-GitHub item addresses (`owner/repo/item`), URLs, or local paths.
+Accepts component names (`button`, `@shadcn/button`). LetZeusPost: from the official
+`@shadcn` registry only; no other namespaces, GitHub addresses, URLs or local paths.
 
 | Flag            | Short | Description                                                                                                          | Default |
 | --------------- | ----- | -------------------------------------------------------------------------------------------------------------------- | ------- |
 | `--yes`         | `-y`  | Skip confirmation prompt                                                                                             | `false` |
 | `--overwrite`   | `-o`  | Overwrite existing files                                                                                             | `false` |
 | `--cwd <cwd>`   | `-c`  | Working directory                                                                                                    | current |
-| `--all`         | `-a`  | Add all available components                                                                                         | `false` |
+| `--all`         | `-a`  | Add all available components (LetZeusPost: don't use; add only the components a task needs)                         | `false` |
 | `--path <path>` | `-p`  | Target path for the component                                                                                        | —       |
 | `--silent`      | `-s`  | Mute output                                                                                                          | `false` |
 | `--dry-run`     |       | Preview all changes without writing files                                                                            | `false` |
@@ -89,28 +91,22 @@ Use `--dry-run` to preview what `add` would do without writing any files. `--dif
 
 ```bash
 # Preview all changes.
-pnpm dlx shadcn@4.23.0 add button --dry-run
+pnpm exec shadcn add button --dry-run
 
 # Show diffs for all files (top 5).
-pnpm dlx shadcn@4.23.0 add button --diff
+pnpm exec shadcn add button --diff
 
 # Show the diff for a specific file.
-pnpm dlx shadcn@4.23.0 add button --diff button.tsx
+pnpm exec shadcn add button --diff button.tsx
 
 # Show contents for all files (top 5).
-pnpm dlx shadcn@4.23.0 add button --view
+pnpm exec shadcn add button --view
 
 # Show the full content of a specific file.
-pnpm dlx shadcn@4.23.0 add button --view button.tsx
-
-# Works with URLs too.
-pnpm dlx shadcn@4.23.0 add https://api.npoint.io/abc123 --dry-run
-
-# Works with public GitHub registries too.
-pnpm dlx shadcn@4.23.0 add owner/repo/item --dry-run
+pnpm exec shadcn add button --view button.tsx
 
 # CSS diffs.
-pnpm dlx shadcn@4.23.0 add button --diff globals.css
+pnpm exec shadcn add button --diff globals.css
 ```
 
 **When to use dry-run:**
@@ -119,24 +115,21 @@ pnpm dlx shadcn@4.23.0 add button --diff globals.css
 - Before overwriting existing components — use `--diff` to preview the changes first.
 - When the user wants to inspect component source code without installing — use `--view`.
 - When checking what CSS changes would be made to `globals.css` — use `--diff globals.css`.
-- When the user asks to review or audit third-party registry code before installing — use `--view` to inspect the source.
 
-> **`pnpm dlx shadcn@4.23.0 add --dry-run` vs `pnpm dlx shadcn@4.23.0 view`:** Prefer `pnpm dlx shadcn@4.23.0 add --dry-run/--diff/--view` over `pnpm dlx shadcn@4.23.0 view` when the user wants to preview changes to their project. `pnpm dlx shadcn@4.23.0 view` only shows raw registry metadata. `pnpm dlx shadcn@4.23.0 add --dry-run` shows exactly what would happen in the user's project: resolved file paths, diffs against existing files, and CSS updates. Use `pnpm dlx shadcn@4.23.0 view` only when the user wants to browse registry info without a project context.
+> **`pnpm exec shadcn add --dry-run` vs `pnpm exec shadcn view`:** Prefer `pnpm exec shadcn add --dry-run/--diff/--view` over `pnpm exec shadcn view` when the user wants to preview changes to their project. `pnpm exec shadcn view` only shows raw registry metadata. `pnpm exec shadcn add --dry-run` shows exactly what would happen in the user's project: resolved file paths, diffs against existing files, and CSS updates. Use `pnpm exec shadcn view` only when the user wants to browse registry info without a project context.
 
 #### Smart Merge from Upstream
 
 See [Updating Components in SKILL.md](./SKILL.md#updating-components) for the full workflow.
 
-### `search` — Search registries
+### `search` — Search the registry
 
 ```bash
-pnpm dlx shadcn@4.23.0 search [registries...] [options]
+pnpm exec shadcn search @shadcn [options]
 ```
 
-Fuzzy search across registries. Also aliased as `pnpm dlx shadcn@4.23.0 list`.
-Supports namespaces (`@acme`), public GitHub registry sources (`owner/repo`),
-and registry catalog URLs. Without `-q`, lists all items. When no registries are
-passed, searches every registry configured in `components.json`.
+Fuzzy search. Also aliased as `pnpm exec shadcn list`.
+LetZeusPost: search the official `@shadcn` registry only. Without `-q`, lists all items.
 
 | Flag                | Short | Description                                       | Default |
 | ------------------- | ----- | ------------------------------------------------- | ------- |
@@ -150,22 +143,21 @@ passed, searches every registry configured in `components.json`.
 ### `view` — View item details
 
 ```bash
-pnpm dlx shadcn@4.23.0 view <items...> [options]
+pnpm exec shadcn view <items...> [options]
 ```
 
-Displays item info including file contents. Examples:
-`pnpm dlx shadcn@4.23.0 view @shadcn/button`,
-`pnpm dlx shadcn@4.23.0 view owner/repo/item`.
+Displays item info including file contents. Example:
+`pnpm exec shadcn view @shadcn/button`.
 
 ### `docs` — Get component documentation URLs
 
 ```bash
-pnpm dlx shadcn@4.23.0 docs <components...> [options]
+pnpm exec shadcn docs <components...> [options]
 ```
 
-Outputs resolved URLs for component documentation, examples, and API references. Accepts one or more component names. Fetch the URLs to get the actual content.
+Outputs resolved URLs for component documentation, examples, and API references. Accepts one or more component names. LetZeusPost: don't fetch the URLs; builders can't reach those hosts.
 
-Example output for `pnpm dlx shadcn@4.23.0 docs input button`:
+Example output for `pnpm exec shadcn docs input button`:
 
 ```
 base  radix
@@ -183,12 +175,12 @@ Some components include an `api` link to the underlying library (e.g. `cmdk` for
 
 ### `diff` — Check for updates
 
-Do not use this command. Use `pnpm dlx shadcn@4.23.0 add --diff` instead.
+Do not use this command. Use `pnpm exec shadcn add --diff` instead.
 
 ### `info` — Project information
 
 ```bash
-pnpm dlx shadcn@4.23.0 info [options]
+pnpm exec shadcn info [options]
 ```
 
 Displays project info and `components.json` configuration. Run this first to discover the project's framework, aliases, Tailwind version, and resolved paths.
@@ -201,7 +193,7 @@ Displays project info and `components.json` configuration. Run this first to dis
 
 | Field                | Type      | Meaning                                                            |
 | -------------------- | --------- | ------------------------------------------------------------------ |
-| `framework`          | `string`  | Detected framework (`next`, `vite`, `react-router`, `start`, etc.) |
+| `framework`          | `string`  | Detected framework (`next`, `react-router`, `start`, etc.)         |
 | `frameworkVersion`   | `string`  | Framework version (e.g. `15.2.4`)                                  |
 | `isSrcDir`           | `boolean` | Whether the project uses a `src/` directory                        |
 | `isRSC`              | `boolean` | Whether React Server Components are enabled                        |
@@ -222,34 +214,18 @@ Displays project info and `components.json` configuration. Run this first to dis
 | `tsx`                | `boolean` | TypeScript flag                                                                            |
 | `tailwind.config`    | `string`  | Tailwind config path                                                                       |
 | `tailwind.css`       | `string`  | Global CSS path — this is where custom CSS variables go                                    |
-| `iconLibrary`        | `string`  | Icon library — determines icon import package (e.g. `lucide-react`, `@tabler/icons-react`) |
+| `iconLibrary`        | `string`  | Icon library — determines icon import package (LetZeusPost: `lucide`, so `lucide-react` only) |
 | `aliases.components` | `string`  | Component import alias (e.g. `@/components`)                                               |
 | `aliases.utils`      | `string`  | Utils import alias (e.g. `@/lib/utils`)                                                    |
 | `aliases.ui`         | `string`  | UI component alias (e.g. `@/components/ui`)                                                |
 | `aliases.lib`        | `string`  | Lib alias (e.g. `@/lib`)                                                                   |
 | `aliases.hooks`      | `string`  | Hooks alias (e.g. `@/hooks`)                                                               |
 | `resolvedPaths`      | `object`  | Absolute file-system paths for each alias                                                  |
-| `registries`         | `object`  | Configured custom registries                                                               |
+| `registries`         | `object`  | Configured custom registries (LetZeusPost: none; the official `@shadcn` registry only)     |
 
 **Links fields:**
 
-The `info` output includes a **Links** section with templated URLs for component docs, source, and examples. For resolved URLs, use `pnpm dlx shadcn@4.23.0 docs <component>` instead.
-
-### `build` — Build a custom registry
-
-```bash
-pnpm dlx shadcn@4.23.0 build [registry] [options]
-```
-
-Builds `registry.json` into individual JSON files for distribution. Default input: `./registry.json`, default output: `./public/r`.
-
-For authoring rules, `include`, item definitions, `registryDependencies`, and
-GitHub registry behavior, see [registry.md](./registry.md).
-
-| Flag              | Short | Description       | Default      |
-| ----------------- | ----- | ----------------- | ------------ |
-| `--output <path>` | `-o`  | Output directory  | `./public/r` |
-| `--cwd <cwd>`     | `-c`  | Working directory | current      |
+The `info` output includes a **Links** section with templated URLs for component docs, source, and examples. For resolved URLs, use `pnpm exec shadcn docs <component>` instead.
 
 ---
 
@@ -258,13 +234,14 @@ GitHub registry behavior, see [registry.md](./registry.md).
 | Value          | Framework      | Monorepo support |
 | -------------- | -------------- | ---------------- |
 | `next`         | Next.js        | Yes              |
-| `vite`         | Vite           | Yes              |
 | `start`        | TanStack Start | Yes              |
 | `react-router` | React Router   | Yes              |
 | `astro`        | Astro          | Yes              |
 | `laravel`      | Laravel        | No               |
 
-All templates support monorepo scaffolding via the `--monorepo` flag. When passed, the CLI uses a monorepo-specific template directory (e.g. `next-monorepo`, `vite-monorepo`). When neither `--monorepo` nor `--no-monorepo` is passed, the CLI prompts interactively. Laravel does not support monorepo scaffolding.
+LetZeusPost: this repo uses `next` (Next.js App Router); don't scaffold a new app.
+
+All templates support monorepo scaffolding via the `--monorepo` flag. When passed, the CLI uses a monorepo-specific template directory (e.g. `next-monorepo`). When neither `--monorepo` nor `--no-monorepo` is passed, the CLI prompts interactively. Laravel does not support monorepo scaffolding.
 
 ---
 
@@ -276,15 +253,15 @@ Three ways to specify a preset via `--preset`:
 2. **Code:** `--preset a2r6bw` (version-prefixed base62 string, e.g. `a2r6bw` or `b0`)
 3. **URL:** `--preset "https://ui.shadcn.com/init?base=radix&style=nova&..."`
 
-> **IMPORTANT:** Never try to decode, fetch, or resolve preset codes manually. Preset codes are opaque — pass them directly to `pnpm dlx shadcn@4.23.0 init --preset <code>` and let the CLI handle resolution.
-> Use `pnpm dlx shadcn@4.23.0 apply --preset <code>` when overwriting an existing project's preset.
+> **IMPORTANT:** Never try to decode, fetch, or resolve preset codes manually. Preset codes are opaque — pass them directly to `pnpm exec shadcn init --preset <code>` and let the CLI handle resolution.
+> Use `pnpm exec shadcn apply --preset <code>` when overwriting an existing project's preset.
 
 ## Switching Presets
 
 Ask the user first: **overwrite**, **merge**, or **skip** existing components?
 
-- **Overwrite / Re-install** → `pnpm dlx shadcn@4.23.0 apply --preset <code>`. Overwrites all detected component files with the new preset styles. Use when the user hasn't customized components.
-- **Merge** → `pnpm dlx shadcn@4.23.0 init --preset <code> --force --no-reinstall`, then run `pnpm dlx shadcn@4.23.0 info` to get the list of installed components and use the [smart merge workflow](./SKILL.md#updating-components) to update them one by one, preserving local changes. Use when the user has customized components.
-- **Skip** → `pnpm dlx shadcn@4.23.0 init --preset <code> --force --no-reinstall`. Only updates config and CSS variables, leaves existing components as-is.
+- **Overwrite / Re-install** → `pnpm exec shadcn apply --preset <code>`. Overwrites all detected component files with the new preset styles. Use when the user hasn't customized components.
+- **Merge** → `pnpm exec shadcn init --preset <code> --force --no-reinstall`, then run `pnpm exec shadcn info` to get the list of installed components and use the [smart merge workflow](./SKILL.md#updating-components) to update them one by one, preserving local changes. Use when the user has customized components.
+- **Skip** → `pnpm exec shadcn init --preset <code> --force --no-reinstall`. Only updates config and CSS variables, leaves existing components as-is.
 
 Always run preset commands inside the user's project directory. `apply` only works in an existing project with a `components.json` file. The CLI automatically preserves the current base (`base` vs `radix`) from `components.json`. If you must use a scratch/temp directory (e.g. for `--dry-run` comparisons), pass `--base <current-base>` explicitly — preset codes do not encode the base.

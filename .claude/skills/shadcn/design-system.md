@@ -2,6 +2,10 @@
 
 Build a new app from a preset, install every component, restyle it from a `DESIGN.md`, then render a design system page.
 
+LetZeusPost: this repo already exists (Next.js App Router in `apps/web`, components in `packages/ui`, `DESIGN.md` at
+the root, the component gallery in Storybook in `packages/ui`; §13, §21). Don't scaffold an app or install every
+component; Steps 1 and 2 below are cut down to that.
+
 Trigger phrases: "build me a design system using <preset>", "apply this DESIGN.md", "create a showcase / design system page", "make shadcn look like <brand>".
 
 ## Contents
@@ -24,7 +28,7 @@ Trigger phrases: "build me a design system using <preset>", "apply this DESIGN.m
 | --------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Preset    | Optional                            | Code (`b0`), style name (`luma`) or URL. Pass it through. Never decode it by hand. Without one, pick a style (see Step 1).               |
 | DESIGN.md | Required                            | A path, URL or pasted content. Copy it into the new app root as `DESIGN.md`.                                                             |
-| Template  | `vite`                              | Use `next` when the user says Next.js, App Router or SSR.                                                                                |
+| Template  | `next`                              | LetZeusPost: Next.js App Router, the only template here.                                                                                 |
 | App name  | Derived from the brand in DESIGN.md | Kebab-case.                                                                                                                              |
 | Base      | `base`                              | Pass `--base` when no preset code is given. Use `radix` only when the user asks. `info --json` after init decides `render` vs `asChild`. |
 
@@ -34,26 +38,12 @@ If the DESIGN.md path can't be read (macOS privacy blocks `~/Downloads` and `~/D
 
 ## Step 1: Scaffold
 
-With a preset code from the user:
+LetZeusPost: this repo exists, so don't run `init` to create an app here. In the folder that holds `components.json`,
+read the project context:
 
 ```bash
-pnpm dlx shadcn@4.23.0 init --preset <code> --template vite --name <app> --no-monorepo -y
+pnpm exec shadcn info --json
 ```
-
-Without one, pick the style whose geometry is closest to the DESIGN.md and pass it with `--base`:
-
-```bash
-pnpm dlx shadcn@4.23.0 init --base base --preset <style> --template vite --name <app> --no-monorepo -y
-```
-
-Then:
-
-```bash
-cd <app>
-pnpm dlx shadcn@4.23.0 info --json
-```
-
-`init` with neither `--preset` nor `--base` stops at an interactive library prompt, even with `-y`. Always pass one of them, plus `--no-monorepo`.
 
 ### Picking a style
 
@@ -74,8 +64,10 @@ State the choice and the reason in one line ("Picked maia: 40px controls, 12–1
 
 ## Step 2: Install Everything
 
+LetZeusPost: add only the components the task needs (`pnpm exec shadcn add <component>`, from `@shadcn`), not every
+component.
+
 ```bash
-pnpm dlx shadcn@4.23.0 add --all -y
 ls <resolvedPaths.ui>/*.tsx | wc -l
 ```
 
@@ -86,14 +78,13 @@ Then wire up the providers in the app root:
 - Wrap the app in `TooltipProvider`.
 - Base UI: wrap the app in `Toaster` from the `toast` component and call `toast.add({ title, description, type })`. Radix: render `<Toaster />` from `sonner`.
 
-Then typecheck the app sources. In Vite apps, the root `tsc --noEmit` checks nothing because the root tsconfig only has project references:
+Then typecheck the app sources:
 
 ```bash
-pnpm exec tsc -p tsconfig.app.json --noEmit   # Vite.
 pnpm exec tsc --noEmit                        # Next.js.
 ```
 
-Fix generated files that fail strict checks (for example, an unused `React` import) before moving on, or `vite build` will fail.
+Fix generated files that fail strict checks (for example, an unused `React` import) before moving on, or the build will fail.
 
 ---
 
@@ -337,7 +328,7 @@ In short:
 2. Components by tier: primitives get a variant × state matrix, size ladder and icon row. Composed components get a typical example, additions and edge cases. Overlays get real triggers.
 3. Then rendered do/don't pairs for the DESIGN.md's rules, the DESIGN.md's named recipes rebuilt from components, and one example screen.
 
-Copy the helpers from `assets/showcase/` (`preview-states.css`, `state-matrix.tsx`, `color-pair.tsx`). Put sections in `src/showcase/<section>.tsx` (Vite) or `app/design-system/` (Next.js). Write copy in the brand's voice.
+LetZeusPost: the helpers in upstream's `assets/showcase/` aren't in this copy (see [design-system-page.md](./design-system-page.md#helpers)), and the sections are stories in the Storybook gallery in `packages/ui`, not an app route. Write copy in the brand's voice.
 
 ### Known traps
 
@@ -351,15 +342,6 @@ Copy the helpers from `assets/showcase/` (`preview-states.css`, `state-matrix.ts
 | `DirectionProvider` | Provider alone doesn't flip layout.                                         | Also set `dir="rtl"` on the wrapper.                                        |
 | `NavigationMenu`    | The content is clipped by the example frame.                                | Leave bottom padding in that frame.                                         |
 | Header nav links    | `Button` renders a `<button>`.                                              | Base: `nativeButton={false} render={<a href="#…" />}`. Radix: `asChild`.    |
-
-### Coverage check
-
-```bash
-node <skill-dir>/scripts/showcase-coverage.mjs src/components/ui src   # Vite.
-node <skill-dir>/scripts/showcase-coverage.mjs components/ui app      # Next.js.
-```
-
-It lists every component file that no showcase file imports. Fix the list until it's empty. `add --all` installs both `toast` and `sonner` in Base UI projects; show `sonner` in Feedback next to `toast` so the list can reach zero.
 
 ---
 

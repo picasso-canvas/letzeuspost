@@ -11,16 +11,6 @@ skills:
   - systematic-debugging
   - security-best-practices
   - review-checklist
-  - tenant-isolation
-  - safe-migrations
-  - jobs
-  - design-system
-  - shadcn
-  - baseline-ui
-  - fixing-accessibility
-  - web-interface-guidelines
-  - accessibility
-  - playwright-cli
 ---
 
 **Your skills come first.** Before anything else, Read in full: `.claude/skills/conventions/SKILL.md`, `.claude/skills/tdd/SKILL.md`, `.claude/skills/systematic-debugging/SKILL.md`, `.claude/skills/security-best-practices/SKILL.md`, `.claude/skills/review-checklist/SKILL.md` (and the reference files they point you to

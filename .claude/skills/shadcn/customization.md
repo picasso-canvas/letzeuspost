@@ -65,19 +65,19 @@ import { ThemeProvider } from "next-themes"
 
 ```bash
 # Apply a preset code from ui.shadcn.com.
-pnpm dlx shadcn@4.23.0 apply --preset a2r6bw
+pnpm exec shadcn apply --preset a2r6bw
 
 # Positional shorthand also works.
-pnpm dlx shadcn@4.23.0 apply a2r6bw
+pnpm exec shadcn apply a2r6bw
 
 # Switch to a named preset and overwrite existing components.
-pnpm dlx shadcn@4.23.0 apply --preset nova
+pnpm exec shadcn apply --preset nova
 
 # Preserve existing components instead.
-pnpm dlx shadcn@4.23.0 init --preset nova --force --no-reinstall
+pnpm exec shadcn init --preset nova --force --no-reinstall
 
 # Use a custom theme URL.
-pnpm dlx shadcn@4.23.0 apply --preset "https://ui.shadcn.com/init?base=radix&style=nova&theme=blue&..."
+pnpm exec shadcn apply --preset "https://ui.shadcn.com/init?base=radix&style=nova&theme=blue&..."
 ```
 
 Or edit CSS variables directly in `globals.css`.
@@ -86,7 +86,7 @@ Or edit CSS variables directly in `globals.css`.
 
 ## Adding Custom Colors
 
-Add variables to the file at `tailwindCssFile` from `pnpm dlx shadcn@4.23.0 info` (typically `globals.css`). Never create a new CSS file for this.
+Add variables to the file at `tailwindCssFile` from `pnpm exec shadcn info` (typically `globals.css`). Never create a new CSS file for this.
 
 ```css
 /* 1. Define in the global CSS file. */
@@ -108,7 +108,7 @@ Add variables to the file at `tailwindCssFile` from `pnpm dlx shadcn@4.23.0 info
 }
 ```
 
-When `tailwindVersion` is `"v3"` (check via `pnpm dlx shadcn@4.23.0 info`), register in `tailwind.config.js` instead:
+When `tailwindVersion` is `"v3"` (check via `pnpm exec shadcn info`), register in `tailwind.config.js` instead:
 
 ```js
 // 2b. Register with Tailwind v3 (tailwind.config.js).
@@ -198,14 +198,14 @@ export function ConfirmDialog({ title, description, onConfirm, children }) {
 ## Checking for Updates
 
 ```bash
-pnpm dlx shadcn@4.23.0 add button --diff
+pnpm exec shadcn add button --diff
 ```
 
 To preview exactly what would change before updating, use `--dry-run` and `--diff`:
 
 ```bash
-pnpm dlx shadcn@4.23.0 add button --dry-run        # see all affected files
-pnpm dlx shadcn@4.23.0 add button --diff button.tsx # see the diff for a specific file
+pnpm exec shadcn add button --dry-run        # see all affected files
+pnpm exec shadcn add button --diff button.tsx # see the diff for a specific file
 ```
 
 See [Updating Components in SKILL.md](./SKILL.md#updating-components) for the full smart merge workflow.

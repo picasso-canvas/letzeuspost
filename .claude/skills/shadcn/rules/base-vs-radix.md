@@ -1,6 +1,6 @@
 # Base vs Radix
 
-API differences between `base` and `radix`. Check the `base` field from `pnpm dlx shadcn@4.23.0 info`.
+API differences between `base` and `radix`. Check the `base` field from `pnpm exec shadcn info`.
 
 ## Contents
 

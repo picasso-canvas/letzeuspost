@@ -43,7 +43,7 @@ What goes on a design system page, and how to show it. Distilled from Primer, Ca
 | 7   | Data display               | Card, Table, Chart, Item, Avatar, Accordion, Collapsible, Carousel, ScrollArea, Resizable, AspectRatio, Separator.                   |
 | 8   | Feedback                   | Alert, toast (and Sonner in Base UI projects), Progress, Spinner, Skeleton, Empty.                                                   |
 | 9   | Overlays                   | Dialog, AlertDialog, Sheet, Drawer, Popover, HoverCard, Tooltip, DropdownMenu, ContextMenu, Command.                                 |
-| 10  | Conversation               | MessageScroller, Message, Bubble, Attachment, Marker, Questionnaire. See [rules/chat.md](./rules/chat.md).                           |
+| 10  | Conversation               | MessageScroller, Message, Bubble, Attachment, Marker, Questionnaire.                                                                 |
 | 11  | Do and Don't               | Rendered pairs for the DESIGN.md's rules.                                                                                            |
 | 12  | Recipes and example screen | The DESIGN.md's named components, then one realistic screen.                                                                         |
 | 13  | Footer                     | The DESIGN.md footer recipe.                                                                                                         |
@@ -140,7 +140,7 @@ Wide components (Table, NavigationMenu, Menubar, Sidebar, Chart, MessageScroller
 
 ## States Without Interaction
 
-Pin interaction states with a `data-preview` attribute. Override the hover, focus-visible and active variants so each also matches the attribute. Copy [assets/showcase/preview-states.css](./assets/showcase/preview-states.css) into `tailwindCssFile`:
+Pin interaction states with a `data-preview` attribute. Override the hover, focus-visible and active variants so each also matches the attribute. Add these overrides to `tailwindCssFile` (upstream ships them as `assets/showcase/preview-states.css`, not in this copy):
 
 ```css
 @custom-variant hover {
@@ -242,7 +242,8 @@ Caption each with the rule in one line, for example "One primary action per grou
 
 ## Helpers
 
-Copy from `assets/showcase/` into the showcase folder:
+LetZeusPost: `assets/showcase/` isn't in this copy, and our gallery is Storybook in `packages/ui` (§21). Upstream's
+helpers, for reference; a gallery that needs one writes it in `packages/ui` from this description:
 
 | File                 | Purpose                                                                    |
 | -------------------- | -------------------------------------------------------------------------- |
@@ -256,7 +257,7 @@ They import `cn` from `@/lib/utils`. Rewrite that path to the project's `utils` 
 
 ## Checklist
 
-- [ ] Every installed component renders (run the coverage script).
+- [ ] Every installed component renders.
 - [ ] Color roles shown as pairs with contrast; any pair under 4.5:1 is noted in the report.
 - [ ] Type specimen covers every DESIGN.md type token, in real copy.
 - [ ] Radius and elevation ladders name the components that use each step.
