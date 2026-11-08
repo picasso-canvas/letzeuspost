@@ -60,8 +60,6 @@ jobs:
       # module proxy, every module checked against sum.golang.org; zizmor from PyPI with the wheel's pinned SHA-256.
       # LZP_TOOLS_FALLBACK_ONLY=1 skips the release downloads, to show the fallback works.
       - name: Install tools (checksum-verified)
-        env:
-          LZP_TOOLS_FALLBACK_ONLY: '1' # proof run for #101: removed in the next commit
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bin"
