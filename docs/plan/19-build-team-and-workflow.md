@@ -121,6 +121,14 @@ files** (`.github/sensitive-paths.txt`, `.github/merge-gate.json`), and **Athena
 (`~/.letzeuspost/reviews/`, outside every builder clone and the builder sandbox). Issue labels, which only Athena and
 Zeus can set, are used only to see which task a PR closes.
 
+**Zeus's decisions** (Zeus, 2026-11-08, [#116](https://github.com/picasso-canvas/letzeuspost/issues/116)). Athena works
+through Zeus's account, so nothing on GitHub shows whether he or she wrote a comment, and Zeus chose not to add a way
+to prove it (signed decisions, a second account: #113). For the reviewers, a decision of Zeus's counts when it's his
+own comment, or Athena's dated record of a decision he made in chat ("Zeus decided (YYYY-MM-DD, in chat): …"), as a
+comment on the issue or the PR. The PR text never counts: a builder writes it, and builders can't comment. That covers what only Zeus decides: a change to an approved doc or design, an exception, an agent or
+skill change. It rests on trust in Athena, not on proof. It never counts as proof that something was checked: that
+stays as above. The review bundle carries each issue's comments, so reviewers see the records.
+
 A PR merges only when all of these hold:
 
 1. **Not frozen:** `AGENTS_PAUSED` reads `false`; a value that can't be read counts as frozen.
