@@ -57,9 +57,10 @@ first, then a build task with new baselines ([§21](../../../docs/plan/21-ai-des
   skeleton, comment thread, caption box with character counter, image picker, color and font pickers, size tabs.
 - Look in `packages/ui` and the gallery before making one. A screen that needs a new component adds it to
   `packages/ui` and the gallery first; screens never hold one-off components.
-- Add shadcn components with the CLI (`pnpm exec shadcn`, from the official `@shadcn` registry only), never `pnpm dlx`
-  or `@latest`; the `shadcn` skill says when that is possible yet. A new dependency is a sensitive change: say why in
-  the PR text.
+- The shadcn components are in `packages/ui/src/components/` (import them as `@lzp/ui/components/<name>`). Builders
+  don't run the shadcn CLI: Athena adds a shadcn component, from the official `@shadcn` registry and adapted to the
+  token lint, in her own PR (Zeus, 2026-11-08, #107). If your task needs one that isn't there, write that under
+  `needs-zeus` and stop. A new dependency is a sensitive change: say why in the PR text.
 - Every component is in the component gallery (Storybook) in all its states (default, hover, focus, disabled, empty,
   loading, error), in light and dark, with a screenshot test
   ([§21](../../../docs/plan/21-ai-design-workflow.md#visual-tests)).

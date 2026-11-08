@@ -6,8 +6,8 @@
 - **Vendored:** 2026-11-08 by Athena (task #68). Zeus approved the UI start set on 2026-11-08.
 - **Discovery:** the skill lives directly at `.claude/skills/shadcn/` (Claude Code finds skills one level deep; no symlinks, no `vendor/` folder).
 - **CLI:** the text matches `shadcn@4.23.0`: the version in `packages/shadcn/package.json` at the pinned commit, tag
-  `shadcn@4.23.0` (`96da9cc`, 2026-10-27), published to npm on 2026-10-27. It runs as `pnpm exec shadcn` once it is a
-  pinned dev dependency; it isn't one yet (change 8).
+  `shadcn@4.23.0` (`96da9cc`, 2026-10-27), published to npm on 2026-10-27. It is a pinned dev dependency of
+  `packages/ui` (#107) and runs as `pnpm exec shadcn`, by Athena only (change 15).
 
 ## Paths copied
 
@@ -111,6 +111,14 @@ Round 3, from Argus and Cerberus on #100:
 14. **Nobody to ask.** `SKILL.md` note: where a step says to ask the user, confirm first or get approval (which
     registry, switching presets, `--overwrite`), a builder writes it under `needs-zeus`; "Updating Components" step 4
     says `--overwrite` means `needs-zeus`.
+
+#107 (Zeus, 2026-11-08: Athena adds shadcn components; builders don't run the CLI):
+
+15. `SKILL.md` note and `cli.md` "IMPORTANT": change 8's "isn't a dependency yet … `needs-zeus`" → the CLI is the
+    pinned dev dependency in `packages/ui`; Athena runs it and adds components adapted to the token lint; a builder
+    whose task needs a component that isn't in `packages/ui/src/components/` writes `needs-zeus`. The note names this
+    repo's `components.json` (`base-vega`, `lucide`, the `@lzp/ui/…` aliases) and the `cn` package the registry's
+    components import.
 
 ## Review notes
 

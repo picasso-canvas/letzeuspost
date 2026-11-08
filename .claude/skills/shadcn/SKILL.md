@@ -9,10 +9,13 @@ user-invocable: false
 > **LetZeusPost copy.** Vendored from shadcn-ui/ui `skills/shadcn` at `8ab2771` (MIT); every change is listed in
 > `SOURCES.md`. The load-time `info` command and the `allowed-tools` grant are removed.
 >
-> - **CLI:** run it as `pnpm exec shadcn`, never `pnpm dlx`, `npx` or `@latest` (this text matches `shadcn@4.23.0`).
->   It isn't a dependency yet, and the builder sandbox can't reach the registry (`ui.shadcn.com`) that `add`, `search`,
->   `view` and `apply` read; both are harness changes Zeus approves. Until then, a task that needs the CLI writes that
->   under `needs-zeus` in `.lzp/pr.md` and stops.
+> - **Builders don't run the CLI** (Zeus, 2026-11-08, #107). Athena adds shadcn components, adapted to the token
+>   lint, in her own PRs; the builder sandbox can't reach the registry (`ui.shadcn.com`) anyway. A task that needs a
+>   shadcn component that isn't in `packages/ui/src/components/` yet writes that under `needs-zeus` in `.lzp/pr.md`
+>   and stops. Restyling, composing and testing the components that are there is builder work.
+> - **Athena runs the CLI** as `pnpm exec shadcn` in `packages/ui`, the pinned dev dependency `shadcn@4.23.0`; never
+>   `pnpm dlx`, `npx` or `@latest`. `packages/ui/components.json`: style `base-vega` (Base UI), `lucide`, aliases
+>   `@lzp/ui/components`, `@lzp/ui/lib`, `@lzp/ui/hooks`. Components import `cn` from the `cn` package (shadcn's, pinned).
 > - **Components come only from the official `@shadcn` registry:** nothing from other namespaces, GitHub addresses or
 >   URLs, and no extra entries in `components.json`. Don't fetch the URLs `docs` prints; builders can't reach those
 >   hosts.
@@ -28,7 +31,7 @@ user-invocable: false
 
 A framework for building ui, components and design systems. Components are added as source code to the user's project via the CLI.
 
-> **IMPORTANT:** Run all CLI commands as `pnpm exec shadcn` (LetZeusPost: once it is the repo's pinned dev dependency; see the note above). Examples below use it.
+> **IMPORTANT:** Run all CLI commands as `pnpm exec shadcn` (LetZeusPost: the pinned dev dependency in `packages/ui`, run by Athena only; see the note above). Examples below use it.
 
 ## Current Project Context
 
