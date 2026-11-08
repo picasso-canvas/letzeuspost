@@ -12,7 +12,7 @@ was reformatted by the repo's Prettier.
 |---|---|---|
 | `button.tsx` | `@shadcn/button` | yes |
 | `input.tsx` | `@shadcn/input` | yes |
-| `label.tsx` | `@shadcn/label` | `cn` import only |
+| `label.tsx` | `@shadcn/label` | `cn` import only (`'use client'` kept) |
 | `field.tsx` | `@shadcn/field` | yes |
 | `separator.tsx` | `@shadcn/separator` (needed by `field`) | `cn` import only |
 
@@ -43,6 +43,12 @@ To the approved design (§05, §21 and the v1 mockup; Iris on #108):
    `input.tsx`); the pressed nudge (`translate-y-px`) only under `motion-safe:`.
 8. **8 px grid:** `field.tsx` `FieldGroup` `gap-7` (28 px) → `gap-6` (24 px).
 
+`'use client'`: the files were first added with `components.json` `rsc: false`, so the CLI stripped the registry's
+`'use client'` from `label.tsx` and `field.tsx` (`FieldError` uses `useMemo`). `rsc` is now `true`, both have it back
+as the registry ships them, and a test checks that every component using a React hook has it (Argus on #108).
+
 Not changed here, for #74: the `outline` and `link` button variants, which §05's set (primary gold, secondary, ghost,
-destructive) doesn't name. Colours, radius and fonts come from the tokens `DESIGN.md` generates (#70); the stylesheet
+destructive) doesn't name; the primary button's hover (`bg-primary/80` lightens the gold, the mockup darkens it) and
+the `secondary` variant's border (the mockup's plain button has a strong border on the surface colour), which need
+`DESIGN.md`'s tokens (Iris on #108). Colours, radius and fonts come from the tokens `DESIGN.md` generates (#70); the stylesheet
 is #74's.
