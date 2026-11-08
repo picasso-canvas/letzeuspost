@@ -191,7 +191,7 @@ describe("builder settings and the clone's .git (#89)", () => {
     }
   });
 
-  it('still has the PreToolUse hook refuse an Edit-tool write anywhere in .git', () => {
+  it("keeps the PreToolUse hook's own .git floor: an Edit-tool write anywhere in .git, whatever the settings say", () => {
     const patterns = protectedPatterns(builderSettings);
     for (const path of [
       '.git/index',
