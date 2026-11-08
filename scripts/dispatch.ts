@@ -525,6 +525,9 @@ async function main(argv: string[]): Promise<number> {
     (name) => `${name}: ${isRegularFile(join(lzp, name)) ? 'yes' : 'no'}`,
   );
   console.log(`Handed over: ${ready.join(', ')}. Next: node scripts/ship.ts ${String(issue)}`);
+  console.log(
+    `Don't run git in ${clone} yourself: its .git is the builder's, and git outside the sandbox would run what it planted there.`,
+  );
   return state.frozen ? 1 : code;
 }
 

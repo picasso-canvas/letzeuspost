@@ -112,7 +112,11 @@
       "mcp__*",
       "Edit(./.git/hooks/**)",
       "Edit(./.git/config)",
-      "Edit(./.git/info/**)"
+      "Edit(./.git/info/**)",
+      "Edit(./.git/commondir)",
+      "Edit(./.git/config.worktree)",
+      "Edit(./.git/modules/**)",
+      "Edit(./.git/worktrees/**)"
     ],
     "disableBypassPermissionsMode": "disable",
     "blockReadsOutsideWorkingDirectories": true,
@@ -164,6 +168,10 @@
         "./.git/hooks",
         "./.git/config",
         "./.git/info",
+        "./.git/commondir",
+        "./.git/config.worktree",
+        "./.git/modules",
+        "./.git/worktrees",
         "./CLAUDE.md",
         "./Claude.md",
         "./claude.md",
