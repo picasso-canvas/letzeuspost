@@ -75,7 +75,18 @@ describe('buildBundle', () => {
           ],
         });
       }
-      if (joined.startsWith('issue view 7')) return 'Task seven\n\n**Done when**\n- [ ] x';
+      if (joined.startsWith('issue view 7'))
+        return JSON.stringify({
+          title: 'Task seven',
+          body: '**Done when**\n- [ ] x',
+          comments: [
+            {
+              author: { login: 'picasso-canvas' },
+              createdAt: '2026-11-08T10:00:00Z',
+              body: '🦉 Athena: Zeus decided (2026-11-08, in chat): blue, not green.',
+            },
+          ],
+        });
       if (joined.startsWith('pr checks')) {
         throw Object.assign(new Error('exit 8'), { stdout: 'ci\tfail\t40s\turl' });
       }
@@ -106,6 +117,10 @@ describe('buildBundle', () => {
     }
     expect(result.outDir.startsWith(result.bundle)).toBe(false); // summaries stay outside --add-dir
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toContain('Task seven');
+    // The issue's comments, with author and date: where Zeus's decisions are recorded (#116).
+    expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toMatch(
+      /## Comments on #7[\s\S]*picasso-canvas, 2026-11-08T10:00:00Z[\s\S]*Zeus decided \(2026-11-08, in chat\): blue, not green\./,
+    );
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toContain(
       '#9 is in another repository',
     );
@@ -365,7 +380,12 @@ describe('failure reasons and refusals', () => {
         });
       // GitHub links "Closes #n" only for PRs into the default branch.
       if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
-      if (j.startsWith('issue view 65')) return 'Config env\n\n**Done when**\n- [ ] x';
+      if (j.startsWith('issue view 65'))
+        return JSON.stringify({
+          title: 'Config env',
+          body: '**Done when**\n- [ ] x',
+          comments: [],
+        });
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';
       return '';
