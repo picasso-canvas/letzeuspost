@@ -133,6 +133,54 @@ describe('protected paths', () => {
   });
 });
 
+// Claude Code also applies Edit deny rules to the sandbox's writes, so an Edit rule over `.git` stops git itself: the
+// #33 dry run couldn't create `.git/index.lock` (#89). The builder's git must write its own data; hooks, config and
+// info stay denied, in the Edit rules and the sandbox alike, and the PreToolUse hook refuses any Edit-tool write there.
+describe("builder settings and the clone's .git (#89)", () => {
+  const settings = builderSettings as {
+    permissions: { deny: string[] };
+    sandbox: { filesystem: { denyWrite: string[] } };
+  };
+  const editGlobs = settings.permissions.deny.flatMap((rule) => {
+    const m = /^Edit\(\.\/(.+)\)$/.exec(rule);
+    return m?.[1] ? [m[1]] : [];
+  });
+
+  it("leaves git's own data writable, so a builder can commit", () => {
+    for (const path of [
+      '.git/index.lock',
+      '.git/objects/ab/cdef',
+      '.git/refs/heads/33-x',
+      '.git/HEAD',
+      '.git/logs/HEAD',
+      '.git/COMMIT_EDITMSG',
+    ]) {
+      expect(matchesAny(path, editGlobs), path).toBe(false);
+    }
+  });
+
+  it('keeps hooks, config and info denied in the Edit rules and the sandbox', () => {
+    for (const path of ['.git/hooks/pre-commit', '.git/config', '.git/info/attributes']) {
+      expect(matchesAny(path, editGlobs), path).toBe(true);
+    }
+    expect(settings.sandbox.filesystem.denyWrite).toEqual(
+      expect.arrayContaining(['./.git/hooks', './.git/config', './.git/info']),
+    );
+  });
+
+  it('still has the PreToolUse hook refuse an Edit-tool write anywhere in .git', () => {
+    const patterns = protectedPatterns(builderSettings);
+    for (const path of [
+      '.git/index',
+      '.git/objects/ab/cdef',
+      '.git/HEAD',
+      '.git/hooks/pre-commit',
+    ]) {
+      expect(matchesAny(path, patterns), path).toBe(true);
+    }
+  });
+});
+
 describe('secrets', () => {
   // Built at run time so this file never holds a secret-shaped string itself (gitleaks scans it).
   const fakes = [
