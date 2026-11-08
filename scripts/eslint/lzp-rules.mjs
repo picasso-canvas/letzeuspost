@@ -12,6 +12,11 @@ function repoPath(/** @type {RuleContext} */ context) {
   return path.relative(context.cwd, context.filename).split(path.sep).join('/');
 }
 
+/** A member access's property name, whether written `a.b` or `a['b']` (or any fixed string). @param {any} node */
+function memberName(node) {
+  return node.computed ? staticString(node.property) : (node.property?.name ?? null);
+}
+
 /**
  * The string an expression always evaluates to, or null: a string literal, a template with no `${}`, or `+` of those.
  * Bundlers treat all three as fixed paths, so the import rules read them the same way.
@@ -48,10 +53,21 @@ function onImports(check) {
     ImportExpression: visit,
     /** require('x') @param {any} node */
     CallExpression(node) {
-      const source =
-        node.callee.type === 'Identifier' && node.callee.name === 'require'
-          ? staticString(node.arguments[0])
-          : null;
+      const callee = node.callee;
+      const prop = callee.type === 'MemberExpression' ? memberName(callee) : null;
+      let source = null;
+      if (callee.type === 'Identifier' && callee.name === 'require')
+        source = staticString(node.arguments[0]);
+      else if (prop === 'require')
+        source = staticString(node.arguments[0]); // module.require('x')
+      else if (
+        callee.type === 'MemberExpression' &&
+        callee.object.type === 'Identifier' &&
+        callee.object.name === 'require'
+      ) {
+        if (prop === 'call') source = staticString(node.arguments[1]); // require.call(_, 'x')
+        if (prop === 'apply') source = staticString(node.arguments[1]?.elements?.[0]); // require.apply(_, ['x'])
+      }
       if (source !== null) check(source, node);
     },
     /** import x = require('x') @param {any} node */
@@ -100,8 +116,18 @@ const noRawDbClient = {
       /** @param {any} node */
       CallExpression(node) {
         imports.CallExpression(node);
-        const callee = node.callee;
-        const name = callee.type === 'Identifier' ? callee.name : callee.property?.name;
+        if (node.callee.type === 'Identifier' && node.callee.name === 'createRequire')
+          context.report({ node, messageId: 'dynamic' });
+      },
+      /** m.createRequire, (await import('node:module')).createRequire, process.getBuiltinModule @param {any} node */
+      MemberExpression(node) {
+        const name = memberName(node);
+        if (name === 'createRequire' || name === 'getBuiltinModule')
+          context.report({ node, messageId: 'dynamic' });
+      },
+      /** import { createRequire as anything } from 'node:module' @param {any} node */
+      ImportSpecifier(node) {
+        const name = node.imported?.name ?? node.imported?.value;
         if (name === 'createRequire') context.report({ node, messageId: 'dynamic' });
       },
     };
@@ -134,6 +160,10 @@ const noUseCache = {
       module:
         "This form of next/cache, and Next's internals (next/dist/…), are banned: import only names you use, none of the cache APIs (§13).",
       config: 'cacheComponents is banned (§13).',
+      fetch:
+        "fetch's {{option}} puts the response in Next's shared Data Cache: use cache: 'no-store' (§13).",
+      segment:
+        'export const {{name}} = {{value}} caches the route across requests and workspaces (§13).',
     },
     schema: [],
   },
@@ -142,6 +172,61 @@ const noUseCache = {
     const nameOf = (spec) => spec.imported?.name ?? spec.imported?.value ?? spec.local?.name;
     /** @param {any} node */
     const fromCache = (node) => isCacheModule(node.source?.value);
+    // Next's other shared caches matter where Next serves pages: apps/web.
+    const inWeb = repoPath(context).startsWith('apps/web/');
+    /** fetch(url, { cache: 'force-cache' }) or { next: { revalidate, tags } } @param {any} node */
+    const fetchCache = (node) => {
+      const options = node.arguments[1];
+      if (options?.type !== 'ObjectExpression') return;
+      for (const prop of options.properties) {
+        if (prop.type !== 'Property') continue;
+        const key = prop.computed ? staticString(prop.key) : (prop.key?.name ?? prop.key?.value);
+        if (key === 'cache' && staticString(prop.value) !== 'no-store')
+          context.report({
+            node: prop,
+            messageId: 'fetch',
+            data: { option: `cache: ${String(staticString(prop.value))}` },
+          });
+        if (key === 'next' && prop.value.type === 'ObjectExpression') {
+          for (const inner of prop.value.properties) {
+            const name = inner.key?.name ?? inner.key?.value;
+            const off =
+              inner.value?.type === 'Literal' &&
+              (inner.value.value === 0 || inner.value.value === false);
+            if ((name === 'revalidate' && !off) || name === 'tags')
+              context.report({
+                node: inner,
+                messageId: 'fetch',
+                data: { option: `next.${String(name)}` },
+              });
+          }
+        }
+      }
+    };
+    /** export const revalidate = 60 / dynamic = 'force-static' / fetchCache = 'force-cache' @param {any} node */
+    const segmentConfig = (node) => {
+      if (node.declaration?.type !== 'VariableDeclaration') return;
+      for (const decl of node.declaration.declarations) {
+        const name = decl.id?.name;
+        const init = decl.init;
+        const value = init?.type === 'Literal' ? init.value : staticString(init);
+        const caches =
+          (name === 'revalidate' && !(value === 0 || value === false)) ||
+          (name === 'dynamic' && (value === 'force-static' || value === 'error')) ||
+          (name === 'fetchCache' &&
+            typeof value === 'string' &&
+            /cache$/.test(value) &&
+            value !== 'force-no-store' &&
+            value !== 'default-no-store' &&
+            value !== 'only-no-store');
+        if (caches)
+          context.report({
+            node: decl,
+            messageId: 'segment',
+            data: { name, value: JSON.stringify(value) },
+          });
+      }
+    };
     return {
       /** @param {any} node */
       ExpressionStatement(node) {
@@ -162,6 +247,7 @@ const noUseCache = {
       /** export { unstable_cache } from 'next/cache' @param {any} node */
       ExportNamedDeclaration(node) {
         if (isDeepNext(node.source?.value)) context.report({ node, messageId: 'module' });
+        if (inWeb) segmentConfig(node);
         if (!fromCache(node)) return;
         for (const spec of node.specifiers) {
           const name = spec.local?.name ?? spec.local?.value;
@@ -183,6 +269,8 @@ const noUseCache = {
       /** @param {any} node */
       CallExpression(node) {
         const [arg] = node.arguments;
+        if (inWeb && node.callee.type === 'Identifier' && node.callee.name === 'fetch')
+          fetchCache(node);
         if (
           node.callee.type === 'Identifier' &&
           node.callee.name === 'require' &&
@@ -228,6 +316,17 @@ const noDangerousHtml = {
       Property(node) {
         // { dangerouslySetInnerHTML }, { ['dangerously' + 'SetInnerHTML'] } and { [`dangerouslySetInnerHTML`] }
         check(node, node.computed ? staticString(node.key) : (node.key?.name ?? node.key?.value));
+      },
+      /** p.dangerouslySetInnerHTML = …, p['dangerously' + 'SetInnerHTML'] = … @param {any} node */
+      MemberExpression(node) {
+        check(node, memberName(node));
+      },
+      /** The name as a fixed string anywhere: Reflect.set(p, '…'), a key held in a variable. @param {any} node */
+      'Literal, TemplateLiteral, BinaryExpression'(node) {
+        if (node.parent?.type === 'BinaryExpression' || node.parent?.type === 'MemberExpression')
+          return;
+        if (node.parent?.type === 'Property' && node.parent.key === node) return; // reported as a Property
+        check(node, staticString(node));
       },
     };
   },
