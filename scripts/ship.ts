@@ -16,6 +16,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { athenaGitEnv } from './lib/athena-git.ts';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, takeHandover } from './lib/handover.ts';
@@ -98,7 +99,7 @@ function run(cmd: string, args: string[], input?: string): string {
     cwd: ROOT,
     encoding: 'utf8',
     input,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' },
+    env: athenaGitEnv(process.env),
     stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
   });
 }
