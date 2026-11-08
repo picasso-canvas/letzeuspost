@@ -1,7 +1,7 @@
 {
   "requiredChecks": ["ci", "risk-gate"],
   "requireTierLabel": true,
-  "requireIris": false,
+  "requireIris": true,
   "uiPaths": ["apps/web/**", "packages/ui/**", "packages/render/src/looks/**", "DESIGN.md"],
   "harnessPaths": [
     ".github/**",
