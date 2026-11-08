@@ -13,12 +13,17 @@
     "format:check": "prettier . --check",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm licence-check",
+    "check:services": "LZP_SERVICES=1 vitest run && playwright test --pass-with-no-tests",
     "licence-check": "node scripts/licence-check.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.4.5",
+    "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
     "eslint": "10.14.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.14.0",
     "prettier": "3.9.10",
     "typescript": "6.0.3",

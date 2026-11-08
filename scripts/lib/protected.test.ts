@@ -140,3 +140,19 @@ describe('historyRefusals', () => {
     ).toEqual([]);
   });
 });
+
+describe('shipRefusals: the lint rules and their tests (#82 review)', () => {
+  it('refuses tests/lint/, whose tests prove the lint bans work', () => {
+    expect(shipRefusals([{ mode: '100644', path: 'tests/lint/rules.test.ts' }])).toContain(
+      'protected path: tests/lint/rules.test.ts',
+    );
+  });
+});
+
+describe('shipRefusals: next.config (#82 review)', () => {
+  it("refuses next.config.*, where cacheComponents could be switched on out of the lint rule's sight", () => {
+    expect(shipRefusals([{ mode: '100644', path: 'apps/web/next.config.ts' }])).toContain(
+      'protected path: apps/web/next.config.ts',
+    );
+  });
+});

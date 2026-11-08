@@ -5,5 +5,19 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@lzp/config": "workspace:*",
+    "@lzp/db": "workspace:*",
+    "@lzp/email": "workspace:*",
+    "nodemailer": "10.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "8.0.2"
+  },
+  "scripts": {
+    "prestart": "pnpm --filter @lzp/email build",
+    "start": "node src/index.ts"
   }
 }
