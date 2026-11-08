@@ -34,6 +34,18 @@ function onlyToolResults(content: unknown): boolean {
   );
 }
 
+/**
+ * Claude Code's own note when it shrinks an image the reviewer opened (an `isMeta` user entry, #112), as a whole
+ * string. The same text without `isMeta`, or with anything else in it, is still a second prompt.
+ */
+const IMAGE_NOTE =
+  /^\[Image: original \d+x\d+, displayed at \d+x\d+\. Multiply coordinates by \d+(?:\.\d+)? to map to original image\.\]$/;
+
+function isImageNote(entry: { isMeta?: unknown; message?: { content?: unknown } }): boolean {
+  const content = entry.message?.content;
+  return entry.isMeta === true && typeof content === 'string' && IMAGE_NOTE.test(content);
+}
+
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
@@ -61,7 +73,12 @@ export function checkTranscript(
   let lastAnswer: string | undefined;
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
-    let entry: { type?: unknown; agentSetting?: unknown; message?: { content?: unknown } };
+    let entry: {
+      type?: unknown;
+      agentSetting?: unknown;
+      isMeta?: unknown;
+      message?: { content?: unknown };
+    };
     try {
       entry = JSON.parse(line) as typeof entry;
     } catch {
@@ -75,7 +92,11 @@ export function checkTranscript(
       setting = entry.agentSetting;
     } else if (entry.type === 'user' && firstPrompt === undefined) {
       firstPrompt = textOf(entry.message?.content);
-    } else if (entry.type === 'user' && !onlyToolResults(entry.message?.content)) {
+    } else if (
+      entry.type === 'user' &&
+      !onlyToolResults(entry.message?.content) &&
+      !isImageNote(entry)
+    ) {
       // A resumed session: a second human prompt could have told the reviewer what to answer.
       return 'the session has a second human prompt (resumed)';
     } else if (entry.type === 'assistant') {
