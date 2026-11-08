@@ -1,5 +1,10 @@
 # Browser Session Management
 
+> LetZeusPost: changed from upstream (Apache-2.0 §4(b)): this note only. The rules at the top of `../SKILL.md` win
+> over the examples below: in-memory profiles or a `--profile` folder inside your clone, `--persistent` only with such
+> a `--profile`, never `--browser=chrome` or `msedge` with a real profile, and never `attach` to a browser you didn't
+> `open` (`attach --cdp=…`, `attach --extension`). See `../SOURCES.md`.
+
 Run multiple isolated browser sessions concurrently with state persistence.
 
 ## Named Browser Sessions

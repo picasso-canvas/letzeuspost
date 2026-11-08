@@ -13,7 +13,8 @@ description: Automate browser interactions, test web pages and work with Playwri
 > - **No `gh`:** builders have no GitHub access. The pull-request attachment steps are replaced, and
 >   `references/pr-attachments.md` isn't in this copy.
 > - **Only throwaway browser state:** use the default in-memory profile, or a `--profile` folder inside your clone
->   that you made for the task; never a profile folder outside it, and never `--browser=chrome` or `msedge` with a
+>   that you made for the task; never a profile folder outside it, `--persistent` only together with such a
+>   `--profile` (on its own it picks a folder itself, which may be outside the clone), and never `--browser=chrome` or `msedge` with a
 >   real profile (it holds a person's logins). Saved state (`state-save`), traces and snapshots hold session cookies:
 >   they go under `.playwright-cli/` or into a `*.auth.json` file, which git ignores; never commit them.
 > - **Headless runs never use `show --annotate`:** it waits for a person at the screen.

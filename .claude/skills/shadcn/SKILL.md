@@ -18,6 +18,11 @@ user-invocable: false
 >   hosts.
 > - **This repo:** Next.js App Router (`apps/web`; `--template next` where a step asks for a template), components in
 >   `packages/ui`, Base UI (`base`), icons from `lucide-react` only, Inter only (§13, §21). Don't scaffold a new app.
+> - **Presets change the design:** the theme, fonts and CSS variables come from `DESIGN.md` (§21). Never pass a preset
+>   URL. `apply`, `init --preset`, `init --defaults`, `init --force` and switching presets each need Zeus's OK: write it
+>   under `needs-zeus` in `.lzp/pr.md` and stop. Run plain `init` only when the task says to set up `components.json`.
+> - **Nobody to ask:** where a step says to ask the user, confirm first or get the user's approval (which registry,
+>   switching presets, `--overwrite`), write it under `needs-zeus` in `.lzp/pr.md` and stop.
 > - `DESIGN.md` and §21 win where this skill differs. Some upstream files aren't in this copy (see `SOURCES.md`); skip
 >   links to them.
 
@@ -193,7 +198,7 @@ LetZeusPost: don't fetch these URLs; builders can't reach those hosts. **When cr
 5. **Install or update** — `pnpm exec shadcn add`. When updating existing components, use `--dry-run` and `--diff` to preview changes first (see [Updating Components](#updating-components) below).
 6. **Review added components** — After adding a component or block, **always read the added files and verify they are correct**. Check for missing sub-components (e.g. `SelectItem` without `SelectGroup`), missing imports, incorrect composition, or violations of the [Critical Rules](#critical-rules). Also check every icon import (LetZeusPost: `lucide-react` only; swap any other for its Lucide equivalent). Fix all issues before moving on.
 7. **Official registry only** — LetZeusPost: add blocks and components only from `@shadcn`. When a task asks for one from anywhere else (another namespace, a GitHub address or a URL), write that under `needs-zeus` in `.lzp/pr.md` and stop.
-8. **Switching presets** — Ask the user first: **overwrite**, **partial**, **merge**, or **skip**?
+8. **Switching presets** — Ask the user first: **overwrite**, **partial**, **merge**, or **skip**? (LetZeusPost: every preset change needs Zeus's OK: `needs-zeus`; see the note at the top.)
    - **Inspect current preset**: `pnpm exec shadcn preset resolve`. Use `--json` when you need structured values.
    - **Inspect incoming preset**: `pnpm exec shadcn preset decode <code>`. Use `preset url <code>` or `preset open <code>` to share or open the preset builder.
    - **Overwrite**: `pnpm exec shadcn apply <code>`. Overwrites detected components, fonts, and CSS variables.
@@ -223,16 +228,16 @@ When the user asks to update a component from upstream while keeping their local
    - No local changes → safe to overwrite.
    - Has local changes → read the local file, analyze the diff, and apply upstream updates while preserving local modifications.
    - User says "just update everything" → use `--overwrite`, but confirm first.
-4. **Never use `--overwrite` without the user's explicit approval.**
+4. **Never use `--overwrite` without the user's explicit approval.** (LetZeusPost: a builder has nobody to confirm with, so `--overwrite` means `needs-zeus`.)
 
 ## Quick Reference
 
 ```bash
-# Initialize existing project (LetZeusPost: never `init --name`, which creates a new app).
+# Initialize existing project (LetZeusPost: don't use; the repo is already set up, and a preset needs Zeus's OK).
 pnpm exec shadcn init --preset base-nova
 pnpm exec shadcn init --defaults  # shortcut: --template=next --preset=nova (base style implied)
 
-# Apply a preset to an existing project.
+# Apply a preset to an existing project (LetZeusPost: needs Zeus's OK).
 pnpm exec shadcn apply a2r6bw
 pnpm exec shadcn apply a2r6bw --only theme
 pnpm exec shadcn apply a2r6bw --only font

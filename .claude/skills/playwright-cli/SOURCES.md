@@ -16,14 +16,14 @@
 
 From `skills/playwright-cli/`:
 
-| File | Changed |
+| File | Changed by us |
 |---|---|
 | `SKILL.md` | yes (marked at the top) |
 | `references/element-attributes.md` | no |
 | `references/playwright-tests.md` | yes (marked at the top) |
 | `references/request-mocking.md` | no |
 | `references/running-code.md` | no |
-| `references/session-management.md` | no |
+| `references/session-management.md` | yes (marked at the top) |
 | `references/storage-state.md` | no |
 | `references/test-generation.md` | yes (marked at the top) |
 | `references/tracing.md` | no |
@@ -69,6 +69,10 @@ From `skills/playwright-cli/`:
 10. `SKILL.md` "Installation": removed "run it pinned: `pnpm dlx @playwright/cli@0.1.23`" for a standalone copy.
     `pnpm dlx` pins only the top package; its dependencies resolve outside the lockfile, the licence check and the
     audits. A standalone copy is now a `needs-zeus` item. Cerberus on #100.
+11. `SKILL.md` "Only throwaway browser state": `--persistent` only together with a `--profile` folder inside the
+    clone (on its own it picks a folder itself, which may be outside the clone). `references/session-management.md`: a notice at the top that
+    the `SKILL.md` rules win over its examples (`--persistent`, `--profile=/path/to/profile`, `--browser=chrome`/
+    `msedge`, `attach --cdp=…`, `attach --extension`); the examples are unchanged. Cerberus on #100, round 3.
 
 ## Review notes
 

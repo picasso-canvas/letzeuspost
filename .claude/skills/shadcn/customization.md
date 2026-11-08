@@ -63,6 +63,9 @@ import { ThemeProvider } from "next-themes"
 
 ## Changing the Theme
 
+LetZeusPost: the theme comes from `DESIGN.md` (§21). A preset change (`apply`, `init --preset`, `--force`) needs
+Zeus's OK: write it under `needs-zeus` in `.lzp/pr.md` and stop. Never pass a preset URL.
+
 ```bash
 # Apply a preset code from ui.shadcn.com.
 pnpm exec shadcn apply --preset a2r6bw
@@ -75,9 +78,6 @@ pnpm exec shadcn apply --preset nova
 
 # Preserve existing components instead.
 pnpm exec shadcn init --preset nova --force --no-reinstall
-
-# Use a custom theme URL.
-pnpm exec shadcn apply --preset "https://ui.shadcn.com/init?base=radix&style=nova&theme=blue&..."
 ```
 
 Or edit CSS variables directly in `globals.css`.

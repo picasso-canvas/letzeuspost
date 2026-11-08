@@ -30,10 +30,10 @@ Initializes shadcn/ui in an existing project or creates a new project (when `--n
 | Flag                    | Short | Description                                               | Default |
 | ----------------------- | ----- | --------------------------------------------------------- | ------- |
 | `--template <template>` | `-t`  | Template (next, start, next-monorepo, react-router)       | —       |
-| `--preset [name]`       | `-p`  | Preset configuration (named, code, or URL)                | —       |
+| `--preset [name]`       | `-p`  | Preset configuration (named, code, or URL; LetZeusPost: needs Zeus's OK, never a URL) | — |
 | `--yes`                 | `-y`  | Skip confirmation prompt                                  | `true`  |
 | `--defaults`            | `-d`  | Use defaults (`--template=next --preset=base-nova`)       | `false` |
-| `--force`               | `-f`  | Force overwrite existing configuration                    | `false` |
+| `--force`               | `-f`  | Force overwrite existing configuration (LetZeusPost: needs Zeus's OK) | `false` |
 | `--cwd <cwd>`           | `-c`  | Working directory                                         | current |
 | `--name <name>`         | `-n`  | Name for new project                                      | —       |
 | `--silent`              | `-s`  | Mute output                                               | `false` |
@@ -51,6 +51,8 @@ pnpm exec shadcn apply [preset] [options]
 ```
 
 Applies a preset to an existing project, overwriting preset-driven config, fonts, CSS variables, and detected UI components.
+
+LetZeusPost: that rewrites the design from `DESIGN.md`, so `apply` needs Zeus's OK (`needs-zeus`); never a preset URL.
 
 | Flag                | Short | Description                                | Default |
 | ------------------- | ----- | ------------------------------------------ | ------- |
@@ -251,7 +253,11 @@ Three ways to specify a preset via `--preset`:
 
 1. **Named:** `--preset nova` or `--preset lyra`
 2. **Code:** `--preset a2r6bw` (version-prefixed base62 string, e.g. `a2r6bw` or `b0`)
-3. **URL:** `--preset "https://ui.shadcn.com/init?base=radix&style=nova&..."`
+3. **URL:** `--preset "https://ui.shadcn.com/init?base=radix&style=nova&..."` (LetZeusPost: never; a URL can carry
+   values nobody reviewed)
+
+LetZeusPost: every preset change (`init --preset`, `apply`, `--force`, switching presets) needs Zeus's OK: write it
+under `needs-zeus` in `.lzp/pr.md` and stop. The theme comes from `DESIGN.md` (§21).
 
 > **IMPORTANT:** Never try to decode, fetch, or resolve preset codes manually. Preset codes are opaque — pass them directly to `pnpm exec shadcn init --preset <code>` and let the CLI handle resolution.
 > Use `pnpm exec shadcn apply --preset <code>` when overwriting an existing project's preset.

@@ -26,7 +26,7 @@ Trigger phrases: "build me a design system using <preset>", "apply this DESIGN.m
 
 | Input     | Default                             | Notes                                                                                                                                    |
 | --------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Preset    | Optional                            | Code (`b0`), style name (`luma`) or URL. Pass it through. Never decode it by hand. Without one, pick a style (see Step 1).               |
+| Preset    | Optional                            | Code (`b0`), style name (`luma`) or URL. Pass it through. Never decode it by hand. Without one, pick a style (see Step 1). LetZeusPost: a preset or style change needs Zeus's OK (`needs-zeus`), never a URL; see `SKILL.md`. |
 | DESIGN.md | Required                            | A path, URL or pasted content. Copy it into the new app root as `DESIGN.md`.                                                             |
 | Template  | `next`                              | LetZeusPost: Next.js App Router, the only template here.                                                                                 |
 | App name  | Derived from the brand in DESIGN.md | Kebab-case.                                                                                                                              |
@@ -46,6 +46,9 @@ pnpm exec shadcn info --json
 ```
 
 ### Picking a style
+
+LetZeusPost: the style is set once in `components.json`; picking or changing it is a design change that needs Zeus's
+OK (`needs-zeus`). Use the table to explain a choice, not to make one.
 
 The theme gets replaced by the DESIGN.md anyway. The style decides geometry the CSS variables can't reach: control padding, density, how rounded and how raised the components are. Read the DESIGN.md's radius scale, control heights, shadows and layout density, then pick:
 

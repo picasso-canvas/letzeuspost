@@ -15,7 +15,7 @@
 
 From `skills/accessibility/`:
 
-| File | Changed |
+| File | Changed by us |
 |---|---|
 | `SKILL.md` | yes |
 | `references/WCAG.md` | no |

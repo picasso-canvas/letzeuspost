@@ -13,7 +13,7 @@
 
 From `skills/shadcn/`:
 
-| File | Changed |
+| File | Changed by us |
 |---|---|
 | `SKILL.md` | yes |
 | `cli.md` | yes |
@@ -98,6 +98,19 @@ Round 2, from Cerberus on #100:
     see `registry.md`). `rules/composition.md` and `design-system-page.md`: the `chat.md` links. `design-system.md`:
     the "Coverage check" section; `design-system-page.md`: "run the coverage script". The steps that copy
     `assets/showcase/` now say it isn't here and that the gallery writes what it needs in `packages/ui`.
+
+Round 3, from Argus and Cerberus on #100:
+
+13. **Presets change the design.** `SKILL.md` note: never a preset URL; `apply`, `init --preset`, `init --defaults`,
+    `init --force` and switching presets each need Zeus's OK (`needs-zeus`); plain `init` only when the task says to set
+    up `components.json`. Marked at "Switching presets" and in Quick Reference ("Initialize existing project": don't
+    use; "Apply a preset": needs Zeus's OK). `customization.md` "Changing the Theme": the same note, and the custom
+    theme URL example removed. `cli.md`: `--preset` and `--force` marked in the `init` table, a note under `apply`,
+    "URL" presets marked "never", and a note under "Presets". `design-system.md`: the Preset input and "Picking a style"
+    say a preset or style change needs Zeus's OK.
+14. **Nobody to ask.** `SKILL.md` note: where a step says to ask the user, confirm first or get approval (which
+    registry, switching presets, `--overwrite`), a builder writes it under `needs-zeus`; "Updating Components" step 4
+    says `--overwrite` means `needs-zeus`.
 
 ## Review notes
 

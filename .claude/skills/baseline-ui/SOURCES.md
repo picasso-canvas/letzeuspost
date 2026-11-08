@@ -11,7 +11,7 @@
 
 From `skills/baseline-ui/`:
 
-| File | Changed |
+| File | Changed by us |
 |---|---|
 | `SKILL.md` | no |
 | `LICENSE` (repo root) | no |
