@@ -29,6 +29,9 @@ jobs:
       # v1.65.0-noble (@playwright/test 1.65.0), its multi-arch index digest from mcr.microsoft.com on 2026-11-08.
       image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
       options: --user 1001 # the runner's user, as Playwright's CI guide has it: owns the workspace, not root
+    defaults:
+      run:
+        shell: bash # in a container the default is sh (dash), which has no pipefail
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
