@@ -371,7 +371,14 @@ function run(
   input: object,
   { builder = true, harness = REPO, args = [] }: RunOptions = {},
 ): ReturnType<typeof spawnSync> {
-  const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: home, CLAUDE_PROJECT_DIR: clone };
+  // TMPDIR too: in a builder's sandbox only its own temp folder is writable, and without TMPDIR the hook's
+  // os.tmpdir() falls back to /tmp, so it couldn't make the throwaway repository it hashes the tree with (#91).
+  const env: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH,
+    TMPDIR: process.env.TMPDIR,
+    HOME: home,
+    CLAUDE_PROJECT_DIR: clone,
+  };
   if (builder) env.LZP_ROLE = 'builder';
   if (harness) env.LZP_HARNESS_DIR = harness;
   return spawnSync('node', [join(HOOKS, script), ...args], {
