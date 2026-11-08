@@ -20,6 +20,7 @@ import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
 import { requiredReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
+import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 
 import type { Reviewer } from './merge-gate/types.ts';
@@ -192,10 +193,29 @@ export interface Bundle {
 
 export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR): Bundle {
   const { gh, git } = deps;
-  const snapshotJson = gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'headRefOid,body']);
-  const snapshot = JSON.parse(snapshotJson) as { headRefOid: string; body: string };
+  // One read: the head, the PR text and the base the bundle is built against come from the same moment, so a PR
+  // retargeted mid-way can't mix two states (Argus and Cerberus on #104). Compared with the PR's own base: once staging
+  // holds work main doesn't, a diff against main would show it as this PR's (#103). changedFilesFromGit refuses any
+  // base but main and staging, and fetches staging when it's the base.
+  const snapshotJson = gh([
+    'pr',
+    'view',
+    String(pr),
+    '-R',
+    REPO,
+    '--json',
+    'headRefOid,body,baseRefName,headRefName',
+  ]);
+  const snapshot = JSON.parse(snapshotJson) as {
+    headRefOid: string;
+    body: string;
+    baseRefName: string;
+    headRefName: string;
+  };
   const sha = snapshot.headRefOid;
-  const changed = changedFilesFromGit(git, pr, sha);
+  const base = snapshot.baseRefName;
+  const branch = snapshot.headRefName;
+  const changed = changedFilesFromGit(git, pr, sha, base);
 
   const stamp = `${sha.slice(0, 7)}-${String(deps.now())}`;
   const bundle = join(stateDir, 'bundles', `pr-${String(pr)}`, stamp);
@@ -216,7 +236,7 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
     refusal = error.message;
   }
   // Files git treats as binary: their bytes in diff.patch mean little, so reviewers open them in tree/.
-  const binaries = git(['diff', '--numstat', '-z', '--no-renames', `origin/main...${sha}`])
+  const binaries = git(['diff', '--numstat', '-z', '--no-renames', `origin/${base}...${sha}`])
     .split('\0')
     .filter((line) => line.startsWith('-\t-\t'))
     .map((line) => safeName(line.slice(4))); // one printable line each: a name can't add lines
@@ -225,19 +245,27 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
     binaries.length ? binaries.join('\n') : 'No binary files.',
   );
   // --text: a stray NUL byte must not hide a file's code behind "Binary files differ".
-  writeFileSync(join(bundle, 'diff.patch'), git(['diff', '--text', `origin/main...${sha}`]));
+  writeFileSync(join(bundle, 'diff.patch'), git(['diff', '--text', `origin/${base}...${sha}`]));
   writeFileSync(
     join(bundle, 'history.patch'),
-    git(['log', '--reverse', '-p', '--cc', '--text', `origin/main..${sha}`]),
+    git(['log', '--reverse', '-p', '--cc', '--text', `origin/${base}..${sha}`]),
   );
 
-  const refs = JSON.parse(
-    gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'closingIssuesReferences']),
-  ) as {
-    closingIssuesReferences: { number: number; url: string }[];
-  };
   const prefix = `https://github.com/${REPO}/issues/`;
-  const issues = refs.closingIssuesReferences.map(({ number, url }) =>
+  // GitHub links "Closes #n" only for PRs into the default branch: a PR into staging gets its task issue from the branch
+  // name, as the merge gate reads it.
+  const stagingIssue = base === 'staging' ? issueFromBranch(branch) : null;
+  const references =
+    base === 'staging'
+      ? stagingIssue === null
+        ? []
+        : [{ number: stagingIssue, url: `${prefix}${String(stagingIssue)}` }]
+      : (
+          JSON.parse(
+            gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'closingIssuesReferences']),
+          ) as { closingIssuesReferences: { number: number; url: string }[] }
+        ).closingIssuesReferences;
+  const issues = references.map(({ number, url }) =>
     url.startsWith(prefix)
       ? `# Issue #${String(number)}\n\n${gh(['issue', 'view', String(number), '-R', REPO, '--json', 'title,body', '--jq', '.title + "\\n\\n" + .body'])}`
       : `# #${String(number)} is in another repository (${url}): not part of this review.`,
