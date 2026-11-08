@@ -18,6 +18,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { checkBash } from './lib/bash-rules.ts';
 import { findSecret, findSilencing } from './lib/content.ts';
 import { decideFreeze, STALE_AFTER_MS } from './lib/freeze.ts';
+import { workingTree } from './lib/git-tree.ts';
+import { readPlanted } from './lib/hook-io.ts';
 import { matchesAny, protectedPatterns } from './lib/paths.ts';
 import { isGreenCheck, stampPath } from './lib/stamp.ts';
 
@@ -653,7 +655,7 @@ describe('where the hooks are registered', () => {
 // ---------------------------------------------------------------- round 3: Cerberus and Argus on #86
 
 describe('formatting a file the builder can swap (Cerberus on #86)', () => {
-  let formatFile: (path: string, format: (text: string) => string | null) => boolean;
+  let formatFile: (path: string, root: string, format: (text: string) => string | null) => boolean;
   let victim: string;
   let file: string;
   beforeAll(async () => {
@@ -668,12 +670,12 @@ describe('formatting a file the builder can swap (Cerberus on #86)', () => {
   const formatted = (text: string): string => text.replace('{a:1}', '{ a: 1 };');
 
   it('writes the formatted text back to the same file', () => {
-    expect(formatFile(file, formatted)).toBe(true);
+    expect(formatFile(file, clone, formatted)).toBe(true);
     expect(readFileSync(file, 'utf8')).toBe('export const x={ a: 1 };\n');
   });
 
   it('never writes through a link swapped in while prettier runs', () => {
-    const swapped = formatFile(file, (text) => {
+    const swapped = formatFile(file, clone, (text) => {
       rmSync(file);
       symlinkSync(victim, file); // the builder's background loop, mid-format
       return formatted(text);
@@ -684,7 +686,7 @@ describe('formatting a file the builder can swap (Cerberus on #86)', () => {
 
   it('never writes to another file swapped in, or to one that gained a second link', () => {
     expect(
-      formatFile(file, (text) => {
+      formatFile(file, clone, (text) => {
         // Moved aside, not deleted: Linux hands a freed inode number to the next new file (see format.ts).
         renameSync(file, join(clone, 'moved.ts'));
         writeFileSync(file, 'other\n');
@@ -693,7 +695,7 @@ describe('formatting a file the builder can swap (Cerberus on #86)', () => {
     ).toBe(false);
     expect(readFileSync(file, 'utf8')).toBe('other\n');
     expect(
-      formatFile(file, (text) => {
+      formatFile(file, clone, (text) => {
         linkSync(file, join(home, 'second-link.ts'));
         return text + '// changed\n';
       }),
@@ -705,6 +707,48 @@ describe('formatting a file the builder can swap (Cerberus on #86)', () => {
     writeFileSync(file, 'export const x = {a:1,b:"two"}\n');
     run('post-tool-use.ts', { tool_name: 'Write', tool_input: { file_path: file, content: '' } });
     expect(readFileSync(file, 'utf8')).toBe("export const x = { a: 1, b: 'two' };\n");
+  });
+
+  // Round 4 (Argus and Cerberus at f540e19): O_NOFOLLOW guards only the last part of the path.
+  it('never reads or writes through a folder above the file that links out of the clone', () => {
+    const out = join(home, 'out');
+    mkdirSync(out);
+    writeFileSync(join(out, 'x.ts'), 'export const x={a:1}\n');
+    symlinkSync(out, join(clone, 'src')); // swapped in after the hook's path check
+    expect(formatFile(join(clone, 'src', 'x.ts'), clone, formatted)).toBe(false);
+    expect(readFileSync(join(out, 'x.ts'), 'utf8')).toBe('export const x={a:1}\n');
+  });
+
+  it('keeps writing in the folder it checked when a folder above is swapped mid-format', () => {
+    const out = join(home, 'out');
+    mkdirSync(out);
+    writeFileSync(join(out, 'x.ts'), 'export const x={a:1}\n');
+    mkdirSync(join(clone, 'src'));
+    writeFileSync(join(clone, 'src', 'x.ts'), 'export const x={a:1}\n');
+    const wrote = formatFile(join(clone, 'src', 'x.ts'), clone, (text) => {
+      renameSync(join(clone, 'src'), join(clone, 'src-old'));
+      symlinkSync(out, join(clone, 'src'));
+      return formatted(text);
+    });
+    expect(readFileSync(join(out, 'x.ts'), 'utf8')).toBe('export const x={a:1}\n');
+    expect(wrote).toBe(true);
+    expect(readFileSync(join(clone, 'src-old', 'x.ts'), 'utf8')).toBe('export const x={ a: 1 };\n');
+  });
+});
+
+describe('reads and tree hashes the builder can stall or redirect (Argus and Cerberus on #86, round 4)', () => {
+  it('reads a planted file only from a folder inside the clone', () => {
+    const out = join(home, 'out');
+    mkdirSync(out);
+    writeFileSync(join(out, 'task.md'), 'oauth_token: SECRET-123\n');
+    symlinkSync(out, join(clone, '.lzp')); // swapped in after SessionStart's path check
+    expect(readPlanted(join(clone, '.lzp', 'task.md'), clone)).toBeNull();
+    expect(readPlanted(join(clone, 'a.ts'), clone)).toBe('export const a = 1;\n');
+  });
+
+  it("gives up hashing the tree when its time is up, inside the hook's own timeout", () => {
+    expect(workingTree(clone, 60_000)).toMatch(/^[0-9a-f]{40}$/);
+    expect(() => workingTree(clone, 0)).toThrow();
   });
 });
 
