@@ -1,9 +1,11 @@
 // PostToolUse formatting that a builder can't redirect (Cerberus on #86). The hook runs unsandboxed, so it never hands
-// prettier a path to write: the file is read once without following a link, prettier formats that text from stdin,
-// and the result goes back through a descriptor opened without following a link, only while it is still the same
-// regular file (device and inode) with a single link. A file swapped for a link, another file or a second link in the
-// meantime is left alone. (If the builder deletes the file, Linux may give its inode number to the next new file; that
-// file can only be one the builder itself created where its sandbox lets it write, so the write still lands there.)
+// prettier a path to write: from inside the file's folder, once that folder is known to be in the clone (inFolder),
+// the file is read once without following a link, prettier formats that text from stdin, and the result goes back
+// through a descriptor opened without following a link, only while it is still the same regular file (device and
+// inode) with a single link. A file swapped for a link, another file or a second link in the meantime is left alone,
+// and a folder above swapped for a link can't move the read or the write out of the clone. (If the builder deletes
+// the file, Linux may give its inode number to the next new file; that file can only be one the builder itself
+// created where its sandbox lets it write, so the write still lands there.)
 import {
   closeSync,
   constants,
@@ -14,6 +16,7 @@ import {
   writeSync,
   type Stats,
 } from 'node:fs';
+import { inFolder } from './hook-io.ts';
 
 const LIMIT = 2_000_000;
 
@@ -67,11 +70,18 @@ function writeIfSame(path: string, before: Snapshot, text: string): boolean {
   }
 }
 
-/** Formats `path` in place with `format` (text in, text out; null to skip). True when it wrote. */
-export function formatFile(path: string, format: (text: string) => string | null): boolean {
-  const before = readOnce(path);
-  if (before === null) return false;
-  const after = format(before.text);
-  if (after === null || after === before.text) return false;
-  return writeIfSame(path, before, after);
+/** Formats `path`, in a folder inside `root`, with `format` (text in, text out; null to skip). True when it wrote. */
+export function formatFile(
+  path: string,
+  root: string,
+  format: (text: string) => string | null,
+): boolean {
+  const wrote = inFolder(path, root, (name) => {
+    const before = readOnce(name);
+    if (before === null) return false;
+    const after = format(before.text);
+    if (after === null || after === before.text) return false;
+    return writeIfSame(name, before, after);
+  });
+  return wrote === true;
 }

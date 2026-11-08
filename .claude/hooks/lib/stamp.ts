@@ -90,7 +90,7 @@ export function isGreenCheck(run: CheckRun, clone: string, harness: string): boo
   if (!isCheckCommand(run.command)) return false;
   if (run.background || run.response?.interrupted === true) return false;
   if (!sameDir(run.cwd, clone)) return false;
-  const ours = scripts(readPlanted(join(clone, 'package.json')));
+  const ours = scripts(readPlanted(join(clone, 'package.json'), clone));
   if (ours === null || !isDeepStrictEqual(ours, scripts(readText(join(harness, 'package.json')))))
     return false;
   const text = (value: unknown): string => (typeof value === 'string' ? value : '');

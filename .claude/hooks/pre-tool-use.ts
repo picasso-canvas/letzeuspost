@@ -21,6 +21,9 @@ import {
 import { protectedPatterns } from './lib/paths.ts';
 import { isCheckCommand, writeStamp } from './lib/stamp.ts';
 
+/** Well under this hook's 15 s timeout in the builder settings: past it, the call would be refused. */
+const TREE_BUDGET_MS = 10_000;
+
 function builderPatterns(): string[] | null {
   const harness = process.env.LZP_HARNESS_DIR;
   if (!harness) return null;
@@ -58,7 +61,7 @@ function check(
       // An unhashable tree just gets no pending stamp: the check runs, and can't stamp green.
       const root = projectDir(input);
       try {
-        writeStamp(root, 'pending', workingTree(root), input.session_id ?? null);
+        writeStamp(root, 'pending', workingTree(root, TREE_BUDGET_MS), input.session_id ?? null);
       } catch {
         // No pending stamp.
       }
@@ -66,7 +69,9 @@ function check(
     return;
   }
   if (EDIT_TOOLS.has(tool)) {
-    const change = editChange(tool, toolInput, (file) => readPlanted(file));
+    const change = editChange(tool, toolInput, (file) =>
+      readPlanted(file, who === 'builder' ? projectDir(input) : null),
+    );
     const hit = checkEdit(change, {
       role: who,
       projectDir: projectDir(input),

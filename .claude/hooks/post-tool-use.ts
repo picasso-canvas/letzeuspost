@@ -11,6 +11,8 @@ import { projectDir, readInput, role, type HookInput } from './lib/hook-io.ts';
 import { safeTarget } from './lib/paths.ts';
 import { isGreenCheck, stampedTree, writeStamp } from './lib/stamp.ts';
 
+/** Under the PostToolUse hook's 60 s timeout in the builder settings. */
+const TREE_BUDGET_MS = 40_000;
 const FORMATTED = /\.(?:[cm]?[jt]sx?|json|css|scss|ya?ml|html)$/i;
 const NOT_FORMATTED =
   /^(?:docs\/|\.claude\/skills\/vendor\/)|(?:^|\/)(?:node_modules|dist|coverage)\/|(?:^|\/)pnpm-lock\.yaml$/;
@@ -19,7 +21,8 @@ const NOT_FORMATTED =
  * Builders get Athena's prettier and config from main's checkout ($LZP_HARNESS_DIR), never the clone's: hooks run
  * unsandboxed, and the clone's node_modules (or a config naming plugins) is code the builder could have written.
  * prettier only formats text from stdin (the path is a name for its parser and ignore file, never an option, never
- * written to); formatFile reads and writes the file itself, so a link swapped in mid-format can't redirect the write.
+ * written to); formatFile reads and writes the file itself, from inside its folder in the clone, so a link swapped in
+ * mid-format, at the file or a folder above, can't redirect the write.
  */
 function format(input: HookInput, file: string): void {
   const root = projectDir(input);
@@ -48,7 +51,7 @@ function format(input: HookInput, file: string): void {
       ]
     : [];
   const path = join(realpathSync(root), rel);
-  formatFile(path, (text) => {
+  formatFile(path, root, (text) => {
     try {
       return execFileSync(prettier, [...args, '--stdin-filepath', path], {
         cwd: root,
@@ -75,7 +78,7 @@ function stamp(input: HookInput, toolInput: Record<string, unknown>): void {
   };
   if (!isGreenCheck(run, root, harness)) return;
   // Green only for the tree the check started on (PreToolUse stamped it): a change made while it ran isn't covered.
-  const tree = workingTree(root);
+  const tree = workingTree(root, TREE_BUDGET_MS);
   if (tree === stampedTree(root, 'pending'))
     writeStamp(root, 'green', tree, input.session_id ?? null);
 }

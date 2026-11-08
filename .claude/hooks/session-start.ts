@@ -19,6 +19,8 @@ import { safeTarget } from './lib/paths.ts';
 import { writeStamp } from './lib/stamp.ts';
 
 const TASK_LIMIT = 20_000;
+/** Under the SessionStart hook's 30 s timeout in the builder settings. */
+const TREE_BUDGET_MS = 20_000;
 
 function main(): void {
   const input = readInput();
@@ -31,13 +33,13 @@ function main(): void {
   if (who === 'builder') {
     if ((input.source ?? 'startup') === 'startup') {
       try {
-        writeStamp(root, 'base', workingTree(root), input.session_id ?? null);
+        writeStamp(root, 'base', workingTree(root, TREE_BUDGET_MS), input.session_id ?? null);
       } catch {
         // No base: the Stop hook then asks for a green check before any finish.
       }
     }
     const path = join(root, '.lzp', 'task.md');
-    const task = 'rel' in safeTarget(path, root) ? readPlanted(path, TASK_LIMIT) : null;
+    const task = 'rel' in safeTarget(path, root) ? readPlanted(path, root, TASK_LIMIT) : null;
     parts.push(
       task === null
         ? 'You are a LetZeusPost builder, but .lzp/task.md is missing or not a plain file. Stop and say so in .lzp/pr.md.'

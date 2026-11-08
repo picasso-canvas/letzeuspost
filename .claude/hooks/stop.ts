@@ -8,13 +8,16 @@ import { workingTree } from './lib/git-tree.ts';
 import { logHit, printJson, projectDir, readInput, role } from './lib/hook-io.ts';
 import { stampedTree } from './lib/stamp.ts';
 
+/** Under the Stop and SubagentStop hooks' 60 s timeout in the builder settings. */
+const TREE_BUDGET_MS = 40_000;
+
 function main(): void {
   const input = readInput();
   if (role() !== 'builder' || input.stop_hook_active === true) return;
   const root = projectDir(input);
   let tree: string | null;
   try {
-    tree = workingTree(root);
+    tree = workingTree(root, TREE_BUDGET_MS);
   } catch {
     tree = null;
   }
