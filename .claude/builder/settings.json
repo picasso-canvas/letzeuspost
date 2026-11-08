@@ -253,5 +253,65 @@
   },
   "env": {
     "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/session-start.ts\" --builder",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/pre-tool-use.ts\" --builder",
+            "timeout": 15,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/post-tool-use.ts\" --builder",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/stop.ts\" --builder",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$LZP_HARNESS_DIR/.claude/hooks/stop.ts\" --builder",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
   }
 }

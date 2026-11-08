@@ -29,6 +29,9 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 7. **2026-11-08: no GitHub AI review** (Zeus, in chat: "Run the review here on my mac only", then "Drop it"; #27).
    Reviews run only on Zeus's Mac, on his subscription: Argus and Cerberus through `scripts/review.ts` (Iris from the
    first UI milestone). No `ai-review` workflow, GitHub environment or CI token; PR #58 closed unmerged.
+8. **2026-11-08: a stale freeze flag stops builders only** (Zeus, in chat: "Stale freezes builders only"; #29).
+   Dispatch refreshes the flag only while a builder runs, so Athena and the reviewers stop on `paused: true` alone;
+   a builder stops on a missing, unreadable, old or future-dated flag too.
 
 ## Questions for Zeus (answered 2026-11-06)
 
@@ -83,9 +86,18 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 
 ### 3. Hooks (`.claude/hooks/`, committed, sensitive; they also fire for subagents)
 
+Hooks run outside the sandbox, so a builder's hooks run from main's checkout: `.claude/builder/settings.json` registers
+them under `$LZP_HARNESS_DIR` with `--builder`, and everyone's `.claude/settings.json` skips its own in a builder
+session. A builder's PreToolUse hook that can't start refuses the call (`"onFailure": "block"`, checked on Claude Code
+2.1.309). The hooks read nothing a builder could have planted as anything but data: no symlink or hard link is
+followed, at the file or in a folder above it (a hook opens a clone file by name from inside its folder, once that
+folder's real location is inside the clone), git runs in a throwaway repository with only `--work-tree` on the clone
+and stops before the hook's own timeout, and main's prettier formats text from stdin while the hook itself writes it
+back, only to the same regular file (same inode, one link), so a link swapped in mid-format can't redirect the write.
+
 | Hook | Does |
 |---|---|
-| SessionStart and PreToolUse | SessionStart loads the task from `.lzp/task.md` and the rules (Claude Code doesn't let SessionStart block). PreToolUse, on every tool call, refuses while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute, with the time, because builders can't reach GitHub. A flag older than 3 minutes counts as frozen, so a dead refresher fails closed |
+| SessionStart and PreToolUse | SessionStart loads the task from `.lzp/task.md` and the rules (Claude Code doesn't let SessionStart block). PreToolUse, on every tool call, refuses while Zeus's **freeze switch** is on: the repo variable `AGENTS_PAUSED`, which dispatch copies into `~/.letzeuspost/paused` every minute, with the time, because builders can't reach GitHub. For a builder a flag that is missing or older than 3 minutes counts as frozen, so a dead refresher fails closed; Athena and the reviewers stop on `paused: true` only (Zeus, 2026-11-08) |
 | PreToolUse Bash | Blocks the dangerous patterns above (a backup to the deny rules) |
 | PreToolUse Edit/Write | Blocks protected paths (builder); blocks content that looks like a secret; blocks silencing checks (`eslint-disable`, `@ts-ignore`, `.skip`, `.only`, lower coverage thresholds) unless a comment explains why |
 | PostToolUse Edit/Write | Formats the changed file |
