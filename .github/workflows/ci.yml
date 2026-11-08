@@ -28,12 +28,15 @@ env:
   OSV_SCANNER_SHA256: 160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
   ZIZMOR_VERSION: 1.32.0
   ZIZMOR_SHA256: bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b
+  # The fallback's zizmor: the PyPI wheel for the same version (zizmor-1.32.0-py3-none-manylinux_2_28_x86_64.whl), its
+  # SHA-256 as PyPI's JSON API lists it, and the same hash computed on a downloaded copy.
+  ZIZMOR_WHEEL_SHA256: 84a6acb975accc13408786a2bd274b572537ca19c933ebbc13e78f3988562071
 
 jobs:
   ci:
     name: ci
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20 # 10 for the checks; room for the scanners' fallback builds (#101)
     permissions:
       contents: read
     steps:
@@ -52,21 +55,59 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      # Each tool comes from its GitHub release, checked against its pinned SHA-256; a mismatch fails the job. Only when
+      # the download itself fails (GitHub's release-file service was down for hours on 2026-11-08, #101) does the same
+      # pinned version come from a source with its own integrity check: gitleaks and OSV-Scanner built from the Go
+      # module proxy, every module checked against sum.golang.org; zizmor from PyPI with the wheel's pinned SHA-256.
+      # Each attempt is capped (15 s to connect, 60 s in all, 2 retries), and once one release download fails the other
+      # tools go straight to the fallback, so a hanging release service can't use up the job's time.
+      # LZP_TOOLS_FALLBACK_ONLY=1 skips the release downloads, to show the fallback works.
       - name: Install tools (checksum-verified)
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bin"
           cd "$RUNNER_TEMP"
-          curl -fsSLo gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
-          tar -xzf gitleaks.tar.gz -C bin gitleaks
-          curl -fsSLo bin/osv-scanner "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
-          echo "${OSV_SCANNER_SHA256}  bin/osv-scanner" | sha256sum -c -
-          chmod +x bin/osv-scanner
-          curl -fsSLo zizmor.tar.gz "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
-          echo "${ZIZMOR_SHA256}  zizmor.tar.gz" | sha256sum -c -
-          tar -xzf zizmor.tar.gz -C bin zizmor
+          releases_down="${LZP_TOOLS_FALLBACK_ONLY:-}"
+          release() {
+            if [ "$releases_down" != 1 ] &&
+              curl -fsSL --connect-timeout 15 --max-time 60 --retry 2 --retry-all-errors -o "$1" "$2"; then
+              echo "::notice::$(basename "$2"): from the GitHub release, SHA-256 checked below"
+              return 0
+            fi
+            releases_down=1
+            return 1
+          }
+          gobuild() {
+            echo "::warning::$1: the GitHub release is unavailable; building it from the Go module proxy"
+            GOBIN="$RUNNER_TEMP/bin" GOFLAGS=-trimpath GOTOOLCHAIN=auto GOPROXY=https://proxy.golang.org \
+              GOSUMDB=sum.golang.org go install "$1"
+            go version -m "$RUNNER_TEMP/bin/$2" | grep -E '^\s+mod\s' # the module, version and sum.golang.org hash built
+          }
+          if release gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"; then
+            echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+            tar -xzf gitleaks.tar.gz -C bin gitleaks
+          else
+            gobuild "github.com/zricethezav/gitleaks/v8@v${GITLEAKS_VERSION}" gitleaks
+          fi
+          if release bin/osv-scanner "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"; then
+            echo "${OSV_SCANNER_SHA256}  bin/osv-scanner" | sha256sum -c -
+            chmod +x bin/osv-scanner
+          else
+            rm -f bin/osv-scanner
+            gobuild "github.com/google/osv-scanner/v2/cmd/osv-scanner@v${OSV_SCANNER_VERSION}" osv-scanner
+          fi
+          if release zizmor.tar.gz "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"; then
+            echo "${ZIZMOR_SHA256}  zizmor.tar.gz" | sha256sum -c -
+            tar -xzf zizmor.tar.gz -C bin zizmor
+          else
+            echo "::warning::zizmor: the GitHub release is unavailable; installing the same version from PyPI"
+            echo "zizmor==${ZIZMOR_VERSION} --hash=sha256:${ZIZMOR_WHEEL_SHA256}" > zizmor-req.txt
+            python3 -m pip install --disable-pip-version-check --no-deps --only-binary :all: --require-hashes \
+              --target "$RUNNER_TEMP/zizmor-py" -r zizmor-req.txt
+            cp "$RUNNER_TEMP/zizmor-py/bin/zizmor" bin/zizmor
+          fi
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          bin/gitleaks version && bin/osv-scanner --version | sed -n 1p && bin/zizmor --version
 
       # Before any of the branch's code is installed or run. Each check runs even when an earlier one failed, so one
       # run shows every problem.
