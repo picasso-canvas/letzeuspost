@@ -18,8 +18,8 @@ review page at phone width (390 px), full length, with the phone's inner scroll 
 
 ## Changes since v1.13 was approved
 
-Zeus approved each of these on 2026-11-08 (#70). They are in the source, the screenshots and `DESIGN.md`. The
-published page still shows v1.13 as approved until it's republished from this source:
+Zeus approved each of these on 2026-11-08 (#70). They are in the source, the screenshots and `DESIGN.md`, which are
+the record; the published page stays at v1.13 as first approved (Zeus, 2026-11-08):
 - **Faint grey** (`--faint`) darkened so it passes WCAG AA as text: light `#8E8A82` → `#6F6A62`, dark `#847F76` →
   `#8C877E` ([decision](https://github.com/picasso-canvas/letzeuspost/issues/70#issuecomment-6722863139)).
 - **Input border** (new `--input`, on text fields and selects) at 3:1 for WCAG 1.4.11: light `#8A857D`, dark
