@@ -25,7 +25,7 @@ colors:
   border-strong: "#D3D0C9"
   input: "#D3D0C9"
   ring: "#1C1A17"
-  faint: "#8E8A82"
+  faint: "#6F6A62"
   accent-text: "#8A5D00"
   status-generating: "#5C6B7E"
   status-needs-fix: "#C2261F"
