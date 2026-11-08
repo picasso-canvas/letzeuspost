@@ -89,10 +89,11 @@ jobs:
           pnpm exec design.md diff --format json "$RUNNER_TEMP/DESIGN.base.md" DESIGN.md > "$RUNNER_TEMP/design-diff.json" || status=$?
           cat "$RUNNER_TEMP/design-diff.json"
           [ "$status" -le 1 ]
+          # Backticks are dropped from the summary's copy, so a token name can't close the code block and add markdown.
           {
             echo '### DESIGN.md changes'
             echo '```json'
-            cat "$RUNNER_TEMP/design-diff.json"
+            tr -d '`' < "$RUNNER_TEMP/design-diff.json"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
