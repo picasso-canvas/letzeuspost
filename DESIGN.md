@@ -23,7 +23,7 @@ colors:
   destructive: "#C2261F"
   border: "#E4E2DD"
   border-strong: "#D3D0C9"
-  input: "#D3D0C9"
+  input: "#8A857D"
   ring: "#1C1A17"
   faint: "#6F6A62"
   accent-text: "#8A5D00"
@@ -54,7 +54,7 @@ colors:
   destructive-dark: "#F87171"
   border-dark: "#2F2C27"
   border-strong-dark: "#3E3A33"
-  input-dark: "#3E3A33"
+  input-dark: "#706B63"
   ring-dark: "#F5B301"
   faint-dark: "#8C877E"
   accent-text-dark: "#F5B301"
@@ -107,13 +107,21 @@ rounded:
 spacing:
   grid: 8px
 components:
-  # Every text colour on every surface it is used on, light then dark: `design.md lint` checks each pair (WCAG AA).
+  # The text pairs the mockup uses, light then dark: `design.md lint` checks each one (WCAG AA). The unit test
+  # packages/ui/src/tokens/contrast.test.ts also checks every text colour on every surface, and 3:1 for the input
+  # border and the focus ring (WCAG 1.4.11), which no component here can name.
   page-text:
     backgroundColor: "{colors.background}"
     textColor: "{colors.foreground}"
   page-text-muted:
     backgroundColor: "{colors.background}"
     textColor: "{colors.muted-foreground}"
+  page-text-faint:
+    backgroundColor: "{colors.background}"
+    textColor: "{colors.faint}"
+  page-text-accent:
+    backgroundColor: "{colors.background}"
+    textColor: "{colors.accent-text}"
   card-text:
     backgroundColor: "{colors.card}"
     textColor: "{colors.card-foreground}"
@@ -139,7 +147,7 @@ components:
     backgroundColor: "{colors.muted}"
     textColor: "{colors.muted-foreground}"
   sidebar-text-faint:
-    backgroundColor: "{colors.muted}"
+    backgroundColor: "{colors.secondary}"
     textColor: "{colors.faint}"
   menu-item-hover:
     backgroundColor: "{colors.accent}"
@@ -182,6 +190,12 @@ components:
   page-text-muted-dark:
     backgroundColor: "{colors.background-dark}"
     textColor: "{colors.muted-foreground-dark}"
+  page-text-faint-dark:
+    backgroundColor: "{colors.background-dark}"
+    textColor: "{colors.faint-dark}"
+  page-text-accent-dark:
+    backgroundColor: "{colors.background-dark}"
+    textColor: "{colors.accent-text-dark}"
   card-text-dark:
     backgroundColor: "{colors.card-dark}"
     textColor: "{colors.card-foreground-dark}"
@@ -207,7 +221,7 @@ components:
     backgroundColor: "{colors.muted-dark}"
     textColor: "{colors.muted-foreground-dark}"
   sidebar-text-faint-dark:
-    backgroundColor: "{colors.muted-dark}"
+    backgroundColor: "{colors.secondary-dark}"
     textColor: "{colors.faint-dark}"
   menu-item-hover-dark:
     backgroundColor: "{colors.accent-dark}"
@@ -253,9 +267,12 @@ and near-black ink carry the interface; one gold accent is used as a fill. The c
 app around them stays quiet. The approved mockup (`docs/design/mockups/v1/`, v1.13) is the source of truth; this file
 writes its tokens down ([§21](docs/plan/21-ai-design-workflow.md#pipeline)).
 
-Light and dark are both first-class: the app follows the system, with a switch in Account settings. Every colour below
-has a light value and a dark partner named `<name>-dark`; `packages/ui/src/tokens/` turns the pairs into CSS variables
-that switch under `.dark`.
+Light and dark are both first-class: the app follows the system, with a switch in Account settings. The client review
+page (no account) follows the phone's setting, with the same tokens (Zeus, 2026-11-08, #70); the mockup draws it in
+light only. Every colour below has a light value and a dark partner named `<name>-dark`; `pnpm tokens` turns the pairs
+into CSS variables in `packages/ui/src/tokens/` that switch under `.dark`. What this format can't carry into its export
+(the font stack, line heights, tabular numbers, the shadow and the motion) is written by hand in
+`packages/ui/src/tokens/base.css`, and a test checks it against the mockup.
 
 ## Colors
 
@@ -269,7 +286,11 @@ that switch under `.dark`.
   gold directly.
 - **Ring (focus):** ink in light mode, gold in dark (the mockup's `--focus`). Borders and selected outlines in light
   mode use ink or deep amber.
-- **Border / border-strong / input:** hairlines `#E4E2DD`, stronger `#D3D0C9` for controls.
+- **Border / border-strong:** hairlines `#E4E2DD` around cards and rows, stronger `#D3D0C9` on buttons and other
+  controls that carry a label.
+- **Input** `#8A857D` (dark `#706B63`): the edge of text fields and selects, where the border alone shows where the
+  field is, so it reaches 3:1 on every surface (WCAG 1.4.11; Zeus, 2026-11-08, #70). Darker than the mockup's
+  `#D3D0C9` / `#3E3A33`.
 - **Status** (each also has an icon, never colour alone): Generating (slate), Needs fix (red), In review (gold family:
   deep amber text in light), With client (violet), Approved (green), Exported (grey). **QC:** pass (green), warn
   (amber), fail (red).
@@ -280,7 +301,8 @@ that switch under `.dark`.
 
 ## Typography
 
-Inter is the only interface font (self-hosted). 14 px base, 13 px meta; headings 22 / 16 / 14 px at 650–600 weight
+Inter is the only interface font (self-hosted), with the mockup's system sans stack behind it in case it doesn't load.
+14 px base, 13 px meta, both at 1.5 line height; headings 22 / 16 / 14 px at 650–600 weight
 with slight negative tracking; eyebrows 11 px, 600, uppercase, wide tracking; tabular numbers in meters, counters and
 tables. Post previews use each brand's own fonts, not these.
 
@@ -291,8 +313,8 @@ mobile-first (390 px). The app frame is a 228 px sidebar beside the content.
 
 ## Elevation & Depth
 
-Borders instead of heavy shadows. One soft shadow lifts the app frame and menus off the page (light: two layers at 6%
-and 8% ink; dark: 40% and 35% black). Nothing else is raised.
+Borders instead of heavy shadows. One soft shadow (`shadow-frame`) lifts the app frame and menus off the page (light:
+two layers at 6% and 8% ink; dark: 40% and 35% black). Nothing else is raised.
 
 ## Shapes
 
@@ -302,7 +324,7 @@ Radius 8 px on controls (`md`), 12 px on cards (`lg`). Pills (counts, tags) are 
 
 shadcn/ui components in `packages/ui`, Base UI underneath, Lucide icons only, each in the component gallery in every
 state, light and dark. Buttons: primary gold, secondary, ghost, destructive, about 36 px tall. Focus is a solid 2 px
-outline in `ring` with a 2 px gap, never a see-through ring. Motion is 150–200 ms, a shimmer on generating cards, and
+outline in `ring` with a 2 px gap, never a see-through ring. Motion is 150–200 ms (transitions default to 150 ms), a shimmer on generating cards, and
 nothing moves under reduced motion.
 
 ## Do's and Don'ts

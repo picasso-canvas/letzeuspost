@@ -6,7 +6,7 @@
 <style>
 /* Layout: a calm pro tool. Neutral stone surfaces, one gold accent used as a fill; clients' posts carry the color. */
 :root {
-  --bg: #F7F6F4; --surface: #FFFFFF; --surface-2: #F1F0EC; --border: #E4E2DD; --border-strong: #D3D0C9;
+  --bg: #F7F6F4; --surface: #FFFFFF; --surface-2: #F1F0EC; --border: #E4E2DD; --border-strong: #D3D0C9; --input: #8A857D;
   --ink: #1C1A17; --muted: #5B5750; --faint: #6F6A62;
   --gold: #F5B301; --on-gold: #1C1A17; --accent-text: #8A5D00; --focus: #1C1A17;
   --st-gen: #5C6B7E; --st-fix: #C2261F; --st-review: #8A5D00; --st-client: #6D3FD1; --st-ok: #13773D; --st-done: #6F6A62;
@@ -16,14 +16,14 @@
   --r-ctl: 8px; --r-card: 12px;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #11100E; --surface: #191815; --surface-2: #22201C; --border: #2F2C27; --border-strong: #3E3A33;
+  --bg: #11100E; --surface: #191815; --surface-2: #22201C; --border: #2F2C27; --border-strong: #3E3A33; --input: #706B63;
   --ink: #F3F1EC; --muted: #B3AEA4; --faint: #8C877E;
   --gold: #F5B301; --on-gold: #1C1A17; --accent-text: #F5B301; --focus: #F5B301;
   --st-gen: #94A3B8; --st-fix: #F87171; --st-review: #F5B301; --st-client: #B39DFA; --st-ok: #4ADE80; --st-done: #A8A29E;
   --qc-pass: #4ADE80; --qc-warn: #FBBF24; --qc-fail: #F87171;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35); color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --bg: #11100E; --surface: #191815; --surface-2: #22201C; --border: #2F2C27; --border-strong: #3E3A33;
+  --bg: #11100E; --surface: #191815; --surface-2: #22201C; --border: #2F2C27; --border-strong: #3E3A33; --input: #706B63;
   --ink: #F3F1EC; --muted: #B3AEA4; --faint: #8C877E;
   --gold: #F5B301; --on-gold: #1C1A17; --accent-text: #F5B301; --focus: #F5B301;
   --st-gen: #94A3B8; --st-fix: #F87171; --st-review: #F5B301; --st-client: #B39DFA; --st-ok: #4ADE80; --st-done: #A8A29E;
@@ -168,7 +168,7 @@ table.t tr.cur td { background: var(--surface-2); }
 /* forms */
 .field { display: grid; gap: 5px; }
 .field label { font-size: 12.5px; font-weight: 550; color: var(--muted); }
-.input, .textarea, .select { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--r-ctl); background: var(--surface); padding: 7px 10px; min-width: 0; }
+.input, .textarea, .select { width: 100%; border: 1px solid var(--input); border-radius: var(--r-ctl); background: var(--surface); padding: 7px 10px; min-width: 0; }
 .textarea { min-height: 70px; resize: vertical; }
 .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; }
 .kv { display: grid; grid-template-columns: 140px minmax(0,1fr); gap: 10px 16px; font-size: 13.5px; }
@@ -296,7 +296,7 @@ table.t tr.cur td { background: var(--surface-2); }
 .rv-actions .ok { background: #13773D; border-color: #13773D; color: #fff; }
 .rv-done { padding: 10px 12px 12px; color: #13773D; font-weight: 600; font-size: 13px; display: flex; gap: 6px; align-items: center; }
 .rv-hello { margin: 12px; padding: 12px; border-radius: 12px; background: #FFF8E1; border: 1px solid #F3D78A; display: grid; gap: 8px; font-size: 13px; }
-.rv-hello input { border: 1px solid #D3D0C9; border-radius: 8px; padding: 8px; background: #fff; color: #1C1A17; }
+.rv-hello input { border: 1px solid #8A857D; border-radius: 8px; padding: 8px; background: #fff; color: #1C1A17; }
 .rv-cr { padding: 0 12px 12px; display: grid; gap: 8px; }
 .rv-cr textarea { border: 1px solid #D3D0C9; border-radius: 8px; padding: 8px; min-height: 64px; background: #fff; color: #1C1A17; }
 

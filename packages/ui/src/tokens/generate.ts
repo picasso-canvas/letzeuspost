@@ -1,7 +1,8 @@
 // The design tokens (§21, #70): `pnpm tokens` pipes `design.md export --format css-tailwind DESIGN.md` into this file,
 // which writes theme.css (the light tokens as Tailwind's @theme) and dark.css (each `<name>-dark` partner on its light
 // name under `.dark`). DESIGN.md's format has no light/dark modes, so the dark values live there as partners.
-// CI regenerates both files and fails if they differ from the committed ones.
+// CI regenerates both files and fails if they differ from the committed ones. What the export drops or the format
+// can't hold (line heights, tabular numbers, the font stack, the shadow, the motion) is in base.css, by hand.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 

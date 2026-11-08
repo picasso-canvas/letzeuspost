@@ -10,29 +10,42 @@ const mockup = readFileSync(
 );
 
 /** The value of `--name` in the CSS block that starts at `selector`. */
-function declared(css: string, selector: string, name: string): string | undefined {
+function declared(css: string, selector: string, name: string): string {
   const start = css.indexOf(selector);
-  if (start === -1) return undefined;
-  const block = css.slice(start, css.indexOf('}', start));
-  return new RegExp(`--${name}:\\s*([^;]+);`).exec(block)?.[1]?.trim();
+  const block = start === -1 ? '' : css.slice(start, css.indexOf('}', start));
+  const value = new RegExp(`--${name}:\\s*([^;]+);`).exec(block)?.[1]?.trim();
+  // Missing on both sides would compare equal, so a missing value fails here.
+  if (value === undefined) throw new Error(`no --${name} in ${selector}`);
+  return value;
 }
 
 const mockupShadow = (selector: string) => declared(mockup, selector, 'shadow');
 
+/** Prettier's spelling and the mockup's compare equal: quotes, spaces and leading zeros don't count. */
+const norm = (value: string) =>
+  value
+    .replaceAll("'", '"')
+    .replace(/\s+/g, '')
+    .replace(/(?<![\d.])0\./g, '.');
+
 describe('base.css (#70)', () => {
   it("uses the mockup's interface font stack, so a missing Inter falls back to a system sans", () => {
-    expect(declared(base, '@theme', 'font-sans')).toBe(declared(mockup, ':root {', 'ui'));
+    expect(norm(declared(base, '@theme', 'font-sans'))).toBe(
+      norm(declared(mockup, ':root {', 'ui')),
+    );
   });
 
   it('gives body and meta text a 1.5 line height and the numbers style tabular figures', () => {
     expect(declared(base, '@theme', 'text-body--line-height')).toBe('1.5');
     expect(declared(base, '@theme', 'text-meta--line-height')).toBe('1.5');
-    expect(declared(base, '@theme', 'font-numbers--font-feature-settings')).toBe('"tnum"');
+    expect(norm(declared(base, '@theme', 'font-numbers--font-feature-settings'))).toBe('"tnum"');
   });
 
   it("lifts the frame and menus with the mockup's shadow, light and dark", () => {
-    expect(declared(base, '@theme', 'shadow-frame')).toBe(mockupShadow(':root {'));
-    expect(declared(base, '.dark', 'shadow-frame')).toBe(mockupShadow(':root[data-theme="dark"]'));
+    expect(norm(declared(base, '@theme', 'shadow-frame'))).toBe(norm(mockupShadow(':root {')));
+    expect(norm(declared(base, '.dark', 'shadow-frame'))).toBe(
+      norm(mockupShadow(':root[data-theme="dark"]')),
+    );
   });
 
   it('times transitions at 150 ms (§05: 150–200 ms)', () => {
