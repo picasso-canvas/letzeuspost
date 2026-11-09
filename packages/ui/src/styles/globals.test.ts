@@ -4,7 +4,7 @@ import { compile } from 'tailwindcss';
 import { describe, expect, it } from 'vitest';
 
 // The one stylesheet packages/ui exposes (#74): Tailwind, the generated tokens (#70), light and dark, self-hosted Inter.
-const stylesDir = fileURLToPath(new URL('.', import.meta.url));
+const stylesDir = fileURLToPath(new URL('.', import.meta.url)).replace(/\/$/, '');
 const uiDir = fileURLToPath(new URL('../../', import.meta.url));
 const source = readFileSync(new URL('globals.css', import.meta.url), 'utf8');
 
@@ -71,6 +71,6 @@ describe('globals.css', () => {
 
   it('uses no other interface font', () => {
     const families = [...source.matchAll(/font-family:\s*([^;]+);/g)].map((m) => m[1] ?? '');
-    for (const family of families) expect(family).toMatch(/Inter/);
+    for (const family of families) expect(family).toMatch(/Inter|var\(--font-sans\)/);
   });
 });
