@@ -57,7 +57,7 @@ describe('the shadcn components', () => {
     const own = {
       default: 'bg-primary',
       secondary: 'text-secondary-foreground',
-      ghost: 'dark:hover:bg-muted/50',
+      ghost: 'hover:bg-accent',
       destructive: 'text-destructive',
       outline: 'border-border',
       link: 'underline',
@@ -82,10 +82,34 @@ describe('the shadcn components', () => {
     }
   });
 
-  it('darkens the gold on hover, as the mockup does, instead of washing it out', () => {
+  it("fills the primary button with the mockup's hover gold on hover, from the token", () => {
     const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
-    expect(classes).toContain('hover:brightness-90');
-    expect(classes).not.toContain('hover:bg-primary/80');
+    expect(classes).toContain('hover:bg-primary-hover');
+    expect(classes.filter((c) => /brightness|hover:bg-primary\//.test(c))).toEqual([]);
+  });
+
+  it("sets button text at the mockup's 550 weight (font-button), not 500", () => {
+    const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
+    expect(classes).toContain('font-button');
+    expect(classes).not.toContain('font-medium');
+  });
+
+  it('tints a ghost button with the secondary surface on hover, which shows in dark too', () => {
+    const classes = classesOf(renderToStaticMarkup(<Button variant="ghost">Cancel</Button>));
+    expect(classes).toContain('hover:bg-accent');
+    expect(classes.filter((c) => /bg-muted/.test(c))).toEqual([]);
+  });
+
+  it('fills an input with the card surface in both themes, so the page never shows through', () => {
+    const classes = classesOf(renderToStaticMarkup(<Input aria-label="Brand name" />));
+    expect(classes).toContain('bg-card');
+    expect(classes.filter((c) => /(^|:)bg-(transparent|input)/.test(c))).toEqual([]);
+  });
+
+  it('draws an invalid input with a solid destructive border and no halo or see-through red', () => {
+    const classes = classesOf(renderToStaticMarkup(<Input aria-label="Brand name" aria-invalid />));
+    expect(classes).toContain('aria-invalid:border-destructive');
+    expect(classes.filter((c) => /aria-invalid:.*ring|destructive\//.test(c))).toEqual([]);
   });
 
   it('draws focus as a solid 2 px outline with a 2 px gap, never a see-through ring (§05 mockup)', () => {
@@ -163,6 +187,34 @@ describe('the shadcn components', () => {
       <FieldError errors={[{ message: 'Too long.' }, { message: 'Too long.' }]} />,
     );
     expect(html.match(/Too long\./g)).toHaveLength(1);
+  });
+
+  it("sets a label quiet and close to its field, as the mockup does, and red when it's invalid", () => {
+    const html = renderToStaticMarkup(
+      <Field>
+        <FieldLabel htmlFor="x">Brand name</FieldLabel>
+        <Input id="x" />
+      </Field>,
+    );
+    const label = classesOf(/<label[^>]*>/.exec(html)?.[0] ?? '');
+    for (const cls of ['text-label', 'font-label', 'text-muted-foreground'])
+      expect(label).toContain(cls);
+    expect(label).toContain('group-data-[invalid=true]/field:text-destructive');
+    expect(label).not.toContain('text-sm');
+    expect(label).not.toContain('font-medium');
+    const field = classesOf(html);
+    expect(field).toContain('gap-1');
+    expect(field).not.toContain('gap-3');
+  });
+
+  it("dims a disabled field's description along with its label", () => {
+    const html = renderToStaticMarkup(
+      <Field data-disabled>
+        <FieldDescription>As your clients know it.</FieldDescription>
+      </Field>,
+    );
+    const description = /<p[^>]*class="([^"]*)"/.exec(html)?.[1]?.split(' ') ?? [];
+    expect(description).toContain('group-data-[disabled=true]/field:opacity-50');
   });
 
   it('renders a label', () => {
