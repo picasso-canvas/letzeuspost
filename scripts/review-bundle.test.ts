@@ -453,11 +453,18 @@ describe('buildBundle for a batch (#132)', () => {
     );
   const bundleFor = (
     commits: Record<number, string>,
-    files: Record<string, string[]>,
+    files: Record<string, string[] | string[][]>,
     inBase: string[] = [],
     titles: Record<number, string> = {},
+    opts: { gated?: number[]; counts?: Record<number, number> } = {},
   ) => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-batch-'));
+    // The gate's merge log: which task PRs it merged into staging (all of them unless a test says otherwise).
+    const gated = opts.gated ?? Object.keys(commits).map(Number);
+    writeFileSync(
+      join(state, 'merges.jsonl'),
+      gated.map((pr) => JSON.stringify({ pr, result: 'merged', base: 'staging' })).join('\n'),
+    );
     const gh = (args: string[]) => {
       const j = args.join(' ');
       if (j.includes('headRefOid,body'))
@@ -475,10 +482,26 @@ describe('buildBundle for a batch (#132)', () => {
       }
       const list = /pulls\/(\d+)\/commits/.exec(j);
       if (list) return commits[Number(list[1])] ?? '[]';
+      const count = /pulls\/(\d+) /.exec(`${j} `);
+      if (count) {
+        const pr = Number(count[1]);
+        const listed = commits[pr];
+        return String(
+          opts.counts?.[pr] ??
+            (listed === undefined ? 0 : (JSON.parse(listed) as unknown[]).length),
+        );
+      }
       const compare = /compare\/(staging|main)\.\.\.([0-9a-f]{40})/.exec(j);
       if (compare) return inBase.includes(compare[2] ?? '') ? 'behind' : 'diverged';
       const one = /commits\/([0-9a-f]{40})/.exec(j);
-      if (one) return JSON.stringify(files[one[1] ?? ''] ?? []);
+      if (one) {
+        // GitHub's commit endpoint, paged and slurped: one commit object per page of files.
+        const given = files[one[1] ?? ''] ?? [];
+        const pages = (Array.isArray(given[0]) ? given : [given]) as string[][];
+        return JSON.stringify(
+          pages.map((page) => ({ files: page.map((filename) => ({ filename })) })),
+        );
+      }
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';
       return '';
@@ -539,6 +562,46 @@ describe('buildBundle for a batch (#132)', () => {
     expect(tasks).toMatch(
       /`fffffff` .*\(a merge NOT from the base: check it\) — `packages\/core\/src\/a\.ts`/,
     );
+  });
+
+  it('pages through a commit with more than 300 files, so a file past the first page still shows', () => {
+    const many = Array.from({ length: 300 }, (_, i) => `packages/core/src/t${String(i)}.test.ts`);
+    const tasks = bundleFor(
+      { 93: restCommits([{ c: 'a', subject: 'test(core): many tests', parents: ['0'] }]) },
+      { [sha('a')]: [many, ['packages/core/src/hidden-code.ts']] },
+    );
+    expect(tasks).toContain('`packages/core/src/hidden-code.ts`');
+  });
+
+  it("says so when GitHub's commit list is shorter than the PR's commit count", () => {
+    const tasks = bundleFor(
+      { 93: restCommits([{ c: 'a', subject: 'test(core): failing tests', parents: ['0'] }]) },
+      { [sha('a')]: ['a.test.ts'] },
+      [],
+      {},
+      { counts: { 93: 260 } },
+    );
+    expect(tasks).toMatch(/only 1 of PR #93's 260 commits/);
+  });
+
+  it('marks a task PR the merge log has no gate merge for as unverified', () => {
+    const tasks = bundleFor(
+      {
+        93: restCommits([{ c: 'a', subject: 'test: a', parents: ['0'] }]),
+        99: restCommits([{ c: 'c', subject: 'test: c', parents: ['0'] }]),
+      },
+      { [sha('a')]: ['a.test.ts'], [sha('c')]: ['c.test.ts'] },
+      [],
+      {},
+      { gated: [93] },
+    );
+    expect(tasks).toMatch(/## PR #99: .*\(not merged into staging by the gate: unverified\)/);
+    expect(tasks).not.toMatch(/## PR #93: .*unverified/);
+  });
+
+  it("says plainly when GitHub's reply can't be read, instead of crashing the review", () => {
+    const tasks = bundleFor({ 93: 'not json' }, {});
+    expect(tasks).toMatch(/Couldn't list PR #93's commits/);
   });
 
   it("keeps the builder's titles, subjects and file names to one printable line each", () => {
