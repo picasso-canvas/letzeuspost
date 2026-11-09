@@ -52,9 +52,14 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
   `GIT_CONFIG_GLOBAL` file holding only the commit name, email and an empty `credential.helper`), `LZP_ROLE=builder`,
   and no GitHub host on the sandbox's network allowlist. A builder can't push, open or edit PRs, comment, label or
   merge, whatever command it tries (`gh`, `gh api`, `curl`, `git push`).
-- **No Docker socket and no shared `.git`.** A container is root-equivalent and could write anywhere on the Mac, so
-  dispatch starts the task's service containers itself and hands over only their localhost ports. Each builder works
-  in its own clone, not a git worktree, so hooks or settings it plants in its `.git` never reach Athena's checkout.
+- **No Docker socket and no shared `.git`.** A container is root-equivalent and could write anywhere on the Mac.
+  Each builder works in its own clone, not a git worktree, so hooks or settings it plants in its `.git` never reach
+  Athena's checkout.
+- **No service containers for builders** (Zeus, 2026-11-09, #67). Claude Code's sandbox can't open one task's
+  localhost ports only: database drivers connect directly, which macOS blocks unless `allowLocalBinding` is on, and
+  that opens every port on localhost (Docker Desktop's own included). So the sandbox stays closed to localhost, and
+  the tests that need Postgres, the file store or Mailpit run in CI's `services` job, on `docker/compose.yml`, on
+  every PR; their failures go back to the builder as findings.
 - The builder reads its task from `.lzp/task.md` and leaves its approach and PR text in `.lzp/` (gitignored).
   **Athena carries the work to GitHub** with Zeus's login through `scripts/ship.ts`, which never runs git inside a builder's
   clone: the builder hands over a git bundle in `.lzp/`, which ship first moves out of the clone (so no builder process
@@ -72,7 +77,7 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 - **Builder-only rules** (`.claude/builder/settings.json`, passed by `scripts/dispatch.ts` with `--settings`):
   - **Sandbox on:** `sandbox.enabled`, `failIfUnavailable`, `allowUnsandboxedCommands: false`. Writes are limited to
     the builder's clone and temp. Network goes only to an allowlist: npm registry, Playwright browser downloads,
-    Google Fonts, and localhost for the task's own service ports. No Unix sockets (no Docker). The sandbox isn't in
+    Google Fonts. No localhost (#67) and no Unix sockets (no Docker). The sandbox isn't in
     everyone's file: it would also stop Athena's own tools.
   - Deny `Edit` of `/.github/**`, `/.claude/**`, `/scripts/**`, `/CLAUDE.md`, `**/CLAUDE.md`, `/docs/plan/**`,
     `/DESIGN.md`, `pnpm-workspace.yaml`, lint/TypeScript/test/format configs (`tsconfig*.json`, `eslint.config.*`,
