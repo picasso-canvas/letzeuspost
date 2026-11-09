@@ -53,6 +53,11 @@ export async function applyState(page: Page, tags: string[]): Promise<void> {
   }
   if (tags.includes('focus')) {
     await page.keyboard.press('Tab');
+    // Tab into a text field selects its text, and the browser's blue selection would be frozen into the baseline.
+    // Put the caret at the end instead, as when someone clicks after the last letter.
+    await page.locator(':focus-visible').evaluate((el) => {
+      if (el instanceof HTMLInputElement) el.setSelectionRange(el.value.length, el.value.length);
+    });
   }
 }
 

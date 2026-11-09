@@ -62,6 +62,19 @@ for (const story of stories) {
   });
 }
 
+// Tabbing into a field selects its text, and the browser's blue selection would be frozen into the baseline.
+for (const story of focusStories) {
+  test(`focus leaves no text selected in ${story.title} › ${story.name}`, async ({ page }) => {
+    await openStory(page, story.id, 'light');
+    await applyState(page, story.tags);
+    const selected = await page.locator(':focus-visible').evaluate((el) => {
+      if (!(el instanceof HTMLInputElement)) return 0;
+      return Math.abs((el.selectionEnd ?? 0) - (el.selectionStart ?? 0));
+    });
+    expect(selected).toBe(0);
+  });
+}
+
 for (const theme of THEMES) {
   for (const story of focusStories) {
     test(`${theme}: focus is a solid 2 px outline with a 2 px gap in ${story.title} › ${story.name}`, async ({
