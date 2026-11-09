@@ -441,7 +441,22 @@ describe('failure reasons and refusals', () => {
 });
 
 describe('buildBundle for a batch (#132)', () => {
-  it("lists each task PR's own commits, oldest first, with the files each one touched", () => {
+  const sha = (c: string) => c.repeat(40);
+  /** A task PR's commits as GitHub's REST API lists them, in whatever order it returns. */
+  const restCommits = (list: { c: string; subject: string; parents: string[] }[]) =>
+    JSON.stringify(
+      list.map(({ c, subject, parents }) => ({
+        sha: sha(c),
+        parents: parents.map((p) => ({ sha: p.length === 1 ? sha(p) : p })),
+        commit: { message: `${subject}\n\nbody` },
+      })),
+    );
+  const bundleFor = (
+    commits: Record<number, string>,
+    files: Record<string, string[]>,
+    inBase: string[] = [],
+    titles: Record<number, string> = {},
+  ) => {
     const state = mkdtempSync(join(tmpdir(), 'lzp-batch-'));
     const gh = (args: string[]) => {
       const j = args.join(' ');
@@ -453,25 +468,14 @@ describe('buildBundle for a batch (#132)', () => {
           headRefName: 'staging',
         });
       if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
-      if (j.startsWith('pr view 93 ') && j.includes('title,commits'))
-        return JSON.stringify({
-          title: '[M0] Dry run',
-          commits: [
-            { oid: 'a'.repeat(40), messageHeadline: 'test(core): failing tests' },
-            { oid: 'b'.repeat(40), messageHeadline: 'feat(core): the code' },
-            { oid: 'd'.repeat(40), messageHeadline: "Merge branch 'staging' into 33-dry-run" },
-          ],
-        });
-      if (j.startsWith('pr view 99 ') && j.includes('title,commits'))
-        return JSON.stringify({
-          title: '[M0] Settings',
-          commits: [{ oid: 'c'.repeat(40), messageHeadline: 'test(config): settings tests' }],
-        });
-      const commit = (files: string[], parents = 1) => JSON.stringify({ files, parents });
-      if (j.includes(`commits/${'a'.repeat(40)}`)) return commit(['packages/core/src/a.test.ts']);
-      if (j.includes(`commits/${'b'.repeat(40)}`)) return commit(['packages/core/src/a.ts']);
-      if (j.includes(`commits/${'c'.repeat(40)}`)) return commit(['config/env.test.ts']);
-      if (j.includes(`commits/${'d'.repeat(40)}`)) return commit(['.github/workflows/ci.yml'], 2);
+      const title = /^pr view (\d+) .*--json title/.exec(j);
+      if (title) return JSON.stringify({ title: titles[Number(title[1])] ?? `Task ${title[1]}` });
+      const list = /pulls\/(\d+)\/commits/.exec(j);
+      if (list) return commits[Number(list[1])] ?? '[]';
+      const compare = /compare\/(staging|main)\.\.\.([0-9a-f]{40})/.exec(j);
+      if (compare) return inBase.includes(compare[2] ?? '') ? 'behind' : 'diverged';
+      const one = /commits\/([0-9a-f]{40})/.exec(j);
+      if (one) return JSON.stringify(files[one[1] ?? ''] ?? []);
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';
       return '';
@@ -480,17 +484,72 @@ describe('buildBundle for a batch (#132)', () => {
       if (args[0] === 'rev-parse') return `${SHA}\n`;
       if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta.ts\0`;
       if (args[0] === 'log' && args.includes('--first-parent'))
-        return 'Merge main into staging (merge gate)\n[M0] Settings (#99)\n[M0] Dry run (#93)\n';
+        return `Merge main into staging (merge gate)\n${Object.keys(commits)
+          .reverse()
+          .map((n) => `[M0] Task (#${n})`)
+          .join('\n')}\n`;
       return '';
     };
     const result = buildBundle(130, { gh, git, blob: () => Buffer.from('a'), now: () => 5 }, state);
-    const tasks = readFileSync(join(result.bundle, 'tasks.md'), 'utf8');
-    expect(tasks).toMatch(
-      /## PR #93: \[M0\] Dry run[\s\S]*`aaaaaaa` test\(core\): failing tests[\s\S]*`packages\/core\/src\/a\.test\.ts`[\s\S]*`bbbbbbb` feat\(core\): the code[\s\S]*## PR #99: \[M0\] Settings[\s\S]*`ccccccc`/,
+    return readFileSync(join(result.bundle, 'tasks.md'), 'utf8');
+  };
+
+  it("lists each task PR's own commits by their parent links, with the files each one touched", () => {
+    // GitHub's list order can follow dates, which a builder sets: here the code commit is listed first.
+    const tasks = bundleFor(
+      {
+        93: restCommits([
+          { c: 'b', subject: 'feat(core): the code', parents: ['a'] },
+          { c: 'a', subject: 'test(core): failing tests', parents: ['0'] },
+        ]),
+        99: restCommits([{ c: 'c', subject: 'test(config): settings tests', parents: ['0'] }]),
+      },
+      {
+        [sha('a')]: ['packages/core/src/a.test.ts'],
+        [sha('b')]: ['packages/core/src/a.ts'],
+        [sha('c')]: ['config/env.test.ts'],
+      },
     );
-    // An update from staging is a merge: GitHub lists the base's files for it, which the task never touched.
-    expect(tasks).toMatch(/`ddddddd` .*a merge from the base; its files aren't the task's/);
+    expect(tasks).toMatch(
+      /## PR #93: Task 93[\s\S]*`aaaaaaa` test\(core\): failing tests — `packages\/core\/src\/a\.test\.ts`\n- `bbbbbbb` feat\(core\): the code[\s\S]*## PR #99[\s\S]*`ccccccc`/,
+    );
+  });
+
+  it('marks a merge from the base without its files, and lists a merge from anywhere else with a warning', () => {
+    const tasks = bundleFor(
+      {
+        93: restCommits([
+          { c: 'a', subject: 'test(core): failing tests', parents: ['0'] },
+          { c: 'd', subject: "Merge branch 'staging' into 93", parents: ['a', 'e'] },
+          { c: 'f', subject: 'Merge side work', parents: ['d', '9'] },
+        ]),
+      },
+      {
+        [sha('a')]: ['packages/core/src/a.test.ts'],
+        [sha('d')]: ['.github/workflows/ci.yml'],
+        [sha('f')]: ['packages/core/src/a.ts'],
+      },
+      [sha('e')],
+    );
+    expect(tasks).toMatch(/`ddddddd` .*\(a merge from the base; its files aren't the task's\)/);
     expect(tasks).not.toContain('.github/workflows/ci.yml');
+    expect(tasks).toMatch(
+      /`fffffff` .*\(a merge NOT from the base: check it\) — `packages\/core\/src\/a\.ts`/,
+    );
+  });
+
+  it("keeps the builder's titles, subjects and file names to one printable line each", () => {
+    const tasks = bundleFor(
+      { 93: restCommits([{ c: 'a', subject: 'test: x\u202Eevil', parents: ['0'] }]) },
+      { [sha('a')]: ['a`b.ts', 'line\nbreak.ts'] },
+      [],
+      { 93: 'Title\u200Bwith\nnewline' },
+    );
+    const lines = tasks.split('\n');
+    expect(lines.filter((l) => l.startsWith('- `aaaaaaa`'))).toHaveLength(1);
+    expect(tasks).not.toMatch(/[\u202E\u200B]/);
+    expect(tasks).not.toContain('a`b.ts');
+    expect(lines.filter((l) => l.startsWith('## PR #93'))).toHaveLength(1);
   });
 });
 
