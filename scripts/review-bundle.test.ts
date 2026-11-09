@@ -133,6 +133,7 @@ describe('buildBundle', () => {
     expect(gitCalls).toContain(`diff --text origin/main...${SHA}`);
     expect(gitCalls).toContain(`log --reverse -p --cc --text origin/main..${SHA}`);
     expect(ghCalls.some((c) => c.startsWith('issue view 9'))).toBe(false);
+    expect(existsSync(join(result.bundle, 'tasks.md'))).toBe(false); // only a batch gets one (#132)
   });
 });
 
@@ -436,6 +437,54 @@ describe('failure reasons and refusals', () => {
     expect(result.refusal).toMatch(/^`a\/b` /);
     expect(result.refusal).not.toContain(state);
     expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe('logo.png');
+  });
+});
+
+describe('buildBundle for a batch (#132)', () => {
+  it("lists each task PR's own commits, oldest first, with the files each one touched", () => {
+    const state = mkdtempSync(join(tmpdir(), 'lzp-batch-'));
+    const gh = (args: string[]) => {
+      const j = args.join(' ');
+      if (j.includes('headRefOid,body'))
+        return JSON.stringify({
+          headRefOid: SHA,
+          body: 'Batch',
+          baseRefName: 'main',
+          headRefName: 'staging',
+        });
+      if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
+      if (j.startsWith('pr view 93 ') && j.includes('title,commits'))
+        return JSON.stringify({
+          title: '[M0] Dry run',
+          commits: [
+            { oid: 'a'.repeat(40), messageHeadline: 'test(core): failing tests' },
+            { oid: 'b'.repeat(40), messageHeadline: 'feat(core): the code' },
+          ],
+        });
+      if (j.startsWith('pr view 99 ') && j.includes('title,commits'))
+        return JSON.stringify({
+          title: '[M0] Settings',
+          commits: [{ oid: 'c'.repeat(40), messageHeadline: 'test(config): settings tests' }],
+        });
+      if (j.includes(`commits/${'a'.repeat(40)}`)) return 'packages/core/src/a.test.ts\n';
+      if (j.includes(`commits/${'b'.repeat(40)}`)) return 'packages/core/src/a.ts\n';
+      if (j.includes(`commits/${'c'.repeat(40)}`)) return 'config/env.test.ts\n';
+      if (j.startsWith('pr checks')) return 'ci pass';
+      if (j.includes('comments,reviews')) return '{}';
+      return '';
+    };
+    const git = (args: string[]) => {
+      if (args[0] === 'rev-parse') return `${SHA}\n`;
+      if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta.ts\0`;
+      if (args[0] === 'log' && args.includes('--first-parent'))
+        return 'Merge main into staging (merge gate)\n[M0] Settings (#99)\n[M0] Dry run (#93)\n';
+      return '';
+    };
+    const result = buildBundle(130, { gh, git, blob: () => Buffer.from('a'), now: () => 5 }, state);
+    const tasks = readFileSync(join(result.bundle, 'tasks.md'), 'utf8');
+    expect(tasks).toMatch(
+      /## PR #93: \[M0\] Dry run[\s\S]*`aaaaaaa` test\(core\): failing tests[\s\S]*`packages\/core\/src\/a\.test\.ts`[\s\S]*`bbbbbbb` feat\(core\): the code[\s\S]*## PR #99: \[M0\] Settings[\s\S]*`ccccccc`/,
+    );
   });
 });
 
