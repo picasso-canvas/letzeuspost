@@ -19,6 +19,7 @@ import { changedFilesFromGit, parseConfig, REPO } from './merge-gate/collect.ts'
 import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
 import { requiredReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
+import { taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -324,7 +325,49 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
     join(bundle, 'comments.json'),
     JSON.stringify({ conversation, reviewComments }, null, 2),
   );
+  if (base === 'main' && branch === 'staging') {
+    // A batch: the gate squash-merges each task PR into staging, so history.patch shows one commit per task (#132).
+    const subjects = git(['log', '--first-parent', '--format=%s', `origin/${base}..${sha}`]);
+    writeFileSync(join(bundle, 'tasks.md'), taskHistory(taskPrs(subjects), gh));
+  }
   return { bundle, outDir, sha, changed, refusal };
+}
+
+/**
+ * tasks.md for a batch (#132): each task PR's own commits from GitHub, oldest first, with the files each one touched,
+ * so reviewers can see each task's tests came before its code. Titles, subjects and file names are the builder's: one
+ * printable line each.
+ */
+export function taskHistory(prs: readonly number[], gh: (args: string[]) => string): string {
+  const sections = prs.map((pr) => {
+    const { title, commits } = JSON.parse(
+      gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'title,commits']),
+    ) as { title: string; commits: { oid: string; messageHeadline: string }[] };
+    const lines = commits.map(({ oid, messageHeadline }) => {
+      const { files, parents } = JSON.parse(
+        gh([
+          'api',
+          `repos/${REPO}/commits/${oid}`,
+          '--jq',
+          '{files: [.files[].filename], parents: (.parents | length)}',
+        ]),
+      ) as { files: string[]; parents: number };
+      const head = `- \`${oid.slice(0, 7)}\` ${safeName(messageHeadline)}`;
+      // An update from the base is a merge: GitHub lists the base's files for it, which the task never touched.
+      if (parents > 1) return `${head} (a merge from the base; its files aren't the task's)`;
+      const touched = files.map((name) => `\`${safeName(name)}\``).join(', ');
+      return touched === '' ? head : `${head} — ${touched}`;
+    });
+    return `## PR #${String(pr)}: ${safeName(title)}\n\n${lines.join('\n')}`;
+  });
+  return [
+    "# The batch's task PRs, each with its own commits (oldest first)",
+    '',
+    'The gate squash-merges each task PR into `staging`, so `history.patch` shows one commit per task. These are the',
+    "task PRs' own commits, as GitHub lists them.",
+    '',
+    ...sections.flatMap((section) => [section, '']),
+  ].join('\n');
 }
 
 export interface ReviewDeps {
