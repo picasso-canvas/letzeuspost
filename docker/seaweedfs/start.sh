@@ -31,7 +31,15 @@ until echo "s3.bucket.list" | weed shell >/dev/null 2>&1; do
   fi
   sleep 1
 done
-# On a kept volume the bucket already exists, and weed shell says so; either way it's there afterwards.
-echo "s3.bucket.create -name ${STORAGE_BUCKET}" | weed shell >/dev/null 2>&1 || true
+# `s3.bucket.list` prints each bucket as two spaces, its name and a tab. On a kept volume the bucket is already there.
+listed() { echo "s3.bucket.list" | weed shell 2>/dev/null | grep -qF "$(printf '  %s\t' "$STORAGE_BUCKET")"; }
+if ! listed; then
+  echo "s3.bucket.create -name ${STORAGE_BUCKET}" | weed shell
+fi
+if ! listed; then
+  echo "start.sh: the bucket ${STORAGE_BUCKET} isn't there after creating it" >&2
+  kill "$server"
+  exit 1
+fi
 touch /tmp/lzp-ready
 wait "$server"

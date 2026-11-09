@@ -77,10 +77,11 @@ jobs:
             exit 1
           fi
           psql "$DATABASE_OWNER_URL" -tAc 'create table smoke (i int); drop table smoke'
-          if PGPASSWORD=wrong psql -h 127.0.0.1 -U lzp_app -d letzeuspost -tAc 'select 1' 2>/dev/null; then
+          if PGPASSWORD=wrong psql -h 127.0.0.1 -U lzp_app -d letzeuspost -tAc 'select 1' 2> "$RUNNER_TEMP/pg.err"; then
             echo "::error::a wrong password was accepted"
             exit 1
           fi
+          grep -q 'password authentication failed for user "lzp_app"' "$RUNNER_TEMP/pg.err" # not just any failure
 
       - name: 'Smoke: file store'
         run: |
@@ -126,7 +127,8 @@ jobs:
           pnpm --filter @lzp/web build
           pnpm exec playwright test --project app-light --project app-dark
 
-      # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines.
+      # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
+      # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
       - name: Upload the end-to-end screenshots
         if: ${{ !cancelled() && steps.e2e.outcome != 'skipped' && hashFiles('tests/visual/output/**') != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

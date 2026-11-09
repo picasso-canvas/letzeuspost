@@ -6,11 +6,11 @@
 # so each one is reviewed and checked by squawk. Servers get the same script in M6.
 set -eu
 
-psql --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+psql --set ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --set db="$POSTGRES_DB" \
   --set owner_password="$LZP_PG_OWNER_PASSWORD" --set app_password="$LZP_PG_APP_PASSWORD" <<'SQL'
 CREATE ROLE lzp_owner LOGIN PASSWORD :'owner_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 CREATE ROLE lzp_app LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-ALTER DATABASE letzeuspost OWNER TO lzp_owner;
+ALTER DATABASE :"db" OWNER TO lzp_owner;
 ALTER SCHEMA public OWNER TO lzp_owner;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO lzp_app;
