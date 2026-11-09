@@ -98,7 +98,7 @@ describe('the shadcn components', () => {
         'focus-visible:outline-2',
         'focus-visible:outline-offset-2',
         'focus-visible:outline-solid',
-        'focus-visible:outline-ring',
+        'outline-ring',
       ])
         expect(classes).toContain(cls);
       expect(classes.filter((c) => /^focus-visible:ring/.test(c))).toEqual([]);
