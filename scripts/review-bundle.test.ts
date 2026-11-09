@@ -469,7 +469,10 @@ describe('buildBundle for a batch (#132)', () => {
         });
       if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
       const title = /^pr view (\d+) .*--json title/.exec(j);
-      if (title) return JSON.stringify({ title: titles[Number(title[1])] ?? `Task ${title[1]}` });
+      if (title) {
+        const pr = title[1] ?? '';
+        return JSON.stringify({ title: titles[Number(pr)] ?? `Task ${pr}` });
+      }
       const list = /pulls\/(\d+)\/commits/.exec(j);
       if (list) return commits[Number(list[1])] ?? '[]';
       const compare = /compare\/(staging|main)\.\.\.([0-9a-f]{40})/.exec(j);

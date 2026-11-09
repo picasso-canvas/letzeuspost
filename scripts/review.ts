@@ -334,40 +334,76 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
 }
 
 /**
- * tasks.md for a batch (#132): each task PR's own commits from GitHub, oldest first, with the files each one touched,
- * so reviewers can see each task's tests came before its code. Titles, subjects and file names are the builder's: one
- * printable line each.
+ * tasks.md for a batch (#132): each task PR's own commits from GitHub, in parent-link order (not GitHub's list order,
+ * which can follow dates a builder sets), with the files each one touched, so reviewers can see each task's tests came
+ * before its code. A merge is checked: if its other parents are on `staging` or `main` it's an update from the base,
+ * whose files aren't the task's; otherwise it's listed with its files and a warning. Titles, subjects and file names
+ * are the builder's: one printable line each.
  */
 export function taskHistory(prs: readonly number[], gh: (args: string[]) => string): string {
+  const inBase = (commit: string) =>
+    ['staging', 'main'].some((base) =>
+      ['behind', 'identical'].includes(
+        gh(['api', `repos/${REPO}/compare/${base}...${commit}`, '--jq', '.status']).trim(),
+      ),
+    );
   const sections = prs.map((pr) => {
-    const { title, commits } = JSON.parse(
-      gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'title,commits']),
-    ) as { title: string; commits: { oid: string; messageHeadline: string }[] };
-    const lines = commits.map(({ oid, messageHeadline }) => {
-      const { files, parents } = JSON.parse(
+    const { title } = JSON.parse(gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'title'])) as {
+      title: string;
+    };
+    const listed = (
+      JSON.parse(
         gh([
           'api',
-          `repos/${REPO}/commits/${oid}`,
-          '--jq',
-          '{files: [.files[].filename], parents: (.parents | length)}',
+          `repos/${REPO}/pulls/${String(pr)}/commits?per_page=100`,
+          '--paginate',
+          '--slurp',
         ]),
-      ) as { files: string[]; parents: number };
-      const head = `- \`${oid.slice(0, 7)}\` ${safeName(messageHeadline)}`;
-      // An update from the base is a merge: GitHub lists the base's files for it, which the task never touched.
-      if (parents > 1) return `${head} (a merge from the base; its files aren't the task's)`;
-      const touched = files.map((name) => `\`${safeName(name)}\``).join(', ');
-      return touched === '' ? head : `${head} — ${touched}`;
+      ) as unknown[]
+    ).flat() as { sha: string; parents: { sha: string }[]; commit: { message: string } }[];
+    const lines = parentOrder(listed).map(({ sha, parents, commit }) => {
+      const head = `- \`${sha.slice(0, 7)}\` ${safeName(commit.message.split('\n')[0] ?? '')}`;
+      const merge = parents.length > 1;
+      if (merge && parents.slice(1).every(({ sha: parent }) => inBase(parent)))
+        return `${head} (a merge from the base; its files aren't the task's)`;
+      const files = (
+        JSON.parse(
+          gh(['api', `repos/${REPO}/commits/${sha}`, '--jq', '[.files[].filename]']),
+        ) as string[]
+      ).map((name) => `\`${safeName(name)}\``);
+      const warning = merge ? ' (a merge NOT from the base: check it)' : '';
+      return files.length > 0 ? `${head}${warning} — ${files.join(', ')}` : `${head}${warning}`;
     });
     return `## PR #${String(pr)}: ${safeName(title)}\n\n${lines.join('\n')}`;
   });
   return [
-    "# The batch's task PRs, each with its own commits (oldest first)",
+    "# The batch's task PRs, each with its own commits (oldest first, by parent links)",
     '',
     'The gate squash-merges each task PR into `staging`, so `history.patch` shows one commit per task. These are the',
-    "task PRs' own commits, as GitHub lists them.",
+    "task PRs' own commits, as GitHub lists them, put in order by their parent links.",
     '',
     ...sections.flatMap((section) => [section, '']),
   ].join('\n');
+}
+
+/** Commits in parent-link order: each after every parent of it in the list; ties keep the list's order. */
+function parentOrder<T extends { sha: string; parents: { sha: string }[] }>(
+  commits: readonly T[],
+): T[] {
+  const inList = new Set(commits.map(({ sha }) => sha));
+  const placed = new Set<string>();
+  const ordered: T[] = [];
+  while (ordered.length < commits.length) {
+    const next = commits.find(
+      ({ sha, parents }) =>
+        !placed.has(sha) &&
+        parents.every(({ sha: parent }) => !inList.has(parent) || placed.has(parent)),
+    );
+    if (next === undefined) throw new Error("the task PR's commits have a parent loop");
+    placed.add(next.sha);
+    ordered.push(next);
+  }
+  return ordered;
 }
 
 export interface ReviewDeps {
