@@ -459,6 +459,7 @@ describe('buildBundle for a batch (#132)', () => {
           commits: [
             { oid: 'a'.repeat(40), messageHeadline: 'test(core): failing tests' },
             { oid: 'b'.repeat(40), messageHeadline: 'feat(core): the code' },
+            { oid: 'd'.repeat(40), messageHeadline: "Merge branch 'staging' into 33-dry-run" },
           ],
         });
       if (j.startsWith('pr view 99 ') && j.includes('title,commits'))
@@ -466,9 +467,11 @@ describe('buildBundle for a batch (#132)', () => {
           title: '[M0] Settings',
           commits: [{ oid: 'c'.repeat(40), messageHeadline: 'test(config): settings tests' }],
         });
-      if (j.includes(`commits/${'a'.repeat(40)}`)) return 'packages/core/src/a.test.ts\n';
-      if (j.includes(`commits/${'b'.repeat(40)}`)) return 'packages/core/src/a.ts\n';
-      if (j.includes(`commits/${'c'.repeat(40)}`)) return 'config/env.test.ts\n';
+      const commit = (files: string[], parents = 1) => JSON.stringify({ files, parents });
+      if (j.includes(`commits/${'a'.repeat(40)}`)) return commit(['packages/core/src/a.test.ts']);
+      if (j.includes(`commits/${'b'.repeat(40)}`)) return commit(['packages/core/src/a.ts']);
+      if (j.includes(`commits/${'c'.repeat(40)}`)) return commit(['config/env.test.ts']);
+      if (j.includes(`commits/${'d'.repeat(40)}`)) return commit(['.github/workflows/ci.yml'], 2);
       if (j.startsWith('pr checks')) return 'ci pass';
       if (j.includes('comments,reviews')) return '{}';
       return '';
@@ -485,6 +488,9 @@ describe('buildBundle for a batch (#132)', () => {
     expect(tasks).toMatch(
       /## PR #93: \[M0\] Dry run[\s\S]*`aaaaaaa` test\(core\): failing tests[\s\S]*`packages\/core\/src\/a\.test\.ts`[\s\S]*`bbbbbbb` feat\(core\): the code[\s\S]*## PR #99: \[M0\] Settings[\s\S]*`ccccccc`/,
     );
+    // An update from staging is a merge: GitHub lists the base's files for it, which the task never touched.
+    expect(tasks).toMatch(/`ddddddd` .*a merge from the base; its files aren't the task's/);
+    expect(tasks).not.toContain('.github/workflows/ci.yml');
   });
 });
 
