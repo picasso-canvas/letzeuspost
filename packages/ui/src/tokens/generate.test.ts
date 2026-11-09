@@ -62,4 +62,13 @@ describe('the committed tokens (#70)', () => {
     expect(dark).toContain('--color-ring: #f5b301;');
     expect(theme).toContain('--color-primary: #f5b301;');
   });
+
+  it("carry the mockup's hover gold and its label and button type (#123)", () => {
+    const theme = readFileSync(new URL('theme.css', import.meta.url), 'utf8');
+    const dark = readFileSync(new URL('dark.css', import.meta.url), 'utf8');
+    for (const css of [theme, dark]) expect(css).toContain('--color-primary-hover: #e0a400;');
+    expect(theme).toContain('--text-label: 12.5px;');
+    expect(theme).toContain('--font-weight-label: 550;');
+    expect(theme).toContain('--font-weight-button: 550;');
+  });
 });
