@@ -4,8 +4,8 @@
 // It runs from a clean `main` and never runs git inside the builder's clone (its .git could point git at config the
 // builder wrote). It refuses while any process still works in the clone, then takes the hand-over: the clone's `.lzp`
 // folder moves to ~/.letzeuspost/ship/<issue>/, out of every builder process's reach (a `.lzp` link is refused). The
-// builder's `branch.bundle`, `pr.md` and `approach.md` are read from there as plain files (no symlinks, no hard links,
-// size-limited). The bundle is copied out and fetched into this repo with git
+// builder's `branch.bundle`, `pr.md` and `approach.md` (which a later round may leave out, #125) are read from there as
+// plain files (no symlinks, no hard links, size-limited). The bundle is copied out and fetched into this repo with git
 // hooks and fsmonitor off and fsck on (newer git checks every object; older git skips bundles, so a path part that is
 // empty, `.`, `..` or `.git` is refused too). Every changed path is checked at any depth and in any letter case; protected paths,
 // symlinks and submodules are refused. Then it pushes the branch (never forced), opens or updates the PR with the PR
@@ -85,6 +85,26 @@ export function remoteHead(lsRemote: string, branch: string): string | null {
       return sha;
   }
   return null;
+}
+
+/**
+ * What ship posts on the issue about the approach (#125). Every task's first round hands one over; a later round, one
+ * whose PR is already open, may not (a fix round only applies findings), and then the issue says so in Athena's name
+ * rather than under the builder's header.
+ */
+export function approachComment(
+  approach: string | null,
+  prOpen: boolean,
+): { comment: string } | { refusal: string } {
+  if (approach !== null)
+    return {
+      comment: `Daedalus's approach (builder's text, shipped by 🦉 Athena):\n\n${approach}`,
+    };
+  if (prOpen)
+    return {
+      comment: '🦉 Athena: Daedalus wrote no new approach this round; the one above stands.',
+    };
+  return { refusal: "a task's first round must hand over .lzp/approach.md" };
 }
 
 /**
@@ -190,7 +210,11 @@ function main(argv: string[]): number {
   }
   const lzp = takeHandover(clone, takenPath(issue));
   const prText = readRegularFile(lzp, 'pr.md', MAX_TEXT).toString('utf8');
-  const approach = readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8');
+  // A present approach.md is still read as a plain, size-limited file (a link is refused); a missing one is fine only
+  // on a later round (#125).
+  const approachText = hasEntry(lzp, 'approach.md')
+    ? readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8')
+    : null;
   const openPr = (): number | undefined =>
     (
       JSON.parse(
@@ -209,6 +233,12 @@ function main(argv: string[]): number {
       ) as { number: number }[]
     )[0]?.number;
 
+  const approach = approachComment(approachText, approachText !== null || openPr() !== undefined);
+  if ('refusal' in approach) {
+    console.error(`Refused to ship #${String(issue)}: ${approach.refusal}.`);
+    return 1;
+  }
+
   // Any entry named branch.bundle, even a link, goes the bundle's way and its checks.
   if (!hasEntry(lzp, 'branch.bundle')) {
     const target = textOnlyTarget(
@@ -225,7 +255,7 @@ function main(argv: string[]): number {
     );
     if (dryRun) return 0;
     run('gh', ['pr', 'edit', String(target.pr), '-R', REPO, '--body-file', '-'], prText);
-    const flags = afterShip(issue, prText, approach, record, lzp);
+    const flags = afterShip(issue, prText, approach.comment, record, lzp);
     console.log(`Shipped the text of PR #${String(target.pr)} only${flagNote(flags)}.`);
     return 0;
   }
@@ -327,7 +357,7 @@ function main(argv: string[]): number {
   } else {
     run('gh', ['pr', 'edit', String(pr), '-R', REPO, '--body-file', '-'], prText);
   }
-  const flags = afterShip(issue, prText, approach, record, lzp);
+  const flags = afterShip(issue, prText, approach.comment, record, lzp);
   try {
     run('git', [
       ...SAFE_GIT,
@@ -357,21 +387,17 @@ function hasEntry(dir: string, name: string): boolean {
 }
 
 /**
- * Once the PR text is on GitHub: the approach goes on the issue, the builder's flags become labels, the dispatch record
+ * Once the PR text is on GitHub: the approach comment goes on the issue, the builder's flags become labels, the dispatch record
  * is marked shipped and the hand-over is removed (the PR body and the issue comment keep its words).
  */
 function afterShip(
   issue: number,
   prText: string,
-  approach: string,
+  comment: string,
   record: DispatchRecord,
   lzp: string,
 ): { needsZeus: boolean; blocked: boolean } {
-  run(
-    'gh',
-    ['issue', 'comment', String(issue), '-R', REPO, '--body-file', '-'],
-    `Daedalus's approach (builder's text, shipped by 🦉 Athena):\n\n${approach}`,
-  );
+  run('gh', ['issue', 'comment', String(issue), '-R', REPO, '--body-file', '-'], comment);
   const flags = prFlags(prText);
   if (flags.needsZeus)
     run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'needs-zeus']);
