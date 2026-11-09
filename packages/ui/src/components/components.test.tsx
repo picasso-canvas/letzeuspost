@@ -56,9 +56,9 @@ describe('the shadcn components', () => {
   it('renders a button in each variant, each with its own look', () => {
     const own = {
       default: 'bg-primary',
-      secondary: 'bg-secondary',
+      secondary: 'text-secondary-foreground',
       ghost: 'dark:hover:bg-muted/50',
-      destructive: 'bg-destructive/10',
+      destructive: 'text-destructive',
       outline: 'border-border',
       link: 'underline',
     } as const;
@@ -72,6 +72,20 @@ describe('the shadcn components', () => {
         if (other !== variant && otherCls !== 'underline')
           expect(classesOf(html), `${variant} has ${other}'s ${otherCls}`).not.toContain(otherCls);
     }
+  });
+
+  it("draws the mockup's plain button: a strong border on the card colour, a surface tint on hover", () => {
+    for (const variant of ['secondary', 'destructive'] as const) {
+      const classes = classesOf(renderToStaticMarkup(<Button variant={variant}>Save</Button>));
+      for (const cls of ['border-border-strong', 'bg-card', 'hover:bg-secondary'])
+        expect(classes, variant).toContain(cls);
+    }
+  });
+
+  it('darkens the gold on hover, as the mockup does, instead of washing it out', () => {
+    const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
+    expect(classes).toContain('hover:brightness-90');
+    expect(classes).not.toContain('hover:bg-primary/80');
   });
 
   it('draws focus as a solid 2 px outline with a 2 px gap, never a see-through ring (§05 mockup)', () => {
