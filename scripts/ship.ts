@@ -88,15 +88,25 @@ export function remoteHead(lsRemote: string, branch: string): string | null {
 }
 
 /**
+ * The task branch's open PR from `gh pr list --json number,isCrossRepository`: only one from this repository counts, so
+ * a fork's PR with the same branch name is never taken for the task's own (#125).
+ */
+export function openPrFrom(json: string): number | undefined {
+  return (JSON.parse(json) as { number: number; isCrossRepository: boolean }[]).find(
+    (pr) => !pr.isCrossRepository,
+  )?.number;
+}
+
+/**
  * What ship posts on the issue about the approach (#125). Every task's first round hands one over; a later round, one
  * whose PR is already open, may not (a fix round only applies findings), and then the issue says so in Athena's name
- * rather than under the builder's header.
+ * rather than under the builder's header. A blank approach counts as none.
  */
 export function approachComment(
   approach: string | null,
   prOpen: boolean,
 ): { comment: string } | { refusal: string } {
-  if (approach !== null)
+  if (approach !== null && approach.trim() !== '')
     return {
       comment: `Daedalus's approach (builder's text, shipped by 🦉 Athena):\n\n${approach}`,
     };
@@ -216,24 +226,23 @@ function main(argv: string[]): number {
     ? readRegularFile(lzp, 'approach.md', MAX_TEXT).toString('utf8')
     : null;
   const openPr = (): number | undefined =>
-    (
-      JSON.parse(
-        run('gh', [
-          'pr',
-          'list',
-          '-R',
-          REPO,
-          '--head',
-          branch,
-          '--state',
-          'open',
-          '--json',
-          'number',
-        ]),
-      ) as { number: number }[]
-    )[0]?.number;
+    openPrFrom(
+      run('gh', [
+        'pr',
+        'list',
+        '-R',
+        REPO,
+        '--head',
+        branch,
+        '--state',
+        'open',
+        '--json',
+        'number,isCrossRepository',
+      ]),
+    );
 
-  const approach = approachComment(approachText, approachText !== null || openPr() !== undefined);
+  const hasApproach = approachText !== null && approachText.trim() !== '';
+  const approach = approachComment(approachText, hasApproach || openPr() !== undefined);
   if ('refusal' in approach) {
     console.error(`Refused to ship #${String(issue)}: ${approach.refusal}.`);
     return 1;
