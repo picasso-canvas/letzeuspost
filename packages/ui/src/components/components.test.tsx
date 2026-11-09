@@ -75,11 +75,19 @@ describe('the shadcn components', () => {
   });
 
   it("draws the mockup's plain button: a strong border on the card colour, a surface tint on hover", () => {
-    for (const variant of ['secondary', 'destructive'] as const) {
-      const classes = classesOf(renderToStaticMarkup(<Button variant={variant}>Save</Button>));
-      for (const cls of ['border-border-strong', 'bg-card', 'hover:bg-secondary'])
-        expect(classes, variant).toContain(cls);
-    }
+    const classes = classesOf(renderToStaticMarkup(<Button variant="secondary">Save</Button>));
+    for (const cls of ['border-border-strong', 'bg-card', 'hover:bg-secondary'])
+      expect(classes).toContain(cls);
+  });
+
+  it('outlines the destructive button in the solid destructive red, in both themes (#74 round 5)', () => {
+    // Zeus: not a grey hairline. The card fill and the red text stay; only the border is red.
+    const classes = classesOf(renderToStaticMarkup(<Button variant="destructive">Delete</Button>));
+    for (const cls of ['border-destructive', 'bg-card', 'text-destructive', 'hover:bg-secondary'])
+      expect(classes).toContain(cls);
+    expect(
+      classes.filter((c) => /border-(border|input)|border-destructive\/|dark:border/.test(c)),
+    ).toEqual([]);
   });
 
   it("fills the primary button with the mockup's hover gold on hover, from the token", () => {
@@ -208,6 +216,32 @@ describe('the shadcn components', () => {
     expect(field).not.toContain('gap-3');
   });
 
+  it('keeps a label in the muted colour in every state: focus, hover and filled never change it', () => {
+    // The mockup's `.field label` has one colour. Only an invalid field's label turns red.
+    const html = renderToStaticMarkup(
+      <Field>
+        <FieldLabel htmlFor="x">Brand name</FieldLabel>
+        <Input id="x" />
+      </Field>,
+    );
+    const label = classesOf(/<label[^>]*class="[^"]*"/.exec(html)?.[0] ?? '');
+    expect(label).toContain('text-muted-foreground');
+    const recoloured = label.filter(
+      (c) => /(^|:)text-(?!label$|muted-foreground$)/.test(c) && !c.includes('group-data-[invalid'),
+    );
+    expect(recoloured).toEqual([]);
+  });
+
+  it("sets a field's help text at the meta size in the faint colour, as the mockup's hint is", () => {
+    const html = renderToStaticMarkup(
+      <FieldDescription>As your clients know it.</FieldDescription>,
+    );
+    const description = /<p[^>]*class="([^"]*)"/.exec(html)?.[1]?.split(' ') ?? [];
+    expect(description).toContain('text-meta');
+    expect(description).toContain('text-faint');
+    expect(description.filter((c) => /^text-(sm|base|muted-foreground)$/.test(c))).toEqual([]);
+  });
+
   it("keeps a disabled field's description at full strength, so it still reads at 4.5:1", () => {
     const html = renderToStaticMarkup(
       <Field data-disabled>
@@ -215,7 +249,7 @@ describe('the shadcn components', () => {
       </Field>,
     );
     const description = /<p[^>]*class="([^"]*)"/.exec(html)?.[1]?.split(' ') ?? [];
-    expect(description).toContain('text-muted-foreground');
+    expect(description).toContain('text-faint');
     expect(description.filter((c) => c.includes('opacity'))).toEqual([]);
   });
 
