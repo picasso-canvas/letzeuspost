@@ -8,6 +8,7 @@
   --color-popover-foreground: #1c1a17;
   --color-primary: #f5b301;
   --color-primary-foreground: #1c1a17;
+  --color-primary-hover: #e0a400;
   --color-secondary: #f1f0ec;
   --color-secondary-foreground: #1c1a17;
   --color-muted: #f1f0ec;
@@ -36,6 +37,8 @@
   --font-h2: 'Inter';
   --font-h3: 'Inter';
   --font-eyebrow: 'Inter';
+  --font-label: 'Inter';
+  --font-button: 'Inter';
   --font-numbers: 'Inter';
   --text-body: 14px;
   --text-meta: 13px;
@@ -43,6 +46,8 @@
   --text-h2: 16px;
   --text-h3: 14px;
   --text-eyebrow: 11px;
+  --text-label: 12.5px;
+  --text-button: 14px;
   --text-numbers: 14px;
   --tracking-h1: -0.01em;
   --tracking-h2: -0.01em;
@@ -53,6 +58,8 @@
   --font-weight-h2: 650;
   --font-weight-h3: 600;
   --font-weight-eyebrow: 600;
+  --font-weight-label: 550;
+  --font-weight-button: 550;
   --radius-md: 8px;
   --radius-lg: 12px;
   --spacing-grid: 8px;
