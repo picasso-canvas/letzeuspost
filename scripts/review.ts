@@ -19,7 +19,7 @@ import { changedFilesFromGit, parseConfig, REPO } from './merge-gate/collect.ts'
 import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
 import { requiredReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
-import { taskPrs } from './batch.ts';
+import { gatedIntoStaging, taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -328,7 +328,10 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
   if (base === 'main' && branch === 'staging') {
     // A batch: the gate squash-merges each task PR into staging, so history.patch shows one commit per task (#132).
     const subjects = git(['log', '--first-parent', '--format=%s', `origin/${base}..${sha}`]);
-    writeFileSync(join(bundle, 'tasks.md'), taskHistory(taskPrs(subjects), gh));
+    writeFileSync(
+      join(bundle, 'tasks.md'),
+      taskHistory(taskPrs(subjects), gh, gatedIntoStaging(stateDir)),
+    );
   }
   return { bundle, outDir, sha, changed, refusal };
 }
@@ -340,14 +343,25 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
  * whose files aren't the task's; otherwise it's listed with its files and a warning. Titles, subjects and file names
  * are the builder's: one printable line each.
  */
-export function taskHistory(prs: readonly number[], gh: (args: string[]) => string): string {
+export function taskHistory(
+  prs: readonly number[],
+  gh: (args: string[]) => string,
+  gated: ReadonlySet<number>,
+): string {
   const inBase = (commit: string) =>
     ['staging', 'main'].some((base) =>
       ['behind', 'identical'].includes(
         gh(['api', `repos/${REPO}/compare/${base}...${commit}`, '--jq', '.status']).trim(),
       ),
     );
-  const sections = prs.map((pr) => {
+  // GitHub pages a commit's files (300 a page) and stops at 3000.
+  const filesOf = (commit: string) => {
+    const pages = JSON.parse(
+      gh(['api', `repos/${REPO}/commits/${commit}`, '--paginate', '--slurp']),
+    ) as { files?: { filename: string }[] }[];
+    return pages.flatMap((page) => (page.files ?? []).map(({ filename }) => filename));
+  };
+  const task = (pr: number): string => {
     const { title } = JSON.parse(gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'title'])) as {
       title: string;
     };
@@ -361,20 +375,49 @@ export function taskHistory(prs: readonly number[], gh: (args: string[]) => stri
         ]),
       ) as unknown[]
     ).flat() as { sha: string; parents: { sha: string }[]; commit: { message: string } }[];
+    // GitHub stops a PR's commit list at 250, whatever the paging.
+    const count = Number(
+      gh(['api', `repos/${REPO}/pulls/${String(pr)}`, '--jq', '.commits']).trim(),
+    );
+    const notes = [
+      ...(gated.has(pr) ? [] : [' (not merged into staging by the gate: unverified)']),
+    ];
     const lines = parentOrder(listed).map(({ sha, parents, commit }) => {
       const head = `- \`${sha.slice(0, 7)}\` ${safeName(commit.message.split('\n')[0] ?? '')}`;
       const merge = parents.length > 1;
       if (merge && parents.slice(1).every(({ sha: parent }) => inBase(parent)))
         return `${head} (a merge from the base; its files aren't the task's)`;
-      const files = (
-        JSON.parse(
-          gh(['api', `repos/${REPO}/commits/${sha}`, '--jq', '[.files[].filename]']),
-        ) as string[]
-      ).map((name) => `\`${safeName(name)}\``);
-      const warning = merge ? ' (a merge NOT from the base: check it)' : '';
-      return files.length > 0 ? `${head}${warning} — ${files.join(', ')}` : `${head}${warning}`;
+      const files = filesOf(sha);
+      const shown = files.map((name) => `\`${safeName(name)}\``).join(', ');
+      const warning = `${merge ? ' (a merge NOT from the base: check it)' : ''}${
+        files.length >= 3000
+          ? " (GitHub lists only a commit's first 3000 files: check the rest)"
+          : ''
+      }`;
+      return shown === '' ? `${head}${warning}` : `${head}${warning} — ${shown}`;
     });
-    return `## PR #${String(pr)}: ${safeName(title)}\n\n${lines.join('\n')}`;
+    const short =
+      listed.length < count
+        ? [
+            `Only ${String(listed.length)} of PR #${String(pr)}'s ${String(count)} commits are listed (GitHub's limit): check the rest on GitHub.`,
+            '',
+          ]
+        : [];
+    return [
+      `## PR #${String(pr)}: ${safeName(title)}${notes.join('')}`,
+      '',
+      ...short,
+      ...lines,
+    ].join('\n');
+  };
+  const sections = prs.map((pr) => {
+    try {
+      return task(pr);
+    } catch (error) {
+      // A reply that isn't what GitHub's API returns: say so, so a reviewer checks by hand rather than trusting a gap.
+      const reason = error instanceof Error ? error.message : String(error);
+      return `## PR #${String(pr)}\n\nCouldn't list PR #${String(pr)}'s commits (${safeName(reason.split('\n')[0] ?? '')}): check them on GitHub before passing the batch.`;
+    }
   });
   return [
     "# The batch's task PRs, each with its own commits (oldest first, by parent links)",

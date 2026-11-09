@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -581,7 +581,7 @@ describe('buildBundle for a batch (#132)', () => {
       {},
       { counts: { 93: 260 } },
     );
-    expect(tasks).toMatch(/only 1 of PR #93's 260 commits/);
+    expect(tasks).toMatch(/only 1 of PR #93's 260 commits/i);
   });
 
   it('marks a task PR the merge log has no gate merge for as unverified', () => {

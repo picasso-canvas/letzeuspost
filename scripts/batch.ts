@@ -76,10 +76,11 @@ function run(cmd: string, args: string[], input?: string): string {
   });
 }
 
-function gatedIntoStaging(): Set<number> {
+/** The task PRs the gate merged into staging, from its merge log (#132 reads it too); none when there's no log. */
+export function gatedIntoStaging(stateDir = STATE_DIR): Set<number> {
   let text: string;
   try {
-    text = readFileSync(join(STATE_DIR, 'merges.jsonl'), 'utf8');
+    text = readFileSync(join(stateDir, 'merges.jsonl'), 'utf8');
   } catch {
     return new Set();
   }
