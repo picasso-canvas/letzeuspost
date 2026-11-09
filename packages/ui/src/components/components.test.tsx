@@ -105,6 +105,26 @@ describe('the shadcn components', () => {
     }
   });
 
+  it("sets the ring colour at rest, in every variant, so focus never fades in from the text's colour", () => {
+    // `transition` animates outline-color. With the colour set only on :focus-visible, it starts from currentColor
+    // (the text, or the destructive red) and a read just after focus sees that, not the ring token (#74 round 2).
+    const variants = ['default', 'outline', 'secondary', 'ghost', 'destructive', 'link'] as const;
+    const buttons = variants.map((variant) =>
+      renderToStaticMarkup(<Button variant={variant}>Approve</Button>),
+    );
+    const inputs = [
+      renderToStaticMarkup(<Input aria-label="Brand name" />),
+      renderToStaticMarkup(<Input aria-label="Brand name" aria-invalid />),
+    ];
+    for (const html of [...buttons, ...inputs]) {
+      const classes = classesOf(html);
+      expect(classes).toContain('outline-ring');
+      expect(
+        classes.filter((c) => /outline-(destructive|primary|foreground|current)/.test(c)),
+      ).toEqual([]);
+    }
+  });
+
   it('keeps gold off text in light mode: the link is ink, gold only in dark (§05, §21)', () => {
     const classes = classesOf(renderToStaticMarkup(<Button variant="link">Open</Button>));
     expect(classes).toContain('text-foreground');
