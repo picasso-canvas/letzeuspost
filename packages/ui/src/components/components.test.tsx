@@ -56,9 +56,9 @@ describe('the shadcn components', () => {
   it('renders a button in each variant, each with its own look', () => {
     const own = {
       default: 'bg-primary',
-      secondary: 'bg-secondary',
-      ghost: 'dark:hover:bg-muted/50',
-      destructive: 'bg-destructive/10',
+      secondary: 'text-secondary-foreground',
+      ghost: 'hover:bg-accent',
+      destructive: 'text-destructive',
       outline: 'border-border',
       link: 'underline',
     } as const;
@@ -74,6 +74,58 @@ describe('the shadcn components', () => {
     }
   });
 
+  it("draws the mockup's plain button: a strong border on the card colour, a surface tint on hover", () => {
+    const classes = classesOf(renderToStaticMarkup(<Button variant="secondary">Save</Button>));
+    for (const cls of ['border-border-strong', 'bg-card', 'hover:bg-secondary'])
+      expect(classes).toContain(cls);
+  });
+
+  it('outlines the destructive button in the solid destructive red, in both themes (#74 round 5)', () => {
+    // Zeus: not a grey hairline. The card fill and the red text stay; only the border is red.
+    const classes = classesOf(renderToStaticMarkup(<Button variant="destructive">Delete</Button>));
+    for (const cls of ['border-destructive', 'bg-card', 'text-destructive', 'hover:bg-secondary'])
+      expect(classes).toContain(cls);
+    // No other colour for the resting border, and no see-through red in a theme (the invalid halo is shared).
+    expect(
+      classes.filter(
+        (c) =>
+          !c.includes('aria-invalid') &&
+          /border-(border|input)|border-destructive\/|dark:border/.test(c),
+      ),
+    ).toEqual([]);
+  });
+
+  it("fills the primary button with the mockup's hover gold on hover, from the token", () => {
+    const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
+    expect(classes).toContain('hover:bg-primary-hover');
+    expect(classes.filter((c) => /brightness|hover:bg-primary\//.test(c))).toEqual([]);
+  });
+
+  it("sets button text at the mockup's 550 weight from the token, not 500", () => {
+    // Tailwind reads `font-button` as the font family (`--font-button`), so the weight is asked for by type.
+    const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
+    expect(classes).toContain('font-(weight:--font-weight-button)');
+    expect(classes.filter((c) => /^font-(medium|button)$/.test(c))).toEqual([]);
+  });
+
+  it('tints a ghost button with the secondary surface on hover, which shows in dark too', () => {
+    const classes = classesOf(renderToStaticMarkup(<Button variant="ghost">Cancel</Button>));
+    expect(classes).toContain('hover:bg-accent');
+    expect(classes.filter((c) => /bg-muted/.test(c))).toEqual([]);
+  });
+
+  it('fills an input with the card surface in both themes, so the page never shows through', () => {
+    const classes = classesOf(renderToStaticMarkup(<Input aria-label="Brand name" />));
+    expect(classes).toContain('bg-card');
+    expect(classes.filter((c) => /^(dark:)?bg-(transparent|input)/.test(c))).toEqual([]);
+  });
+
+  it('draws an invalid input with a solid destructive border and no halo or see-through red', () => {
+    const classes = classesOf(renderToStaticMarkup(<Input aria-label="Brand name" aria-invalid />));
+    expect(classes).toContain('aria-invalid:border-destructive');
+    expect(classes.filter((c) => /aria-invalid:.*ring|destructive\//.test(c))).toEqual([]);
+  });
+
   it('draws focus as a solid 2 px outline with a 2 px gap, never a see-through ring (§05 mockup)', () => {
     for (const html of [
       renderToStaticMarkup(<Button>Approve</Button>),
@@ -84,10 +136,30 @@ describe('the shadcn components', () => {
         'focus-visible:outline-2',
         'focus-visible:outline-offset-2',
         'focus-visible:outline-solid',
-        'focus-visible:outline-ring',
+        'outline-ring',
       ])
         expect(classes).toContain(cls);
       expect(classes.filter((c) => /^focus-visible:ring/.test(c))).toEqual([]);
+    }
+  });
+
+  it("sets the ring colour at rest, in every variant, so focus never fades in from the text's colour", () => {
+    // `transition` animates outline-color. With the colour set only on :focus-visible, it starts from currentColor
+    // (the text, or the destructive red) and a read just after focus sees that, not the ring token (#74 round 2).
+    const variants = ['default', 'outline', 'secondary', 'ghost', 'destructive', 'link'] as const;
+    const buttons = variants.map((variant) =>
+      renderToStaticMarkup(<Button variant={variant}>Approve</Button>),
+    );
+    const inputs = [
+      renderToStaticMarkup(<Input aria-label="Brand name" />),
+      renderToStaticMarkup(<Input aria-label="Brand name" aria-invalid />),
+    ];
+    for (const html of [...buttons, ...inputs]) {
+      const classes = classesOf(html);
+      expect(classes).toContain('outline-ring');
+      expect(
+        classes.filter((c) => /outline-(destructive|primary|foreground|current)/.test(c)),
+      ).toEqual([]);
     }
   });
 
@@ -129,6 +201,61 @@ describe('the shadcn components', () => {
       <FieldError errors={[{ message: 'Too long.' }, { message: 'Too long.' }]} />,
     );
     expect(html.match(/Too long\./g)).toHaveLength(1);
+  });
+
+  it("sets a label quiet and close to its field, as the mockup does, and red when it's invalid", () => {
+    const html = renderToStaticMarkup(
+      <Field>
+        <FieldLabel htmlFor="x">Brand name</FieldLabel>
+        <Input id="x" />
+      </Field>,
+    );
+    const label = classesOf(/<label[^>]*class="[^"]*"/.exec(html)?.[0] ?? '');
+    for (const cls of ['text-label', 'font-(weight:--font-weight-label)', 'text-muted-foreground'])
+      expect(label).toContain(cls);
+    expect(label).toContain('group-data-[invalid=true]/field:text-destructive');
+    expect(label).not.toContain('text-sm');
+    expect(label.filter((c) => /^font-(medium|label)$/.test(c))).toEqual([]);
+    const field = classesOf(html);
+    expect(field).toContain('gap-1');
+    expect(field).not.toContain('gap-3');
+  });
+
+  it('keeps a label in the muted colour in every state: focus, hover and filled never change it', () => {
+    // The mockup's `.field label` has one colour. Only an invalid field's label turns red.
+    const html = renderToStaticMarkup(
+      <Field>
+        <FieldLabel htmlFor="x">Brand name</FieldLabel>
+        <Input id="x" />
+      </Field>,
+    );
+    const label = classesOf(/<label[^>]*class="[^"]*"/.exec(html)?.[0] ?? '');
+    expect(label).toContain('text-muted-foreground');
+    const recoloured = label.filter(
+      (c) => /(^|:)text-(?!label$|muted-foreground$)/.test(c) && !c.includes('group-data-[invalid'),
+    );
+    expect(recoloured).toEqual([]);
+  });
+
+  it("sets a field's help text at the meta size in the faint colour, as the mockup's hint is", () => {
+    const html = renderToStaticMarkup(
+      <FieldDescription>As your clients know it.</FieldDescription>,
+    );
+    const description = /<p[^>]*class="([^"]*)"/.exec(html)?.[1]?.split(' ') ?? [];
+    expect(description).toContain('text-meta');
+    expect(description).toContain('text-faint');
+    expect(description.filter((c) => /^text-(sm|base|muted-foreground)$/.test(c))).toEqual([]);
+  });
+
+  it("keeps a disabled field's description at full strength, so it still reads at 4.5:1", () => {
+    const html = renderToStaticMarkup(
+      <Field data-disabled>
+        <FieldDescription>As your clients know it.</FieldDescription>
+      </Field>,
+    );
+    const description = /<p[^>]*class="([^"]*)"/.exec(html)?.[1]?.split(' ') ?? [];
+    expect(description).toContain('text-faint');
+    expect(description.filter((c) => c.includes('opacity'))).toEqual([]);
   });
 
   it('renders a label', () => {

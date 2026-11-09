@@ -43,12 +43,24 @@ To the approved design (§05, §21 and the v1 mockup; Iris on #108):
    `input.tsx`); the pressed nudge (`translate-y-px`) only under `motion-safe:`.
 8. **8 px grid:** `field.tsx` `FieldGroup` `gap-7` (28 px) → `gap-6` (24 px).
 
+To the mockup and WCAG AA (#74, with `DESIGN.md`'s tokens in place; `button.contrast.test.ts` checks every variant's text
+on its own fill, resting and hovered, in light and dark):
+
+9. **Primary hover darkens the gold**, as the mockup's `.btn-gold:hover` does: `hover:bg-primary/80` →
+   `hover:brightness-90` (there is no darker gold token, and a filter adds no colour).
+10. **`secondary` is the mockup's plain button:** a strong border on the card colour, the surface tint on hover:
+    `bg-secondary hover:bg-secondary/80` → `border-border-strong bg-card hover:bg-secondary` (and
+    `aria-expanded:bg-secondary`, as before).
+11. **`destructive`:** shadcn's soft red tint (`bg-destructive/10`, hover `/20`, dark `/20` and `/30`) puts
+    `text-destructive` under AA when hovered (3.9:1 on the page in light, 4.2:1 in dark) and on a `secondary` surface
+    even at rest (4.4:1 and 4.3:1), and the mockup has no destructive button. It is now the plain button of change 10
+    with destructive text: `border-border-strong bg-card text-destructive hover:bg-secondary
+    aria-expanded:bg-secondary`. Every state passes 4.5:1 (§05: every colour pair passes AA).
+
 `'use client'`: the files were first added with `components.json` `rsc: false`, so the CLI stripped the registry's
 `'use client'` from `label.tsx` and `field.tsx` (`FieldError` uses `useMemo`). `rsc` is now `true`, both have it back
 as the registry ships them, and a test checks that every component using a React hook has it (Argus on #108).
 
-Not changed here, for #74: the `outline` and `link` button variants, which §05's set (primary gold, secondary, ghost,
-destructive) doesn't name; the primary button's hover (`bg-primary/80` lightens the gold, the mockup darkens it) and
-the `secondary` variant's border (the mockup's plain button has a strong border on the surface colour), which need
-`DESIGN.md`'s tokens (Iris on #108). Colours, radius and fonts come from the tokens `DESIGN.md` generates (#70); the stylesheet
-is #74's.
+Not changed: the `outline` and `link` button variants, which §05's set (primary gold, secondary, ghost, destructive)
+doesn't name, and so aren't in the gallery. Colours, radius and fonts come from the tokens `DESIGN.md` generates (#70);
+the stylesheet that loads them is `src/styles/globals.css` (#74).
