@@ -18,6 +18,7 @@ import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import {
   approachComment,
   fetchBundle,
+  openPrFrom,
   parseDispatchRecord,
   parseShipArgs,
   prFlags,
@@ -99,6 +100,24 @@ describe('approachComment (#125)', () => {
     expect(approachComment(null, false)).toEqual({
       refusal: "a task's first round must hand over .lzp/approach.md",
     });
+  });
+
+  it('treats a blank approach like a missing one (Argus on #126)', () => {
+    expect(approachComment('  \n\t', true)).toEqual(approachComment(null, true));
+    expect(approachComment('  \n\t', false)).toEqual(approachComment(null, false));
+  });
+});
+
+describe('openPrFrom (#125)', () => {
+  it("takes the task branch's open PR from this repository only, never one from a fork with the same branch name", () => {
+    expect(openPrFrom('[{"number":120,"isCrossRepository":false}]')).toBe(120);
+    expect(openPrFrom('[{"number":7,"isCrossRepository":true}]')).toBeUndefined();
+    expect(
+      openPrFrom(
+        '[{"number":7,"isCrossRepository":true},{"number":120,"isCrossRepository":false}]',
+      ),
+    ).toBe(120);
+    expect(openPrFrom('[]')).toBeUndefined();
   });
 });
 
