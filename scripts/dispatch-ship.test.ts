@@ -16,6 +16,7 @@ import {
 } from './dispatch.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import {
+  approachComment,
   fetchBundle,
   parseDispatchRecord,
   parseShipArgs,
@@ -76,6 +77,28 @@ describe('prFlags', () => {
       blocked: false,
     });
     expect(prFlags('**Blocked:** the database isn’t up').blocked).toBe(true);
+  });
+});
+
+describe('approachComment (#125)', () => {
+  it("posts the builder's approach under its header", () => {
+    expect(approachComment('Tests first, then the stylesheet.', false)).toEqual({
+      comment:
+        "Daedalus's approach (builder's text, shipped by 🦉 Athena):\n\nTests first, then the stylesheet.",
+    });
+  });
+
+  it("ships a later round without one, saying so in Athena's name, not as the builder's text", () => {
+    const result = approachComment(null, true);
+    expect(result).toEqual({
+      comment: '🦉 Athena: Daedalus wrote no new approach this round; the one above stands.',
+    });
+  });
+
+  it("refuses a task's first round without one", () => {
+    expect(approachComment(null, false)).toEqual({
+      refusal: "a task's first round must hand over .lzp/approach.md",
+    });
   });
 });
 
