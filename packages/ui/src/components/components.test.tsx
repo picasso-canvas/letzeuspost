@@ -88,10 +88,11 @@ describe('the shadcn components', () => {
     expect(classes.filter((c) => /brightness|hover:bg-primary\//.test(c))).toEqual([]);
   });
 
-  it("sets button text at the mockup's 550 weight (font-button), not 500", () => {
+  it("sets button text at the mockup's 550 weight from the token, not 500", () => {
+    // Tailwind reads `font-button` as the font family (`--font-button`), so the weight is asked for by type.
     const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
-    expect(classes).toContain('font-button');
-    expect(classes).not.toContain('font-medium');
+    expect(classes).toContain('font-(weight:--font-weight-button)');
+    expect(classes.filter((c) => /^font-(medium|button)$/.test(c))).toEqual([]);
   });
 
   it('tints a ghost button with the secondary surface on hover, which shows in dark too', () => {
@@ -103,7 +104,7 @@ describe('the shadcn components', () => {
   it('fills an input with the card surface in both themes, so the page never shows through', () => {
     const classes = classesOf(renderToStaticMarkup(<Input aria-label="Brand name" />));
     expect(classes).toContain('bg-card');
-    expect(classes.filter((c) => /(^|:)bg-(transparent|input)/.test(c))).toEqual([]);
+    expect(classes.filter((c) => /^(dark:)?bg-(transparent|input)/.test(c))).toEqual([]);
   });
 
   it('draws an invalid input with a solid destructive border and no halo or see-through red', () => {
@@ -196,12 +197,12 @@ describe('the shadcn components', () => {
         <Input id="x" />
       </Field>,
     );
-    const label = classesOf(/<label[^>]*>/.exec(html)?.[0] ?? '');
-    for (const cls of ['text-label', 'font-label', 'text-muted-foreground'])
+    const label = classesOf(/<label[^>]*class="[^"]*"/.exec(html)?.[0] ?? '');
+    for (const cls of ['text-label', 'font-(weight:--font-weight-label)', 'text-muted-foreground'])
       expect(label).toContain(cls);
     expect(label).toContain('group-data-[invalid=true]/field:text-destructive');
     expect(label).not.toContain('text-sm');
-    expect(label).not.toContain('font-medium');
+    expect(label.filter((c) => /^font-(medium|label)$/.test(c))).toEqual([]);
     const field = classesOf(html);
     expect(field).toContain('gap-1');
     expect(field).not.toContain('gap-3');

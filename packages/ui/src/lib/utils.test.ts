@@ -25,11 +25,10 @@ describe('cn', () => {
     expect(cn('text-sm', 'text-label')).toBe('text-label');
   });
 
-  it("treats each of DESIGN.md's weights as a font weight that a later weight replaces", () => {
-    const weights = namesOf('font-weight');
-    expect(weights).toContain('button');
-    for (const weight of weights)
-      expect(cn(`font-${weight}`, 'font-bold'), weight).toBe('font-bold');
-    expect(cn('font-medium', 'font-button')).toBe('font-button');
+  it("lets DESIGN.md's weight, asked for by type, replace Tailwind's and be replaced by it", () => {
+    expect(cn('font-medium', 'font-(weight:--font-weight-button)')).toBe(
+      'font-(weight:--font-weight-button)',
+    );
+    expect(cn('font-(weight:--font-weight-label)', 'font-bold')).toBe('font-bold');
   });
 });
