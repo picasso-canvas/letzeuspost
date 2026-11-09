@@ -208,14 +208,15 @@ describe('the shadcn components', () => {
     expect(field).not.toContain('gap-3');
   });
 
-  it("dims a disabled field's description along with its label", () => {
+  it("keeps a disabled field's description at full strength, so it still reads at 4.5:1", () => {
     const html = renderToStaticMarkup(
       <Field data-disabled>
         <FieldDescription>As your clients know it.</FieldDescription>
       </Field>,
     );
     const description = /<p[^>]*class="([^"]*)"/.exec(html)?.[1]?.split(' ') ?? [];
-    expect(description).toContain('group-data-[disabled=true]/field:opacity-50');
+    expect(description).toContain('text-muted-foreground');
+    expect(description.filter((c) => c.includes('opacity'))).toEqual([]);
   });
 
   it('renders a label', () => {
