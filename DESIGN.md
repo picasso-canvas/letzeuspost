@@ -14,6 +14,7 @@ colors:
   popover-foreground: "#1C1A17"
   primary: "#F5B301"
   primary-foreground: "#1C1A17"
+  primary-hover: "#E0A400"
   secondary: "#F1F0EC"
   secondary-foreground: "#1C1A17"
   muted: "#F1F0EC"
@@ -45,6 +46,7 @@ colors:
   popover-foreground-dark: "#F3F1EC"
   primary-dark: "#F5B301"
   primary-foreground-dark: "#1C1A17"
+  primary-hover-dark: "#E0A400"
   secondary-dark: "#22201C"
   secondary-foreground-dark: "#F3F1EC"
   muted-dark: "#22201C"
@@ -97,6 +99,14 @@ typography:
     fontSize: 11px
     fontWeight: 600
     letterSpacing: 0.06em
+  label:
+    fontFamily: Inter
+    fontSize: 12.5px
+    fontWeight: 550
+  button:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: 550
   numbers:
     fontFamily: Inter
     fontSize: 14px
@@ -157,6 +167,9 @@ components:
     textColor: "{colors.primary-foreground}"
     rounded: "{rounded.md}"
     height: 36px
+  button-primary-hover:
+    backgroundColor: "{colors.primary-hover}"
+    textColor: "{colors.primary-foreground}"
   status-generating:
     backgroundColor: "{colors.card}"
     textColor: "{colors.status-generating}"
@@ -231,6 +244,9 @@ components:
     textColor: "{colors.primary-foreground-dark}"
     rounded: "{rounded.md}"
     height: 36px
+  button-primary-hover-dark:
+    backgroundColor: "{colors.primary-hover-dark}"
+    textColor: "{colors.primary-foreground-dark}"
   status-generating-dark:
     backgroundColor: "{colors.card-dark}"
     textColor: "{colors.status-generating-dark}"
@@ -279,6 +295,7 @@ into CSS variables in `packages/ui/src/tokens/` that switch under `.dark`. What 
 - **Background / card / popover:** stone `#F7F6F4` behind white cards; dark `#11100E` behind `#191815`.
 - **Foreground (ink):** near-black `#1C1A17` for text and core marks; dark `#F3F1EC`.
 - **Muted foreground:** `#5B5750` for secondary text (dark `#B3AEA4`).
+- **Primary hover `#E0A400`:** the primary button's hover fill, in both themes (the mockup's `.btn-gold:hover`).
 - **Primary (gold) `#F5B301`:** a fill only, always with near-black text on it (`primary-foreground`, about 9.4:1):
   primary buttons, the selected state, the logo and progress. Gold text on white is about 1.9:1, so **gold is never
   text, a border, a ring or an outline in light mode**.
@@ -302,7 +319,8 @@ into CSS variables in `packages/ui/src/tokens/` that switch under `.dark`. What 
 ## Typography
 
 Inter is the only interface font (self-hosted), with the mockup's system sans stack behind it in case it doesn't load.
-14 px base, 13 px meta, both at 1.5 line height; headings 22 / 16 / 14 px at 650–600 weight
+14 px base, 13 px meta, both at 1.5 line height; field labels 12.5 px at 550 in the muted colour (`label`), button
+text 14 px at 550 (`button`); headings 22 / 16 / 14 px at 650–600 weight
 with slight negative tracking; eyebrows 11 px, 600, uppercase, wide tracking; tabular numbers in meters, counters and
 tables. Post previews use each brand's own fonts, not these.
 
