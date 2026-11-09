@@ -52,7 +52,7 @@ function BrandNameField({
 
 /** Default and empty: the placeholder shows an example. */
 export const Empty: Story = {
-  render: () => <BrandNameField placeholder="Golpo Café" />,
+  render: () => <BrandNameField placeholder="e.g. Golpo Café" />,
 };
 
 export const Filled: Story = {
@@ -76,7 +76,7 @@ export const Disabled: Story = {
 
 /** Loading: the value is being read, so it can't be edited yet. */
 export const Loading: Story = {
-  render: () => <BrandNameField placeholder="Golpo Café" readOnly aria-busy />,
+  render: () => <BrandNameField placeholder="e.g. Golpo Café" readOnly aria-busy />,
 };
 
 /** Error: a red border and the text that says what to do, never colour alone. */

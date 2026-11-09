@@ -85,8 +85,13 @@ describe('the shadcn components', () => {
     const classes = classesOf(renderToStaticMarkup(<Button variant="destructive">Delete</Button>));
     for (const cls of ['border-destructive', 'bg-card', 'text-destructive', 'hover:bg-secondary'])
       expect(classes).toContain(cls);
+    // No other colour for the resting border, and no see-through red in a theme (the invalid halo is shared).
     expect(
-      classes.filter((c) => /border-(border|input)|border-destructive\/|dark:border/.test(c)),
+      classes.filter(
+        (c) =>
+          !c.includes('aria-invalid') &&
+          /border-(border|input)|border-destructive\/|dark:border/.test(c),
+      ),
     ).toEqual([]);
   });
 
