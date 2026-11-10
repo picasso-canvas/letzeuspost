@@ -35,7 +35,7 @@ Reviewers never review their own work and always start from a fresh context. The
 1. **Plan → tasks.** When the sections a milestone needs are approved, Athena writes build-task issues from the
    template: Goal · Section links · Spec excerpt · **Done when** (testable) · predicted tier (`routine` /
    `sensitive`) · **Areas** (paths it may touch) · Depends on · Milestone · **Feature**. One task = one small PR (aim for under ~400 changed lines).
-   **Features** ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/19)): a milestone's tasks are
+   **Features** ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/136), recorded on #136): a milestone's tasks are
    grouped into features, each a small vertical slice of 3–5 tasks, aiming at ~1,500 changed lines (one that outgrows
    it is batched in parts, below), labelled
    `feature:<slug>`. A feature's first task writes its journey test: an end-to-end test (Playwright) of what the
@@ -60,9 +60,11 @@ Reviewers never review their own work and always start from a fresh context. The
    flag older than 3 minutes counts as frozen. One
    builder at a time in H0; up to 3 later, only on tasks whose Areas don't overlap and whose dependencies are Done or
    on `staging` in the same feature. A task built on another that is only on `staging` stands or falls with it: a
-   block on that one in the batch review sends back every task built on it. **One feature is open at a time:** dispatch refuses a task from another feature
-   while `staging` holds, or a builder is working on, a task of the open feature. Harness tasks (Athena's, straight into
-   `main`) run alongside. The card moves to In progress.
+   block on that one in the batch review sends back every task built on it. **One feature is open at a time:**
+   dispatch refuses a task from another feature while `staging` holds, or a builder is working on, a task of the open
+   feature. Harness tasks (Athena's, straight into `main`) run alongside, and so do follow-ups (label `follow-up`),
+   which ride the open batch ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/142), so a
+   follow-up of a closed feature can't deadlock with the open one). The card moves to In progress.
 4. **Build.** The builder reads `.lzp/task.md` and the section docs, writes a 3–5 line approach to
    `.lzp/approach.md`, writes tests first for logic, implements, runs `pnpm check` until it is green, commits on its
    branch, and writes the PR text to `.lzp/pr.md`: `Closes #n`, an `Agent: <name>` line, the section link, the
@@ -98,7 +100,7 @@ Reviewers never review their own work and always start from a fresh context. The
    the diff, the history, the PR text, the issue, CI results and comments. They never run the PR's code, and only their
    own recorded verdicts count (§ merge gate, item 5). Blocking findings go back to a builder: on a task PR, a new
    dispatch on the same branch; on a batch, a fix task on `staging`, then the batch is reviewed again. **What holds a
-   batch** (Zeus, 2026-11-10): blocking findings and Cerberus's should-fixes. For each of Argus's and Iris's
+   batch** ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/136), recorded on #136): blocking findings and Cerberus's should-fixes. For each of Argus's and Iris's
    should-fixes and every nit, Athena opens a follow-up task (or adds it to a planned task's Done-when) and links it on
    the batch, which answers it. A follow-up must land by the next batch: the gate refuses a batch while a follow-up
    from an earlier batch is still open, unless Zeus makes an exception on the record. At most 3
@@ -215,11 +217,11 @@ recorded (4). The checklist hadn't changed since 2026-11-07. So every finding no
    report's **Lessons** section lists the types found on 2 or more PRs, and what was done about each.
 3. **Prevented, cheapest first.** A type found on 2 or more PRs gets the cheapest prevention that works: a machine
    check (a test, lint rule, Semgrep rule or script), else a refusal in ship or the merge gate, else a line in the
-   review checklist or an agent file. Athena proposes it in the weekly report; adding to `scripts/`, `.claude/` or
-   CI goes through the merge gate like any harness change. [docs/ops/lessons.md](../ops/lessons.md) keeps each
+   review checklist or an agent file. Athena proposes it in the weekly report and Zeus decides it on the record;
+   adding to `scripts/`, `.claude/` or CI goes through the merge gate like any harness change. [docs/ops/lessons.md](../ops/lessons.md) keeps each
    type, its prevention and its status.
-4. **Decisions on the record at once.** Athena records each of Zeus's chat decisions on its issue or PR, dated, in
-   the same turn he makes it.
+4. **Decisions on the record at once.** Athena records each of Zeus's chat decisions, dated, on the task's own issue
+   or PR (the one in the reviewers' bundle), in the same turn he makes it.
 
 The first preventions (from the 2026-11-10 count): ship refuses a hand-over whose Done-when evidence doesn't name the
 head commit, a fix round whose PR text doesn't answer every numbered finding, and a branch that changes a file

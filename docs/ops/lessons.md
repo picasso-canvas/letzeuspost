@@ -2,8 +2,8 @@
 
 The learning loop's record ([§19](../plan/19-build-team-and-workflow.md#learning-loop-zeus-2026-11-10)): each type of
 finding seen on 2 or more PRs, the prevention chosen for it, and its status. `scripts/lessons.ts` counts the findings;
-the weekly report lists every type found on 2 or more PRs and what was done about each. Cheapest prevention first: a machine check, then a refusal in ship or the merge
-gate, then a checklist or agent line.
+the weekly report lists every type found on 2 or more PRs and what was done about each. Cheapest prevention first: a
+machine check, then a refusal in ship or the merge gate, then a checklist or agent line.
 
 ## The first count (2026-11-10)
 
