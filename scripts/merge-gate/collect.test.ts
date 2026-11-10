@@ -41,7 +41,10 @@ function fakeGh(overrides: Record<string, string | Error> = {}): CollectDeps['gh
   };
   return (args) => {
     const joined = args.join(' ');
-    const key = Object.keys(answers).find((k) => joined.includes(k));
+    // The longest matching key wins, so a test can answer one `pr view` call apart from the others.
+    const key = Object.keys(answers)
+      .filter((k) => joined.includes(k))
+      .sort((x, y) => y.length - x.length)[0];
     if (key === undefined) throw new Error(`unexpected gh call: ${joined}`);
     const answer = answers[key];
     if (answer instanceof Error) throw answer;
@@ -301,5 +304,64 @@ describe("collectFacts: what Athena's hand-over is checked against (#138)", () =
     );
     expect(f.evidenceShas).toEqual([SHA, CARRIED]);
     expect(f.earlierFindingIds).toEqual(['Argus F1', 'Cerberus F2']);
+  });
+});
+
+describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
+  const batchView = JSON.stringify({
+    state: 'OPEN',
+    isDraft: false,
+    baseRefName: 'main',
+    headRefName: 'staging',
+    headRefOid: SHA,
+    title: '[Batch] 2 tasks',
+    mergeable: 'MERGEABLE',
+    body: 'Closes #42',
+    labels: [{ name: 'sensitive' }],
+    closingIssuesReferences: [],
+  });
+  it('gathers the open issues, the merged batches and the PR comments for a batch, and nothing for any other PR', () => {
+    const calls: string[] = [];
+    const gh = fakeGh({
+      'pr view': batchView,
+      '--json comments': JSON.stringify({ comments: [{ body: 'Follow-up: #148' }] }),
+      'issue list': JSON.stringify([
+        {
+          number: 148,
+          labels: [{ name: 'follow-up' }],
+          body: '**Follow-up of:** #130',
+          comments: [{ body: 'a note' }],
+        },
+      ]),
+      'log --first-parent': '',
+    });
+    const f = collectFacts(
+      7,
+      deps({
+        gh: (args) => {
+          calls.push(args.join(' '));
+          return gh(args);
+        },
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readMergeLog: () => [
+          { result: 'merged', base: 'main', kind: 'batch', pr: 130 },
+          { result: 'merged', base: 'staging', issue: 42, pr: 50 },
+        ],
+      }),
+    );
+    expect(f.mergedBatches).toEqual([130]);
+    expect(f.openIssues).toEqual([
+      { number: 148, labels: ['follow-up'], body: '**Follow-up of:** #130', comments: ['a note'] },
+    ]);
+    expect(f.prComments).toEqual(['Follow-up: #148']);
+
+    calls.length = 0;
+    const other = collectFacts(
+      7,
+      deps({ gh: (args) => (calls.push(args.join(' ')), fakeGh()(args)) }),
+    );
+    expect(other.openIssues).toEqual([]);
+    expect(other.prComments).toEqual([]);
+    expect(calls.some((c) => c.startsWith('issue list'))).toBe(false);
   });
 });
