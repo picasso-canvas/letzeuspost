@@ -14,8 +14,6 @@ const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 const HASH = /^[0-9a-f]{16,128}$/;
 // A file name inside an export: letters, digits, dot, dash, underscore; never starts with a dot (so never `.` or `..`).
 const FILE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$/;
-// Any part of any key a builder makes.
-const SAFE_PART = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 
 export const ASSET_VARIANTS = ['original', '1600', '360'] as const;
 export type AssetVariant = (typeof ASSET_VARIANTS)[number];
@@ -59,17 +57,36 @@ export function exportKey(ctx: WorkspaceCtx, file: { exportId: string; name: str
   return `${workspacePrefix(ctx)}exports/${id}/${part('file name', file.name, FILE_NAME)}`;
 }
 
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+// The shapes §13 names, below `ws/<workspace id>/`. A key is one of these or it is not a key.
+const KEY_SHAPES = {
+  original: new RegExp(`^brands/${UUID}/assets/${UUID}/original$`),
+  resized: new RegExp(`^brands/${UUID}/assets/${UUID}/(1600|360)$`),
+  render: new RegExp(`^renders/[0-9a-f]{16,128}\\.(${RENDER_FORMATS.join('|')})$`),
+  export: new RegExp(`^exports/${UUID}/[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$`),
+} as const;
+
+/** Which kind of file a key names. Only a browser upload makes an `original`; the worker makes the rest. */
+export type KeyKind = keyof typeof KEY_SHAPES;
+
 /**
- * Returns `key` when it is inside the context's workspace and is the plain path a builder would make; throws
- * otherwise. Signing calls this first, so a link is never made for another workspace's file (or for a path that only
- * looks like this workspace's, such as `ws/<mine>/../<theirs>/…`).
+ * Returns the kind of `key` when it is inside the context's workspace and is exactly one of §13's key shapes (an
+ * asset size, a render, an export file); throws otherwise. Signing calls this first, so a link is never made for
+ * another workspace's file, for a path that only looks like this workspace's (`ws/<mine>/../<theirs>/…`), or for a
+ * place no builder would write to.
  */
-export function checkKey(ctx: WorkspaceCtx, key: string): string {
+export function keyKind(ctx: WorkspaceCtx, key: string): KeyKind {
   const prefix = workspacePrefix(ctx);
   if (!key.startsWith(prefix)) throw new StorageKeyError('the file is outside the workspace');
-  const parts = key.slice(prefix.length).split('/');
-  if (parts.length < 2 || parts.some((each) => !SAFE_PART.test(each) || each.includes('..'))) {
-    throw new StorageKeyError('the file key is not a plain path inside the workspace');
+  const rest = key.slice(prefix.length);
+  for (const kind of Object.keys(KEY_SHAPES) as KeyKind[]) {
+    if (KEY_SHAPES[kind].test(rest)) return kind;
   }
+  throw new StorageKeyError('the file key is not one of the keys a workspace has');
+}
+
+/** `key` itself when it is one of this workspace's keys (see `keyKind`); throws otherwise. */
+export function checkKey(ctx: WorkspaceCtx, key: string): string {
+  keyKind(ctx, key);
   return key;
 }

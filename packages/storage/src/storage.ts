@@ -11,7 +11,7 @@
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { WorkspaceCtx } from '@lzp/db';
-import { checkKey } from './keys.ts';
+import { keyKind, StorageKeyError } from './keys.ts';
 
 /** The file store's settings, named as in `config/env.ts`. */
 export interface StorageSettings {
@@ -54,14 +54,14 @@ export class UploadLimitError extends Error {
 }
 
 export interface Storage {
-  /** A link for the browser to PUT one file of the given type and size to `key`. Refuses a key outside the workspace. */
+  /** A link for the browser to PUT one file of the given type and size to an asset's `original` key. Refuses any other key. */
   signUpload: (
     ctx: WorkspaceCtx,
     key: string,
     upload: UploadRequest,
     limits: UploadLimits,
   ) => Promise<SignedUpload>;
-  /** A link to read `key`: 15 minutes, or 7 days with `{ export: true }`. Refuses a key outside the workspace. */
+  /** A link to read `key`: 15 minutes, or 7 days with `{ export: true }`, for an export file only. Refuses a key outside the workspace. */
   signDownload: (
     ctx: WorkspaceCtx,
     key: string,
@@ -96,7 +96,11 @@ export function createStorage(
 
   return {
     async signUpload(ctx, key, upload, limits) {
-      checkKey(ctx, key);
+      // Only a browser upload of an asset's original goes through a signed PUT. A render, an export or a resized copy
+      // is written by the worker, and a link must never let a browser replace one.
+      if (keyKind(ctx, key) !== 'original') {
+        throw new StorageKeyError('a link can only upload an asset original');
+      }
       if (!Number.isSafeInteger(upload.size) || upload.size <= 0) {
         throw new UploadLimitError('The file size must be a whole number of bytes above 0.');
       }
@@ -129,7 +133,11 @@ export function createStorage(
     },
 
     async signDownload(ctx, key, downloadOptions = {}) {
-      checkKey(ctx, key);
+      const kind = keyKind(ctx, key);
+      // 7 days is for export downloads only (§13); anything else, a raw upload included, lives for 15 minutes.
+      if (downloadOptions.export === true && kind !== 'export') {
+        throw new StorageKeyError('only an export file gets a 7-day link');
+      }
       const seconds = downloadOptions.export === true ? EXPORT_LINK_SECONDS : LINK_SECONDS;
       const signingDate = now();
       const url = await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {

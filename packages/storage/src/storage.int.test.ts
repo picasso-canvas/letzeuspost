@@ -3,10 +3,10 @@
 // `services` job. Every key sits under a workspace id made for this run and is deleted afterwards.
 import { randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
-import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { loadEnv } from '@lzp/config';
 import { afterAll, describe, expect, it } from 'vitest';
-import { renderKey } from './keys.ts';
+import { assetKey, exportKey } from './keys.ts';
 import { createStorage, type UploadLimits } from './storage.ts';
 
 const env = loadEnv('web');
@@ -18,8 +18,12 @@ const settings = {
   STORAGE_SECRET_ACCESS_KEY: env.STORAGE_SECRET_ACCESS_KEY,
 };
 
-/** A UUIDv7-shaped id (version nibble 7) for this run's workspace. */
-const workspaceId = randomUUID().replace(/^(.{14})4/, '$17');
+/** A UUIDv7-shaped id (version nibble 7), new to this run. */
+function newId(): string {
+  return randomUUID().replace(/^(.{14})4/, '$17');
+}
+
+const workspaceId = newId();
 const ctx = { workspaceId };
 const storage = createStorage(settings);
 const limits: UploadLimits = { maxBytes: 1024, contentTypes: ['image/png'] };
@@ -35,10 +39,20 @@ const cleanup = new S3Client({
 });
 const made: string[] = [];
 
-/** A render key that is new to this run, remembered for the cleanup. */
+/** An asset original key that is new to this run, remembered for the cleanup: the only key a browser may upload to. */
 function newKey(): string {
-  const key = renderKey(ctx, { hash: randomBytes(32).toString('hex'), format: 'png' });
+  const key = assetKey(ctx, { brandId: newId(), assetId: newId(), variant: 'original' });
   made.push(key);
+  return key;
+}
+
+/** An export file key, new to this run. The worker writes these, so the test writes it directly, not through a link. */
+async function seedExport(body: string): Promise<string> {
+  const key = exportKey(ctx, { exportId: newId(), name: 'post.zip' });
+  made.push(key);
+  await cleanup.send(
+    new PutObjectCommand({ Bucket: settings.STORAGE_BUCKET, Key: key, Body: body }),
+  );
   return key;
 }
 
@@ -171,9 +185,7 @@ describe('a signed download link', () => {
   });
 
   it('is refused once an export link has lasted 7 days', async () => {
-    const key = newKey();
-    const up = await storage.signUpload(ctx, key, { contentType: 'image/png', size: 4 }, limits);
-    await send('PUT', up.url, up.headers, Buffer.from('data'));
+    const key = await seedExport('data');
     const week = 7 * 24 * 60 * 60 * 1000;
     const old = createStorage(settings, { now: () => new Date(Date.now() - week - 60 * 1000) });
     const expired = await old.signDownload(ctx, key, { export: true });
