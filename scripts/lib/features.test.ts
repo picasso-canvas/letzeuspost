@@ -112,9 +112,9 @@ describe('journeyMarked', () => {
     expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(false);
   });
 
-  it('reads option marks only inside a test call, not in any object (Argus F1 on #155)', () => {
-    const text = "const settings = { only: 'x', skip: 0 };\nit('journey', () => {});";
-    expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(false);
+  it('errs toward shut: an option-like key in any object counts as a mark (Zeus, 2026-11-10, round 5 of #155)', () => {
+    const text = "const settings = { only: 'x' };\nit('journey', () => {});";
+    expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(true);
   });
 
   it('counts a feature with no journey test as not done, and finds one in its own folder', () => {
@@ -147,6 +147,9 @@ describe('journeyMarked', () => {
       "it('j', { skip: 1 }, () => {})",
       "it('j', { skip: !0 }, () => {})",
       "it('j', { fails: isCI }, () => {})",
+      "it('the journey (data)', { fails: true }, () => {})",
+      "const opts = { skip: true };\nit('j', opts, () => {})",
+      "it('j', async () => {}, { fails: true })",
     ]) {
       expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data'), text).toBe(
         true,
