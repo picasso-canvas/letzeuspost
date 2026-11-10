@@ -10,9 +10,13 @@
 name: ci
 
 on:
+  # Pull requests, plus a daily run on main and a manual one (#160). The gate merges only a branch that's current with
+  # its base, so a push to main or staging would only re-check a tree checked here; the daily run keeps the scanners
+  # (gitleaks, OSV-Scanner) catching advisories published after a merge.
   pull_request:
-  push:
-    branches: [main, staging]
+  schedule:
+    - cron: '17 3 * * *' # 09:17 in Dhaka
+  workflow_dispatch:
 
 permissions:
   contents: read
