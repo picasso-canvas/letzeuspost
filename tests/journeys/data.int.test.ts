@@ -1,43 +1,55 @@
 // The Data feature's journey (§19 A task's life, #150): two workspaces' data stays apart through every layer.
-// It is the feature's first task and lands marked `it.fails`: while the feature is unbuilt the test is expected to
-// fail, so CI's `services` job stays green. The feature's last task (#105) removes the mark; the feature is done when
-// this passes in CI.
+// It began as the feature's first task, marked as an expected failure while the feature was unbuilt; the feature's last
+// task (#200) took the mark off. It is a plain `it` now, and the feature is done when it passes in CI.
 //
-// What exists is called as it is built: `@lzp/db` (#71: `db.forWorkspace(ctx).transaction((tx) => …)`, `migrate`, the
-// `invitation` table the journey proves isolation on), `@lzp/storage` (#73) and the config files (#69). What doesn't
-// exist yet is loaded inside the test with `assumed()`, so this file loads, typechecks and lints before it does, and the
-// test fails only because that piece (or a service) isn't there yet, with a message that names its task. It is marked
-// `Assumed:` with the task that builds it, at the line that uses it. Each task of the feature may change those calls to
-// its real API, but never weaken an assertion.
+// Everything it calls is real: `@lzp/db` (#71: `db.forWorkspace(ctx).transaction((tx) => …)`, `migrate`, the
+// `invitation` table the journey proves isolation on; #72: `installJobs`, `createJobs`, `queueEmail`, the
+// `emailMessage` outbox), `apps/worker` (#72: `startWorker`, whose `email` job sends the outbox row), `@lzp/storage`
+// (#73) and the config files (#69). Each task of the feature may change a call to follow its API, but never weaken an
+// assertion.
 //
 // Runs only in `pnpm check:services` and CI's `services` job (the `.int.test.ts` name; Postgres, the file store and
 // Mailpit come from docker/compose.yml). The settings are config/env.ts's.
+import { execFileSync } from 'node:child_process';
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { loadEnv } from '../../config/env.ts';
+import { loadEnv, type Env } from '../../config/env.ts';
 import { networks, networksConfigSchema, sizes } from '../../config/networks.ts';
 import { extraPack, globalDailyAiCap, plans, plansConfigSchema } from '../../config/plans.ts';
 import {
   createDb,
+  createJobs,
+  emailMessage,
+  installJobs,
   invitation,
   member,
   migrate,
+  queueEmail,
   workspace,
   type Db,
-  type Scoped,
   type WorkspaceCtx,
 } from '../../packages/db/src/index.ts';
 import { assetKey, createStorage } from '../../packages/storage/src/index.ts';
 
 // ---- Helpers ---------------------------------------------------------------------------------------------------
 
+/**
+ * `startWorker` of apps/worker (#72), as far as the journey uses it. It is loaded by URL, not imported, so the root's
+ * typecheck doesn't read @lzp/email's `.tsx` templates (the root tsconfig has no `jsx`); apps/worker is typechecked in
+ * its own package.
+ */
+type StartWorker = (
+  env: Env<'worker'>,
+  options: { pollingIntervalSeconds: number },
+) => Promise<{ stop: () => Promise<void> }>;
+
 /** A result row: the columns by name. */
 type Row = Record<string, string | boolean | undefined>;
 
 /**
  * A query as text: each `${value}` becomes a quoted SQL literal. Everything with a Drizzle schema in `@lzp/db` goes
- * through the typed `tx.insert` and `tx.select`. This is for the rest: catalog queries, the `email_message` outbox
- * (no schema until #72), Better Auth's `user` table (only `@lzp/db/auth` exports it, #176, and only packages/auth may
+ * through the typed `tx.insert` and `tx.select`. This is for the rest: catalog queries, pg-boss's `job` table (it has
+ * no Drizzle schema), Better Auth's `user` table (only `@lzp/db/auth` exports it, #176, and only packages/auth may
  * import that) and the clean-up deletes (the root can't import drizzle's `eq`, which belongs to packages/db). Every
  * value is one this test made (an id, the run's uuid).
  */
@@ -51,53 +63,7 @@ function text(strings: TemplateStringsArray, ...values: string[]): string {
   return query;
 }
 
-// ---- What the test assumes of the feature's modules, still to be built ----------------------------------------------
-
-/** What a job handler gets: its payload and `db` already scoped to `payload.workspaceId` (#72). */
-interface JobInput {
-  payload: { workspaceId: string };
-  db: Scoped;
-}
-
-/**
- * Assumed (#72): `@lzp/db` gives the job queue: pg-boss's `send`, on the app role's connection. Payloads hold ids only
- * (the `jobs` rules).
- */
-type CreateQueue = (appUrl: string) => Promise<{
-  send: (queue: string, payload: object) => Promise<string | null>;
-  stop: () => Promise<void>;
-}>;
-
-/**
- * Assumed (#72): `apps/worker` starts the pg-boss worker with the job handlers (the `email` queue's among them) and lets
- * a test add one. `run` hands a job to its handler once, as pg-boss does on a retry or a redelivery.
- */
-type StartWorker = (options: {
-  databaseUrl: string;
-  handlers?: Record<string, (input: JobInput) => Promise<void>>;
-}) => Promise<{
-  run: (queue: string, payload: object) => Promise<void>;
-  stop: () => Promise<void>;
-}>;
-
-/**
- * Loads one export of a module of the feature when the test runs, so a module that doesn't exist yet can't break the
- * file, and says which task builds it when it isn't there. The path is relative to this file; it goes through a file
- * URL because Vitest resolves a bare relative path in a variable from the project's root, not from the file.
- */
-async function assumed<T>(path: string, name: string, task: string): Promise<T> {
-  let mod: Record<string, unknown>;
-  try {
-    mod = (await import(new URL(path, import.meta.url).href)) as Record<string, unknown>;
-  } catch (error) {
-    throw new Error(`Assumed (${task}): ${path} can't be loaded yet: ${String(error)}`, {
-      cause: error,
-    });
-  }
-  const value = mod[name];
-  if (value === undefined) throw new Error(`Assumed (${task}): ${path} has no \`${name}\` yet`);
-  return value as T;
-}
+// ---- Waiting ---------------------------------------------------------------------------------------------------
 
 /** A promise that gives up with a clear message, so a job that never runs fails the test instead of hanging it. */
 async function within<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
@@ -111,6 +77,21 @@ async function within<T>(promise: Promise<T>, ms: number, what: string): Promise
     return await Promise.race([promise, timeout]);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Polls `check` until it returns something truthy; a message names what never happened after `ms`. */
+async function waitFor<T>(
+  what: string,
+  check: () => Promise<T>,
+  ms = 30_000,
+): Promise<NonNullable<T>> {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const value = await check();
+    if (value) return value;
+    if (Date.now() > deadline) throw new Error(`${what}: nothing after ${String(ms)} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
@@ -145,13 +126,13 @@ async function seedWorkspace(
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 interface MailpitSearch {
-  total: number;
+  messages: { To: { Address: string }[] }[];
 }
 
 describe('the Data feature: two workspaces stay apart through every layer', () => {
-  it.fails(
+  it(
     'keeps A and B apart in the database, jobs, email, files and config',
-    { timeout: 90_000 },
+    { timeout: 120_000 },
     async () => {
       const env = { ...loadEnv('migrate'), ...loadEnv('worker') };
       const run = randomUUID();
@@ -161,6 +142,9 @@ describe('the Data feature: two workspaces stay apart through every layer', () =
         // 1. Migrations run as the owner role; the app connects as the app role, which can't bypass row-level security.
         await migrate(env.DATABASE_OWNER_URL);
         await migrate(env.DATABASE_OWNER_URL); // running them again changes nothing and doesn't fail
+        // pg-boss goes into its own schema, as the owner role too (#72): the app role only uses it.
+        await installJobs(env.DATABASE_OWNER_URL);
+        await installJobs(env.DATABASE_OWNER_URL);
 
         const db = createDb(env.DATABASE_URL);
         cleanups.push(() => db.close());
@@ -185,7 +169,6 @@ describe('the Data feature: two workspaces stay apart through every layer', () =
         const ctxA = { workspaceId: a.workspaceId };
         const ctxB = { workspaceId: b.workspaceId };
         const asA = asApp(ctxA);
-        const asB = asApp(ctxB);
         cleanups.push(async () => {
           // Deleting a workspace removes its members and invitations with it; the people are global. The owner role does
           // it: the app role can't delete a person.
@@ -254,75 +237,91 @@ describe('the Data feature: two workspaces stay apart through every layer', () =
         const seenByB = await invitationsOf(ctxB);
         expect(seenByB.map((row) => row.email)).toEqual([inviteB]);
 
+        // The queue, as the app role (#72). The worker's `email` job comes from `startWorker` below; a job a test
+        // registers like any other goes on the `export` queue, which no handler of the worker's takes yet (the queues
+        // are fixed). The handler gets `db` scoped to the payload's workspace.
+        const jobs = createJobs({
+          url: env.DATABASE_URL,
+          db,
+          pollingIntervalSeconds: 0.5,
+          onError: (error) => {
+            console.error(`jobs: ${error.name}`);
+          },
+        });
+        await jobs.start();
+        cleanups.push(() => jobs.stop());
+        const exportId = randomUUIDv7(); // this run's job: the handler leaves any other run's alone
         const seenInJob = Promise.withResolvers<{
           payload: object;
           rows: { workspaceId: string; email: string }[];
         }>();
-        // Assumed (#72): `apps/worker` starts the worker and runs a handler a test registers like any other job, with
-        // `db` scoped to the payload's workspace.
-        const startWorker = await assumed<StartWorker>(
-          '../../apps/worker/src/index.ts',
-          'startWorker',
-          '#72',
-        );
-        const worker = await startWorker({
-          databaseUrl: env.DATABASE_URL,
-          handlers: {
-            'journey-probe': async ({ payload, db: scoped }) => {
-              const rows = await scoped.transaction((tx) =>
-                tx
-                  .select({ workspaceId: invitation.workspaceId, email: invitation.email })
-                  .from(invitation),
-              );
-              seenInJob.resolve({ payload, rows });
-            },
-          },
+        await jobs.work('export', async ({ payload, db: scoped }) => {
+          if (payload.exportId !== exportId) return;
+          const rows = await scoped.transaction((tx) =>
+            tx
+              .select({ workspaceId: invitation.workspaceId, email: invitation.email })
+              .from(invitation),
+          );
+          seenInJob.resolve({ payload, rows });
         });
-        cleanups.push(() => worker.stop());
-        // Assumed (#72): `@lzp/db` gives `createQueue`.
-        const createQueue = await assumed<CreateQueue>(
-          '../../packages/db/src/index.ts',
-          'createQueue',
-          '#72',
-        );
-        const queue = await createQueue(env.DATABASE_URL);
-        cleanups.push(() => queue.stop());
-        await queue.send('journey-probe', { workspaceId: a.workspaceId });
+        await jobs.send('export', { workspaceId: a.workspaceId, exportId });
         const job = await within(seenInJob.promise, 30_000, 'the job queued for A');
-        expect(job.payload).toEqual({ workspaceId: a.workspaceId }); // ids only, never content
+        expect(job.payload).toEqual({ workspaceId: a.workspaceId, exportId }); // ids only, never content
         expect(job.rows.map((row) => row.email)).toContain(inviteA);
         expect(job.rows.map((row) => row.email)).not.toContain(inviteB);
         expect(job.rows.every((row) => row.workspaceId === a.workspaceId)).toBe(true);
 
-        // 4. The email job for an A member, run twice for the same outbox row, puts exactly one message in Mailpit.
-        // Assumed (#72): `email_message` has `workspace_id`, `template`, `to_address` and `status`, and the job sets
-        // `status` to 'sent'; the `email` queue's payload is the workspace and the outbox row's ids.
+        // 4. The email job for an A member, run three times for the same outbox row, puts exactly one message in Mailpit.
+        // The outbox is owned by the owner role, with row-level security on.
         const outboxTable = await asA`select t.tablename, t.tableowner, c.relrowsecurity as rls
              from pg_tables t join pg_class c on c.relname = t.tablename
             where t.schemaname = 'public' and t.tablename = 'email_message'`;
-        expect(
-          outboxTable,
-          'Assumed (#72): the `email_message` outbox table does not exist yet',
-        ).toEqual([{ tablename: 'email_message', tableowner: 'lzp_owner', rls: true }]);
-        const outbox =
-          await asA`insert into email_message (workspace_id, template, to_address, status)
-           values (${a.workspaceId}, 'email-check', ${emailA}, 'queued') returning id`;
-        const emailMessageId = String(outbox[0]?.id);
+        expect(outboxTable).toEqual([
+          { tablename: 'email_message', tableowner: 'lzp_owner', rls: true },
+        ]);
+        // `queueEmail` writes the outbox row and its job together; the worker's `email` job sends it, and the same job
+        // queued twice more is pg-boss's redelivery of it. The worker renders @lzp/email's built output (Q8).
+        execFileSync('pnpm', ['--filter', '@lzp/email', 'build'], { stdio: 'ignore' });
+        const { startWorker } = (await import(
+          new URL('../../apps/worker/src/worker.ts', import.meta.url).href
+        )) as { startWorker: StartWorker };
+        const worker = await startWorker(loadEnv('worker'), { pollingIntervalSeconds: 0.5 });
+        cleanups.push(() => worker.stop());
+        const emailMessageId = await queueEmail(jobs, db, ctxA, {
+          template: 'email-check',
+          to: emailA,
+          data: { name: 'গল্প ক্যাফে' },
+        });
         expect(emailMessageId).toMatch(UUID_V7);
-        const payload = { workspaceId: a.workspaceId, emailMessageId };
-        await worker.run('email', payload);
-        await worker.run('email', payload);
-        // Assumed: Mailpit's API is on port 8025 of the SMTP host (docker/compose.yml), as in the `services` job's smoke check.
-        const mailpit = `http://${URL.parse(env.SMTP_URL)?.hostname ?? '127.0.0.1'}:${process.env['LZP_MAILPIT_PORT'] ?? '8025'}`;
-        const messages = await fetch(
-          `${mailpit}/api/v1/search?query=${encodeURIComponent(`to:${emailA}`)}`,
+        const outboxOf = (ctx: WorkspaceCtx) =>
+          db
+            .forWorkspace(ctx)
+            .transaction((tx) =>
+              tx.select({ id: emailMessage.id, status: emailMessage.status }).from(emailMessage),
+            );
+        await waitFor('the outbox row marked sent', async () =>
+          (await outboxOf(ctxA)).some((row) => row.id === emailMessageId && row.status === 'sent'),
         );
-        expect(messages.ok).toBe(true);
-        expect(((await messages.json()) as MailpitSearch).total).toBe(1);
-        const sent = await asA`select status from email_message where id = ${emailMessageId}`;
-        expect(sent).toEqual([{ status: 'sent' }]);
-        const outboxSeenByB = await asB`select id from email_message where id = ${emailMessageId}`;
-        expect(outboxSeenByB).toEqual([]);
+        const payload = { workspaceId: a.workspaceId, emailMessageId };
+        const redelivered = [await jobs.send('email', payload), await jobs.send('email', payload)];
+        // The worker has handled both once pg-boss records them completed (the app role can read its tables).
+        await waitFor('the redelivered jobs completed', async () => {
+          const done = await asA`select id from pgboss.job where state = 'completed'
+               and id in (${redelivered[0] ?? ''}, ${redelivered[1] ?? ''})`;
+          return done.length === redelivered.length;
+        });
+        // Mailpit's API is on LZP_MAILPIT_PORT (8025) of the SMTP host (docker/compose.yml), as in the `services` job.
+        const mailpit = `http://${URL.parse(env.SMTP_URL)?.hostname ?? '127.0.0.1'}:${process.env['LZP_MAILPIT_PORT'] ?? '8025'}`;
+        const found = await fetch(
+          `${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${emailA}"`)}&limit=50`,
+        );
+        expect(found.ok).toBe(true);
+        const delivered = ((await found.json()) as MailpitSearch).messages.filter((message) =>
+          message.To.some((addressee) => addressee.Address === emailA),
+        );
+        expect(delivered).toHaveLength(1);
+        expect(await outboxOf(ctxA)).toEqual([{ id: emailMessageId, status: 'sent' }]);
+        expect((await outboxOf(ctxB)).map((row) => row.id)).not.toContain(emailMessageId);
 
         // 5. A file uploaded through a signed link lands under ws/<A's id>/ and reads back through a signed download
         // link. Signing one of B's keys from A's context is refused. An unsigned read is refused.
