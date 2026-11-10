@@ -190,6 +190,10 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm licence-check
 
+      # Type-aware ESLint over the whole repo outgrew Node's default heap on the runner (2.2 GB on staging, out of
+      # memory on #191; #192). The runner has 16 GB.
       - name: pnpm check (typecheck, lint, format, unit tests, licences)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm check
