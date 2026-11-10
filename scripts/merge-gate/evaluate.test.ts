@@ -475,6 +475,13 @@ describe('evaluate: the batch PR from staging into main', () => {
     expect(
       failedIds(batch({ journey: { feature: 'data', entries: [{ ...passed, fails: true }] } })),
     ).toEqual([3]);
+    const unreadable = batch({
+      journey: { feature: 'data', entries: null, unreadable: "vitest.json isn't JSON" },
+    });
+    expect(failedIds(unreadable)).toEqual([3]);
+    expect(evaluate(unreadable).items[2]?.detail).toBe(
+      "the journey report of the services run on this commit can't be read: vitest.json isn't JSON",
+    );
     // Only a batch is held by its journey: a PR into staging isn't.
     expect(
       evaluate(facts({ journey: { feature: 'data', entries: null } })).items[2]?.detail,

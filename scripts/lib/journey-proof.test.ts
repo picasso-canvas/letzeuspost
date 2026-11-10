@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { journeyProof, toJourneyEntries, type JourneyEntry } from './journey-proof.ts';
+import {
+  journeyProof,
+  parseJourneyReport,
+  toJourneyEntries,
+  toPlaywrightEntry,
+  type JourneyEntry,
+} from './journey-proof.ts';
 
 const entry = (over: Partial<JourneyEntry> = {}): JourneyEntry => ({
   file: 'tests/journeys/data.int.test.ts',
@@ -92,5 +98,65 @@ describe('toJourneyEntries (what the reporter writes)', () => {
         mode: 'todo',
       },
     ]);
+  });
+});
+
+describe('toPlaywrightEntry (what the Playwright reporter writes)', () => {
+  const pw = (over: Partial<Parameters<typeof toPlaywrightEntry>[0]> = {}) =>
+    toPlaywrightEntry(
+      {
+        file: '/w/repo/tests/journeys/sign-in.spec.ts',
+        titlePath: ['', 'app-light', 'sign-in.spec.ts', 'signs in with a magic link'],
+        expectedStatus: 'passed',
+        annotations: [],
+        status: 'passed',
+        ...over,
+      },
+      '/w/repo',
+    );
+
+  it('reads a journey test as Vitest would: state, expected to fail, skipped', () => {
+    expect(pw()).toEqual({
+      file: 'tests/journeys/sign-in.spec.ts',
+      name: 'app-light › sign-in.spec.ts › signs in with a magic link',
+      state: 'passed',
+      fails: false,
+      mode: 'run',
+    });
+    // `test.fail()`: Playwright expects it to fail, so a pass is no proof.
+    expect(pw({ expectedStatus: 'failed', annotations: [{ type: 'fail' }] })?.fails).toBe(true);
+    expect(pw({ annotations: [{ type: 'skip' }], status: 'skipped' })).toMatchObject({
+      mode: 'skip',
+      state: 'skipped',
+    });
+    expect(pw({ annotations: [{ type: 'fixme' }], status: 'skipped' })?.mode).toBe('fixme');
+    expect(pw({ status: 'timedOut' })?.state).toBe('timedOut');
+  });
+
+  it('leaves out a test outside tests/journeys/', () => {
+    expect(pw({ file: '/w/repo/tests/e2e/home.spec.ts' })).toBeNull();
+  });
+});
+
+describe('parseJourneyReport (the artifact the gate downloads)', () => {
+  const one = JSON.stringify([entry()]);
+
+  it("reads Vitest's file, and Playwright's when there is one", () => {
+    expect(parseJourneyReport({ 'vitest.json': one })).toEqual([entry()]);
+    expect(
+      parseJourneyReport({
+        'vitest.json': one,
+        'playwright.json': JSON.stringify([entry({ file: 'tests/journeys/data.spec.ts' })]),
+      }),
+    ).toHaveLength(2);
+  });
+
+  it("says why a report can't be read: no Vitest file, not JSON, or an entry of the wrong shape", () => {
+    expect(parseJourneyReport({})).toBe('it has no vitest.json');
+    expect(parseJourneyReport({ 'vitest.json': 'nope' })).toBe("vitest.json isn't JSON");
+    for (const bad of ['{}', '[{"file":1}]', JSON.stringify([{ ...entry(), fails: 'no' }])])
+      expect(parseJourneyReport({ 'vitest.json': bad })).toBe(
+        'vitest.json is not a list of journey tests',
+      );
   });
 });
