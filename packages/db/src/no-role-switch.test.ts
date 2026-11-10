@@ -1,8 +1,9 @@
 // Only the auth handle switches the database role (#176, Cerberus F2's nit on #184). Workspace code runs as lzp_app;
 // lzp_app may take lzp_auth, which holds the auth tables, only by switching to it, and only packages/db/src/auth.ts
-// does that, on its own pool. This check reads every code and SQL file in the repo (comments too) and refuses a role
-// switch anywhere else. It runs in `pnpm check`. The cases below put the SQL words together at run time, because the
-// check reads this file as well.
+// does that, on its own pool. This check reads every text file in the repo, comments too: code, SQL, shell, YAML, JSON,
+// and Markdown's code blocks (Argus F1 on #189), and refuses a role switch anywhere else but in the few known lines
+// below. It runs in `pnpm check`. The cases below put the SQL words together at run time, because the check reads this
+// file as well.
 //
 // Its limit (Argus F6 and Cerberus F4 on #189): it reads text, so it sees only a switch written out in a file. A
 // switch put together at run time gets past it, as these cases show: SQL built from pieces, a role name read from
@@ -11,7 +12,7 @@
 // Even so, SQL injected into workspace code could switch to lzp_auth inside its own transaction; parameterised
 // queries (Drizzle) are what keep that out.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -19,9 +20,6 @@ const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 /** The only file allowed to switch role. */
 const AUTH_HANDLE = 'packages/db/src/auth.ts';
-
-/** Code Postgres or a connection could run: every script and SQL file. */
-const CODE = /\.(?:[cm]?[jt]s|[jt]sx|sql)$/;
 
 /** Each way Postgres lets a connection change the role its statements run as. */
 const SWITCHES: readonly RegExp[] = [
@@ -40,24 +38,89 @@ function roleSwitches(text: string): string[] {
   return SWITCHES.flatMap((pattern) => pattern.exec(text)?.[0] ?? []);
 }
 
-/** The role switches in a file's text. */
-function roleSwitchesIn(_file: string, text: string): string[] {
-  return roleSwitches(text);
+const MARKDOWN = /\.(?:md|mdx|markdown)$/i;
+
+/** A fence that opens or closes a Markdown code block, inside a list or a quote too: ``` or ~~~, 3 or more. */
+const FENCE = /^[\s>]*(`{3,}|~{3,})/;
+
+/**
+ * A Markdown text's fenced code blocks, one after another. A block ends at a fence of the same kind at least as long,
+ * or at the file's end. The prose around them is left out: it may name the commands it explains.
+ */
+function codeBlocks(markdown: string): string {
+  const code: string[] = [];
+  let open: string | null = null;
+  for (const line of markdown.split('\n')) {
+    const fence = FENCE.exec(line)?.[1];
+    if (open === null) {
+      if (fence !== undefined) open = fence;
+    } else if (
+      fence !== undefined &&
+      fence[0] === open[0] &&
+      fence.length >= open.length &&
+      line.trim().endsWith(fence)
+    ) {
+      open = null;
+    } else {
+      code.push(line);
+    }
+  }
+  return code.join('\n');
 }
 
-/** Every code file in the repo, tracked or new (not ignored), from the repo root. */
+/** The role switches in a file's text: all of it, or a Markdown file's code blocks. */
+function roleSwitchesIn(file: string, text: string): string[] {
+  return roleSwitches(MARKDOWN.test(file) ? codeBlocks(text) : text);
+}
+
+const w = (...parts: string[]) => parts.join(' ');
+const glue = (...parts: string[]) => parts.join('');
+const q = (text: string) => `'${text}'`;
+
+/**
+ * Lines outside the auth handle that name a switch, already in the repo when the check grew past code and SQL (#195),
+ * word for word (trimmed). They're in files a builder may not change, so they stay until Zeus decides (#195's
+ * needs-zeus). Only these lines are let through: any other switch in those files, or a change to one of these, is
+ * caught.
+ */
+const KNOWN: Readonly<Record<string, readonly string[]>> = {
+  // A comment: how lzp_app reaches lzp_auth.
+  'docker/postgres/roles.sh': [
+    `#   lzp_auth:  no login; the auth tables' rights (#176). lzp_app takes it only by ${w('SET', 'ROLE')}, which the auth handle does on`,
+  ],
+  // CI's smoke check that lzp_app may switch to lzp_auth (#183), and its comment.
+  '.github/workflows/services.yml': [
+    `# lzp_auth (#183): no login and no special rights; lzp_app may ${w('SET', 'ROLE')} to it but inherits nothing from it, so`,
+    `[ "$(psql "$DATABASE_URL" -qtA -c ${q(w('set', 'role', 'lzp_auth'))} -c 'select current_user')" = lzp_auth ]`,
+  ],
+};
+
+/** A file's text without its known lines. */
+function withoutKnown(file: string, text: string): string {
+  const known = KNOWN[file] ?? [];
+  return text
+    .split('\n')
+    .filter((line) => !known.includes(line.trim()))
+    .join('\n');
+}
+
+/** A file's text, or null for a binary (it has a NUL byte, as git tells them apart) or what isn't a file. */
+function readText(file: string): string | null {
+  const path = `${ROOT}${file}`;
+  if (!existsSync(path) || !statSync(path).isFile()) return null;
+  const bytes = readFileSync(path);
+  return bytes.includes(0) ? null : bytes.toString('utf8');
+}
+
+/** Every text file in the repo, tracked or new (not ignored), from the repo root. */
 function textFiles(): string[] {
   return execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
     cwd: ROOT,
     encoding: 'utf8',
   })
     .split('\0')
-    .filter((file) => CODE.test(file));
+    .filter((file) => file !== '' && readText(file) !== null);
 }
-
-const w = (...parts: string[]) => parts.join(' ');
-const glue = (...parts: string[]) => parts.join('');
-const q = (text: string) => `'${text}'`;
 
 describe('the role-switch check', () => {
   it.each([
@@ -139,12 +202,34 @@ describe('the role-switch check', () => {
   });
 });
 
+describe('the known lines', () => {
+  const [file, lines] = ['.github/workflows/services.yml', KNOWN['.github/workflows/services.yml']];
+
+  it('let through only themselves: another switch in the same file is caught', () => {
+    const text = [...(lines ?? []), `PGOPTIONS='${glue('-c ', 'role=lzp_auth')}' psql`].join('\n');
+    expect(roleSwitchesIn(file, withoutKnown(file, text))).not.toEqual([]);
+    expect(roleSwitchesIn(file, withoutKnown(file, (lines ?? []).join('\n')))).toEqual([]);
+  });
+
+  it('let through no changed copy of themselves', () => {
+    const changed = (lines ?? []).map((line) => line.replace('lzp_auth ]', 'lzp_owner ]'));
+    expect(roleSwitchesIn(file, withoutKnown(file, changed.join('\n')))).not.toEqual([]);
+  });
+
+  it('are each still in their file, so none outlives the line it lets through', () => {
+    for (const [path, known] of Object.entries(KNOWN)) {
+      const present = (readText(path) ?? '').split('\n').map((line) => line.trim());
+      for (const line of known) expect(present, path).toContain(line);
+    }
+  });
+});
+
 describe('the repo', () => {
-  it('switches the database role nowhere but in the auth handle', () => {
+  it('switches the database role nowhere but in the auth handle and the known lines', () => {
     const found = textFiles()
       .filter((file) => file !== AUTH_HANDLE)
       .flatMap((file) =>
-        roleSwitchesIn(file, readFileSync(`${ROOT}${file}`, 'utf8')).map(
+        roleSwitchesIn(file, withoutKnown(file, readText(file) ?? '')).map(
           (hit) => `${file}: ${hit}`,
         ),
       );
