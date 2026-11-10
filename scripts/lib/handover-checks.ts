@@ -21,8 +21,9 @@ export function parseAreas(issueBody: string): { patterns: string[] } | { refusa
     const files = (list: string[]) =>
       list.filter((p) => !p.includes('*') && /\.[a-z0-9]+$/i.test(p));
     const add = (to: string[], word: string) => {
+      // A part with no path of its own ("`a.ts`, its tests") means the last path before it.
       if (new RegExp(`\\bits ${word}\\b|\\band ${word}\\b`, 'i').test(part))
-        to.push(...files(here));
+        to.push(...files(here.length > 0 ? here : named.slice(-1)));
       if (new RegExp(`\\btheir\\b[^,]*\\b${word}\\b`, 'i').test(part)) to.push(...files(named));
     };
     add(tested, 'tests');
@@ -107,20 +108,34 @@ export function numberedFindings(summary: string): number[] {
 
 const REVIEWER_HEADING = /^[#*_\s>-]*(Argus|Cerberus|Iris)\b[^[\]]*$/;
 
+/** The reviewer a line introduces: one name in bold anywhere (Athena's posted review records), or one leading it. */
+function reviewerHeading(line: string): string | undefined {
+  if (/\[(?:blocking|should-fix|nit)\]/i.test(line) || /\bF\d+\b/.test(line)) return undefined;
+  const bold = [...line.matchAll(/\*\*(Argus|Cerberus|Iris)\*\*/g)].map((m) => m[1]);
+  if (bold.length === 1) return bold[0];
+  return REVIEWER_HEADING.exec(line)?.[1];
+}
+
 /**
  * The finding ids in Athena's findings file for a fix round: ids written out (`Argus F1`), and the reviewers' own
- * `[severity] F<n>` lines under each reviewer's name (`Argus:`, `## Cerberus`, `**Iris**`). A file with none is
- * refused, so a fix round can't skip its Round section by accident.
+ * `[severity] F<n>` lines under each reviewer's name (`Argus:`, `## Cerberus`, or a posted record's
+ * `review record: **Iris**`). A numbered finding with no reviewer above it is refused rather than dropped, and so is a
+ * file with no ids at all, so a fix round can't skip part of its Round section by accident.
  */
 export function requireFindingIds(text: string): string[] {
   const ids: string[] = [];
   let reviewer: string | undefined;
   for (const line of text.split(/\r\n?|\n/)) {
-    const heading = REVIEWER_HEADING.exec(line);
-    if (heading && !/\bF\d+\b/.test(line)) reviewer = heading[1];
+    reviewer = reviewerHeading(line) ?? reviewer;
     ids.push(...findingIds(line));
-    if (reviewer !== undefined)
-      ids.push(...numberedFindings(line).map((n) => `${reviewer ?? ''} F${String(n)}`));
+    const numbers = numberedFindings(line);
+    if (numbers.length > 0 && reviewer === undefined) {
+      const tag = /\[(?:blocking|should-fix|nit)\]/i.exec(line)?.[0] ?? '';
+      throw new Error(
+        `a numbered finding has no reviewer above it: ${tag} F${String(numbers[0])}: put it under its reviewer's name`,
+      );
+    }
+    ids.push(...numbers.map((n) => `${reviewer ?? ''} F${String(n)}`));
   }
   const unique = [...new Set(ids)];
   if (unique.length === 0)

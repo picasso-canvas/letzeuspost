@@ -45,11 +45,10 @@ function reviewsFor(pr: number, sha: string, base: string, deps: CollectDeps): R
   });
 }
 
-const NAMES: Record<ReviewRecord['reviewer'], string> = {
+const NAMES: Record<Exclude<ReviewRecord['reviewer'], 'redteam'>, string> = {
   argus: 'Argus',
   cerberus: 'Cerberus',
   iris: 'Iris',
-  redteam: 'Athena',
 };
 
 /**
@@ -77,19 +76,24 @@ function handoverFacts(
   ];
   const earlier = reviewed
     .filter((commit) => !evidenceShas.includes(commit))
-    .map((commit) => deps.readReviews(pr, commit).filter((r) => r.reviewer !== 'redteam'))
+    .map((commit) => deps.readReviews(pr, commit).filter(isReview))
     .filter((records) => records.length > 0)
     .sort((a, b) => latest(b) - latest(a))[0];
   const earlierFindingIds = [
     ...new Set(
       (earlier ?? []).flatMap((r) =>
-        r.reviewer === 'redteam'
-          ? []
-          : numberedFindings(r.summary).map((n) => `${NAMES[r.reviewer]} F${String(n)}`),
+        numberedFindings(r.summary).map((n) => `${NAMES[r.reviewer]} F${String(n)}`),
       ),
     ),
   ];
   return { evidenceShas, earlierFindingIds };
+}
+
+/** A reviewer's record, not Athena's red-team one. */
+function isReview(
+  r: ReviewRecord,
+): r is ReviewRecord & { reviewer: Exclude<ReviewRecord['reviewer'], 'redteam'> } {
+  return r.reviewer !== 'redteam';
 }
 
 function latest(records: readonly ReviewRecord[]): number {
