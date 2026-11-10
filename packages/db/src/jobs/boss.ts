@@ -112,14 +112,14 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
   };
 }
 
-/**
- * Installs or migrates pg-boss in the `pgboss` schema as the owner role (DATABASE_OWNER_URL), declares the queues with
- * their retry bounds, and lets the app role (lzp_app) use them: rows only, never the schema. Safe to run again and
- * at the same time as another run (pg-boss takes an advisory lock). Run it with the migrations.
- */
 /** An advisory lock held while granting; any fixed number, this one the task's (the migrations hold 71). */
 const GRANTS_LOCK = 72;
 
+/**
+ * Installs or migrates pg-boss in the `pgboss` schema as the owner role (DATABASE_OWNER_URL), declares the queues with
+ * their retry bounds, and lets the app role (lzp_app) use them: rows only, never the schema. Safe to run again and
+ * at the same time as another run (pg-boss and the grants each take an advisory lock). Run it with the migrations.
+ */
 export async function installJobs(ownerUrl: string): Promise<void> {
   const boss = new PgBoss({
     connectionString: ownerUrl,
