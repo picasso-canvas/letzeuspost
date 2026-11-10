@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -133,6 +133,7 @@ describe('buildBundle', () => {
     expect(gitCalls).toContain(`diff --text origin/main...${SHA}`);
     expect(gitCalls).toContain(`log --reverse -p --cc --text origin/main..${SHA}`);
     expect(ghCalls.some((c) => c.startsWith('issue view 9'))).toBe(false);
+    expect(existsSync(join(result.bundle, 'tasks.md'))).toBe(false); // only a batch gets one (#132)
   });
 });
 
@@ -436,6 +437,309 @@ describe('failure reasons and refusals', () => {
     expect(result.refusal).toMatch(/^`a\/b` /);
     expect(result.refusal).not.toContain(state);
     expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe('logo.png');
+  });
+});
+
+describe('buildBundle for a batch (#132)', () => {
+  const sha = (c: string) => c.repeat(40);
+  /** A task PR's commits as GitHub's REST API lists them, in whatever order it returns. */
+  const restCommits = (list: { c: string; subject: string; parents: string[] }[]) =>
+    JSON.stringify(
+      list.map(({ c, subject, parents }) => ({
+        sha: sha(c),
+        parents: parents.map((p) => ({ sha: p.length === 1 ? sha(p) : p })),
+        commit: { message: `${subject}\n\nbody` },
+      })),
+    );
+  const bundleFor = (
+    commits: Record<number, string>,
+    files: Record<string, string[] | string[][]>,
+    inBase: string[] = [],
+    titles: Record<number, string> = {},
+    opts: {
+      gated?: number[];
+      /** What GitHub replies for a task PR's commit count. */
+      counts?: Record<number, number | string>;
+      /** A merge's files against one of its other parents, keyed `<parent sha>...<merge sha>`. */
+      compares?: Record<string, string[]>;
+      /** gh calls that fail, as `execFileSync` fails on a rate limit. */
+      failing?: RegExp;
+    } = {},
+  ) => {
+    const state = mkdtempSync(join(tmpdir(), 'lzp-batch-'));
+    // The gate's merge log: which task PRs it merged into staging (all of them unless a test says otherwise).
+    const gated = opts.gated ?? Object.keys(commits).map(Number);
+    writeFileSync(
+      join(state, 'merges.jsonl'),
+      gated.map((pr) => JSON.stringify({ pr, result: 'merged', base: 'staging' })).join('\n'),
+    );
+    const gh = (args: string[]) => {
+      const j = args.join(' ');
+      if (opts.failing?.test(j))
+        throw new Error(`Command failed: gh ${j}\nHTTP 403: API rate limit exceeded`);
+      // `gh api --paginate --slurp` returns every page in one array; without both flags, only GitHub's first page.
+      const paged = (pages: unknown[]) =>
+        JSON.stringify(
+          args.includes('--paginate') && args.includes('--slurp') ? pages : (pages[0] ?? []),
+        );
+      const commitPages = (given: string): unknown[][] | null => {
+        try {
+          const parsed = JSON.parse(given) as unknown[];
+          return Array.isArray(parsed[0]) ? (parsed as unknown[][]) : [parsed];
+        } catch {
+          return null;
+        }
+      };
+      const filePages = (given: string[] | string[][]) =>
+        ((Array.isArray(given[0]) ? given : [given]) as string[][]).map((page) => ({
+          files: page.map((filename) => ({ filename })),
+        }));
+      if (j.includes('headRefOid,body'))
+        return JSON.stringify({
+          headRefOid: SHA,
+          body: 'Batch',
+          baseRefName: 'main',
+          headRefName: 'staging',
+        });
+      if (j.includes('closingIssuesReferences')) return '{"closingIssuesReferences":[]}';
+      const title = /^pr view (\d+) .*--json title/.exec(j);
+      if (title) {
+        const pr = title[1] ?? '';
+        return JSON.stringify({ title: titles[Number(pr)] ?? `Task ${pr}` });
+      }
+      const list = /pulls\/(\d+)\/commits/.exec(j);
+      if (list) {
+        // A test may give a task PR's commits as pages; a reply that isn't JSON goes out as given.
+        const given = commits[Number(list[1])] ?? '[]';
+        const pages = commitPages(given);
+        return pages === null ? given : paged(pages);
+      }
+      const count = /pulls\/(\d+) /.exec(`${j} `);
+      if (count) {
+        const pr = Number(count[1]);
+        return String(opts.counts?.[pr] ?? (commitPages(commits[pr] ?? '[]') ?? []).flat().length);
+      }
+      const between = /compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})/.exec(j);
+      if (between)
+        return paged(filePages(opts.compares?.[`${between[1] ?? ''}...${between[2] ?? ''}`] ?? []));
+      const compare = /compare\/(staging|main)\.\.\.([0-9a-f]{40})/.exec(j);
+      if (compare) return inBase.includes(compare[2] ?? '') ? 'behind' : 'diverged';
+      const one = /commits\/([0-9a-f]{40})/.exec(j);
+      // GitHub's commit endpoint: one commit object per page of files.
+      if (one) return paged(filePages(files[one[1] ?? ''] ?? []));
+      if (j.startsWith('pr checks')) return 'ci pass';
+      if (j.includes('comments,reviews')) return '{}';
+      return '';
+    };
+    const git = (args: string[]) => {
+      if (args[0] === 'rev-parse') return `${SHA}\n`;
+      if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta.ts\0`;
+      if (args[0] === 'log' && args.includes('--first-parent'))
+        return `Merge main into staging (merge gate)\n${Object.keys(commits)
+          .reverse()
+          .map((n) => `[M0] Task (#${n})`)
+          .join('\n')}\n`;
+      return '';
+    };
+    const result = buildBundle(130, { gh, git, blob: () => Buffer.from('a'), now: () => 5 }, state);
+    return readFileSync(join(result.bundle, 'tasks.md'), 'utf8');
+  };
+
+  it("lists each task PR's own commits by their parent links, with the files each one touched", () => {
+    // GitHub's list order can follow dates, which a builder sets: here the code commit is listed first.
+    const tasks = bundleFor(
+      {
+        93: restCommits([
+          { c: 'b', subject: 'feat(core): the code', parents: ['a'] },
+          { c: 'a', subject: 'test(core): failing tests', parents: ['0'] },
+        ]),
+        99: restCommits([{ c: 'c', subject: 'test(config): settings tests', parents: ['0'] }]),
+      },
+      {
+        [sha('a')]: ['packages/core/src/a.test.ts'],
+        [sha('b')]: ['packages/core/src/a.ts'],
+        [sha('c')]: ['config/env.test.ts'],
+      },
+    );
+    expect(tasks).toMatch(
+      /## PR #93: Task 93[\s\S]*`aaaaaaa` test\(core\): failing tests — `packages\/core\/src\/a\.test\.ts`\n- `bbbbbbb` feat\(core\): the code[\s\S]*## PR #99[\s\S]*`ccccccc`/,
+    );
+  });
+
+  it('lists only the files a merge from the base changes on top of every parent, and a merge from anywhere else with a warning', () => {
+    const tasks = bundleFor(
+      {
+        93: restCommits([
+          { c: 'a', subject: 'test(core): failing tests', parents: ['0'] },
+          { c: 'd', subject: "Merge branch 'staging' into 93", parents: ['a', 'e'] },
+          { c: 'f', subject: 'Merge side work', parents: ['d', '9'] },
+        ]),
+      },
+      {
+        [sha('a')]: ['packages/core/src/a.test.ts'],
+        // Against its first parent, a merge from the base shows the base's files, plus any code added in the merge.
+        [sha('d')]: ['.github/workflows/ci.yml', 'packages/core/src/evil.ts'],
+        [sha('f')]: ['packages/core/src/a.ts'],
+      },
+      [sha('e')],
+      {},
+      // Against the base parent: the task's own files, plus the code added in the merge.
+      {
+        compares: {
+          [`${sha('e')}...${sha('d')}`]: [
+            'packages/core/src/a.test.ts',
+            'packages/core/src/evil.ts',
+          ],
+        },
+      },
+    );
+    expect(tasks).toMatch(
+      /^- `ddddddd` .*\(a merge from the base; these files differ from every parent: check them for code added in the merge\) — `packages\/core\/src\/evil\.ts`$/m,
+    );
+    expect(tasks).not.toContain('.github/workflows/ci.yml');
+    expect(tasks).toMatch(
+      /`fffffff` .*\(a merge NOT from the base: check it\) — `packages\/core\/src\/a\.ts`/,
+    );
+  });
+
+  it('says a merge from the base adds nothing when no file differs from every parent', () => {
+    const tasks = bundleFor(
+      {
+        93: restCommits([
+          { c: 'a', subject: 'test(core): failing tests', parents: ['0'] },
+          { c: 'd', subject: "Merge branch 'staging' into 93", parents: ['a', 'e'] },
+        ]),
+      },
+      { [sha('a')]: ['a.test.ts'], [sha('d')]: ['.github/workflows/ci.yml'] },
+      [sha('e')],
+      {},
+      { compares: { [`${sha('e')}...${sha('d')}`]: ['a.test.ts'] } },
+    );
+    expect(tasks).toMatch(
+      /^- `ddddddd` .*\(a merge from the base; no file differs from every parent\)$/m,
+    );
+  });
+
+  it("warns when a merge's comparison reaches GitHub's 300-file limit", () => {
+    const many = Array.from({ length: 300 }, (_, i) => `f${String(i)}.ts`);
+    const tasks = bundleFor(
+      {
+        93: restCommits([
+          { c: 'a', subject: 'test: a', parents: ['0'] },
+          { c: 'd', subject: "Merge branch 'staging' into 93", parents: ['a', 'e'] },
+        ]),
+      },
+      { [sha('a')]: ['a.test.ts'], [sha('d')]: many },
+      [sha('e')],
+      {},
+      { compares: { [`${sha('e')}...${sha('d')}`]: many } },
+    );
+    expect(tasks).toMatch(
+      /`ddddddd` .*GitHub compares at most 300 files: reviewers can't see the rest, so block until Athena lists them/,
+    );
+  });
+
+  it("pages through a task PR's commit list, so a commit past GitHub's first page still shows", () => {
+    const pages = [
+      JSON.parse(restCommits([{ c: 'a', subject: 'test: a', parents: ['0'] }])) as unknown,
+      JSON.parse(restCommits([{ c: 'b', subject: 'feat: the code', parents: ['a'] }])) as unknown,
+    ];
+    const tasks = bundleFor(
+      { 93: JSON.stringify(pages) },
+      { [sha('a')]: ['a.test.ts'], [sha('b')]: ['a.ts'] },
+    );
+    expect(tasks).toMatch(/`aaaaaaa` test: a[\s\S]*`bbbbbbb` feat: the code — `a\.ts`/);
+    expect(tasks).not.toMatch(/only \d+ of/i);
+  });
+
+  it('pages through a commit with more than 300 files, so a file past the first page still shows', () => {
+    const many = Array.from({ length: 300 }, (_, i) => `packages/core/src/t${String(i)}.test.ts`);
+    const tasks = bundleFor(
+      { 93: restCommits([{ c: 'a', subject: 'test(core): many tests', parents: ['0'] }]) },
+      { [sha('a')]: [many, ['packages/core/src/hidden-code.ts']] },
+    );
+    expect(tasks).toContain('`packages/core/src/hidden-code.ts`');
+  });
+
+  it("says so when GitHub's commit list is shorter than the PR's commit count", () => {
+    const tasks = bundleFor(
+      { 93: restCommits([{ c: 'a', subject: 'test(core): failing tests', parents: ['0'] }]) },
+      { [sha('a')]: ['a.test.ts'] },
+      [],
+      {},
+      { counts: { 93: 260 } },
+    );
+    expect(tasks).toMatch(
+      /only 1 of PR #93's 260 commits are listed \(GitHub's limit\): reviewers can't see the rest, so block until Athena lists them/i,
+    );
+  });
+
+  it('marks a task PR the merge log has no gate merge for as unverified', () => {
+    const tasks = bundleFor(
+      {
+        93: restCommits([{ c: 'a', subject: 'test: a', parents: ['0'] }]),
+        99: restCommits([{ c: 'c', subject: 'test: c', parents: ['0'] }]),
+      },
+      { [sha('a')]: ['a.test.ts'], [sha('c')]: ['c.test.ts'] },
+      [],
+      {},
+      { gated: [93] },
+    );
+    expect(tasks).toMatch(/## PR #99: .*\(not merged into staging by the gate: unverified\)/);
+    expect(tasks).not.toMatch(/## PR #93: .*unverified/);
+  });
+
+  it("says plainly when GitHub's reply can't be read, with a fixed reason and never the command", () => {
+    const tasks = bundleFor({ 93: 'not json' }, {});
+    expect(tasks).toContain(
+      "Couldn't list PR #93's commits: GitHub's reply couldn't be read. Reviewers can't see them, so block until Athena lists them.",
+    );
+    expect(tasks).not.toMatch(/JSON|Unexpected token|repos\//);
+  });
+
+  it.each([
+    ['not a number', 'NaN'],
+    ['empty', ''],
+    ['zero', '0'],
+    ['negative', '-1'],
+  ])(
+    "marks a task whose commit count is %s, so a cut-short list can't pass unnoticed",
+    (_, count) => {
+      const tasks = bundleFor(
+        { 93: restCommits([{ c: 'a', subject: 'test: a', parents: ['0'] }]) },
+        { [sha('a')]: ['a.test.ts'] },
+        [],
+        {},
+        { counts: { 93: count } },
+      );
+      expect(tasks).toContain("Couldn't list PR #93's commits: GitHub's reply couldn't be read.");
+    },
+  );
+
+  it('stops the review when a gh call fails, instead of writing a tasks.md with a task missing', () => {
+    expect(() =>
+      bundleFor(
+        { 93: restCommits([{ c: 'a', subject: 'test: a', parents: ['0'] }]) },
+        { [sha('a')]: ['a.test.ts'] },
+        [],
+        {},
+        { failing: /pulls\/93\/commits/ },
+      ),
+    ).toThrow(/rate limit/);
+  });
+
+  it("keeps the builder's titles, subjects and file names to one printable line each", () => {
+    const tasks = bundleFor(
+      { 93: restCommits([{ c: 'a', subject: 'test: x\u202Eevil', parents: ['0'] }]) },
+      { [sha('a')]: ['a`b.ts', 'line\nbreak.ts'] },
+      [],
+      { 93: 'Title\u200Bwith\nnewline' },
+    );
+    const lines = tasks.split('\n');
+    expect(lines.filter((l) => l.startsWith('- `aaaaaaa`'))).toHaveLength(1);
+    expect(tasks).not.toMatch(/[\u202E\u200B]/);
+    expect(tasks).not.toContain('a`b.ts');
+    expect(lines.filter((l) => l.startsWith('## PR #93'))).toHaveLength(1);
   });
 });
 
