@@ -22,6 +22,13 @@
       "when": 1794323709986,
       "tag": "0002_invitation_role_required",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794329422301,
+      "tag": "0003_email_message",
+      "breakpoints": true
     }
   ]
 }

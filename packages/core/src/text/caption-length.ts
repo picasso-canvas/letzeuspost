@@ -46,7 +46,7 @@ const SCHEME = 'https?://';
 const BODY = `(?:(?!${SCHEME})\\S)*`;
 const LINK_PATTERN = new RegExp(
   `${LINK_START}(?:${SCHEME}${BODY}|${DOMAIN_CAP}(?:${LABEL}\\.)+${TLD}(?:[\\/?#]${BODY})?)`,
-  'gv',
+  'giv',
 );
 
 // Punctuation after a link isn't part of it, the Bangla danda (।) included. A closing bracket is, when it closes one
