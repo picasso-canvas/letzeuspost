@@ -30,7 +30,7 @@ import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
-import { findingIds } from './lib/handover-checks.ts';
+import { requireFindingIds } from './lib/handover-checks.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
 import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
@@ -355,7 +355,7 @@ async function main(argv: string[]): Promise<number> {
   const findingsText = args.findings ? readFileSync(args.findings, 'utf8') : null;
   const task = taskText(issue, view.title, view.body, findingsText);
   // The ids the round must answer, kept in Athena's record: the builder can edit its task.md, not this (#138).
-  const findings = findingsText === null ? [] : findingIds(findingsText);
+  const findings = findingsText === null ? [] : requireFindingIds(findingsText);
   console.log(
     `#${String(issue)} → ${clone} on ${branch} (from ${baseRef === 'refs/remotes/origin/staging' ? 'staging' : 'the existing branch'})`,
   );

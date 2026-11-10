@@ -134,7 +134,11 @@ export function evaluate(f: Facts): GateResult {
   }
   // Athena's own PRs get ship's Areas check (#138): builders' PRs had it at ship, and a batch's tasks each did.
   if (kind === 'main') {
-    for (const issue of f.closingIssues.filter((i) => i.inRepo)) {
+    // A build task's Areas (Argus F2 on #152): a section or feedback issue has none to check.
+    const buildTasks = f.closingIssues.filter(
+      (i) => i.inRepo && i.labels.some((l) => l.toLowerCase() === 'build-task'),
+    );
+    for (const issue of buildTasks) {
       if (issue.areas === null) linked.push(`#${String(issue.number)}'s Areas can't be read`);
       else linked.push(...areaRefusals(f.changedFiles, issue.areas));
     }
