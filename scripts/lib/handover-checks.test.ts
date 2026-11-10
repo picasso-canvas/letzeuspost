@@ -47,6 +47,18 @@ describe('parseAreas', () => {
     });
   });
 
+  it('gives "its tests" in a part with no path to the last path before it', () => {
+    expect(parseAreas('**Areas:** `scripts/foo.ts`, its tests')).toEqual({
+      patterns: [
+        'scripts/foo.ts',
+        'scripts/foo.test.*',
+        'scripts/foo.*.test.*',
+        'scripts/foo.spec.*',
+        'scripts/foo.*.spec.*',
+      ],
+    });
+  });
+
   it('gives "their tests" to every file before it on the line', () => {
     expect(parseAreas('**Areas:** `scripts/a.ts`, `scripts/b.ts`, their tests')).toEqual({
       patterns: [
@@ -175,10 +187,33 @@ describe('requireFindingIds (what dispatch records)', () => {
     ).toEqual(['Argus F1', 'Argus F2', 'Cerberus F1', 'Iris F3']);
   });
 
+  it("reads Athena's posted review records, and the ids a reviewer mentions in prose don't stand in for the rest", () => {
+    const comments = [
+      '🦉 Athena: review record: **Argus**, **block** for `c22cd7c`.',
+      '',
+      'VERDICT: block',
+      '',
+      '[blocking] F1 correctness scripts/dispatch.ts:358 — Round 2 answers Argus F1 only in part — fix',
+      '[should-fix] F2 correctness scripts/merge-gate/evaluate.ts:136 — x — y',
+      '',
+      '🦉 Athena: review record: **Cerberus**, **block** for `c22cd7c`.',
+      '',
+      'VERDICT: block',
+      '[nit] F3 tests-first scripts/merge-gate/collect.test.ts:247 — z',
+    ].join('\n');
+    expect(requireFindingIds(comments)).toEqual(['Argus F1', 'Argus F2', 'Cerberus F3']);
+  });
+
+  it('refuses a numbered finding with no reviewer above it, rather than dropping it', () => {
+    expect(() =>
+      requireFindingIds('Fix Argus F1 as discussed.\n[blocking] F2 evidence pr.md — orphan'),
+    ).toThrow(/no reviewer above it: \[blocking\] F2/);
+  });
+
   it('also takes ids Athena wrote out, and refuses a findings file with none', () => {
     expect(requireFindingIds('Fix Argus F2 and Cerberus F1.')).toEqual(['Argus F2', 'Cerberus F1']);
     expect(() => requireFindingIds('[blocking] F1 evidence pr.md — no reviewer named')).toThrow(
-      /no finding ids/,
+      /no reviewer above it/,
     );
     expect(() => requireFindingIds('please fix the button')).toThrow(/no finding ids/);
   });
