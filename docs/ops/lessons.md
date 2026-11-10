@@ -25,3 +25,5 @@ matched whole reviews, including their "checked and fine" lines, and gave higher
 
 One more reason for feature batches, not a repeated finding type: a single should-fix in one task
 held batch #130's four other tasks (2026-11-09 and 2026-11-10).
+
+<!-- throwaway: a docs-only change for #160 (not for merging) -->
