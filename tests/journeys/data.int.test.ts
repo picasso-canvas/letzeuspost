@@ -3,11 +3,12 @@
 // fail, so CI's `services` job stays green. The feature's last task (#105) removes the mark; the feature is done when
 // this passes in CI.
 //
-// What exists is called as it is built: `@lzp/db` (#71: `db.forWorkspace(ctx).transaction((tx) => …)`, `migrate`),
-// `@lzp/storage` (#73) and the config files (#69). What doesn't exist yet is loaded inside the test with `load()`, so
-// this file loads, typechecks and lints before it does, and the test fails only because that piece (or a service) isn't
-// there yet. It is marked `Assumed:` with the task that builds it, at the line that uses it. Each task of the feature may
-// change those calls to its real API, but never weaken an assertion.
+// What exists is called as it is built: `@lzp/db` (#71: `db.forWorkspace(ctx).transaction((tx) => …)`, `migrate`, the
+// `invitation` table the journey proves isolation on), `@lzp/storage` (#73) and the config files (#69). What doesn't
+// exist yet is loaded inside the test with `assumed()`, so this file loads, typechecks and lints before it does, and the
+// test fails only because that piece (or a service) isn't there yet, with a message that names its task. It is marked
+// `Assumed:` with the task that builds it, at the line that uses it. Each task of the feature may change those calls to
+// its real API, but never weaken an assertion.
 //
 // Runs only in `pnpm check:services` and CI's `services` job (the `.int.test.ts` name; Postgres, the file store and
 // Mailpit come from docker/compose.yml). The settings are config/env.ts's.
@@ -18,6 +19,7 @@ import { networks, networksConfigSchema, sizes } from '../../config/networks.ts'
 import { extraPack, globalDailyAiCap, plans, plansConfigSchema } from '../../config/plans.ts';
 import {
   createDb,
+  invitation,
   member,
   migrate,
   user,
@@ -34,9 +36,10 @@ import { assetKey, createStorage } from '../../packages/storage/src/index.ts';
 type Row = Record<string, string | boolean | undefined>;
 
 /**
- * A query as text: each `${value}` becomes a quoted SQL literal. The root can't import drizzle's `sql` tag (it belongs
- * to packages/db) and the raw client is off limits outside it, so this is how the test's few raw statements, on tables
- * that have no Drizzle schema yet, carry a value. Every value is one this test made (an id, the run's uuid).
+ * A query as text: each `${value}` becomes a quoted SQL literal. Everything with a Drizzle schema in `@lzp/db` goes
+ * through the typed `tx.insert` and `tx.select`. This is for the rest: catalog queries, the `email_message` outbox
+ * (no schema until #72) and the clean-up delete of the two Owners (the root can't import drizzle's `eq`, which belongs
+ * to packages/db). Every value is one this test made (an id, the run's uuid).
  */
 function text(strings: TemplateStringsArray, ...values: string[]): string {
   let query = '';
@@ -60,35 +63,40 @@ interface JobInput {
  * Assumed (#72): `@lzp/db` gives the job queue: pg-boss's `send`, on the app role's connection. Payloads hold ids only
  * (the `jobs` rules).
  */
-interface QueueModule {
-  createQueue: (appUrl: string) => Promise<{
-    send: (queue: string, payload: object) => Promise<string | null>;
-    stop: () => Promise<void>;
-  }>;
-}
+type CreateQueue = (appUrl: string) => Promise<{
+  send: (queue: string, payload: object) => Promise<string | null>;
+  stop: () => Promise<void>;
+}>;
 
 /**
  * Assumed (#72): `apps/worker` starts the pg-boss worker with the job handlers (the `email` queue's among them) and lets
  * a test add one. `run` hands a job to its handler once, as pg-boss does on a retry or a redelivery.
  */
-interface WorkerModule {
-  startWorker: (options: {
-    databaseUrl: string;
-    handlers?: Record<string, (input: JobInput) => Promise<void>>;
-  }) => Promise<{
-    run: (queue: string, payload: object) => Promise<void>;
-    stop: () => Promise<void>;
-  }>;
-}
+type StartWorker = (options: {
+  databaseUrl: string;
+  handlers?: Record<string, (input: JobInput) => Promise<void>>;
+}) => Promise<{
+  run: (queue: string, payload: object) => Promise<void>;
+  stop: () => Promise<void>;
+}>;
 
 /**
- * Loads a module of the feature when the test runs, so a module that doesn't exist yet can't break the file. The path
- * is relative to this file; it goes through a file URL because Vitest resolves a bare relative path in a variable
- * from the project's root, not from the file.
+ * Loads one export of a module of the feature when the test runs, so a module that doesn't exist yet can't break the
+ * file, and says which task builds it when it isn't there. The path is relative to this file; it goes through a file
+ * URL because Vitest resolves a bare relative path in a variable from the project's root, not from the file.
  */
-async function load<T>(path: string): Promise<T> {
-  const mod: unknown = await import(new URL(path, import.meta.url).href);
-  return mod as T;
+async function assumed<T>(path: string, name: string, task: string): Promise<T> {
+  let mod: Record<string, unknown>;
+  try {
+    mod = (await import(new URL(path, import.meta.url).href)) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`Assumed (${task}): ${path} can't be loaded yet: ${String(error)}`, {
+      cause: error,
+    });
+  }
+  const value = mod[name];
+  if (value === undefined) throw new Error(`Assumed (${task}): ${path} has no \`${name}\` yet`);
+  return value as T;
 }
 
 /** A promise that gives up with a clear message, so a job that never runs fails the test instead of hanging it. */
@@ -193,55 +201,73 @@ describe('the Data feature: two workspaces stay apart through every layer', () =
         // ... the tables belong to the owner, and row-level security is on for workspace data.
         const tables = await asA`select t.tablename, t.tableowner, c.relrowsecurity as rls
              from pg_tables t join pg_class c on c.relname = t.tablename
-            where t.schemaname = 'public' and t.tablename in ('brand', 'email_message')
-            order by t.tablename`;
-        const found = tables.map((row) => row.tablename);
-        // Assumed (#72): the `email_message` outbox table, built with the email job.
-        expect(
-          found,
-          'Assumed (#72): the `email_message` outbox table does not exist yet',
-        ).toContain('email_message');
-        // Assumed: the `brand` table. No task builds it yet; Athena names it.
-        expect(
-          found,
-          'Assumed: the `brand` table does not exist yet (no task builds it)',
-        ).toContain('brand');
-        expect(tables).toEqual([
-          { tablename: 'brand', tableowner: 'lzp_owner', rls: true },
-          { tablename: 'email_message', tableowner: 'lzp_owner', rls: true },
-        ]);
+            where t.schemaname = 'public' and t.tablename = 'invitation'`;
+        expect(tables).toEqual([{ tablename: 'invitation', tableowner: 'lzp_owner', rls: true }]);
 
         // 3. In A's context a row is written; a job queued for A runs in the worker and sees A's row and none of B's.
-        // Assumed: `brand` has `workspace_id` and `name_en`; the other columns have defaults.
-        const nameA = `Brand A ${run}`;
-        const nameB = `Brand B ${run}`;
-        await asA`insert into brand (workspace_id, name_en) values (${a.workspaceId}, ${nameA})`;
-        await asB`insert into brand (workspace_id, name_en) values (${b.workspaceId}, ${nameB})`;
+        // `invitation` is #71's workspace table with row-level security; its inviter is each workspace's Owner.
+        const inviteA = `invited-a-${run}@journey.invalid`;
+        const inviteB = `invited-b-${run}@journey.invalid`;
+        const invite = (ctx: WorkspaceCtx, inviterId: string, email: string) =>
+          db.forWorkspace(ctx).transaction((tx) =>
+            tx.insert(invitation).values({
+              workspaceId: ctx.workspaceId,
+              email,
+              role: 'editor',
+              expiresAt: new Date(Date.now() + 7 * 86_400_000),
+              inviterId,
+            }),
+          );
+        await invite(ctxA, a.ownerUserId, inviteA);
+        await invite(ctxB, b.ownerUserId, inviteB);
         // The second wall on its own: A's context can't write a row for B (the policy's check), and a query with no
         // workspace filter at all still sees only A's rows.
-        const planted = `Planted by A ${run}`;
+        const planted = `planted-by-a-${run}@journey.invalid`;
         await expect(
-          asA`insert into brand (workspace_id, name_en) values (${b.workspaceId}, ${planted})`,
+          db.forWorkspace(ctxA).transaction((tx) =>
+            tx.insert(invitation).values({
+              workspaceId: b.workspaceId,
+              email: planted,
+              role: 'admin',
+              expiresAt: new Date(Date.now() + 86_400_000),
+              inviterId: a.ownerUserId,
+            }),
+          ),
         ).rejects.toThrow();
-        const unfiltered = await asA`select workspace_id, name_en from brand`;
-        expect(unfiltered.map((row) => row.name_en)).toContain(nameA);
-        expect(unfiltered.map((row) => row.name_en)).not.toContain(nameB);
-        expect(unfiltered.every((row) => row.workspace_id === a.workspaceId)).toBe(true);
-        const seenByB = await asB`select name_en from brand`;
-        expect(seenByB.map((row) => row.name_en)).toContain(nameB);
-        expect(seenByB.map((row) => row.name_en)).not.toContain(planted);
+        const invitationsOf = (ctx: WorkspaceCtx) =>
+          db
+            .forWorkspace(ctx)
+            .transaction((tx) =>
+              tx
+                .select({ workspaceId: invitation.workspaceId, email: invitation.email })
+                .from(invitation),
+            );
+        const unfiltered = await invitationsOf(ctxA);
+        expect(unfiltered.map((row) => row.email)).toContain(inviteA);
+        expect(unfiltered.map((row) => row.email)).not.toContain(inviteB);
+        expect(unfiltered.every((row) => row.workspaceId === a.workspaceId)).toBe(true);
+        const seenByB = await invitationsOf(ctxB);
+        expect(seenByB.map((row) => row.email)).toEqual([inviteB]);
 
-        const seenInJob = Promise.withResolvers<{ payload: object; rows: Row[] }>();
+        const seenInJob = Promise.withResolvers<{
+          payload: object;
+          rows: { workspaceId: string; email: string }[];
+        }>();
         // Assumed (#72): `apps/worker` starts the worker and runs a handler a test registers like any other job, with
         // `db` scoped to the payload's workspace.
-        const workerModule = await load<WorkerModule>('../../apps/worker/src/index.ts');
-        const worker = await workerModule.startWorker({
+        const startWorker = await assumed<StartWorker>(
+          '../../apps/worker/src/index.ts',
+          'startWorker',
+          '#72',
+        );
+        const worker = await startWorker({
           databaseUrl: env.DATABASE_URL,
           handlers: {
             'journey-probe': async ({ payload, db: scoped }) => {
-              const rows = await scoped.transaction(
-                async (tx) =>
-                  (await tx.execute<Row>('select workspace_id, name_en from brand')).rows,
+              const rows = await scoped.transaction((tx) =>
+                tx
+                  .select({ workspaceId: invitation.workspaceId, email: invitation.email })
+                  .from(invitation),
               );
               seenInJob.resolve({ payload, rows });
             },
@@ -249,20 +275,30 @@ describe('the Data feature: two workspaces stay apart through every layer', () =
         });
         cleanups.push(() => worker.stop());
         // Assumed (#72): `@lzp/db` gives `createQueue`.
-        const queueModule = await load<QueueModule>('../../packages/db/src/index.ts');
-        const queue = await queueModule.createQueue(env.DATABASE_URL);
+        const createQueue = await assumed<CreateQueue>(
+          '../../packages/db/src/index.ts',
+          'createQueue',
+          '#72',
+        );
+        const queue = await createQueue(env.DATABASE_URL);
         cleanups.push(() => queue.stop());
         await queue.send('journey-probe', { workspaceId: a.workspaceId });
         const job = await within(seenInJob.promise, 30_000, 'the job queued for A');
         expect(job.payload).toEqual({ workspaceId: a.workspaceId }); // ids only, never content
-        const jobRows = job.rows;
-        expect(jobRows.map((row) => row.name_en)).toContain(nameA);
-        expect(jobRows.map((row) => row.name_en)).not.toContain(nameB);
-        expect(jobRows.every((row) => row.workspace_id === a.workspaceId)).toBe(true);
+        expect(job.rows.map((row) => row.email)).toContain(inviteA);
+        expect(job.rows.map((row) => row.email)).not.toContain(inviteB);
+        expect(job.rows.every((row) => row.workspaceId === a.workspaceId)).toBe(true);
 
         // 4. The email job for an A member, run twice for the same outbox row, puts exactly one message in Mailpit.
         // Assumed (#72): `email_message` has `workspace_id`, `template`, `to_address` and `status`, and the job sets
         // `status` to 'sent'; the `email` queue's payload is the workspace and the outbox row's ids.
+        const outboxTable = await asA`select t.tablename, t.tableowner, c.relrowsecurity as rls
+             from pg_tables t join pg_class c on c.relname = t.tablename
+            where t.schemaname = 'public' and t.tablename = 'email_message'`;
+        expect(
+          outboxTable,
+          'Assumed (#72): the `email_message` outbox table does not exist yet',
+        ).toEqual([{ tablename: 'email_message', tableowner: 'lzp_owner', rls: true }]);
         const outbox =
           await asA`insert into email_message (workspace_id, template, to_address, status)
            values (${a.workspaceId}, 'email-check', ${emailA}, 'queued') returning id`;
