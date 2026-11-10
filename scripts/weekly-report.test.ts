@@ -3,6 +3,7 @@ import {
   auditMain,
   isoWeek,
   countRetries,
+  estimateMinutes,
   renderReport,
   type LogEntry,
   type MainCommit,
@@ -305,5 +306,35 @@ describe('renderReport: batches by feature (#139)', () => {
       guardrailHits: {},
     });
     expect(text).toContain('| #160 | [Batch] 5 tasks (feature: data) | sensitive |');
+  });
+});
+
+describe('estimateMinutes (#160)', () => {
+  it('bills each run as its whole minutes, at least one, the way GitHub bills a one-job workflow', () => {
+    expect(
+      estimateMinutes([
+        { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:00:17Z' },
+        { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:02:01Z' },
+        { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:00:00Z' },
+        { started: 'bad', updated: '2026-11-10T08:00:00Z' },
+      ]),
+    ).toBe(5);
+  });
+
+  it('shows the month so far against the free minutes', () => {
+    const text = renderReport({
+      week: '2026-W46',
+      merges: [],
+      titles: {},
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+      actionsMinutes: { month: '2026-11', minutes: 1234 },
+    });
+    expect(text).toContain(
+      'Actions minutes this month (2026-11, estimated from run times): about 1234 of the 2,000 free.',
+    );
   });
 });
