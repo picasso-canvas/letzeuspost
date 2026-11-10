@@ -79,6 +79,13 @@ describe('dispatchRefusal', () => {
     expect(dispatchRefusal(harnessFollowUp, [data], isMergedBatch)).toBeNull();
   });
 
+  it('exempts a real follow-up even when it also carries a feature label (Argus F2 on #155)', () => {
+    const followUp = task(162, ['follow-up', 'feature:app-shell'], {
+      body: '**Follow-up of:** #130',
+    });
+    expect(dispatchRefusal(followUp, [data], isMergedBatch)).toBeNull();
+  });
+
   it('refuses a task with two feature labels', () => {
     expect(
       dispatchRefusal(task(72, ['feature:data', 'feature:sign-in']), [], isMergedBatch),
@@ -102,6 +109,11 @@ describe('journeyMarked', () => {
   it("doesn't take other code's skip or fail for a mark (Argus F3 on #155)", () => {
     const text =
       "const rows = query.skip(10);\nassert.fail('never');\nit('journey', { skip: false }, () => {});";
+    expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(false);
+  });
+
+  it('reads option marks only inside a test call, not in any object (Argus F1 on #155)', () => {
+    const text = "const settings = { only: 'x', skip: 0 };\nit('journey', () => {});";
     expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(false);
   });
 
