@@ -114,7 +114,18 @@ describe('readFindings and countLessons', () => {
 
   it('skips a file that is not a review record', () => {
     const state = stateWith([record(130, 'argus', 'VERDICT: block\n[blocking] F1 areas a.ts — x')]);
-    writeFileSync(join(state, 'reviews', 'pr-130', 'a'.repeat(40), 'notes.txt'), 'hello');
+    const dir = join(state, 'reviews', 'pr-130', 'a'.repeat(40));
+    writeFileSync(join(dir, 'notes.txt'), 'hello');
+    writeFileSync(join(dir, 'argus-1-0000000a.json'), '{ not json');
+    writeFileSync(join(dir, 'argus-2-0000000b.json'), JSON.stringify({ reviewer: 'argus' }));
+    // A name that says Argus over a record that says otherwise isn't a review.
+    writeFileSync(
+      join(dir, 'argus-3-0000000c.json'),
+      JSON.stringify({
+        reviewer: 'redteam',
+        summary: 'VERDICT: pass\n[blocking] F1 evidence a — x',
+      }),
+    );
     expect(countLessons(readFindings(state)).map((c) => c.type)).toEqual(['areas']);
   });
 
@@ -153,9 +164,12 @@ describe('the lessons doc and the weekly rows', () => {
     expect(rows[1]).toMatchObject({ prevention: null, status: null });
   });
 
-  it("leaves out older findings no keyword could type: they aren't a lesson", () => {
+  it("leaves out older findings no keyword could type, and mistyped ones: they aren't a lesson", () => {
     const rows = lessonRows(
-      [{ type: 'other', prs: [1, 2, 3], findings: 9, blocking: 1, approximate: true }],
+      [
+        { type: 'other', prs: [1, 2, 3], findings: 9, blocking: 1, approximate: true },
+        { type: 'unknown', prs: [4, 5], findings: 2, blocking: 0, approximate: false },
+      ],
       parseLessonsDoc(doc),
     );
     expect(rows).toEqual([]);
@@ -175,6 +189,11 @@ describe('the finding types', () => {
       const text = readFileSync(join(ROOT, `.claude/agents/${agent}.md`), 'utf8');
       expect(text, agent).toContain('[blocking|should-fix|nit] F<n> <type>');
       expect(text, agent).toContain('.claude/skills/review-checklist/SKILL.md');
+      // Answering a finding by a follow-up waits for the gate check that makes it land (#139).
+      expect(text, agent).not.toMatch(/follow-up/i);
     }
+    expect(readFileSync(join(ROOT, '.claude/agents/cerberus-security.md'), 'utf8')).toContain(
+      'Block when any finding is blocking or a should-fix',
+    );
   });
 });
