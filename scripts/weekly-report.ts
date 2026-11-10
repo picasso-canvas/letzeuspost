@@ -40,6 +40,8 @@ export interface LogEntry {
   message?: string;
   /** The branch the gate merged into (`staging` or `main`); older entries have none (main). */
   base?: string;
+  /** `batch` for the PR from staging into main. */
+  kind?: string;
 }
 
 export function isoWeek(date: Date): string {
@@ -107,6 +109,14 @@ export interface ReportData {
   guardrailHits: Record<string, number>;
   /** The learning loop's repeated finding types (scripts/lessons.ts). */
   lessons?: LessonRow[];
+  /** Each batch's features, from the `feature:<slug>` labels of the issues it closed (#139). */
+  batchFeatures?: Record<number, string[]>;
+}
+
+function featureNote(features: readonly string[] | undefined): string {
+  return features === undefined || features.length === 0
+    ? ''
+    : ` (feature: ${features.join(', ')})`;
 }
 
 export function renderReport(d: ReportData): string {
@@ -133,7 +143,7 @@ export function renderReport(d: ReportData): string {
     for (const e of merged) {
       const commit = commits.get(e.pr);
       lines.push(
-        `| #${String(e.pr)} | ${d.titles[e.pr] ?? ''} | ${e.tier ?? ''} | ${(e.reviewers ?? []).join(', ')} | ${e.base === undefined ? (commit ? `merged as ${commit.slice(0, 7)}` : 'merged') : `merged into ${e.base}${commit ? ` as ${commit.slice(0, 7)}` : ''}`} |`,
+        `| #${String(e.pr)} | ${d.titles[e.pr] ?? ''}${featureNote(d.batchFeatures?.[e.pr])} | ${e.tier ?? ''} | ${(e.reviewers ?? []).join(', ')} | ${e.base === undefined ? (commit ? `merged as ${commit.slice(0, 7)}` : 'merged') : `merged into ${e.base}${commit ? ` as ${commit.slice(0, 7)}` : ''}`} |`,
       );
     }
   }
@@ -319,6 +329,36 @@ function main(argv: string[]): number {
       titles[pr] = '';
     }
   }
+  // A batch's features: the feature labels of the issues it closed.
+  const batchFeatures: Record<number, string[]> = {};
+  for (const e of merges.filter((m) => m.kind === 'batch' && m.result === 'merged')) {
+    try {
+      const closed = JSON.parse(
+        run('gh', ['pr', 'view', String(e.pr), '-R', REPO, '--json', 'closingIssuesReferences']),
+      ) as { closingIssuesReferences: { number: number }[] };
+      const labels = closed.closingIssuesReferences.flatMap(
+        ({ number }) =>
+          (
+            JSON.parse(
+              run('gh', ['issue', 'view', String(number), '-R', REPO, '--json', 'labels']),
+            ) as { labels: { name: string }[] }
+          ).labels,
+      );
+      batchFeatures[e.pr] = [
+        ...new Set(
+          labels
+            .filter((l) => l.name.startsWith('feature:'))
+            .map((l) => l.name.slice('feature:'.length)),
+        ),
+      ];
+    } catch (error) {
+      // Say so, rather than show a batch with no feature (Argus F3 on #155).
+      console.error(
+        `weekly report: couldn't read batch #${String(e.pr)}'s features: ${error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error)}`,
+      );
+      batchFeatures[e.pr] = [];
+    }
+  }
   const list = (args: string[]) =>
     JSON.parse(run('gh', [...args, '-R', REPO, '--json', 'number,title'])) as {
       number: number;
@@ -342,6 +382,7 @@ function main(argv: string[]): number {
     openSensitive: list(['pr', 'list', '--state', 'open', '--label', 'sensitive']),
     needsZeus: list(['issue', 'list', '--state', 'open', '--label', 'needs-zeus']),
     guardrailHits: hits,
+    batchFeatures,
     lessons: lessonRows(
       countLessons(readFindings()),
       parseLessonsDoc(
