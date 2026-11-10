@@ -50,11 +50,12 @@ export function dispatchRefusal(
     return `#${String(task.number)} has ${error instanceof Error ? error.message : String(error)}`;
   }
   if (feature === null) {
+    // Harness tasks run alongside any feature, follow-ups of harness PRs among them.
+    if (task.milestone === 'H0 Harness') return null;
     if (task.labels.includes('follow-up'))
       return isFollowUp(task, isMergedBatch)
         ? null
         : `#${String(task.number)} is labelled follow-up but its **Follow-up of:** line names no batch PR merged into main`;
-    if (task.milestone === 'H0 Harness') return null;
     return `#${String(task.number)} has no feature:<slug> label: Athena labels it first (§19)`;
   }
   const open = new Map<string, number[]>();
