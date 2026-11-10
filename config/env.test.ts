@@ -8,6 +8,7 @@ import { loadEnv, settings, type ProcessName } from './env.ts';
 const LEAK = 'LEAKED';
 
 const valid: Record<string, string> = {
+  LZP_ENV: 'development',
   DATABASE_URL: 'postgres://lzp_app@localhost:5432/letzeuspost',
   DATABASE_OWNER_URL: 'postgres://lzp_owner@localhost:5432/letzeuspost',
   STORAGE_ENDPOINT: 'http://localhost:8333',
@@ -33,9 +34,11 @@ const FILE_STORE = [
 const EMAIL = ['SMTP_URL', 'EMAIL_FROM'];
 
 // §13 What runs and §14 Secrets: each process holds only these.
+// Every process also knows where it runs (LZP_ENV, Zeus on #105).
 const expected: Record<ProcessName, readonly string[]> = {
   // Database, file store (signing), auth, email; §14 Deploys: the Next.js key and deployment id.
   web: [
+    'LZP_ENV',
     'DATABASE_URL',
     ...FILE_STORE,
     ...EMAIL,
@@ -45,11 +48,11 @@ const expected: Record<ProcessName, readonly string[]> = {
     'NEXT_DEPLOYMENT_ID',
   ],
   // Database, file store, email, and the app's address for the links in its emails.
-  worker: ['DATABASE_URL', ...FILE_STORE, ...EMAIL, 'APP_URL'],
-  // None: its token arrives in M2.
-  fetcher: [],
-  migrate: ['DATABASE_OWNER_URL'],
-  seed: ['DATABASE_OWNER_URL'],
+  worker: ['LZP_ENV', 'DATABASE_URL', ...FILE_STORE, ...EMAIL, 'APP_URL'],
+  // Nothing else: its token arrives in M2.
+  fetcher: ['LZP_ENV'],
+  migrate: ['LZP_ENV', 'DATABASE_OWNER_URL'],
+  seed: ['LZP_ENV', 'DATABASE_OWNER_URL'],
 };
 const processes = Object.keys(expected) as ProcessName[];
 
@@ -91,9 +94,8 @@ describe('loadEnv gives each process only its own settings', () => {
     expect(env).toEqual(Object.fromEntries(expected[name].map((key) => [key, valid[key]])));
   });
 
-  it('gives the fetcher nothing, even with every setting in its environment', () => {
-    expect(loadEnv('fetcher', valid)).toEqual({});
-    expect(loadEnv('fetcher', {})).toEqual({});
+  it('gives the fetcher only LZP_ENV, even with every setting in its environment', () => {
+    expect(loadEnv('fetcher', valid)).toEqual({ LZP_ENV: 'development' });
   });
 
   it.each([
@@ -104,6 +106,7 @@ describe('loadEnv gives each process only its own settings', () => {
     ['SMTP_URL', 'smtps://smtp.example.com:465'],
     ['APP_URL', 'https://app.letzeuspost.com'],
     ['NEXT_DEPLOYMENT_ID', '4e2d495a1f7f91775cf938184066ffac48915a13'],
+    ['LZP_ENV', 'ci'], // staging and production need https:// addresses: tested below
   ])('accepts %s = %s', (setting, value) => {
     const env: Record<string, string> = loadEnv(readerOf(setting), { ...valid, [setting]: value });
     expect(env[setting]).toBe(value);
@@ -119,12 +122,17 @@ describe('a missing or malformed setting stops the process at startup', () => {
   );
 
   it('counts an empty value as missing', () => {
-    expect(() => loadEnv('migrate', { DATABASE_OWNER_URL: '' })).toThrow(
+    expect(() => loadEnv('migrate', { LZP_ENV: 'ci', DATABASE_OWNER_URL: '' })).toThrow(
       'DATABASE_OWNER_URL is missing',
     );
+    expect(() => loadEnv('fetcher', { LZP_ENV: '' })).toThrow('LZP_ENV is missing');
   });
 
   it.each([
+    ['LZP_ENV', LEAK],
+    ['LZP_ENV', `production ${LEAK}`],
+    ['LZP_ENV', `${LEAK}-staging`],
+    ['LZP_ENV', 'PRODUCTION'], // the names are lowercase
     ['DATABASE_URL', `mysql://app:${LEAK}@localhost:5432/letzeuspost`], // not Postgres
     ['DATABASE_URL', `postgres://localhost:5432/${LEAK}`], // no user
     ['DATABASE_URL', `postgres://app:${LEAK}@localhost:5432`], // no database
@@ -179,8 +187,103 @@ describe('a missing or malformed setting stops the process at startup', () => {
     });
     expect(run.status).toBe(1);
     expect(run.stdout).not.toContain('started');
+    expect(run.stderr).toContain('LZP_ENV is missing');
     expect(run.stderr).toContain('DATABASE_URL is missing');
     expect(run.stderr).toContain('STORAGE_SECRET_ACCESS_KEY is malformed');
     expect(run.stderr).not.toContain(LEAK);
+  });
+});
+
+// §14: production is HTTPS only. Plain http:// is for Zeus's Mac and CI, which run without TLS (Zeus on #105).
+describe('the app and file-store addresses are https:// outside development and ci', () => {
+  const ADDRESSES = ['APP_URL', 'STORAGE_ENDPOINT'] as const;
+  // A URL's host is lowercase, so these carry the marker in lowercase.
+  const leak = LEAK.toLowerCase();
+  const plain = {
+    APP_URL: `http://${leak}.example`,
+    STORAGE_ENDPOINT: `http://${leak}.example:8333`,
+  };
+  const secure = { APP_URL: 'https://app.letzeuspost.com', STORAGE_ENDPOINT: 'https://r2.example' };
+  const readers = ['web', 'worker'] as const;
+
+  it.each(['development', 'ci'])('accepts http:// addresses in %s', (environment) => {
+    for (const name of readers) {
+      const env: Record<string, string> = loadEnv(name, {
+        ...valid,
+        ...plain,
+        LZP_ENV: environment,
+      });
+      expect(env.APP_URL).toBe(plain.APP_URL);
+      expect(env.STORAGE_ENDPOINT).toBe(plain.STORAGE_ENDPOINT);
+    }
+  });
+
+  it.each(['staging', 'production'])('accepts https:// addresses in %s', (environment) => {
+    for (const name of readers) {
+      const env: Record<string, string> = loadEnv(name, {
+        ...valid,
+        ...secure,
+        LZP_ENV: environment,
+      });
+      expect(env.LZP_ENV).toBe(environment);
+      expect(env.APP_URL).toBe(secure.APP_URL);
+      expect(env.STORAGE_ENDPOINT).toBe(secure.STORAGE_ENDPOINT);
+    }
+  });
+
+  it.each(
+    ['staging', 'production'].flatMap((environment) =>
+      readers.flatMap((name) => ADDRESSES.map((setting) => [environment, name, setting] as const)),
+    ),
+  )(
+    'in %s, %s refuses an http:// %s, naming it but not its value',
+    (environment, name, setting) => {
+      const source = { ...valid, ...secure, LZP_ENV: environment, [setting]: plain[setting] };
+      const error = thrownBy(() => loadEnv(name, source));
+      expect(error.message).toContain(`${setting} is malformed: expected an https:// URL`);
+      const other = ADDRESSES.find((address) => address !== setting) ?? '';
+      expect(error.message).not.toContain(other);
+      const printed = inspect(error, { depth: Infinity });
+      expect(printed).not.toContain(plain[setting]);
+      expect(printed).not.toContain(leak);
+      expect(printed).not.toContain(environment);
+    },
+  );
+
+  it('leaves the processes without these addresses alone in production', () => {
+    const source = { ...valid, LZP_ENV: 'production' };
+    expect(loadEnv('fetcher', source)).toEqual({ LZP_ENV: 'production' });
+    for (const name of ['migrate', 'seed'] as const) {
+      expect(loadEnv(name, source)).toEqual({
+        LZP_ENV: 'production',
+        DATABASE_OWNER_URL: valid.DATABASE_OWNER_URL,
+      });
+    }
+  });
+
+  it('refuses http:// however its scheme is written', () => {
+    const source = { ...valid, LZP_ENV: 'production', STORAGE_ENDPOINT: `HTTP://${LEAK}.example` };
+    const { message } = thrownBy(() => loadEnv('worker', source));
+    expect(message).toContain('STORAGE_ENDPOINT is malformed: expected an https:// URL');
+    expect(message).toContain('APP_URL is malformed: expected an https:// URL');
+    expect(message).not.toContain(LEAK);
+  });
+
+  it('names each http:// address once, with the other problems', () => {
+    const source = { ...without('DATABASE_URL'), LZP_ENV: 'staging' };
+    const { message } = thrownBy(() => loadEnv('web', source));
+    expect(message).toContain('DATABASE_URL is missing');
+    for (const setting of ADDRESSES) {
+      expect(message.split(`${setting} is malformed`)).toHaveLength(2);
+    }
+  });
+
+  it('reports only LZP_ENV when it is missing or unknown, not the addresses it decides', () => {
+    for (const source of [without('LZP_ENV'), { ...valid, LZP_ENV: 'prod' }]) {
+      const { message } = thrownBy(() => loadEnv('web', source));
+      expect(message).toMatch(/LZP_ENV is (missing|malformed)/);
+      expect(message).not.toContain('APP_URL');
+      expect(message).not.toContain('STORAGE_ENDPOINT');
+    }
   });
 });
