@@ -9,16 +9,19 @@ checklist or agent line.
 
 ## The first count (2026-11-10)
 
-198 reviews on 37 PRs, 85 of them blocks. Counted by keyword before findings had types, so the
-numbers are approximate.
+198 reviews on 37 PRs, 85 of them blocks. These findings were written before they had types, so
+`scripts/lessons.ts` types them by keyword and marks them approximate; most of them (759) fit no
+keyword and count as `other`. The PRs column counts finding lines. The first count (§19, #136)
+matched whole reviews, including their "checked and fine" lines, and gave higher numbers: 20, 13,
+13, 9 and 4. From #137 on, reviewers type each finding, so the counts are exact.
 
-| Type | PRs | Prevention | Status |
-|---|---|---|---|
-| PR text or Done-when evidence out of date, or missing | 20 | Ship (builders) and the merge gate (Athena's PRs) refuse evidence that doesn't name the head commit | Planned |
-| A file changed outside the task's Areas | 13 | Ship refuses a branch that changes a file outside the task's Areas | Planned |
-| A finding left unanswered in a fix round | 13 | Numbered findings; ship and the gate refuse a fix round whose Round section misses a number | Planned |
-| Tests-first not visible in a batch's history | 9 | `tasks.md` in batch bundles (#134) | Done 2026-11-10 |
-| A decision of Zeus's not recorded where the reviewers look | 4 | Athena records each chat decision, dated, on the task's own issue or PR (the one in the reviewers' bundle) in the same turn | In force 2026-11-10 |
+| Type | Slug | PRs | Prevention | Status |
+|---|---|---|---|---|
+| PR text or Done-when evidence out of date, or missing | `evidence` | 11 | Ship (builders) and the merge gate (Athena's PRs) refuse evidence that doesn't name the head commit (#138) | Planned |
+| A file changed outside the task's Areas | `areas` | 12 | Ship refuses a branch that changes a file outside the task's Areas (#138) | Planned |
+| A finding left unanswered in a fix round | `unanswered` | 7 | Numbered findings (#137); ship and the gate refuse a fix round whose Round section misses a number (#138) | Planned |
+| Tests-first not visible in a batch's history | `tests-first` | 4 | `tasks.md` in batch bundles (#134) | Done 2026-11-10 |
+| A decision of Zeus's not recorded where the reviewers look | `decision-record` | 3 | Athena records each chat decision, dated, on the task's own issue or PR (the one in the reviewers' bundle) in the same turn | In force 2026-11-10 |
 
 One more reason for feature batches, not a repeated finding type: a single should-fix in one task
 held batch #130's four other tasks (2026-11-09 and 2026-11-10).

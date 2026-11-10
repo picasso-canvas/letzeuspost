@@ -81,7 +81,7 @@ function main(argv: string[]): number {
     return 2;
   }
   const summary = readFileSync(summaryFile, 'utf8').trim();
-  const { verdict, reason } = parseVerdict(summary);
+  const { verdict, reason } = parseVerdict(summary, reviewer);
   const snapshot = JSON.parse(readFileSync(snapshotFile, 'utf8')) as {
     headRefOid?: unknown;
     body?: unknown;

@@ -74,7 +74,7 @@ function verify(r: ReviewRecord, pr: number, sha: string, deps: CollectDeps): Re
     }
   }
   // A verified record's verdict is the one in the session's own answer, never the record's field.
-  const verdict = verified ? parseVerdict(r.summary).verdict : r.verdict;
+  const verdict = verified ? parseVerdict(r.summary, r.reviewer).verdict : r.verdict;
   return { ...r, verdict, meta: { ...meta, verified } };
 }
 

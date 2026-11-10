@@ -67,7 +67,11 @@ text: no bold, heading or other Markdown around it. Anything else on the first l
 any finding is blocking: anything that breaks the approved design, a missing state or theme, or missing evidence. Then
 one line per finding:
 
-`[blocking|should-fix|nit] path/to/file.tsx:42 (or the screenshot's path) — the problem — the fix`
+`[blocking|should-fix|nit] F<n> <type> path/to/file.tsx:42 (or the screenshot's path) — the problem — the fix`
+
+`F<n>` numbers your findings in order (F1, F2, …), and `<type>` is one slug from **Finding types** in
+`.claude/skills/review-checklist/SKILL.md` (§19 Learning loop: findings are counted by type, so a repeated mistake
+gets a prevention). A fix round answers each number in a **Round N** section of the PR text.
 
 Then one line confirming which screens, states and themes you compared, and item 8. Keep it under 400 words. If you
 can't judge something from the files you were given, say what's missing; that is a block, not a pass.

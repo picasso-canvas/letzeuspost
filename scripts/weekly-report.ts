@@ -4,12 +4,20 @@
 // It lists every merge with its tier, reviews and merge-gate result (from ~/.letzeuspost/merges.jsonl), open
 // sensitive PRs, tasks waiting on Zeus and guardrail hits. It also checks `main`'s history against the merge log:
 // a commit on `main` that didn't come through the gate sets AGENTS_PAUSED=true (unless --no-freeze) and leads the
-// report. Prints the report; --create opens it as an `audit` issue.
+// report. Its Lessons section lists each finding type found on 2 or more PRs, with its prevention from
+// docs/ops/lessons.md (§19 Learning loop). Prints the report; --create opens it as an `audit` issue.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isEntryPoint } from './lib/entry.ts';
+import {
+  countLessons,
+  lessonRows,
+  parseLessonsDoc,
+  readFindings,
+  type LessonRow,
+} from './lessons.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 import { ungatedStagingCommits } from './merge-gate/staging.ts';
@@ -97,6 +105,8 @@ export interface ReportData {
   openSensitive: { number: number; title: string }[];
   needsZeus: { number: number; title: string }[];
   guardrailHits: Record<string, number>;
+  /** The learning loop's repeated finding types (scripts/lessons.ts). */
+  lessons?: LessonRow[];
 }
 
 export function renderReport(d: ReportData): string {
@@ -156,6 +166,19 @@ export function renderReport(d: ReportData): string {
       '|---|---|',
       ...hits.map(([rule, n]) => `| ${rule} | ${String(n)} |`),
     );
+  if (d.lessons !== undefined) {
+    lines.push('', '## Lessons', '');
+    if (d.lessons.length === 0) lines.push('No finding type was found on 2 or more PRs.');
+    else
+      lines.push(
+        '| Type | PRs | Findings | Prevention | Status |',
+        '|---|---|---|---|---|',
+        ...d.lessons.map(
+          (l) =>
+            `| \`${l.type}\` | ${String(l.prs.length)} (${l.prs.map((pr) => `#${String(pr)}`).join(', ')}) | ${String(l.findings)} (${String(l.blocking)} blocking)${l.approximate ? ', approximate' : ''} | ${l.prevention ?? 'none yet: Athena proposes one'} | ${l.status ?? '—'} |`,
+        ),
+      );
+  }
   lines.push(
     '',
     "_AI usage against Zeus's limits, flaky tests and product evals are added as they start (§19)._",
@@ -319,6 +342,14 @@ function main(argv: string[]): number {
     openSensitive: list(['pr', 'list', '--state', 'open', '--label', 'sensitive']),
     needsZeus: list(['issue', 'list', '--state', 'open', '--label', 'needs-zeus']),
     guardrailHits: hits,
+    lessons: lessonRows(
+      countLessons(readFindings()),
+      parseLessonsDoc(
+        existsSync(join(ROOT, 'docs/ops/lessons.md'))
+          ? readFileSync(join(ROOT, 'docs/ops/lessons.md'), 'utf8')
+          : '',
+      ),
+    ),
   });
   if (args.create) {
     const url = run(

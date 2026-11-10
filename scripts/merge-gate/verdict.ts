@@ -1,12 +1,16 @@
-import type { Verdict } from './types.ts';
+import type { Reviewer, Verdict } from './types.ts';
 
 /**
  * A reviewer's verdict comes from its own answer, never from Athena's typing: the first non-blank line must be exactly
  * `VERDICT: pass` or `VERDICT: block`. Anything else is a block, and so is a pass that lists a `[blocking]` finding or
  * a later `VERDICT: block` line.
  * A "VERDICT: pass" lower down never counts (findings may quote one from a crafted PR); a "VERDICT: block" does.
+ * Cerberus's should-fixes hold too (§19, Zeus 2026-11-10): his pass that lists a `[should-fix]` is a block.
  */
-export function parseVerdict(summary: string): { verdict: Verdict; reason: string } {
+export function parseVerdict(
+  summary: string,
+  reviewer?: Reviewer,
+): { verdict: Verdict; reason: string } {
   const lines = summary
     .split(/\r\n?|\n/)
     .map((line) => line.trim())
@@ -32,6 +36,15 @@ export function parseVerdict(summary: string): { verdict: Verdict; reason: strin
   // A blocking finding behind any leading markup: list markers, task boxes, emphasis, quotes, headings, HTML tags.
   if (lines.slice(1).some((line) => /^\[\s*blocking\s*\]/i.test(stripLeadingMarkup(line)))) {
     return { verdict: 'block', reason: 'says pass but lists a [blocking] finding' };
+  }
+  if (
+    reviewer === 'cerberus' &&
+    lines.slice(1).some((line) => /^\[\s*should-fix\s*\]/i.test(stripLeadingMarkup(line)))
+  ) {
+    return {
+      verdict: 'block',
+      reason: "says pass but lists a [should-fix] finding, and Cerberus's should-fixes hold",
+    };
   }
   return { verdict: 'pass', reason: 'ok' };
 }
