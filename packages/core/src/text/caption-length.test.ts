@@ -134,6 +134,33 @@ describe('captionLength: X (weighted)', () => {
     expect(captionLength('x', domain259)).toBeGreaterThan(23);
   });
 
+  it('does not count a domain of 254 or 255 characters as one link, with 253 and 253 + a period still one', () => {
+    const label = 'a'.repeat(63);
+    const domain = (last: number) => `${label}.${label}.${label}.${'b'.repeat(last)}.com`;
+    expect(domain(57)).toHaveLength(253);
+    expect(captionLength('x', domain(57))).toBe(23);
+    expect(captionLength('x', `${domain(57)}.`)).toBe(24);
+    expect(domain(58)).toHaveLength(254);
+    expect(captionLength('x', domain(58))).toBeGreaterThan(23);
+    expect(captionLength('x', `${domain(58)}.`)).toBeGreaterThan(24);
+    expect(domain(59)).toHaveLength(255);
+    expect(captionLength('x', domain(59))).toBeGreaterThan(23);
+  });
+
+  it('counts a bare domain inside text written without spaces as a link, and the text around it normally', () => {
+    expect(captionLength('x', '请访问example.com了解更多')).toBe(6 + 23 + 8);
+    expect(captionLength('x', 'ดูที่example.comเลย')).toBe(5 + 23 + 3);
+    // A link with a scheme runs to the next space, the way X reads it.
+    expect(captionLength('x', '请访问https://example.com了解更多')).toBe(6 + 23);
+    expect(captionLength('x', 'বাংলাexample.com')).toBe(5 + 23);
+    expect(captionLength('x', 'example.com了解更多')).toBe(23 + 8);
+  });
+
+  it('keeps a domain in a script other than Latin, and a mixed-script one, as at least a link', () => {
+    expect(captionLength('x', 'example.中国')).toBe(23);
+    expect(captionLength('x', 'bücher.de')).toBeGreaterThanOrEqual(23);
+  });
+
   it('fits 280 letters and refuses 281', () => {
     expect(fitsCaption('x', 'a'.repeat(280), 280)).toBe(true);
     expect(fitsCaption('x', 'a'.repeat(281), 280)).toBe(false);
@@ -277,6 +304,10 @@ describe('captionLength: hostile input stays linear', () => {
     ['a link ending in 25,000 ()', `https://example.com/a${'()'.repeat(25_000)}`],
     ['http:// repeated to 100,000 characters', 'http://'.repeat(14_286).slice(0, 100_000)],
     ['a chain of comma-separated links', 'https://a.com,'.repeat(7_143).slice(0, 100_000)],
+    ['ASCII and Bangla letters alternating', 'aক'.repeat(50_000)],
+    ['ASCII and Bangla labels alternating between dots', 'a.ক.'.repeat(25_000)],
+    ['Chinese text with a dotted ASCII letter after each character', '请a.'.repeat(33_333)],
+    ['61-character labels and dots, past the domain cap', `${'a'.repeat(60)}.`.repeat(1_600)],
   ];
 
   describe.each(hostile)('%s', (_name, text) => {

@@ -22,19 +22,31 @@ const X_URL_WEIGHT = 23;
 // the real top-level domains and we don't, so anything shaped like a domain counts as a link, and only what can't be
 // one (v1.2, e.g., 3.5, U.S.A) stays text.
 //
+// Text written without spaces (Chinese, Japanese, Thai) has no word start before a link, so a link may also start
+// where the characters change from ASCII to other scripts or back: 请访问example.com了解更多 is 请访问, a link and
+// 了解更多. For that, a label and the last label are each all ASCII or all non-ASCII, so a domain stops where its
+// ASCII stops. Splitting a mixed-script domain (bücher.de) this way counts the text before the split besides the
+// link, which is more than X, never less.
+//
 // The pattern must run in linear time, because it runs on whatever caption a user pastes (up to 63,206 characters).
-// So a link starts only at a word start (nothing from WORD_CHAR just before it), and a bare domain looks at a bounded
-// stretch: a label is 1–63 characters, and a run of 255 or more domain characters (letters, digits, - and .) is
-// refused before any label is tried, so a domain is at most 253 characters, with room for the period that ends a
-// sentence. Each start then costs at most about 255 steps. A link's body also stops before the next http(s)://, so
-// two links with only punctuation between them are two links.
-const WORD_CHAR = '\\p{L}\\p{M}\\p{N}-';
-const LABEL = `[${WORD_CHAR}]{1,63}`;
+// So a link starts only at a word start or a change of script, and a bare domain looks at a bounded stretch: a label
+// is 1–63 characters, and a domain is at most 253, which two fixed-length checks before any label is tried enforce:
+// a run of 255 or more domain characters (letters, digits, - and .) is refused, and so is a run of exactly 254 unless
+// it ends in a period (253 and the period that ends a sentence). Each start then costs at most about 510 steps. A
+// link's body also stops before the next http(s)://, so two links with only punctuation between them are two links.
+const ASCII_WORD = '[A-Za-z0-9\\-]';
+const OTHER_WORD = '[[\\p{L}\\p{M}\\p{N}]--[\\x00-\\x7f]]';
+const WORD_CHAR = '\\p{L}\\p{M}\\p{N}\\-';
+const DOMAIN_CHAR = `[.${WORD_CHAR}]`;
+const LABEL = `(?:${ASCII_WORD}{1,63}|${OTHER_WORD}{1,63})`;
+const TLD = `(?:[A-Za-z]{2,63}(?!${ASCII_WORD})|[[\\p{L}\\p{M}]--[\\x00-\\x7f]]{2,63}(?!${OTHER_WORD}))`;
+const LINK_START = `(?:(?<![${WORD_CHAR}])|(?<=${ASCII_WORD})(?=${OTHER_WORD})|(?<=${OTHER_WORD})(?=${ASCII_WORD}))`;
+const DOMAIN_CAP = `(?!${DOMAIN_CHAR}{255})(?!${DOMAIN_CHAR}{253}[${WORD_CHAR}](?!${DOMAIN_CHAR}))`;
 const SCHEME = 'https?://';
 const BODY = `(?:(?!${SCHEME})\\S)*`;
 const LINK_PATTERN = new RegExp(
-  `(?<![${WORD_CHAR}])(?:${SCHEME}${BODY}|(?![.${WORD_CHAR}]{255})(?:${LABEL}\\.)+[\\p{L}\\p{M}]{2,63}(?![${WORD_CHAR}])(?:[/?#]${BODY})?)`,
-  'giu',
+  `${LINK_START}(?:${SCHEME}${BODY}|${DOMAIN_CAP}(?:${LABEL}\\.)+${TLD}(?:[\\/?#]${BODY})?)`,
+  'gv',
 );
 
 // Punctuation after a link isn't part of it, the Bangla danda (।) included. A closing bracket is, when it closes one
@@ -121,6 +133,9 @@ function threadsLength(text: string): number {
 /**
  * How many characters `text` costs on `network`, counted the way that network counts (§07): X by weight, TikTok in
  * UTF-16 units, Threads with emoji as their UTF-8 byte length, and the others in graphemes.
+ *
+ * A caller at a server or job boundary (a route, an action, a job) must refuse text over a fixed cap before counting:
+ * the cost grows with the text, and the text is whatever a user sent. The cap itself comes with the first caller.
  */
 export function captionLength(network: Network, text: string): number {
   switch (network) {
