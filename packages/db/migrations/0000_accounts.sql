@@ -3,13 +3,15 @@
 -- Written by hand from src/schema.ts (§13 A4). drizzle-kit 0.31.11 does write row-level security into its migrations
 -- (ENABLE ROW LEVEL SECURITY and each CREATE POLICY; the policies below are its output, word for word), but the rest
 -- of its file adds every foreign key with a later ALTER TABLE and creates tables without IF NOT EXISTS, which squawk
--- refuses, and it has no grants. So: keys inline, the app role's grants and the one-Owner rule written here.
--- meta/ keeps drizzle-kit's snapshot of the schema, so the next `pnpm --filter @lzp/db db:generate` starts from it.
+-- refuses, and it has no grants. So: keys inline, and the app role's grants, the one-Owner rule and the
+-- platform-admin guard written here. meta/ keeps drizzle-kit's snapshot of the schema, so the next
+-- `pnpm --filter @lzp/db db:generate` starts from it.
 --
--- Runs as the owner role (lzp_owner, docker/postgres/roles.sh), inside the migrator's transaction.
-SET lock_timeout = '5s';
+-- Runs as the owner role (lzp_owner, docker/postgres/roles.sh), inside the migrator's transaction. SET LOCAL: the
+-- timeouts end with that transaction, so they never stay on the migrator's connection.
+SET LOCAL lock_timeout = '5s';
 --> statement-breakpoint
-SET statement_timeout = '60s';
+SET LOCAL statement_timeout = '60s';
 --> statement-breakpoint
 
 -- Global (§13): Better Auth's people. No workspace data.
@@ -57,7 +59,8 @@ CREATE TABLE IF NOT EXISTS "member" (
 --> statement-breakpoint
 
 -- Better Auth's organization feature reads and deletes invitations with a workspace: the table exists, empty, until
--- invitations come with their own task (§23).
+-- invitations come with their own task (§23). Its id is a UUIDv7, partly predictable, so it is never the invite link's
+-- token: that is a separate random secret, stored hashed (§13).
 CREATE TABLE IF NOT EXISTS "invitation" (
 	"id" uuid PRIMARY KEY DEFAULT uuidv7() NOT NULL,
 	"workspace_id" uuid NOT NULL,
@@ -140,4 +143,29 @@ CREATE POLICY "workspace_scope" ON "invitation" AS PERMISSIVE FOR ALL TO public 
 --> statement-breakpoint
 
 -- The app role reads and writes rows; it can't change the schema or TRUNCATE, which would skip row-level security.
-GRANT SELECT, INSERT, UPDATE, DELETE ON "user", "workspace", "member", "invitation", "session", "account", "verification" TO lzp_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "workspace", "member", "invitation", "session", "account", "verification" TO lzp_app;
+--> statement-breakpoint
+
+-- §15: the platform-admin flag opens Zeus's admin panel, and "user" has no row-level security, so the app role never
+-- sets it; only the owner role does (the seeds, #79). The app role updates every other column it writes, and the
+-- trigger refuses a new person with the flag set. INSERT isn't granted by column: Drizzle names every column in an
+-- INSERT (as `default` when unset), and Postgres checks the privilege on each column named.
+GRANT SELECT, INSERT, DELETE ON "user" TO lzp_app;
+--> statement-breakpoint
+GRANT UPDATE ("name", "email", "email_verified", "image", "updated_at") ON "user" TO lzp_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "user_platform_admin_guard"() RETURNS trigger
+	LANGUAGE plpgsql
+	SET search_path = pg_catalog
+	AS $$
+BEGIN
+	IF NEW.is_platform_admin
+		AND NOT pg_has_role(current_user, (SELECT relowner FROM pg_class WHERE oid = TG_RELID), 'USAGE') THEN
+		RAISE EXCEPTION 'only the owner role sets "user".is_platform_admin' USING ERRCODE = 'insufficient_privilege';
+	END IF;
+	RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE TRIGGER "user_platform_admin_guard" BEFORE INSERT ON "user"
+	FOR EACH ROW EXECUTE FUNCTION "user_platform_admin_guard"();

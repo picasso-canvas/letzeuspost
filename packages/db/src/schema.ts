@@ -8,8 +8,8 @@
 // policy, for reads and writes. The workspace table's own key is its `id`.
 //
 // The migrations in ../migrations are written by hand from this file (§13 A4; why, in the migration). Change both
-// together. Two rules live only there: the app role's grants, and `member_one_owner` (an exclusion constraint, which
-// Drizzle can't declare).
+// together. Three rules live only there: the app role's grants; `member_one_owner` (an exclusion constraint, which
+// Drizzle can't declare); and that only the owner role sets `user.is_platform_admin` (a column grant and a trigger).
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -52,7 +52,8 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'), // the avatar
-  isPlatformAdmin: boolean('is_platform_admin').notNull().default(false), // Zeus (§15)
+  // Zeus (§15). Only the owner role sets it (the seeds, #79): the app role can't insert or update it.
+  isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -104,7 +105,8 @@ export const member = pgTable(
 
 /**
  * Better Auth's organization feature reads and deletes invitations with a workspace, so the table exists now, empty;
- * invitations themselves come with their own task (§23).
+ * invitations themselves come with their own task (§23). Its id is a UUIDv7, time-ordered and partly predictable, so
+ * it must never be the invite link's token: that is a separate random secret of at least 128 bits, stored hashed (§13).
  */
 export const invitation = pgTable(
   'invitation',
