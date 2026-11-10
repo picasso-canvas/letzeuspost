@@ -22,7 +22,6 @@ import {
   invitation,
   member,
   migrate,
-  user,
   workspace,
   type Db,
   type Scoped,
@@ -38,8 +37,9 @@ type Row = Record<string, string | boolean | undefined>;
 /**
  * A query as text: each `${value}` becomes a quoted SQL literal. Everything with a Drizzle schema in `@lzp/db` goes
  * through the typed `tx.insert` and `tx.select`. This is for the rest: catalog queries, the `email_message` outbox
- * (no schema until #72) and the clean-up delete of the two Owners (the root can't import drizzle's `eq`, which belongs
- * to packages/db). Every value is one this test made (an id, the run's uuid).
+ * (no schema until #72), Better Auth's `user` table (only `@lzp/db/auth` exports it, #176, and only packages/auth may
+ * import that) and the clean-up deletes (the root can't import drizzle's `eq`, which belongs to packages/db). Every
+ * value is one this test made (an id, the run's uuid).
  */
 function text(strings: TemplateStringsArray, ...values: string[]): string {
   let query = '';
@@ -115,30 +115,29 @@ async function within<T>(promise: Promise<T>, ms: number, what: string): Promise
 }
 
 /**
- * A workspace and its Owner, made the way packages/db's rls.int.test.ts makes one ("in one unit of work, set to the id
- * the app made for it"): Better Auth's `user` (a global table the app role may insert into), the `workspace` and the
- * Owner's `member` row, in one transaction scoped to the new workspace's id.
+ * A workspace and its Owner, made the way packages/db's rls.int.test.ts makes them: by the owner role (the tables'
+ * owner, which row-level security doesn't apply to), because the app role can't insert a person (#176). The person is
+ * Better Auth's `user` row, then the `workspace` and the Owner's `member` row, in one transaction.
  */
 async function seedWorkspace(
-  db: Db,
+  owner: Db,
   label: string,
   run: string,
   ownerEmail: string,
 ): Promise<{ workspaceId: string; ownerUserId: string }> {
   const workspaceId = randomUUIDv7();
-  const ownerUserId = await db.forWorkspace({ workspaceId }).transaction(async (tx) => {
-    const [owner] = await tx
-      .insert(user)
-      .values({ name: `Owner ${label} ${run}`, email: ownerEmail })
-      .returning({ id: user.id });
-    if (owner === undefined) throw new Error('no Owner was made');
+  const ownerUserId = await owner.forWorkspace({ workspaceId }).transaction(async (tx) => {
+    const { rows } = await tx.execute<Row>(
+      text`insert into "user" (name, email) values (${`Owner ${label} ${run}`}, ${ownerEmail}) returning id`,
+    );
+    const ownerId = String(rows[0]?.id);
     await tx.insert(workspace).values({
       id: workspaceId,
       name: `Journey ${label} ${run}`,
       slug: `journey-${label}-${run}`,
     });
-    await tx.insert(member).values({ workspaceId, userId: owner.id, role: 'owner' });
-    return owner.id;
+    await tx.insert(member).values({ workspaceId, userId: ownerId, role: 'owner' });
+    return ownerId;
   });
   return { workspaceId, ownerUserId };
 }
@@ -165,28 +164,34 @@ describe('the Data feature: two workspaces stay apart through every layer', () =
 
         const db = createDb(env.DATABASE_URL);
         cleanups.push(() => db.close());
-        /** One unit of work in `ctx`'s workspace: a query, run as the app role with the workspace set first. */
-        const asApp =
+        const ownerDb = createDb(env.DATABASE_OWNER_URL);
+        cleanups.push(() => ownerDb.close());
+        /** One unit of work in `ctx`'s workspace: a query, run as `handle`'s role with the workspace set first. */
+        const through =
+          (handle: Db) =>
           (ctx: WorkspaceCtx) =>
           (strings: TemplateStringsArray, ...values: string[]): Promise<Row[]> =>
-            db
+            handle
               .forWorkspace(ctx)
               .transaction(async (tx) => (await tx.execute<Row>(text(strings, ...values))).rows);
+        const asApp = through(db);
+        const asOwner = through(ownerDb);
 
-        // 2. Workspaces A and B exist, each with an Owner.
+        // 2. Workspaces A and B exist, each with an Owner (made by the owner role, as rls.int.test.ts does).
         const emailA = `owner-a-${run}@journey.invalid`;
         const emailB = `owner-b-${run}@journey.invalid`;
-        const a = await seedWorkspace(db, 'a', run, emailA);
-        const b = await seedWorkspace(db, 'b', run, emailB);
+        const a = await seedWorkspace(ownerDb, 'a', run, emailA);
+        const b = await seedWorkspace(ownerDb, 'b', run, emailB);
         const ctxA = { workspaceId: a.workspaceId };
         const ctxB = { workspaceId: b.workspaceId };
         const asA = asApp(ctxA);
         const asB = asApp(ctxB);
         cleanups.push(async () => {
-          // Deleting a workspace removes its members (and, once they exist, its rows) with it; the people are global.
-          await asA`delete from workspace where id = ${a.workspaceId}`;
-          await asB`delete from workspace where id = ${b.workspaceId}`;
-          await asA`delete from "user" where id in (${a.ownerUserId}, ${b.ownerUserId})`;
+          // Deleting a workspace removes its members and invitations with it; the people are global. The owner role does
+          // it: the app role can't delete a person.
+          await asOwner(ctxA)`delete from workspace where id = ${a.workspaceId}`;
+          await asOwner(ctxB)`delete from workspace where id = ${b.workspaceId}`;
+          await asOwner(ctxA)`delete from "user" where id in (${a.ownerUserId}, ${b.ownerUserId})`;
         });
         expect(a.workspaceId).toMatch(UUID_V7);
         expect(b.workspaceId).toMatch(UUID_V7);
