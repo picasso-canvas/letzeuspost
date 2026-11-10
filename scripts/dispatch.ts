@@ -178,8 +178,16 @@ export function runEnvExtra(o: {
     LZP_DISPATCH: o.marker,
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', // no notes carried between builder sessions (#54 turns it off repo-wide)
     GH_CONFIG_DIR: join(o.configDir, 'gh'),
+    // Git's settings come from the environment, with no global or system file: the sandbox can't read outside the
+    // clone, and a file inside it would be the builder's to rewrite (Cerberus F1 on #166, #174).
     GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: join(o.configDir, 'gitconfig'),
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    ...gitSettings({
+      'user.name': 'Daedalus',
+      'user.email': 'daedalus@letzeuspost.invalid',
+      'credential.helper': '',
+      'core.hooksPath': '/dev/null',
+    }),
     GIT_TERMINAL_PROMPT: '0',
     CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '1',
     pnpm_config_store_dir: join(o.lzp, 'pnpm/store'),
@@ -187,6 +195,15 @@ export function runEnvExtra(o: {
     pnpm_config_state_dir: join(o.lzp, 'pnpm/state'),
     ...(o.resumed === true ? { LZP_RESUMED: '1' } : {}),
   };
+}
+
+/** Git settings as `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>`. */
+function gitSettings(settings: Record<string, string>): Record<string, string> {
+  const entries: [string, string][] = [['GIT_CONFIG_COUNT', String(Object.keys(settings).length)]];
+  Object.entries(settings).forEach(([key, value], i) => {
+    entries.push([`GIT_CONFIG_KEY_${String(i)}`, key], [`GIT_CONFIG_VALUE_${String(i)}`, value]);
+  });
+  return Object.fromEntries(entries);
 }
 
 /** Why the clone's .git can't be trusted for a resume, or null; nothing here runs git (Cerberus F2 on #166). */
@@ -759,15 +776,10 @@ async function runBuilder(o: {
   resumed?: boolean;
 }): Promise<number> {
   const { issue, branch, clone, lzp, marker } = o;
-  // Git's and gh's config, outside the clone and written fresh for every run (Cerberus F1 on #166).
+  // gh's config, outside the clone and empty for every run (Cerberus F1 on #166); git's comes from the environment (#174).
   const configDir = join(BUILDERS_DIR, '.config', String(issue));
   rmSync(configDir, { recursive: true, force: true });
   mkdirSync(join(configDir, 'gh'), { recursive: true, mode: 0o755 });
-  writeFileSync(
-    join(configDir, 'gitconfig'),
-    '[user]\n\tname = Daedalus\n\temail = daedalus@letzeuspost.invalid\n[credential]\n\thelper =\n[core]\n\thooksPath = /dev/null\n',
-    { mode: 0o644, flag: 'wx' },
-  );
   const env = builderEnv(
     process.env,
     runEnvExtra({ lzp, marker, configDir, harnessDir: ROOT, resumed: o.resumed }),

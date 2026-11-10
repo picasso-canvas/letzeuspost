@@ -25,3 +25,11 @@ matched whole reviews, including their "checked and fine" lines, and gave higher
 
 One more reason for feature batches, not a repeated finding type: a single should-fix in one task
 held batch #130's four other tasks (2026-11-09 and 2026-11-10).
+
+## Incidents
+
+Things that went wrong once and are worth a rule, though no reviewer finding type counts them.
+
+| Date | What happened | Prevention | Status |
+|---|---|---|---|
+| 2026-11-10 | #166 moved each builder's git config outside its clone, so the builder couldn't rewrite it. Unit tests passed, but the builder sandbox reads only the clone, so every git command failed. The #72, #73 and #69 builders all stopped before writing code. | A change to what a builder's session reads, writes or runs is checked in a real sandboxed builder session (dispatch's flags and environment, in a throwaway clone) before it merges, and that check is the PR's red-team evidence (#174) | In force 2026-11-10 |
