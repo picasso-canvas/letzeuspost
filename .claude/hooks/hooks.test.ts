@@ -368,12 +368,14 @@ interface RunOptions {
   harness?: string | null;
   /** Arguments after the script, as the settings' hook command passes them. */
   args?: string[];
+  /** A resumed run (#157): dispatch sets LZP_RESUMED in the session's environment. */
+  resumed?: boolean;
 }
 
 function run(
   script: string,
   input: object,
-  { builder = true, harness = REPO, args = [] }: RunOptions = {},
+  { builder = true, harness = REPO, args = [], resumed = false }: RunOptions = {},
 ): ReturnType<typeof spawnSync> {
   // TMPDIR too: in a builder's sandbox only its own temp folder is writable, and without TMPDIR the hook's
   // os.tmpdir() falls back to /tmp, so it couldn't make the throwaway repository it hashes the tree with (#91).
@@ -385,6 +387,7 @@ function run(
   };
   if (builder) env.LZP_ROLE = 'builder';
   if (harness) env.LZP_HARNESS_DIR = harness;
+  if (resumed) env.LZP_RESUMED = '1';
   return spawnSync('node', [join(HOOKS, script), ...args], {
     input: JSON.stringify(input),
     env,
@@ -543,6 +546,15 @@ describe('PreToolUse hook', () => {
 describe('Stop hook and the green-check stamp', () => {
   it('lets a builder finish when nothing changed since the task began', () => {
     run('session-start.ts', start);
+    expect(decision(run('stop.ts', stop()))).toBeNull();
+  });
+
+  it("doesn't stamp a resumed session's start: its first session's work still needs a green check (Cerberus F1 on #166)", () => {
+    writeFileSync(join(clone, 'b.ts'), 'export const b = 2;\n'); // the first session's unchecked work
+    run('session-start.ts', start, { resumed: true });
+    expect(decision(run('stop.ts', stop()))).toBe('block');
+    run('pre-tool-use.ts', bash('pnpm check'));
+    run('post-tool-use.ts', check());
     expect(decision(run('stop.ts', stop()))).toBeNull();
   });
 
