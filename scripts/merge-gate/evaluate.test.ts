@@ -51,6 +51,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     evidenceShas: [SHA],
     earlierFindingIds: [],
     openIssues: [],
+    openIssuesCutOff: false,
     mergedBatches: [],
     prComments: [],
     labels: ['routine'],

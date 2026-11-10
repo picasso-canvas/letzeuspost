@@ -326,13 +326,12 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
       'pr view': batchView,
       '--json comments': JSON.stringify({ comments: [{ body: 'Follow-up: #148' }] }),
       'issue list': JSON.stringify([
-        {
-          number: 148,
-          labels: [{ name: 'follow-up' }],
-          body: '**Follow-up of:** #130',
-          comments: [{ body: 'a note' }],
-        },
+        { number: 148, labels: [{ name: 'follow-up' }], body: '**Follow-up of:** #130' },
+        { number: 72, labels: [{ name: 'build-task' }], body: 'x' },
       ]),
+      'issue view 148': JSON.stringify({
+        comments: [{ author: { login: 'picasso-canvas' }, body: 'a note' }],
+      }),
       'log --first-parent': '',
     });
     const f = collectFacts(
@@ -350,9 +349,17 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
       }),
     );
     expect(f.mergedBatches).toEqual([130]);
+    // A follow-up's comments come in full, with their authors; other open issues need only their text.
     expect(f.openIssues).toEqual([
-      { number: 148, labels: ['follow-up'], body: '**Follow-up of:** #130', comments: ['a note'] },
+      {
+        number: 148,
+        labels: ['follow-up'],
+        body: '**Follow-up of:** #130',
+        comments: [{ author: 'picasso-canvas', body: 'a note' }],
+      },
+      { number: 72, labels: ['build-task'], body: 'x', comments: [] },
     ]);
+    expect(f.openIssuesCutOff).toBe(false);
     expect(f.prComments).toEqual(['Follow-up: #148']);
 
     calls.length = 0;
