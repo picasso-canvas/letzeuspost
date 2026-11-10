@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   dispatchRefusal,
   featureBatch,
+  stagingFeature,
+  toTaskIssue,
   featureOf,
   followUpOf,
   journeyMarked,
@@ -94,7 +96,36 @@ describe('journeyMarked', () => {
     expect(journeyMarked(files, 'data')).toBe(true);
     expect(journeyMarked(files, 'sign-in')).toBe(true);
     expect(journeyMarked(files, 'workspaces')).toBe(false);
-    expect(journeyMarked(files, 'data-export')).toBe(false); // another feature's prefix doesn't count
+    expect(journeyMarked(files, 'data-export')).toBe(true); // no journey test of its own: still to do
+  });
+
+  it('counts a feature with no journey test as not done, and finds one in its own folder', () => {
+    expect(journeyMarked([], 'data')).toBe(true);
+    expect(
+      journeyMarked(
+        [{ path: 'tests/journeys/data/flow.int.test.ts', text: "it('x', () => {})" }],
+        'data',
+      ),
+    ).toBe(false);
+  });
+
+  it('treats every way of switching a journey off as still marked (Cerberus F1 on #155)', () => {
+    for (const text of [
+      "it.skip('j', () => {})",
+      "test.skip('j', () => {})",
+      "test.fixme('j', () => {})",
+      "it.todo('j')",
+      "describe.skip('d', () => {})",
+      "it('j', { fails: true }, async () => {})",
+      "it('j', { skip: true }, () => {})",
+      'const journey = it.fails;',
+      "it['fails']('j', () => {})",
+      "test.describe.skip('d', () => {})",
+    ]) {
+      expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data'), text).toBe(
+        true,
+      );
+    }
   });
 });
 
@@ -141,11 +172,25 @@ describe('featureBatch', () => {
     });
   });
 
-  it('opens a batch of follow-ups on their own when no feature is on staging', () => {
+  it('opens a batch of tasks with no feature (follow-ups, which dispatch admits) on their own', () => {
     expect(featureBatch({ ...base, onStaging: [144], featureTasks: [] })).toEqual({
       due: true,
       feature: null,
-      reason: 'staging holds only follow-ups (#144)',
+      reason: 'staging holds only tasks with no feature (#144)',
+    });
+  });
+
+  it('gives a reason, not a crash, when a task on staging has two features (Argus F1 on #155)', () => {
+    expect(
+      featureBatch({
+        ...base,
+        issues: { ...issues, 72: task(72, ['feature:data', 'feature:sign-in']) },
+        onStaging: [150, 72],
+      }),
+    ).toEqual({
+      due: false,
+      feature: null,
+      reason: '#72 has two features (data, sign-in): Athena fixes its labels first',
     });
   });
 
@@ -162,5 +207,34 @@ describe('featureBatch', () => {
       feature: null,
       reason: 'staging holds no task',
     });
+  });
+});
+
+describe('stagingFeature', () => {
+  it('names the one feature on staging, none, or why it cannot', () => {
+    const issues = {
+      1: task(1, ['feature:data']),
+      2: task(2, ['follow-up']),
+      3: task(3, ['feature:app-shell']),
+    };
+    expect(stagingFeature([1, 2], issues)).toEqual({ feature: 'data' });
+    expect(stagingFeature([2], issues)).toEqual({ feature: null });
+    expect(stagingFeature([1, 3], issues)).toEqual({
+      refusal: 'staging holds two features: data, app-shell',
+    });
+  });
+});
+
+describe('toTaskIssue', () => {
+  it("maps GitHub's issue JSON to what the rules read", () => {
+    expect(
+      toTaskIssue({
+        number: 7,
+        labels: [{ name: 'build-task' }, { name: 'feature:data' }],
+        milestone: { title: 'M0' },
+        body: 'b',
+      }),
+    ).toEqual({ number: 7, labels: ['build-task', 'feature:data'], milestone: 'M0', body: 'b' });
+    expect(toTaskIssue({ number: 8, labels: [], milestone: null, body: '' }).milestone).toBeNull();
   });
 });
