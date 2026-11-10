@@ -1,20 +1,15 @@
 // The `email` job (§13 Jobs, #72): sends one outbox row. Its payload is the row's id; the address, the template and
 // its data are read from the row, in the job's workspace. Safe to run twice (packages/db's email-outbox.ts):
-//   1. load the row: only a queued row goes on (sent, failed, gone or interrupted rows are left alone);
+//   1. load the row: only a queued row goes on (sent, failed, gone, interrupted, or being sent by another run: left
+//      alone);
 //   2. render it (Q8: @lzp/email's built output, in this process); a template or data it refuses fails the row;
 //   3. claim it (queued → sending, one conditional update: a second run finds it taken);
-//   4. send it; then mark it sent, or put it back if it certainly didn't go out, or leave it as it is if it may have.
+//   4. send it; then mark it sent, or put it back if it certainly didn't go out, or fail it if it may have.
 // The log names the row by id and the outcome by code: never the address, the subject or the content.
 import { emailOutbox, type EmailOutbox, type JobHandler, type Scoped } from '@lzp/db';
-import type { EmailContext } from '@lzp/email';
+import type { EmailContext, RenderedEmail } from '@lzp/email';
 import type { Log } from './log.ts';
 import { NotSentError, SendOutcomeUnknownError, type EmailTransport } from './smtp.ts';
-
-export interface RenderedEmail {
-  readonly subject: string;
-  readonly html: string;
-  readonly text: string;
-}
 
 export interface EmailJobDeps {
   readonly transport: EmailTransport;
@@ -34,6 +29,11 @@ export interface EmailJobDeps {
 }
 
 export const REFUSED = 'its template or data was refused';
+
+/** The row's failure when the send broke off after the message may have reached the server. */
+export function mayHaveGoneOut(code: string): string {
+  return `the send broke off (${code}): it may have gone out, so it is not sent again`;
+}
 
 /** `<row id@sender's domain>`: one Message-ID per row, however many times its job runs. */
 function messageIdFor(id: string, from: string): string {
@@ -94,12 +94,13 @@ export function emailJob(deps: EmailJobDeps): JobHandler<'email'> {
         }
         throw new NotSentError(error.code);
       }
-      // Perhaps sent: the row stays `sending`, and the next run marks it interrupted instead of sending it again.
+      // Perhaps sent: failed now, so no retry sends it again (a retry would find it `sending` and not yet stale).
       const code = error instanceof SendOutcomeUnknownError ? error.code : 'unknown';
+      await outbox.fail(id, mayHaveGoneOut(code));
       said('email.unknown', { code });
       throw new SendOutcomeUnknownError(code);
     }
-    await outbox.sent(id, providerId);
-    said('email.sent');
+    // False only if the row left `sending` for another reason than an interrupted retry (it was deleted, say).
+    said((await outbox.sent(id, providerId)) ? 'email.sent' : 'email.unrecorded');
   };
 }

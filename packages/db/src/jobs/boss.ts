@@ -49,8 +49,11 @@ export interface JobsOptions {
   /** The app role's DATABASE_URL. */
   readonly url: string;
   readonly db: Db;
-  /** pg-boss's own errors (a lost connection, a failed maintenance pass). Payloads hold ids only. */
-  readonly onError?: (error: Error) => void;
+  /**
+   * pg-boss's own errors (a lost connection, a failed maintenance pass). Required, so no caller falls back to printing
+   * pg-boss's messages, which can quote SQL: log the error's name and code, as the worker does.
+   */
+  readonly onError: (error: Error) => void;
   /** How often an idle worker looks for jobs; pg-boss's default is 2 s. */
   readonly pollingIntervalSeconds?: number;
 }
@@ -66,10 +69,7 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
     reindex: false,
     schedule: false,
   });
-  boss.on('error', (error: Error) => {
-    if (onError === undefined) console.error(`jobs: ${error.name}: ${error.message}`);
-    else onError(error);
-  });
+  boss.on('error', onError);
 
   return {
     start: async () => {
@@ -97,6 +97,8 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
         },
         async (batch) => {
           for (const job of batch) {
+            // The workspace comes from the job's row, in tables that hold every workspace's jobs (why that is
+            // acceptable: the grants in installJobs). It is trusted only because the app role writes the job.
             const payload = checkPayload(queue, job.data);
             await handler({
               jobId: job.id,
@@ -144,6 +146,12 @@ export async function installJobs(ownerUrl: string): Promise<void> {
     // Rows of every table, the version row included: a running pg-boss stamps its cron, monitor and reindex passes
     // there. Never the schema or a table's structure, which stay the owner's. One statement list is one transaction,
     // and the lock makes two installs at once take turns: Postgres refuses two GRANTs racing on one object.
+    //
+    // The queue's tables are cross-workspace by design: one queue serves every workspace, so they carry no
+    // row-level security, and lzp_app can read and change any workspace's jobs. That is acceptable because a payload
+    // holds ids only (never content: queues.ts), the queue is reached only through this package (pg-boss stays
+    // inside it, like the database client), and a handler reads and writes only through `db.forWorkspace` for the
+    // job's workspace, under row-level security. A job's workspace is trusted because the app role writes the job.
     await boss.getDb().executeSql(
       `SELECT pg_advisory_xact_lock(${String(GRANTS_LOCK)});
        GRANT USAGE ON SCHEMA ${JOBS_SCHEMA} TO lzp_app;

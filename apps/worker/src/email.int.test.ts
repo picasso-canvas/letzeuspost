@@ -19,7 +19,6 @@ import {
   type JobContext,
   type Jobs,
 } from '@lzp/db';
-import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { emailJob, type EmailJobDeps } from './email-job.ts';
 import { log } from './log.ts';
@@ -76,24 +75,21 @@ async function rowStatus(id: string): Promise<string | undefined> {
 }
 
 async function rowFailure(id: string): Promise<string | null | undefined> {
-  const [row] = await db
+  const rows = await db
     .forWorkspace(ctx)
     .transaction((tx) =>
-      tx
-        .select({ failure: emailMessage.failure })
-        .from(emailMessage)
-        .where(eq(emailMessage.id, id)),
+      tx.select({ id: emailMessage.id, failure: emailMessage.failure }).from(emailMessage),
     );
-  return row?.failure;
+  return rows.find((row) => row.id === id)?.failure;
 }
 
-/** As if the run that set the row's status had done so `seconds` ago. */
-async function age(id: string, seconds: number): Promise<void> {
+/**
+ * As if every row of this run's workspace had last moved `seconds` ago (a minute more, for the clocks of this machine
+ * and the database). The rows of the earlier tests are sent already, where their age doesn't matter.
+ */
+async function age(seconds: number): Promise<void> {
   await db.forWorkspace(ctx).transaction(async (tx) => {
-    await tx
-      .update(emailMessage)
-      .set({ updatedAt: sql`now() - make_interval(secs => ${seconds})` })
-      .where(eq(emailMessage.id, id));
+    await tx.update(emailMessage).set({ updatedAt: new Date(Date.now() - (seconds + 60) * 1000) });
   });
 }
 
@@ -275,7 +271,7 @@ describe('the email job (§13: a retried job never sends twice)', { timeout: 60_
     await killed.hasSent;
     expect(await rowStatus(id)).toBe('sending'); // where the killed run left it
     // pg-boss retries a killed job only once it has expired, so the retry finds the row that old.
-    await age(id, SENDING_STALE_AFTER_SECONDS + 1);
+    await age(SENDING_STALE_AFTER_SECONDS);
     await emailJob({ ...deps, transport: smtp })(jobFor(id)); // the retry
     await waitFor('the email in Mailpit', async () => (await inbox(to)).length > 0);
     expect(await inbox(to)).toHaveLength(1);

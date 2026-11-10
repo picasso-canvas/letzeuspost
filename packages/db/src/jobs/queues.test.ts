@@ -68,7 +68,11 @@ describe('the queues (§13 Jobs)', () => {
 
 describe('sending a job', () => {
   // Never started, on a port nothing listens on: a refused payload must stop before pg-boss is reached.
-  const jobs = createJobs({ url: 'postgres://nobody:nothing@127.0.0.1:9/none', db: {} as Db });
+  const jobs = createJobs({
+    url: 'postgres://nobody:nothing@127.0.0.1:9/none',
+    db: {} as Db,
+    onError: () => undefined,
+  });
 
   it('refuses a payload carrying content before it reaches the queue', async () => {
     await expect(

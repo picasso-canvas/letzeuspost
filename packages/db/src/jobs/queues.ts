@@ -10,9 +10,17 @@ const id = z.uuidv7();
 /**
  * Bounded retries with backoff (§13), the same for every queue until a feature's section gives its own numbers. With
  * pg-boss's backoff the waits are about 30-60 s, 1-2 min and 2-4 min: a job that keeps failing stops after 4 tries,
- * within the 15 minutes after which §14's monitoring calls a job stuck.
+ * within the 15 minutes after which §14's monitoring calls a job stuck. A run still going after `expireInSeconds`
+ * (pg-boss's default, 15 minutes, written out because the email outbox relies on it) is failed and retried, which is
+ * also how pg-boss notices a run whose process was killed.
  */
-const retry = { retryLimit: 3, retryDelay: 30, retryBackoff: true, retryDelayMax: 600 } as const;
+const retry = {
+  retryLimit: 3,
+  retryDelay: 30,
+  retryBackoff: true,
+  retryDelayMax: 600,
+  expireInSeconds: 15 * 60,
+} as const;
 
 export const queues = {
   /** Each §09 task, one post (or a batch's plan) at a time. */

@@ -19,6 +19,7 @@ export {
   emailOutbox,
   INTERRUPTED,
   queueEmail,
+  SENDING_STALE_AFTER_SECONDS,
   type EmailOutbox,
   type NewEmail,
   type OutboxEmail,
