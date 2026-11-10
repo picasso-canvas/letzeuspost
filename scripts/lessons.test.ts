@@ -158,7 +158,7 @@ describe('the finding types', () => {
   it('are the slugs the review checklist lists, in the same order', () => {
     const skill = readFileSync(join(ROOT, '.claude/skills/review-checklist/SKILL.md'), 'utf8');
     const section = skill.split('## Finding types')[1] ?? '';
-    const slugs = [...section.matchAll(/^\| `([a-z-]+)` \|/gm)].map((m) => m[1]);
+    const slugs = [...section.matchAll(/^\| `([a-z0-9-]+)` \|/gm)].map((m) => m[1]);
     expect(slugs).toEqual([...FINDING_TYPES]);
   });
 
