@@ -20,7 +20,12 @@ import {
   readReviews,
   STATE_DIR,
 } from './merge-gate/reviews.ts';
-import { issueFromBranch, mergeArgs, type StagingLogEntry } from './merge-gate/staging.ts';
+import {
+  issueFromBranch,
+  mergeArgs,
+  toStagingLogEntry,
+  type StagingLogEntry,
+} from './merge-gate/staging.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -80,13 +85,7 @@ function main(argv: string[], pr: number): number {
     readMainFile: (path) => readMainFile(run, path),
     readReviews: (n, sha) => readReviews(n, sha),
     listReviewedShas: (n) => listReviewedShas(n),
-    readMergeLog: () =>
-      readMergeLog().map((e) => ({
-        result: String(e.result),
-        ...(typeof e.base === 'string' ? { base: e.base } : {}),
-        ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
-        ...(typeof e.issue === 'number' ? { issue: e.issue } : {}),
-      })) satisfies StagingLogEntry[],
+    readMergeLog: () => readMergeLog().map((e) => toStagingLogEntry(e)) satisfies StagingLogEntry[],
     // The gate re-verifies every runner-made review against Claude Code's own transcript.
     readTranscript: (sessionId) => {
       const file = transcriptPath(homedir(), ROOT, sessionId);
