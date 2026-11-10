@@ -2,6 +2,7 @@ import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
+import type { OpenIssue } from '../lib/follow-ups.ts';
 import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
@@ -278,6 +279,46 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   const gatedIssues = mergeLog
     .filter((e) => e.result === 'merged' && e.base === 'staging' && typeof e.issue === 'number')
     .map((e) => e.issue as number);
+  // A batch is held by an earlier batch's open follow-ups (#154); only a batch needs these.
+  const isBatch = view.baseRefName === 'main' && view.headRefName === 'staging';
+  const mergedBatches = mergeLog
+    .filter((e) => e.result === 'merged' && e.kind === 'batch' && typeof e.pr === 'number')
+    .map((e) => e.pr as number);
+  const openIssues: OpenIssue[] = isBatch
+    ? (
+        JSON.parse(
+          gh([
+            'issue',
+            'list',
+            '-R',
+            repo,
+            '--state',
+            'open',
+            '--limit',
+            '500',
+            '--json',
+            'number,labels,body,comments',
+          ]),
+        ) as {
+          number: number;
+          labels: { name: string }[];
+          body: string;
+          comments: { body: string }[];
+        }[]
+      ).map((i) => ({
+        number: i.number,
+        labels: i.labels.map((l) => l.name),
+        body: i.body,
+        comments: i.comments.map((c) => c.body),
+      }))
+    : [];
+  const prComments: string[] = isBatch
+    ? (
+        JSON.parse(gh(['pr', 'view', String(pr), '-R', repo, '--json', 'comments'])) as {
+          comments: { body: string }[];
+        }
+      ).comments.map((c) => c.body)
+    : [];
   const closingIssues: ClosingIssue[] = references.map(({ number, url }) => {
     if (!url.startsWith(issuePrefix))
       return { number, inRepo: false, labels: [], doneWhenBoxes: 0, areas: null };
@@ -332,6 +373,9 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     changes,
     ungatedStaging,
     gatedIssues,
+    openIssues,
+    mergedBatches,
+    prComments,
     ...handoverFacts(pr, sha, base, deps),
     labels: view.labels.map((label) => label.name),
     checkRuns,

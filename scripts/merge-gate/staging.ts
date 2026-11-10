@@ -7,6 +7,9 @@ export interface StagingLogEntry {
   mergeCommit?: string;
   /** For a merge into staging: the task issue (from the branch name). */
   issue?: number;
+  pr?: number;
+  /** `batch` for the PR from staging into main. */
+  kind?: string;
 }
 
 /**
