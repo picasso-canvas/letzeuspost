@@ -20,8 +20,10 @@ export const queues = {
     payload: z.strictObject({ workspaceId: id, batchId: id, postId: id.optional() }),
     queue: retry,
     // §13: at most 4 posts at a time per workspace, by pg-boss's group concurrency (one group per workspace), with
-    // room on the worker for another workspace's jobs while one workspace has its 4 running.
-    work: { groupConcurrency: 4, localConcurrency: 8 },
+    // room on the worker for another workspace's jobs while one workspace has its 4 running. The in-process limit is
+    // exact in the one worker §13 runs; pg-boss's database-tracked one (groupConcurrency) takes no lock, so fetches at
+    // the same moment can start a fifth. With more than one worker (not in the MVP), each would allow 4.
+    work: { localGroupConcurrency: 4, localConcurrency: 8 },
   },
   render: {
     payload: z.strictObject({ workspaceId: id, postId: id, postVersionId: id }),
@@ -50,7 +52,7 @@ export const queues = {
   {
     payload: z.ZodType<{ workspaceId: string }>;
     queue: typeof retry;
-    work: { groupConcurrency?: number; localConcurrency?: number };
+    work: { localGroupConcurrency?: number; localConcurrency?: number };
   }
 >;
 
