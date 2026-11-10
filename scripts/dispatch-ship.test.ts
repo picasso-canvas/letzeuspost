@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
@@ -501,7 +501,22 @@ describe('resuming an interrupted builder (#157)', () => {
     for (const [key, value] of Object.entries(env))
       if (key.startsWith('GIT_') || key === 'GH_CONFIG_DIR')
         expect(value.startsWith(clone), `${key}=${value}`).toBe(false);
-    expect(env.GIT_CONFIG_GLOBAL).toBe('/b/.config/71/gitconfig');
+    // No file at all: the sandbox can't read outside the clone, and the builder can't rewrite the environment's
+    // settings for dispatch's own git (#174).
+    expect(env.GIT_CONFIG_GLOBAL).toBe('/dev/null');
+    expect(env.GIT_CONFIG_NOSYSTEM).toBe('1');
+    const settings = Object.fromEntries(
+      Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i): [string, string | undefined] => [
+        env[`GIT_CONFIG_KEY_${String(i)}`] ?? '',
+        env[`GIT_CONFIG_VALUE_${String(i)}`],
+      ]),
+    );
+    expect(settings).toEqual({
+      'user.name': 'Daedalus',
+      'user.email': 'daedalus@letzeuspost.invalid',
+      'credential.helper': '',
+      'core.hooksPath': '/dev/null',
+    });
     expect(env.LZP_RESUMED).toBeUndefined();
     expect(
       runEnvExtra({
@@ -512,6 +527,27 @@ describe('resuming an interrupted builder (#157)', () => {
         resumed: true,
       }).LZP_RESUMED,
     ).toBe('1');
+  });
+
+  it("gives real git its settings from the environment and never reads the user's ~/.gitconfig (#174)", () => {
+    const home = mkdtempSync(join(tmpdir(), 'lzp-home-'));
+    writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = Someone Else\n');
+    const env = builderEnv(
+      { PATH: process.env.PATH, HOME: home },
+      runEnvExtra({
+        lzp: join(home, '.lzp'),
+        marker: 'm',
+        configDir: join(home, 'cfg'),
+        harnessDir: '/h',
+      }),
+    );
+    const git = (...args: string[]) => spawnSync('git', args, { cwd: home, env, encoding: 'utf8' });
+    expect(git('config', 'user.name').stdout.trim()).toBe('Daedalus');
+    expect(git('config', 'core.hooksPath').stdout.trim()).toBe('/dev/null');
+    expect(git('config', '--global', 'user.name').stdout).toBe('');
+    // Nothing for a builder to write: a global write has no file to land in.
+    expect(git('config', '--global', 'user.name', 'Mallory').status).not.toBe(0);
+    expect(existsSync(join(home, 'cfg', 'gitconfig'))).toBe(false);
   });
 
   it("refuses a resume when the clone's .git was swapped or its config changed (Cerberus F2 on #166)", () => {
