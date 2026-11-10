@@ -181,13 +181,13 @@ export function parseLessonsDoc(
   return rows;
 }
 
-/** The weekly report's lessons: each type found on 2 or more PRs, with its prevention, or none yet. */
+/** The weekly report's lessons: each type found on 2 or more PRs, with its prevention, or none yet (untyped older findings aren't a type). */
 export function lessonRows(
   counts: readonly LessonCount[],
   doc: ReadonlyMap<string, { prevention: string; status: string }>,
 ): LessonRow[] {
   return counts
-    .filter((c) => c.prs.length >= 2)
+    .filter((c) => c.prs.length >= 2 && c.type !== 'other')
     .map((c) => ({
       ...c,
       prevention: doc.get(c.type)?.prevention ?? null,
