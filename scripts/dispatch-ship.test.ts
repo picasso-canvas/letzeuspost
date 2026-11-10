@@ -11,6 +11,9 @@ import {
   headsFrom,
   onTick,
   parseArgs,
+  resumePrompt,
+  resumeRefusal,
+  runEnding,
   slugify,
   taskText,
 } from './dispatch.ts';
@@ -213,6 +216,7 @@ describe('parseArgs', () => {
       issue: 7,
       dryRun: true,
       fresh: false,
+      resume: false,
       findings: undefined,
       maxTurns: undefined,
     });
@@ -220,9 +224,11 @@ describe('parseArgs', () => {
       issue: 7,
       dryRun: false,
       fresh: true,
+      resume: false,
       findings: 'f.md',
       maxTurns: '50',
     });
+    expect(parseArgs(['7', '--resume']).resume).toBe(true);
     expect(parseArgs(['--findings', '7']).issue).toBeNaN();
   });
 
@@ -367,5 +373,75 @@ describe('builderModel', () => {
     expect(
       builderModel('**Predicted tier:** `routine`\n**Predicted tier:** `sensitive`'),
     ).toBeNull();
+  });
+});
+
+describe('resuming an interrupted builder (#157)', () => {
+  const line = (event: object) => JSON.stringify(event);
+  const log = (result: object | null) =>
+    [
+      line({ type: 'system', subtype: 'init' }),
+      line({ type: 'assistant' }),
+      ...(result ? [line(result)] : []),
+    ].join('\n');
+
+  it("reads how a run ended from the session's own final result", () => {
+    expect(
+      runEnding(
+        log({
+          type: 'result',
+          subtype: 'success',
+          is_error: true,
+          result: "You've hit your session limit · resets 5:20pm (Asia/Dhaka)",
+        }),
+        false,
+      ),
+    ).toBe('usage-limit');
+    expect(
+      runEnding(log({ type: 'result', subtype: 'success', result: 'Handed over.' }), false),
+    ).toBe('finished');
+    expect(runEnding(log(null), false)).toBe('failed');
+    expect(runEnding(log({ type: 'result', result: "You've hit your session limit" }), true)).toBe(
+      'frozen',
+    );
+    expect(runEnding('not json\n{', false)).toBe('failed');
+  });
+
+  const record = {
+    issue: 71,
+    branch: '71-database',
+    baseSha: 'b'.repeat(40),
+    dispatchedAt: '2026-11-10T07:00:00Z',
+    ending: 'usage-limit' as const,
+    endedAt: '2026-11-10T07:40:00Z',
+  };
+
+  it('allows a resume only after a usage limit, with nothing shipped since and the clone still there', () => {
+    expect(resumeRefusal(record, true)).toBeNull();
+    expect(resumeRefusal(null, true)).toBe(
+      'there is no dispatch record for this task: dispatch it first',
+    );
+    expect(resumeRefusal({ ...record, ending: 'finished' }, true)).toBe(
+      'the last run ended "finished", not on a usage limit: ship it, or dispatch with --fresh',
+    );
+    expect(resumeRefusal({ ...record, ending: undefined }, true)).toMatch(/not on a usage limit/);
+    expect(resumeRefusal({ ...record, shippedAt: '2026-11-10T07:50:00Z' }, true)).toBe(
+      'the branch shipped after this run: dispatch a new round instead',
+    );
+    expect(resumeRefusal(record, false)).toBe("the builder's clone is gone: dispatch with --fresh");
+  });
+
+  it('tells the resumed session it continues an interrupted run', () => {
+    const prompt = resumePrompt(71);
+    expect(prompt).toContain('Build task #71');
+    expect(prompt).toContain('stopped by a usage limit');
+    expect(prompt).toContain('git log');
+  });
+
+  it('keeps how a run ended in the dispatch record, and refuses any other value', () => {
+    expect(parseDispatchRecord(JSON.stringify(record), 71)).toEqual(record);
+    expect(() =>
+      parseDispatchRecord(JSON.stringify({ ...record, ending: 'whatever' }), 71),
+    ).toThrow();
   });
 });
