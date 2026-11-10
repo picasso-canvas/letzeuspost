@@ -149,8 +149,12 @@ jobs:
 
       # Every migration under packages/db/ (#71 adds the first); squawk reads the SQL files, it doesn't run them. Its
       # config is written here and passed explicitly, so a `.squawk.toml` in the branch can't switch a rule off or skip
-      # a file (Cerberus on #119): every rule, Postgres 18. Nor can a migration's own comments: any `squawk-ignore` in
-      # a SQL file fails the step, and so does a SQL file outside packages/db/, which squawk would never see.
+      # a file (Cerberus on #119): every rule, Postgres 18, each file judged as one transaction, which is how it runs.
+      # That rests on packages/db's migrator (packages/db/src/migrate.ts, drizzle-orm 0.45.4's migrate, which wraps every
+      # pending migration in `session.transaction`) and on #71's test that a migration failing partway leaves nothing
+      # applied; if either changes, this setting must too (Zeus, 2026-11-10, recorded on #161).
+      # Nor can a migration's own comments: any `squawk-ignore` in a SQL file fails the step, and so does a SQL file
+      # outside packages/db/, which squawk would never see.
       - name: Migrations (squawk)
         if: ${{ !cancelled() }}
         run: |
@@ -169,7 +173,7 @@ jobs:
             echo "No migrations yet."
             exit 0
           fi
-          printf 'pg_version = "18.0"\n' > "$RUNNER_TEMP/squawk.toml"
+          printf 'pg_version = "18.0"\nassume_in_transaction = true\n' > "$RUNNER_TEMP/squawk.toml"
           squawk --config "$RUNNER_TEMP/squawk.toml" "${migrations[@]}"
 
       - name: Install dependencies (frozen lockfile)
