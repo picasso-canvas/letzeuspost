@@ -31,7 +31,9 @@ function main(): void {
   if (freeze.frozen)
     parts.push(`FROZEN: ${freeze.reason} Every tool call will be refused until Zeus unfreezes.`);
   if (who === 'builder') {
-    if ((input.source ?? 'startup') === 'startup') {
+    // A resumed run (#157) stamps no base: its clone already holds the first session's unchecked work, so the Stop hook
+    // asks for a green check before any finish. LZP_RESUMED comes from dispatch's environment, not from the builder.
+    if ((input.source ?? 'startup') === 'startup' && process.env.LZP_RESUMED !== '1') {
       try {
         writeStamp(root, 'base', workingTree(root, TREE_BUDGET_MS), input.session_id ?? null);
       } catch {
