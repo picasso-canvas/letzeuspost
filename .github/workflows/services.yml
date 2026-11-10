@@ -122,6 +122,11 @@ jobs:
             exit 1
           fi
           grep -q 'password authentication failed for user "lzp_app"' "$RUNNER_TEMP/pg.err" # not just any failure
+          # lzp_auth (#183): no login and no special rights; lzp_app may SET ROLE to it but inherits nothing from it, so
+          # workspace code running as lzp_app can't reach the auth tables (#176).
+          [ "$(psql "$DATABASE_URL" -tAc "select rolcanlogin or rolsuper or rolbypassrls or rolcreaterole or rolcreatedb from pg_roles where rolname = 'lzp_auth'")" = f ]
+          [ "$(psql "$DATABASE_URL" -tAc "select m.inherit_option::text || '/' || m.set_option::text from pg_auth_members m join pg_roles r on r.oid = m.roleid join pg_roles u on u.oid = m.member where r.rolname = 'lzp_auth' and u.rolname = 'lzp_app'")" = false/true ]
+          [ "$(psql "$DATABASE_URL" -qtA -c 'set role lzp_auth' -c 'select current_user')" = lzp_auth ]
 
       - name: 'Smoke: file store'
         if: steps.scope.outputs.run == 'true'
