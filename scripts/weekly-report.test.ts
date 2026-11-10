@@ -87,6 +87,53 @@ describe('renderReport', () => {
     expect(text).toContain('#35');
     expect(text).toContain('pre-tool-use: git push | 2');
   });
+
+  it('lists the lessons: each repeated finding type, its prevention, or that it has none yet', () => {
+    const base = {
+      week: '2026-W46',
+      merges: [],
+      titles: {},
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+    };
+    const text = renderReport({
+      ...base,
+      lessons: [
+        {
+          type: 'evidence',
+          prs: [130, 134],
+          findings: 3,
+          blocking: 2,
+          approximate: false,
+          prevention: 'Ship refuses evidence without the head commit',
+          status: 'Planned',
+        },
+        {
+          type: 'correctness',
+          prs: [130, 140],
+          findings: 2,
+          blocking: 0,
+          approximate: true,
+          prevention: null,
+          status: null,
+        },
+      ],
+    });
+    expect(text).toContain('## Lessons');
+    expect(text).toContain(
+      '| `evidence` | 2 (#130, #134) | 3 (2 blocking) | Ship refuses evidence without the head commit | Planned |',
+    );
+    expect(text).toContain(
+      '| `correctness` | 2 (#130, #140) | 2 (0 blocking), approximate | none yet: Athena proposes one | — |',
+    );
+    expect(text.indexOf('## Lessons')).toBeLessThan(text.indexOf('🦉 Athena'));
+    expect(renderReport({ ...base, lessons: [] })).toContain(
+      'No finding type was found on 2 or more PRs.',
+    );
+  });
 });
 
 describe('auditMain: first-parent history, not dates', () => {
