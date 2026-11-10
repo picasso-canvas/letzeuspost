@@ -351,7 +351,11 @@ function main(argv: string[]): number {
             .map((l) => l.name.slice('feature:'.length)),
         ),
       ];
-    } catch {
+    } catch (error) {
+      // Say so, rather than show a batch with no feature (Argus F3 on #155).
+      console.error(
+        `weekly report: couldn't read batch #${String(e.pr)}'s features: ${error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error)}`,
+      );
       batchFeatures[e.pr] = [];
     }
   }

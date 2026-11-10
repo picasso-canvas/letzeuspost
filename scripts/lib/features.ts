@@ -43,6 +43,8 @@ export function dispatchRefusal(
   active: readonly TaskIssue[],
   isMergedBatch: (pr: number) => boolean,
 ): string | null {
+  // A real follow-up rides the open batch whatever else it carries (Argus F2 on #155).
+  if (isFollowUp(task, isMergedBatch)) return null;
   let feature: string | null;
   try {
     feature = featureOf(task.labels);
@@ -89,8 +91,9 @@ const SWITCHED_OFF = new RegExp(
     `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\.\\s*${MARK}\\b`,
     `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\[\\s*['"\`]${MARK}['"\`]\\s*\\]`,
     `\\{[^}]*\\b${MARK}\\b[^}]*\\}\\s*=\\s*${RUNNER}`,
-    // Any value but a literal `false` (`{ skip: 1 }`, `{ fails: isCI }`), as Vitest reads it as on.
-    '\\b(?:fails|skip|todo|only)\\s*:\\s*(?!false\\b)[^\\s,}]',
+    // In a test call's options, any value but a literal `false` (`{ skip: 1 }`, `{ fails: isCI }`), as Vitest reads it
+    // as on; an object anywhere else isn't a test's options (Argus F1 on #155).
+    `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\([^)]*\\{[^}]*\\b${MARK}\\s*:\\s*(?!false\\b)[^\\s,}]`,
   ].join('|'),
 );
 
