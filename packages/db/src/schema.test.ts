@@ -4,6 +4,7 @@
 // @better-auth/core and the organization plugin's schema), with the organization renamed to `workspace` and its
 // `organizationId` fields to `workspaceId`. packages/db can't depend on better-auth (only packages/auth does), so the
 // lists are written out; packages/auth's own setup proves the wiring when it lands.
+import { readdirSync, readFileSync } from 'node:fs';
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
@@ -67,6 +68,13 @@ const tables = Object.values(schema as Record<string, unknown>).filter((value): 
   is(value, PgTable),
 );
 
+/** Every migration file, as one text. */
+const migrationsFolder = new URL('../migrations/', import.meta.url);
+const migrations = readdirSync(migrationsFolder)
+  .filter((file) => file.endsWith('.sql'))
+  .map((file) => readFileSync(new URL(file, migrationsFolder), 'utf8'))
+  .join('\n');
+
 function table(name: string): PgTable {
   const found = tables.find((t) => getTableName(t) === name);
   if (found === undefined) throw new Error(`no table ${name}`);
@@ -123,8 +131,9 @@ describe('the accounts tables', () => {
 
   it('keeps row-level security on every workspace table, with §13 policy for reads and writes', () => {
     for (const name of ['workspace', 'member', 'invitation']) {
+      // The migrations are written by hand (§13 A4), so it's there that row-level security is switched on.
+      expect(migrations, name).toContain(`ALTER TABLE "${name}" ENABLE ROW LEVEL SECURITY;`);
       const config = getTableConfig(table(name));
-      expect(config.enableRLS || config.policies.length > 0, name).toBe(true);
       const scope = config.policies.find((p) => p.name === 'workspace_scope');
       const key = name === 'workspace' ? 'id' : 'workspace_id';
       const policy = `${key} = current_setting('app.workspace_id')::uuid`;
