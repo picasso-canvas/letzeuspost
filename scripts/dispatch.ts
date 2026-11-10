@@ -114,20 +114,74 @@ export function runEnding(
   frozen: boolean,
 ): 'finished' | 'usage-limit' | 'frozen' | 'failed' {
   if (frozen) return 'frozen';
-  let result: { result?: unknown } | undefined;
+  let result: { subtype?: unknown; is_error?: unknown; result?: unknown } | undefined;
   for (const line of log.split('\n')) {
     try {
-      const event = JSON.parse(line) as { type?: unknown; result?: unknown };
+      const event = JSON.parse(line) as typeof result & { type?: unknown };
       if (event.type === 'result') result = event;
     } catch {
       // not an event line
     }
   }
-  if (result === undefined) return 'failed';
-  return typeof result.result === 'string' &&
-    /\bhit your (?:\w+ )?limit\b|\busage limit\b/i.test(result.result)
+  if (result === undefined || result.subtype === 'error_max_turns') return 'failed';
+  // Only the session's own error, in Claude Code's own words, counts: a summary that mentions a limit doesn't (#166).
+  return result.is_error === true &&
+    typeof result.result === 'string' &&
+    USAGE_LIMIT.test(result.result)
     ? 'usage-limit'
     : 'finished';
+}
+
+/** Claude Code's message when a session stops on a usage limit. */
+const USAGE_LIMIT = /^(?:You've hit your (?:\w+ )?limit\b|Claude AI usage limit reached\b)/;
+
+/** The last `max` characters of a stream, chunk by chunk: the run's final event, kept in memory (#166). */
+export function appendTail(tail: string, chunk: string, max: number): string {
+  return (tail + chunk).slice(-max);
+}
+
+/** A run's record once it ends. */
+export function endedRecord(
+  record: DispatchRecord,
+  ending: NonNullable<DispatchRecord['ending']>,
+  at: string,
+): DispatchRecord {
+  return { ...record, ending, endedAt: at };
+}
+
+/** The record of a resumed run: the old ending goes, a fresh marker comes. */
+export function resumedRecord(record: DispatchRecord, marker: string, at: string): DispatchRecord {
+  const next: DispatchRecord = { ...record, marker, resumedAt: at };
+  delete next.ending;
+  delete next.endedAt;
+  return next;
+}
+
+/**
+ * The builder session's extra environment. Git's and gh's config live in `configDir`, outside the clone, which the
+ * builder can write: git that Claude Code runs itself, outside the sandbox, must never read a config the builder
+ * planted (Cerberus F1 on #166). pnpm's dirs stay in the clone; only the sandboxed pnpm reads them.
+ */
+export function runEnvExtra(o: {
+  lzp: string;
+  marker: string;
+  configDir: string;
+  harnessDir: string;
+}): Record<string, string> {
+  return {
+    LZP_ROLE: 'builder',
+    LZP_HARNESS_DIR: o.harnessDir,
+    LZP_DISPATCH: o.marker,
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', // no notes carried between builder sessions (#54 turns it off repo-wide)
+    GH_CONFIG_DIR: join(o.configDir, 'gh'),
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: join(o.configDir, 'gitconfig'),
+    GIT_TERMINAL_PROMPT: '0',
+    CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '1',
+    pnpm_config_store_dir: join(o.lzp, 'pnpm/store'),
+    pnpm_config_cache_dir: join(o.lzp, 'pnpm/cache'),
+    pnpm_config_state_dir: join(o.lzp, 'pnpm/state'),
+  };
 }
 
 /** Why a run can't be resumed, or null: only one a usage limit stopped, with nothing shipped since (#157). */
@@ -142,8 +196,13 @@ export function resumeRefusal(record: DispatchRecord | null, cloneExists: boolea
 }
 
 /** The resumed session's prompt: dispatch writes nothing into the clone on a resume, so it's told here (#157). */
-export function resumePrompt(issue: number): string {
-  return `Build task #${String(issue)}. Your task is in .lzp/task.md. Follow your instructions and CLAUDE.md. Your previous session on this task was stopped by a usage limit: this one continues it in the same clone. Check what is already done first (git log, git status, the files in .lzp/), then finish the task and hand over as your instructions say.`;
+export function resumePrompt(issue: number, task: string): string {
+  return `Build task #${String(issue)}. Follow your instructions and CLAUDE.md. Your previous session on this task was stopped by a usage limit: this one continues it in the same clone. Check what is already done first (git log, git status, the files in .lzp/), then finish the task and hand over as your instructions say. Your task is below, as dispatch gave it; it overrides .lzp/task.md wherever the two differ.\n\n${task}`;
+}
+
+/** Dispatch's own copy of the task text it gave the builder, outside the builder's reach (#166). */
+export function taskCopyPath(issue: number): string {
+  return join(STATE_DIR, 'dispatch', `${String(issue)}.task.md`);
 }
 
 /** Branch names from `git ls-remote` output, exactly as `refs/heads/<name>` gives them. */
@@ -517,6 +576,7 @@ async function main(argv: string[]): Promise<number> {
     `${JSON.stringify({ issue, branch, baseSha, dispatchedAt: new Date().toISOString(), marker, ...(findings.length > 0 ? { findings } : {}) })}\n`,
     { mode: 0o600 },
   );
+  writeFileSync(taskCopyPath(issue), task, { mode: 0o600 }); // what a resume sends, whatever the clone's task.md says
   mkdirSync(BUILDERS_DIR, { recursive: true, mode: 0o700 });
   run(
     'git',
@@ -553,14 +613,10 @@ async function main(argv: string[]): Promise<number> {
   run('git', ['remote', 'remove', 'origin'], clone); // nothing to push to, even by path
 
   const lzp = join(clone, '.lzp');
-  for (const dir of ['gh', 'pnpm/store', 'pnpm/cache', 'pnpm/state'])
+  for (const dir of ['pnpm/store', 'pnpm/cache', 'pnpm/state'])
     mkdirSync(join(lzp, dir), { recursive: true });
   writeFileSync(join(lzp, 'task.md'), task);
   writeFileSync(join(lzp, 'base'), `${baseSha}\n`); // the builder's bundle starts here (ship checks the recorded base)
-  writeFileSync(
-    join(lzp, 'gitconfig'),
-    '[user]\n\tname = Daedalus\n\temail = daedalus@letzeuspost.invalid\n[credential]\n\thelper =\n[core]\n\thooksPath = /dev/null\n',
-  );
   return runBuilder({
     issue,
     body: view.body,
@@ -604,11 +660,19 @@ async function resume(
     );
     return 1;
   }
+  let task: string;
+  try {
+    task = readFileSync(taskCopyPath(issue), 'utf8');
+  } catch {
+    console.error(
+      `Refused to resume #${String(issue)}: dispatch kept no copy of its task text: dispatch with --fresh.`,
+    );
+    return 1;
+  }
   const marker = randomBytes(16).toString('hex');
-  // The new run's ending replaces the old one's when it finishes.
   writeFileSync(
     recordFile,
-    `${JSON.stringify({ ...record, ending: undefined, endedAt: undefined, marker, resumedAt: new Date().toISOString() })}\n`,
+    `${JSON.stringify(resumedRecord(record, marker, new Date().toISOString()))}\n`,
     { mode: 0o600 },
   );
   return runBuilder({
@@ -618,7 +682,7 @@ async function resume(
     clone,
     lzp: join(clone, '.lzp'),
     marker,
-    prompt: resumePrompt(issue),
+    prompt: resumePrompt(issue, task),
     maxTurns: args.maxTurns,
     recordFile,
   });
@@ -637,20 +701,16 @@ async function runBuilder(o: {
   recordFile: string;
 }): Promise<number> {
   const { issue, branch, clone, lzp, marker } = o;
-  const env = builderEnv(process.env, {
-    LZP_ROLE: 'builder',
-    LZP_HARNESS_DIR: ROOT,
-    LZP_DISPATCH: marker,
-    CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', // no notes carried between builder sessions (#54 turns it off repo-wide)
-    GH_CONFIG_DIR: join(lzp, 'gh'),
-    GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: join(lzp, 'gitconfig'),
-    GIT_TERMINAL_PROMPT: '0',
-    CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '1',
-    pnpm_config_store_dir: join(lzp, 'pnpm/store'),
-    pnpm_config_cache_dir: join(lzp, 'pnpm/cache'),
-    pnpm_config_state_dir: join(lzp, 'pnpm/state'),
-  });
+  // Git's and gh's config, outside the clone and written fresh for every run (Cerberus F1 on #166).
+  const configDir = join(BUILDERS_DIR, '.config', String(issue));
+  rmSync(configDir, { recursive: true, force: true });
+  mkdirSync(join(configDir, 'gh'), { recursive: true, mode: 0o755 });
+  writeFileSync(
+    join(configDir, 'gitconfig'),
+    '[user]\n\tname = Daedalus\n\temail = daedalus@letzeuspost.invalid\n[credential]\n\thelper =\n[core]\n\thooksPath = /dev/null\n',
+    { mode: 0o644, flag: 'wx' },
+  );
+  const env = builderEnv(process.env, runEnvExtra({ lzp, marker, configDir, harnessDir: ROOT }));
 
   const log = join(STATE_DIR, 'runs', `${branch}-${String(Date.now())}.jsonl`);
   mkdirSync(dirname(log), { recursive: true, mode: 0o700 });
@@ -677,6 +737,11 @@ async function runBuilder(o: {
     { cwd: clone, env, detached: true, stdio: ['ignore', 'pipe', 'inherit'] },
   );
   child.stdout.pipe(createWriteStream(log));
+  // The stream's end, kept in memory: reading the log file back could miss what isn't flushed yet (Argus F1 on #166).
+  let tail = '';
+  child.stdout.on('data', (chunk: Buffer) => {
+    tail = appendTail(tail, chunk.toString('utf8'), 256 * 1024);
+  });
   const killGroup = () => {
     try {
       if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
@@ -736,11 +801,11 @@ async function runBuilder(o: {
   console.log(`Handed over: ${ready.join(', ')}. Next: node scripts/ship.ts ${String(issue)}`);
   console.log(noGit);
   // How it ended, in Athena's record: a run a usage limit stopped can be resumed (#157).
-  const ending = runEnding(readFileSync(log, 'utf8'), state.frozen);
+  const ending = runEnding(tail, state.frozen);
   const now = parseDispatchRecord(readFileSync(o.recordFile, 'utf8'), issue);
   writeFileSync(
     o.recordFile,
-    `${JSON.stringify({ ...now, ending, endedAt: new Date().toISOString() })}\n`,
+    `${JSON.stringify(endedRecord(now, ending, new Date().toISOString()))}\n`,
     { mode: 0o600 },
   );
   if (ending === 'usage-limit')
