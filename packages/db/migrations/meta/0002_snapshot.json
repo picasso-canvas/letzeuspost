@@ -202,6 +202,10 @@
           "name": "invitation_role_check",
           "value": "role in ('admin', 'editor', 'viewer')"
         },
+        "invitation_role_present": {
+          "name": "invitation_role_present",
+          "value": "\"role\" IS NOT NULL"
+        },
         "invitation_status_check": {
           "name": "invitation_status_check",
           "value": "status in ('pending', 'accepted', 'rejected', 'canceled')"

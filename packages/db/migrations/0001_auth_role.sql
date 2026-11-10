@@ -42,8 +42,6 @@ CREATE POLICY "member_scope" ON "user" AS PERMISSIVE FOR SELECT TO "lzp_app" USI
 --> statement-breakpoint
 
 -- Cerberus F4 on #173: every invitation carries its role. The first step of making the column NOT NULL without a long
--- lock: a check that new rows meet, validated and replaced by NOT NULL in 0002. Its name isn't
--- "invitation_role_not_null", which Postgres 18 gives the NOT NULL constraint itself.
-ALTER TABLE "invitation" DROP CONSTRAINT IF EXISTS "invitation_role_present";
---> statement-breakpoint
+-- lock: a check that new rows meet, validated in 0002, where NOT NULL joins it. The check stays (src/schema.ts declares
+-- it). Its name isn't "invitation_role_not_null", which Postgres 18 gives the NOT NULL constraint itself.
 ALTER TABLE "invitation" ADD CONSTRAINT "invitation_role_present" CHECK ("role" IS NOT NULL) NOT VALID;

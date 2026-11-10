@@ -6,7 +6,7 @@
 // lists are written out; packages/auth's own setup proves the wiring when it lands.
 import { readdirSync, readFileSync } from 'node:fs';
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
-import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
+import { getTableConfig, PgDialect, PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import * as schema from './schema.ts';
 
@@ -163,9 +163,13 @@ describe('the accounts tables', () => {
     expect(migrations).toContain('ALTER TABLE "invitation" ALTER COLUMN "role" SET NOT NULL;');
     // The check that let NOT NULL skip the table scan stays beside it, in the schema as in the database: squawk
     // refuses dropping a constraint (ban-drop-constraint), and Athena's round-1 note on #189 asks to keep it.
+    const dialect = new PgDialect();
     expect(
-      getTableConfig(table('invitation')).checks.map((c) => [c.name, JSON.stringify(c.value)]),
-    ).toContainEqual(['invitation_role_present', expect.stringContaining('"role" IS NOT NULL')]);
+      getTableConfig(table('invitation')).checks.map((c) => [
+        c.name,
+        dialect.sqlToQuery(c.value).sql,
+      ]),
+    ).toContainEqual(['invitation_role_present', '"role" IS NOT NULL']);
     expect(migrations).toContain(
       'ALTER TABLE "invitation" ADD CONSTRAINT "invitation_role_present" CHECK ("role" IS NOT NULL) NOT VALID;',
     );

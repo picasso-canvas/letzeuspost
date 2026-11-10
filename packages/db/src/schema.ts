@@ -147,6 +147,8 @@ export const invitation = pgTable(
   },
   () => [
     check('invitation_role_check', sql.raw("role in ('admin', 'editor', 'viewer')")),
+    // Beside NOT NULL: the migrations added it first, so that NOT NULL needed no scan of the table (#176).
+    check('invitation_role_present', sql.raw('"role" IS NOT NULL')),
     check(
       'invitation_status_check',
       sql.raw("status in ('pending', 'accepted', 'rejected', 'canceled')"),

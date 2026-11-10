@@ -30,8 +30,9 @@ const SWITCHES: readonly RegExp[] = [
   /\breset\s+role\b/i,
   /\bset_config\s*\(\s*'role'/i,
   /\bset\s+(?:(?:session|local)\s+)?session\s+authorization\b/i,
-  // The role given in a connection's startup options (pg's `options`, PGOPTIONS).
-  /(?:-c\s*|--)role\s*=/i,
+  // The role given in a connection's startup options (pg's `options`, PGOPTIONS), as written or percent-encoded in a
+  // connection URL (a space as %20 or +, `=` as %3D).
+  /(?:-c(?:\s|%20|\+)*|--)role(?:\s|%20|\+)*(?:=|%3d)/i,
 ];
 
 /** The role switches in a text: one entry per pattern that matches. */

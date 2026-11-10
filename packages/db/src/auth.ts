@@ -3,7 +3,7 @@
 // are exported from here only (#176).
 //
 // - `db` is Better Auth's handle, for its drizzle adapter. It runs as lzp_auth, the role that holds those four tables
-//   (#176): its pool is its own, and each new connection switches to that role before its first query. lzp_app only
+//   (#176): its pool is its own, and each connection takes that role when it opens, before its first query. lzp_app only
 //   may switch to lzp_auth, never inherits it, and this file is the only one that switches (no-role-switch.test.ts).
 //   The workspace tables stay closed to it: lzp_auth holds no grant on them.
 // - `forUser(ctx)` runs a unit of work as one signed-in person, as lzp_app on a pool that never switches: Q5's second
@@ -33,20 +33,17 @@ export interface AuthDb {
 const AUTH_ROLE = 'lzp_auth';
 
 /**
- * A pool whose every connection runs as lzp_auth. pg runs a connection's queries in order, and the 'connect' listener
- * runs before the pool hands the new connection out, so the switch comes before any query of Better Auth's. If the
- * switch fails, the connection is closed and leaves the pool. That fails closed: a query that reached it first ran as
- * plain lzp_app, which holds nothing on session, account and verification and can't read "user" with nothing set.
+ * A pool whose every connection runs as lzp_auth from the moment it opens (Argus F3, Cerberus F3 on #189). The role
+ * goes in the connection's startup options, so Postgres sets it before it accepts the connection: a connection of this
+ * pool never exists as plain lzp_app, and its session default is lzp_auth, which RESET ROLE and DISCARD ALL return to.
+ * If the login may not take the role, Postgres refuses the connection, and every query that waited for it is refused
+ * with that error. The option is set on the URL, not beside it, because pg lets the URL's own `options` override one
+ * given beside it.
  */
 function authPool(url: string): pg.Pool {
-  const pool = openPool(url);
-  pool.on('connect', (client) => {
-    client.query(`SET ROLE ${AUTH_ROLE}`).catch((error: unknown) => {
-      console.error(`database: the auth handle could not switch role: ${String(error)}`);
-      void client.end();
-    });
-  });
-  return pool;
+  const withRole = new URL(url);
+  withRole.searchParams.set('options', `-c role=${AUTH_ROLE}`);
+  return openPool(withRole.href);
 }
 
 /** Better Auth's database: `url` is DATABASE_URL, the app role's login (config/env.ts). */

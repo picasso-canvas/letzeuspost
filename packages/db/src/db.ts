@@ -45,14 +45,25 @@ export function checkedId(kind: 'workspace' | 'user', id: string): string {
   return id;
 }
 
-/** A unit of work with both settings the policies read set first, for this transaction only. */
+/**
+ * A unit of work with both settings the policies read set first, for this transaction only. It runs only as the role
+ * the connection logged in as (lzp_app): a pooled connection that something switched to another role (lzp_auth, by
+ * SQL injected into an earlier query, say) is refused before the work starts, so the switch can't reach the next
+ * request on that connection (Cerberus F4 on #189). Only the auth handle's own pool runs as another role (auth.ts), and it never comes here.
+ */
 export function scoped(orm: Orm, settings: { workspaceId: string; userId: string }): Scoped {
   return {
     transaction: (work) =>
       orm.transaction(async (tx) => {
-        await tx.execute(
-          sql`select set_config('app.workspace_id', ${settings.workspaceId}, true), set_config('app.user_id', ${settings.userId}, true)`,
+        const { rows } = await tx.execute<{ who: string; login: string }>(
+          sql`select current_user as who, session_user as login, set_config('app.workspace_id', ${settings.workspaceId}, true), set_config('app.user_id', ${settings.userId}, true)`,
         );
+        const role = rows[0];
+        if (role === undefined || role.who !== role.login) {
+          throw new Error(
+            `database: refused: this connection runs as ${role?.who ?? 'an unknown role'}, not ${role?.login ?? 'its login'}`,
+          );
+        }
         return work(tx);
       }),
   };
