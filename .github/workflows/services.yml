@@ -1,0 +1,151 @@
+# The CI job `services` (§17 When things run, #67): docker/compose.yml's Postgres 18, SeaweedFS and Mailpit, a smoke
+# check of each, then the tests that need them: the integration tests (`*.int.test.ts`) and the tenancy suite, as
+# `pnpm check:services` runs them. Builders get no services of their own (Zeus, 2026-11-09, #67): this job is where
+# those tests run, and its failures go back to the builder as findings.
+#
+# Required by the merge gate, so it runs on every PR. No repository secrets: the services' passwords are made up for
+# each run and masked in the log.
+name: services
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: services-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # runs on main are never cancelled
+
+jobs:
+  services:
+    name: services
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Passwords for this run
+        run: |
+          set -euo pipefail
+          for name in LZP_PG_SUPERUSER_PASSWORD LZP_PG_OWNER_PASSWORD LZP_PG_APP_PASSWORD STORAGE_SECRET_ACCESS_KEY; do
+            value="$(openssl rand -hex 24)"
+            echo "::add-mask::${value}"
+            echo "${name}=${value}" >> "$GITHUB_ENV"
+          done
+          for name in AUTH_SECRET NEXT_SERVER_ACTIONS_ENCRYPTION_KEY; do
+            value="$(openssl rand -base64 32)"
+            echo "::add-mask::${value}"
+            echo "${name}=${value}" >> "$GITHUB_ENV"
+          done
+          {
+            echo "STORAGE_ACCESS_KEY_ID=lzp-ci"
+            echo "STORAGE_BUCKET=letzeuspost-ci"
+          } >> "$GITHUB_ENV"
+
+      # Before any of the branch's code is installed or run: only the Compose file and its two scripts.
+      - name: Start the services
+        run: docker compose -f docker/compose.yml up --detach --wait --wait-timeout 180
+
+      - name: Settings for the tests (config/env.ts's names)
+        run: |
+          {
+            echo "DATABASE_URL=postgres://lzp_app:${LZP_PG_APP_PASSWORD}@127.0.0.1:5432/letzeuspost"
+            echo "DATABASE_OWNER_URL=postgres://lzp_owner:${LZP_PG_OWNER_PASSWORD}@127.0.0.1:5432/letzeuspost"
+            echo "STORAGE_ENDPOINT=http://127.0.0.1:8333"
+            echo "STORAGE_REGION=us-east-1"
+            echo "SMTP_URL=smtp://127.0.0.1:1025"
+            echo "EMAIL_FROM=noreply@letzeuspost.invalid"
+            echo "APP_URL=http://localhost:3000"
+            echo "NEXT_DEPLOYMENT_ID=ci-${GITHUB_SHA}"
+          } >> "$GITHUB_ENV"
+
+      # The roles Q4 settles (#18): the app logs in without BYPASSRLS and can't create tables; the owner can; a wrong
+      # password is refused (connections through the published port need one).
+      - name: 'Smoke: Postgres roles'
+        run: |
+          set -euo pipefail
+          [ "$(psql "$DATABASE_URL" -tAc 'select rolbypassrls or rolsuper from pg_roles where rolname = current_user')" = f ]
+          if psql "$DATABASE_URL" -tAc 'create table smoke (i int)' 2>/dev/null; then
+            echo "::error::the app role can create tables"
+            exit 1
+          fi
+          psql "$DATABASE_OWNER_URL" -tAc 'create table smoke (i int); drop table smoke'
+          if PGPASSWORD=wrong psql -h 127.0.0.1 -U lzp_app -d letzeuspost -tAc 'select 1' 2> "$RUNNER_TEMP/pg.err"; then
+            echo "::error::a wrong password was accepted"
+            exit 1
+          fi
+          grep -q 'password authentication failed for user "lzp_app"' "$RUNNER_TEMP/pg.err" # not just any failure
+
+      - name: 'Smoke: file store'
+        run: |
+          set -euo pipefail
+          echo smoke > "$RUNNER_TEMP/smoke.txt"
+          sign=(--aws-sigv4 "aws:amz:${STORAGE_REGION}:s3" --user "${STORAGE_ACCESS_KEY_ID}:${STORAGE_SECRET_ACCESS_KEY}")
+          curl -fsS "${sign[@]}" -T "$RUNNER_TEMP/smoke.txt" "${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/smoke.txt"
+          [ "$(curl -fsS "${sign[@]}" "${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/smoke.txt")" = smoke ]
+          [ "$(curl -s -o /dev/null -w '%{http_code}' "${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/smoke.txt")" = 403 ]
+
+      - name: 'Smoke: mail'
+        run: |
+          set -euo pipefail
+          printf 'Subject: smoke\r\n\r\nsmoke\r\n' |
+            curl -fsS "$SMTP_URL" --mail-from ci@letzeuspost.invalid --mail-rcpt smoke@letzeuspost.invalid -T -
+          [ "$(curl -fsS http://127.0.0.1:8025/api/v1/messages | jq .total)" -ge 1 ]
+
+      - name: Set up pnpm (version from packageManager)
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # The settings above are the ones config/env.ts reads: each process loads its own, or the job fails here
+      # (Argus on #119). loadEnv names a bad setting, never its value.
+      - name: 'Smoke: the settings load (config/env.ts)'
+        run: >-
+          node --input-type=module -e "const { loadEnv } = await import('./config/env.ts');
+          for (const p of ['web', 'worker', 'migrate']) loadEnv(p);
+          console.log('web, worker and migrate settings load')"
+
+      # `pnpm check:services`, in two steps: its Vitest half here, and its Playwright half for the app below. The
+      # gallery's Playwright project runs in the `design` job instead (#70).
+      - name: Integration tests and the tenancy suite
+        run: LZP_SERVICES=1 pnpm exec vitest run
+
+      # From the first journey (#78) on: the app at 1440 px, light and dark (playwright.config.ts starts the built app
+      # and the worker). The step starts once tests/e2e/ exists, since builders can't change this file.
+      - name: End-to-end tests
+        id: e2e
+        if: ${{ hashFiles('tests/e2e/**') != '' }}
+        run: |
+          set -euo pipefail
+          pnpm exec playwright install --with-deps chromium
+          pnpm --filter @lzp/web build
+          pnpm exec playwright test --project app-light --project app-dark
+
+      # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
+      # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
+      - name: Upload the end-to-end screenshots
+        if: ${{ !cancelled() && steps.e2e.outcome != 'skipped' && hashFiles('tests/visual/output/**') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-screenshots
+          path: tests/visual/output
+          retention-days: 14
+
+      - name: Service logs
+        if: ${{ failure() }}
+        run: docker compose -f docker/compose.yml logs --no-color --tail 200

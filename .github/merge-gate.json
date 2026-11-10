@@ -1,5 +1,5 @@
 {
-  "requiredChecks": ["ci", "risk-gate", "design"],
+  "requiredChecks": ["ci", "risk-gate", "design", "services"],
   "requireTierLabel": true,
   "requireIris": true,
   "uiPaths": ["apps/web/**", "packages/ui/**", "packages/render/src/looks/**", "DESIGN.md"],

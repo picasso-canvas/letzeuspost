@@ -31,6 +31,12 @@ env:
   # The fallback's zizmor: the PyPI wheel for the same version (zizmor-1.32.0-py3-none-manylinux_2_28_x86_64.whl), its
   # SHA-256 as PyPI's JSON API lists it, and the same hash computed on a downloaded copy.
   ZIZMOR_WHEEL_SHA256: 84a6acb975accc13408786a2bd274b572537ca19c933ebbc13e78f3988562071
+  # squawk checks database migrations (§17, #67); the same SHA-256 as GitHub lists for the release asset. Its fallback
+  # is the same version's .crate from crates.io, pinned by the SHA-256 crates.io lists for it (and checked on a
+  # downloaded copy), built with its own Cargo.lock (--locked: every dependency checked against the lock's checksums).
+  SQUAWK_VERSION: 2.71.0
+  SQUAWK_SHA256: ab978cb412e5e5eb2f06aaa4c5035a1567f6eba53274d7d1e068f73169b88bbd
+  SQUAWK_CRATE_SHA256: a8b77a2cb22f0d6bae1e385bd601b442e2ee4388eb90ecaa9c6263c288caa7a0
 
 jobs:
   ci:
@@ -58,7 +64,8 @@ jobs:
       # Each tool comes from its GitHub release, checked against its pinned SHA-256; a mismatch fails the job. Only when
       # the download itself fails (GitHub's release-file service was down for hours on 2026-11-08, #101) does the same
       # pinned version come from a source with its own integrity check: gitleaks and OSV-Scanner built from the Go
-      # module proxy, every module checked against sum.golang.org; zizmor from PyPI with the wheel's pinned SHA-256.
+      # module proxy, every module checked against sum.golang.org; zizmor from PyPI with the wheel's pinned SHA-256;
+      # squawk built from its pinned .crate on crates.io with its own Cargo.lock.
       # Each attempt is capped (15 s to connect, 60 s in all, 2 retries), and once one release download fails the other
       # tools go straight to the fallback, so a hanging release service can't use up the job's time.
       # LZP_TOOLS_FALLBACK_ONLY=1 skips the release downloads, to show the fallback works.
@@ -106,8 +113,20 @@ jobs:
               --target "$RUNNER_TEMP/zizmor-py" -r zizmor-req.txt
             cp "$RUNNER_TEMP/zizmor-py/bin/zizmor" bin/zizmor
           fi
+          if release bin/squawk "https://github.com/sbdchd/squawk/releases/download/v${SQUAWK_VERSION}/squawk-linux-x64"; then
+            echo "${SQUAWK_SHA256}  bin/squawk" | sha256sum -c -
+            chmod +x bin/squawk
+          else
+            rm -f bin/squawk
+            echo "::warning::squawk: the GitHub release is unavailable; building the same version from crates.io"
+            curl -fsSL --connect-timeout 15 --max-time 120 --retry 2 -o squawk.crate \
+              "https://static.crates.io/crates/squawk/squawk-${SQUAWK_VERSION}.crate"
+            echo "${SQUAWK_CRATE_SHA256}  squawk.crate" | sha256sum -c -
+            tar -xzf squawk.crate
+            cargo install --quiet --locked --root "$RUNNER_TEMP" --path "squawk-${SQUAWK_VERSION}"
+          fi
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-          bin/gitleaks version && bin/osv-scanner --version | sed -n 1p && bin/zizmor --version
+          bin/gitleaks version && bin/osv-scanner --version | sed -n 1p && bin/zizmor --version && bin/squawk --version
 
       # Before any of the branch's code is installed or run. Each check runs even when an earlier one failed, so one
       # run shows every problem.
@@ -127,6 +146,31 @@ jobs:
       - name: Advisories (pnpm audit on the lockfile, high and above)
         if: ${{ !cancelled() }}
         run: pnpm audit --audit-level high
+
+      # Every migration under packages/db/ (#71 adds the first); squawk reads the SQL files, it doesn't run them. Its
+      # config is written here and passed explicitly, so a `.squawk.toml` in the branch can't switch a rule off or skip
+      # a file (Cerberus on #119): every rule, Postgres 18. Nor can a migration's own comments: any `squawk-ignore` in
+      # a SQL file fails the step, and so does a SQL file outside packages/db/, which squawk would never see.
+      - name: Migrations (squawk)
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          if git grep -nIi 'squawk-ignore' -- '*.sql'; then
+            echo "::error::a SQL file silences squawk (safe-migrations: no rule silenced, no file skipped)"
+            exit 1
+          fi
+          mapfile -t outside < <(git ls-files -- '*.sql' ':!packages/db/**')
+          if [ "${#outside[@]}" -gt 0 ]; then
+            echo "::error::SQL files outside packages/db/ get no squawk check: ${outside[*]}"
+            exit 1
+          fi
+          mapfile -t migrations < <(git ls-files -- 'packages/db/**.sql')
+          if [ "${#migrations[@]}" -eq 0 ]; then
+            echo "No migrations yet."
+            exit 0
+          fi
+          printf 'pg_version = "18.0"\n' > "$RUNNER_TEMP/squawk.toml"
+          squawk --config "$RUNNER_TEMP/squawk.toml" "${migrations[@]}"
 
       - name: Install dependencies (frozen lockfile)
         id: install

@@ -47,8 +47,8 @@ Reviewers never review their own work and always start from a fresh context. The
 2. **Ready.** Athena moves tasks from approved sections to **Ready to build**. Zeus can pull any back.
 3. **Dispatch.** Athena runs `scripts/dispatch.ts <issue>`: a fresh `--no-local` clone of the repo with no remote, on
    the issue's branch (`<issue>-<slug>`; an existing branch keeps its name, must contain current main and must not touch
-   a protected path), the issue text in `.lzp/task.md`, the task's own service containers (from M0) with their
-   localhost ports, and a headless builder session started there with main's builder settings (sandbox on), an
+   a protected path), the issue text in `.lzp/task.md`, and a headless builder session started there with main's
+   builder settings (sandbox on), an
    allowlisted environment, `LZP_ROLE=builder`, **no GitHub credential and no Docker socket**
    ([20](20-builder-guardrails.md#1-identity-and-access)). Dispatch records the task's base commit in
    `~/.letzeuspost/dispatch/<issue>.json`, never wipes a clone holding unshipped work (unless `--fresh`), and runs the
@@ -115,7 +115,7 @@ Reviewers never review their own work and always start from a fresh context. The
    [the merge gate](#the-merge-gate) and only then squash-merges. After every merge into `main` it merges `main` into
    `staging`, so builders always start from main's harness. **Builders can't merge.** Only `main` is ever deployed
    (Picasso's instance included), so code that hasn't had its batch review never runs outside a sandbox or CI.
-8. **Done.** The batch PR closes its tasks' issues when it merges into `main`; the board's built-in workflow then moves their cards to Done. Athena removes each builder's clone and stops its containers.
+8. **Done.** The batch PR closes its tasks' issues when it merges into `main`; the board's built-in workflow then moves their cards to Done. Athena removes each builder's clone.
 9. **Failures.** A red check gets up to 3 fix attempts; after that, `blocked` plus a comment saying what's wrong.
 
 ### The merge gate

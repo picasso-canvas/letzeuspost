@@ -7,7 +7,8 @@ import { REVIEWERS, type ReviewRecord } from './types.ts';
 export const STATE_DIR = join(homedir(), '.letzeuspost');
 
 const SHA = /^[0-9a-f]{40}$/;
-const FILE = /^(argus|cerberus|iris|redteam)-\d+-[0-9a-f]{8}\.json$/;
+/** A review record's file name: `<reviewer>-<ms>-<nonce>.json`. */
+export const REVIEW_FILE = /^(argus|cerberus|iris|redteam)-\d+-[0-9a-f]{8}\.json$/;
 
 function reviewDir(stateDir: string, pr: number, sha: string): string {
   if (!Number.isInteger(pr) || pr <= 0) throw new Error(`bad PR number: ${String(pr)}`);
@@ -50,7 +51,7 @@ export function readReviews(pr: number, sha: string, stateDir = STATE_DIR): Revi
     return [];
   }
   return names.map((name) => {
-    const reviewer = FILE.exec(name)?.[1];
+    const reviewer = REVIEW_FILE.exec(name)?.[1];
     try {
       const parsed: unknown = reviewer ? JSON.parse(readFileSync(join(dir, name), 'utf8')) : null;
       if (

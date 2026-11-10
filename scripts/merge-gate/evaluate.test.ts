@@ -222,12 +222,31 @@ describe('evaluate', () => {
     const config = parseConfig(
       readFileSync(new URL('../../.github/merge-gate.json', import.meta.url), 'utf8'),
     );
-    expect(config.requiredChecks).toEqual(['ci', 'risk-gate', 'design']);
+    expect(config.requiredChecks).toEqual(['ci', 'risk-gate', 'design', 'services']);
     const withoutDesign = facts({
       config,
       reviews: [review('argus'), review('iris')],
     });
     expect(failedIds(withoutDesign)).toEqual([3]);
+  });
+
+  it("requires the services job under the repo's own merge-gate.json (#67)", () => {
+    const config = parseConfig(
+      readFileSync(new URL('../../.github/merge-gate.json', import.meta.url), 'utf8'),
+    );
+    expect(config.requiredChecks).toContain('services');
+    const passed = (name: string) => ({
+      name,
+      status: 'completed',
+      conclusion: 'success',
+      app: 'github-actions',
+    });
+    const allButServices = facts({
+      config,
+      checkRuns: config.requiredChecks.filter((name) => name !== 'services').map(passed),
+      reviews: [review('argus'), review('iris')],
+    });
+    expect(failedIds(allButServices)).toEqual([3]);
   });
 
   it('refuses an unticked or missing Done-when list', () => {

@@ -149,3 +149,21 @@ describe('parseVerdict: a later VERDICT: block behind any markup', () => {
     expect(parseVerdict('VERDICT: pass\nNo blocking findings.').verdict).toBe('pass');
   });
 });
+
+describe("parseVerdict: Cerberus's should-fixes hold (§19, Zeus 2026-11-10)", () => {
+  it("blocks Cerberus's pass that lists a should-fix, in any markup, and only Cerberus's", () => {
+    const summary = 'VERDICT: pass\n[should-fix] F1 security a.ts:1 — no rate limit — add one';
+    expect(parseVerdict(summary, 'cerberus')).toEqual({
+      verdict: 'block',
+      reason: "says pass but lists a [should-fix] finding, and Cerberus's should-fixes hold",
+    });
+    expect(
+      parseVerdict('VERDICT: pass\n- **[should-fix]** F1 auth a.ts:1 — x', 'cerberus').verdict,
+    ).toBe('block');
+    expect(parseVerdict(summary, 'argus').verdict).toBe('pass');
+    expect(parseVerdict(summary).verdict).toBe('pass');
+    expect(parseVerdict('VERDICT: pass\n[nit] F1 security a.ts:1 — x', 'cerberus').verdict).toBe(
+      'pass',
+    );
+  });
+});
