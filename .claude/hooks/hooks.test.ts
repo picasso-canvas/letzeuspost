@@ -189,6 +189,15 @@ describe("builder settings and the clone's .git (#89)", () => {
     );
   });
 
+  // git skips these through dispatch's environment (#174), but a builder can drop that in its own shell, or just cat
+  // the file: the sandbox itself denies reading them (Argus F1, Cerberus F1 on #180).
+  it("denies the sandbox's reads of the operator's git config", () => {
+    const denyRead = (builderSettings as { sandbox: { filesystem: { denyRead: string[] } } })
+      .sandbox.filesystem.denyRead;
+    for (const path of ['~/.gitconfig', '~/.config/git', '/etc/gitconfig'])
+      expect(denyRead, path).toContain(path);
+  });
+
   it('allows no write back into .git or over the whole clone', () => {
     for (const path of settings.sandbox.filesystem.allowWrite ?? []) {
       expect(namesGit(path) || ['.', './', '/', '~', '~/'].includes(path), path).toBe(false);
