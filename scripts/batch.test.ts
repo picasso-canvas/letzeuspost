@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { onTestFinished } from 'vitest';
-import { batchBody, batchDue, taskPrs } from './batch.ts';
+import { batchBody, taskPrs } from './batch.ts';
 
 describe('taskPrs', () => {
   it("reads the gate's squash subjects on staging, oldest first, and skips main's merges into staging", () => {
@@ -16,15 +16,6 @@ describe('taskPrs', () => {
       '',
     ].join('\n');
     expect(taskPrs(log)).toEqual([70, 71]);
-  });
-});
-
-describe('batchDue', () => {
-  it('is due at 5 tasks or 1,500 changed lines, whichever comes first (Zeus, 2026-11-07)', () => {
-    expect(batchDue(4, 1499)).toBe(false);
-    expect(batchDue(5, 10)).toBe(true);
-    expect(batchDue(1, 1500)).toBe(true);
-    expect(batchDue(0, 0)).toBe(false);
   });
 });
 

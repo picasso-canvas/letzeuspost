@@ -244,3 +244,31 @@ describe('auditMain: staging merges (#63 review)', () => {
     expect(auditMain([commit('m'.repeat(40), '2026-11-07T09:00:00Z', 'x')], log)).toEqual([]);
   });
 });
+
+describe('renderReport: batches by feature (#139)', () => {
+  it('names the feature a batch merged', () => {
+    const text = renderReport({
+      week: '2026-W46',
+      merges: [
+        {
+          at: '2026-11-12T05:00:00Z',
+          pr: 160,
+          sha: 'h'.repeat(40),
+          result: 'merged',
+          tier: 'sensitive',
+          base: 'main',
+          kind: 'batch',
+          reviewers: ['argus:pass'],
+        },
+      ],
+      titles: { 160: '[Batch] 5 tasks' },
+      batchFeatures: { 160: ['data'] },
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+    });
+    expect(text).toContain('| #160 | [Batch] 5 tasks (feature: data) | sensitive |');
+  });
+});
