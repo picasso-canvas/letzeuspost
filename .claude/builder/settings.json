@@ -142,6 +142,11 @@
     "filesystem": {
       "denyRead": [
         "~/.ssh",
+        "~/.gitconfig",
+        "~/.config/git/config",
+        "~/.git-credentials",
+        "~/.config/git/credentials",
+        "/etc/gitconfig",
         "~/.config/gh",
         "~/letzeuspost-picasso",
         "~/Library/Keychains",

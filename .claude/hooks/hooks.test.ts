@@ -194,7 +194,13 @@ describe("builder settings and the clone's .git (#89)", () => {
   it("denies the sandbox's reads of the operator's git config", () => {
     const denyRead = (builderSettings as { sandbox: { filesystem: { denyRead: string[] } } })
       .sandbox.filesystem.denyRead;
-    for (const path of ['~/.gitconfig', '~/.config/git', '/etc/gitconfig'])
+    for (const path of [
+      '~/.gitconfig',
+      '~/.config/git/config',
+      '~/.git-credentials',
+      '~/.config/git/credentials',
+      '/etc/gitconfig',
+    ])
       expect(denyRead, path).toContain(path);
   });
 
