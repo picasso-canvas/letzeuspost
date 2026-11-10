@@ -1,6 +1,6 @@
 // The Data feature's journey (§19 A task's life, #150): two workspaces' data stays apart through every layer.
-// It began as the feature's first task, marked `it.fails` while the feature was unbuilt; the feature's last task (#200)
-// took the mark off. It is a plain `it` now, and the feature is done when it passes in CI.
+// It began as the feature's first task, marked as an expected failure while the feature was unbuilt; the feature's last
+// task (#200) took the mark off. It is a plain `it` now, and the feature is done when it passes in CI.
 //
 // Everything it calls is real: `@lzp/db` (#71: `db.forWorkspace(ctx).transaction((tx) => …)`, `migrate`, the
 // `invitation` table the journey proves isolation on; #72: `installJobs`, `createJobs`, `queueEmail`, the
