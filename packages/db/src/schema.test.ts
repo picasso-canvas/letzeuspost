@@ -4,8 +4,8 @@
 // @better-auth/core and the organization plugin's schema), with the organization renamed to `workspace` and its
 // `organizationId` fields to `workspaceId`. packages/db can't depend on better-auth (only packages/auth does), so the
 // lists are written out; packages/auth's own setup proves the wiring when it lands.
-import { getTableColumns, getTableName } from 'drizzle-orm';
-import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
+import { getTableColumns, getTableName, is } from 'drizzle-orm';
+import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import * as schema from './schema.ts';
 
@@ -63,8 +63,8 @@ const betterAuth: Record<string, Record<string, boolean>> = {
   },
 };
 
-const tables = Object.values(schema).filter(
-  (value): value is PgTable => typeof value === 'object' && 'getSQL' in value,
+const tables = Object.values(schema as Record<string, unknown>).filter((value): value is PgTable =>
+  is(value, PgTable),
 );
 
 function table(name: string): PgTable {
