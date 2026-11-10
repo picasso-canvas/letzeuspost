@@ -105,6 +105,8 @@ export interface ReportData {
   openSensitive: { number: number; title: string }[];
   needsZeus: { number: number; title: string }[];
   guardrailHits: Record<string, number>;
+  /** Reviews that needed a retry this week (#158): a line before the verdict. */
+  reviewRetries?: number;
   /** The learning loop's repeated finding types (scripts/lessons.ts). */
   lessons?: LessonRow[];
 }
@@ -165,6 +167,11 @@ export function renderReport(d: ReportData): string {
       '| Rule | Hits |',
       '|---|---|',
       ...hits.map(([rule, n]) => `| ${rule} | ${String(n)} |`),
+    );
+  if (d.reviewRetries !== undefined)
+    lines.push(
+      '',
+      `Review answers that needed a retry (a line before the verdict): ${String(d.reviewRetries)}.`,
     );
   if (d.lessons !== undefined) {
     lines.push('', '## Lessons', '');
@@ -342,6 +349,9 @@ function main(argv: string[]): number {
     openSensitive: list(['pr', 'list', '--state', 'open', '--label', 'sensitive']),
     needsZeus: list(['issue', 'list', '--state', 'open', '--label', 'needs-zeus']),
     guardrailHits: hits,
+    reviewRetries: readJsonLines<{ at?: string }>(
+      join(STATE_DIR, 'logs', 'review-retries.jsonl'),
+    ).filter((r) => r.at !== undefined && Date.parse(r.at) >= since.getTime()).length,
     lessons: lessonRows(
       countLessons(readFindings()),
       parseLessonsDoc(

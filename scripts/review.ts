@@ -10,7 +10,7 @@
 // to pr-<n>/out/<stamp>/, outside the bundle, so each reviewer starts fresh. A builder's code is only read here.
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
@@ -23,6 +23,7 @@ import { gatedIntoStaging, taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
+import { parseVerdict } from './merge-gate/verdict.ts';
 
 import type { Reviewer } from './merge-gate/types.ts';
 
@@ -482,7 +483,29 @@ export interface ReviewDeps {
   /** Runs record-review.ts with these arguments. */
   record: (args: string[]) => string;
   write: (path: string, text: string) => void;
+  /** Notes a review that needed a retry (#158), for the weekly report. */
+  logRetry?: (entry: {
+    pr: number;
+    reviewer: Asker;
+    first: string | null;
+    second: string | null;
+  }) => void;
   env: NodeJS.ProcessEnv;
+}
+
+/**
+ * A malformed answer worth asking again (#158): its first line isn't the verdict, but read from its verdict line on, it
+ * is a pass (a reviewer that wrote a line before `VERDICT: pass`). Anything that signals a block (a `VERDICT: block`
+ * line, a `[blocking]` finding, Cerberus's should-fix) or has no verdict line at all is recorded as it is, a block, so
+ * a retry can never turn a block into a pass. verdict.ts's rules don't change.
+ */
+export function retryWorthy(summary: string, reviewer: Asker): boolean {
+  const lines = summary.split(/\r\n?|\n/);
+  const first = lines.find((line) => line.trim() !== '' && !/^`{3,}\w*$/.test(line.trim()));
+  if (first !== undefined && /^VERDICT: (?:pass|block)$/.test(first.trim())) return false;
+  const at = lines.findIndex((line) => /^VERDICT: (?:pass|block)$/.test(line.trim()));
+  if (at === -1) return false;
+  return parseVerdict(lines.slice(at).join('\n'), reviewer).verdict === 'pass';
 }
 
 /** The reason a reviewer run failed, from its output: never the command line, which holds local paths. */
@@ -555,33 +578,44 @@ export async function runReviews(
       summary = `VERDICT: block\n[blocking] .claude/agents/${agent}.md — main has no ${agent} agent file — add it before PRs need ${reviewer}`;
     } else {
       try {
-        const out = resultText(
-          await deps.claude(
-            [
-              '-p',
-              '--agent',
-              agent,
-              ...(model === null ? [] : ['--model', model]),
-              '--add-dir',
-              where.bundle,
-              '--disallowedTools',
-              'Read(**/.env*)',
-              'mcp__*',
-              '--setting-sources',
-              'project',
-              '--strict-mcp-config',
-              '--permission-mode',
-              'dontAsk',
-              '--max-turns',
-              '40',
-              '--output-format',
-              'json',
-              reviewPrompt(reviewer, where.bundle),
-            ],
-            reviewerEnv(deps.env),
-            REVIEW_TIMEOUT_MS,
-          ),
-        );
+        const ask = async () =>
+          resultText(
+            await deps.claude(
+              [
+                '-p',
+                '--agent',
+                agent,
+                ...(model === null ? [] : ['--model', model]),
+                '--add-dir',
+                where.bundle,
+                '--disallowedTools',
+                'Read(**/.env*)',
+                'mcp__*',
+                '--setting-sources',
+                'project',
+                '--strict-mcp-config',
+                '--permission-mode',
+                'dontAsk',
+                '--max-turns',
+                '40',
+                '--output-format',
+                'json',
+                reviewPrompt(reviewer, where.bundle),
+              ],
+              reviewerEnv(deps.env),
+              REVIEW_TIMEOUT_MS,
+            ),
+          );
+        let out = await ask();
+        if (retryWorthy(out.text, reviewer)) {
+          // One fresh session; its answer is recorded as it comes, well-formed or not (#158).
+          console.error(
+            `${reviewer}'s answer had a line before its verdict: asking once more in a fresh session.`,
+          );
+          const second = await ask();
+          deps.logRetry?.({ pr, reviewer, first: out.sessionId, second: second.sessionId });
+          out = second;
+        }
         summary = out.text;
         sessionId = out.sessionId;
       } catch (error) {
@@ -682,6 +716,14 @@ async function main(argv: string[]): Promise<number> {
       record: (args) => run('node', [join(ROOT, 'scripts/record-review.ts'), ...args]),
       write: (path, text) => {
         writeFileSync(path, text, { mode: 0o600 });
+      },
+      logRetry: (entry) => {
+        mkdirSync(join(STATE_DIR, 'logs'), { recursive: true, mode: 0o700 });
+        appendFileSync(
+          join(STATE_DIR, 'logs', 'review-retries.jsonl'),
+          `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`,
+          { mode: 0o600 },
+        );
       },
       env: process.env,
     },
