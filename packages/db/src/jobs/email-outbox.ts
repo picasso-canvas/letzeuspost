@@ -13,7 +13,7 @@
 //   30 s more): it may have gone out, so it is never sent again, and is marked failed as interrupted.
 // A run that outlived its job and did send it still records the send (`sent` moves an interrupted row too), so the
 // row says what happened. A send whose outcome is unknown fails the row at once (apps/worker's email job).
-import { and, eq, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import type { Db, Scoped, WorkspaceCtx } from '../db.ts';
@@ -66,7 +66,7 @@ export function emailOutbox(db: Scoped): EmailOutbox {
   /** Moves the row when `from` holds; true if it moved. One conditional update, so two runs can't both move it. */
   const move = async (
     id: string,
-    from: SQL | undefined,
+    from: SQL,
     set: PgUpdateSetSource<typeof emailMessage>,
   ): Promise<boolean> => {
     const moved = await db.transaction((tx) =>
@@ -101,7 +101,7 @@ export function emailOutbox(db: Scoped): EmailOutbox {
           emailMessage.updatedAt,
           sql`now() - make_interval(secs => ${SENDING_STALE_AFTER_SECONDS})`,
         );
-        const interrupted = await move(id, and(sending, stale), {
+        const interrupted = await move(id, sql`(${sending} and ${stale})`, {
           status: 'failed',
           failure: INTERRUPTED,
         });
@@ -122,7 +122,7 @@ export function emailOutbox(db: Scoped): EmailOutbox {
     sent: (id, providerId) =>
       move(
         id,
-        or(sending, and(eq(emailMessage.status, 'failed'), eq(emailMessage.failure, INTERRUPTED))),
+        sql`(${sending} or (${eq(emailMessage.status, 'failed')} and ${eq(emailMessage.failure, INTERRUPTED)}))`,
         { status: 'sent', providerId, sentAt: now, failure: null },
       ),
     release: async (id) => {
