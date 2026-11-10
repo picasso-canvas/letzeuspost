@@ -104,7 +104,13 @@ describe('evaluate', () => {
       failedIds(
         facts({
           closingIssues: [
-            { number: 3, inRepo: true, labels: ['partner-feedback'], doneWhenBoxes: 0 },
+            {
+              number: 3,
+              inRepo: true,
+              labels: ['partner-feedback'],
+              doneWhenBoxes: 0,
+              areas: ['**'],
+            },
           ],
         }),
       ),
@@ -115,7 +121,9 @@ describe('evaluate', () => {
     expect(
       failedIds(
         facts({
-          closingIssues: [{ number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 0 }],
+          closingIssues: [
+            { number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 0, areas: ['**'] },
+          ],
         }),
       ),
     ).toEqual([]);
@@ -296,12 +304,18 @@ describe('evaluate', () => {
 
   it('refuses a title that would skip CI on main, and an issue in another repo', () => {
     expect(failedIds(facts({ title: 'fix [skip ci]' }))).toEqual([2]);
-    const other = { number: 42, inRepo: false, labels: [], doneWhenBoxes: 0 };
+    const other = { number: 42, inRepo: false, labels: [], doneWhenBoxes: 0, areas: ['**'] };
     expect(failedIds(facts({ closingIssues: [other] }))).toEqual([2]);
   });
 
   it('needs at least as many ticked boxes as the issue lists', () => {
-    const issue = { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 3 };
+    const issue = {
+      number: 42,
+      inRepo: true,
+      labels: ['build-task'],
+      doneWhenBoxes: 3,
+      areas: ['**'],
+    };
     expect(failedIds(facts({ closingIssues: [issue] }))).toEqual([6]);
   });
 
@@ -433,8 +447,8 @@ describe('evaluate: the batch PR from staging into main', () => {
       headRef: 'staging',
       body: batchBody,
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 6 },
-        { number: 43, inRepo: true, labels: ['build-task'], doneWhenBoxes: 4 },
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 6, areas: ['**'] },
+        { number: 43, inRepo: true, labels: ['build-task'], doneWhenBoxes: 4, areas: ['**'] },
       ],
       reviews: [review('argus', { bodyHash: bodyHash(batchBody) })],
       ...over,
@@ -511,8 +525,8 @@ describe('evaluate: round 3 of the #63 review', () => {
       headRef: 'staging',
       body,
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
-        { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
+        { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
       ],
       reviews: [review('argus', { bodyHash: bodyHash(body) })],
     });

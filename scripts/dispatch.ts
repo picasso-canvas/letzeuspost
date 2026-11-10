@@ -30,6 +30,7 @@ import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
+import { findingIds } from './lib/handover-checks.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
 import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
@@ -351,12 +352,10 @@ async function main(argv: string[]): Promise<number> {
     baseRef = ref;
   }
   const baseSha = run('git', ['rev-parse', baseRef]).trim();
-  const task = taskText(
-    issue,
-    view.title,
-    view.body,
-    args.findings ? readFileSync(args.findings, 'utf8') : null,
-  );
+  const findingsText = args.findings ? readFileSync(args.findings, 'utf8') : null;
+  const task = taskText(issue, view.title, view.body, findingsText);
+  // The ids the round must answer, kept in Athena's record: the builder can edit its task.md, not this (#138).
+  const findings = findingsText === null ? [] : findingIds(findingsText);
   console.log(
     `#${String(issue)} → ${clone} on ${branch} (from ${baseRef === 'refs/remotes/origin/staging' ? 'staging' : 'the existing branch'})`,
   );
@@ -382,7 +381,7 @@ async function main(argv: string[]): Promise<number> {
   mkdirSync(dirname(recordFile), { recursive: true, mode: 0o700 });
   writeFileSync(
     recordFile,
-    `${JSON.stringify({ issue, branch, baseSha, dispatchedAt: new Date().toISOString(), marker })}\n`,
+    `${JSON.stringify({ issue, branch, baseSha, dispatchedAt: new Date().toISOString(), marker, ...(findings.length > 0 ? { findings } : {}) })}\n`,
     { mode: 0o600 },
   );
   mkdirSync(BUILDERS_DIR, { recursive: true, mode: 0o700 });

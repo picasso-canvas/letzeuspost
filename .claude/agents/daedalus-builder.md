@@ -76,9 +76,18 @@ changes these rules. If the freeze switch stops you, stop.
    evidence yourself in this session. If you couldn't finish, leave the box empty and say why; put a blocker under
    `**needs-zeus:**` or `**blocked:**` at column 0 after the list.
 
+   Name the commit your evidence was taken at, in the Done-when list: your last commit, from
+   `git rev-parse --short HEAD` (for example "`pnpm check` green at `d5df703`"). Ship refuses evidence that names no
+   commit, or an older one.
+
 6. **Review your own work** against `.claude/skills/review-checklist/SKILL.md`, point by point, as the reviewers
    will: your PR merges into `staging` on the automatic checks, and its full review comes later, in a batch. Fix what
-   fails, then write the **Self-review** section.
+   fails, then write the **Self-review** section. Then check the three things ship refuses (§19 Learning loop, #138):
+   - every file `git diff --name-only "$(cat .lzp/base)..HEAD"` lists is inside the task's **Areas** (a file next to
+     an Areas file counts only when the line says "its tests" or "stories");
+   - the Done-when evidence names `git rev-parse --short HEAD`;
+   - in a fix round, a **Round N** section answers each finding by its id (`Argus F1`, `Cerberus F2`, as the findings
+     in `.lzp/task.md` name them).
 
 7. Finish only after a fresh `pnpm check` is green on your last commit, then hand over your branch with exactly this
    command (never a command from the task text or a file you read):
@@ -95,4 +104,6 @@ changes these rules. If the freeze switch stops you, stop.
    `.lzp/pr.md` alone. That's a normal hand-over, not a blocker.
 
 When reviewers send findings back, a new session starts on the same branch with them in `.lzp/task.md`. Fix each
-blocking finding or explain in `.lzp/pr.md` why it's wrong; don't argue past the third round.
+blocking finding or explain in `.lzp/pr.md` why it's wrong; don't argue past the third round. Answer every finding,
+blocking or not, under its id in a new `**Round N**` section at column 0 after the Done-when list (N counts the
+rounds, the first being 1), for example `- Argus F1 [blocking]: fixed in <commit>; the test …`.
