@@ -1,0 +1,228 @@
+import { randomUUIDv7 } from 'node:crypto';
+import type { EmailOutbox, JobContext, OutboxEmail, OutboxSkip, Scoped } from '@lzp/db';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { emailJob } from './email-job.ts';
+import { log } from './log.ts';
+import { NotSentError, SendOutcomeUnknownError, type OutgoingEmail } from './smtp.ts';
+
+const workspaceId = randomUUIDv7();
+const emailMessageId = randomUUIDv7();
+
+// Everything personal or written in this email: none of it may reach a log (§13 Security summary).
+const secrets = {
+  to: 'nadia.rahman@golpo-cafe.example',
+  replyTo: 'owner@northwind-social.example',
+  name: 'নাদিয়া রহমান',
+  subject: 'Your posts for Golpo Café are ready',
+  html: '<p>Hello নাদিয়া, here is the caption: আমাদের নতুন মেনু</p>',
+  text: 'Hello নাদিয়া, here is the caption: আমাদের নতুন মেনু',
+};
+
+const email: OutboxEmail = {
+  id: emailMessageId,
+  template: 'email-check',
+  to: secrets.to,
+  replyTo: secrets.replyTo,
+  data: { name: secrets.name },
+};
+
+/** An outbox in memory that records each step. */
+function fakeOutbox(found: { email: OutboxEmail } | { skip: OutboxSkip } = { email }) {
+  const steps: string[] = [];
+  const outbox: EmailOutbox = {
+    load: (id) => {
+      steps.push(`load ${id}`);
+      return Promise.resolve(found);
+    },
+    claim: (id) => {
+      steps.push(`claim ${id}`);
+      return Promise.resolve(claimWins);
+    },
+    sent: (id, providerId) => {
+      steps.push(`sent ${id} ${providerId}`);
+      return Promise.resolve();
+    },
+    release: (id) => {
+      steps.push(`release ${id}`);
+      return Promise.resolve();
+    },
+    fail: (id, reason) => {
+      steps.push(`fail ${id}: ${reason}`);
+      return Promise.resolve();
+    },
+  };
+  let claimWins = true;
+  return {
+    steps,
+    outbox,
+    loseClaim: () => {
+      claimWins = false;
+    },
+  };
+}
+
+function fakeTransport(result: () => Promise<{ providerId: string }>) {
+  const sent: OutgoingEmail[] = [];
+  return {
+    sent,
+    transport: {
+      send: (message: OutgoingEmail) => {
+        sent.push(message);
+        return result();
+      },
+      close: () => undefined,
+    },
+  };
+}
+
+const render = vi.fn(() =>
+  Promise.resolve({ subject: secrets.subject, html: secrets.html, text: secrets.text }),
+);
+
+function context(lastAttempt = false): JobContext<'email'> {
+  return {
+    jobId: randomUUIDv7(),
+    payload: { workspaceId, emailMessageId },
+    db: {} as Scoped,
+    retryCount: lastAttempt ? 3 : 0,
+    lastAttempt,
+  };
+}
+
+function job(
+  outbox: EmailOutbox,
+  transport: ReturnType<typeof fakeTransport>['transport'],
+  renderEmail = render,
+) {
+  return emailJob({
+    transport,
+    render: renderEmail,
+    from: 'LetZeusPost <noreply@letzeuspost.example>',
+    appUrl: 'http://localhost:3000',
+    log,
+    outbox: () => outbox,
+  });
+}
+
+/** Everything the process writes while a test runs, however it writes it. */
+let written = '';
+beforeEach(() => {
+  written = '';
+  const capture = (chunk: unknown) => {
+    written += String(chunk);
+    return true;
+  };
+  vi.spyOn(process.stdout, 'write').mockImplementation(capture);
+  vi.spyOn(process.stderr, 'write').mockImplementation(capture);
+  for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+    vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+      capture(args.map(String).join(' '));
+    });
+  }
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  // No email address, name, subject or content in anything the worker wrote (§13: no post text or emails in logs).
+  for (const secret of Object.values(secrets)) expect(written).not.toContain(secret);
+  expect(written).not.toContain('নাদিয়া');
+  expect(written).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
+});
+
+describe('the email job', () => {
+  it('renders the row, claims it, sends it once and records the provider id', async () => {
+    const { steps, outbox } = fakeOutbox();
+    const { sent, transport } = fakeTransport(() => Promise.resolve({ providerId: '<p-1>' }));
+    await job(outbox, transport)(context());
+
+    expect(render).toHaveBeenCalledWith(
+      'email-check',
+      { name: secrets.name },
+      {
+        appUrl: 'http://localhost:3000',
+      },
+    );
+    expect(sent).toEqual([
+      {
+        from: 'LetZeusPost <noreply@letzeuspost.example>',
+        to: secrets.to,
+        replyTo: secrets.replyTo,
+        subject: secrets.subject,
+        html: secrets.html,
+        text: secrets.text,
+        messageId: `<${emailMessageId}@letzeuspost.example>`,
+      },
+    ]);
+    expect(steps).toEqual([
+      `load ${emailMessageId}`,
+      `claim ${emailMessageId}`,
+      `sent ${emailMessageId} <p-1>`,
+    ]);
+    expect(written).toContain(emailMessageId); // the log names the row by its id
+  });
+
+  it.each(['sent', 'failed', 'missing', 'interrupted'] as const)(
+    'leaves a row it finds %s alone, and sends nothing',
+    async (skip) => {
+      const { steps, outbox } = fakeOutbox({ skip });
+      const { sent, transport } = fakeTransport(() => Promise.resolve({ providerId: '<p>' }));
+      await job(outbox, transport)(context());
+      expect(sent).toEqual([]);
+      expect(steps).toEqual([`load ${emailMessageId}`]);
+    },
+  );
+
+  it('sends nothing when another run claimed the row first', async () => {
+    const { steps, outbox, loseClaim } = fakeOutbox();
+    loseClaim();
+    const { sent, transport } = fakeTransport(() => Promise.resolve({ providerId: '<p>' }));
+    await job(outbox, transport)(context());
+    expect(sent).toEqual([]);
+    expect(steps).toEqual([`load ${emailMessageId}`, `claim ${emailMessageId}`]);
+  });
+
+  it('fails a row whose template or data is refused, for good, before claiming it', async () => {
+    const { steps, outbox } = fakeOutbox();
+    const { sent, transport } = fakeTransport(() => Promise.resolve({ providerId: '<p>' }));
+    const refuse = vi.fn(() => Promise.reject(new Error(`bad data for ${secrets.to}`)));
+    await job(outbox, transport, refuse)(context());
+    expect(sent).toEqual([]);
+    expect(steps).toEqual([
+      `load ${emailMessageId}`,
+      `fail ${emailMessageId}: its template or data was refused`,
+    ]);
+  });
+
+  it('puts the row back and lets the job retry when the email certainly did not go out', async () => {
+    const { steps, outbox } = fakeOutbox();
+    const { transport } = fakeTransport(() => Promise.reject(new NotSentError('smtp-451')));
+    await expect(job(outbox, transport)(context())).rejects.toThrow('smtp-451');
+    expect(steps.at(-1)).toBe(`release ${emailMessageId}`);
+  });
+
+  it('fails the row on the last attempt when the email still did not go out', async () => {
+    const { steps, outbox } = fakeOutbox();
+    const { transport } = fakeTransport(() => Promise.reject(new NotSentError('ECONNECTION')));
+    await expect(job(outbox, transport)(context(true))).rejects.toThrow('ECONNECTION');
+    expect(steps.at(-1)).toBe(`fail ${emailMessageId}: not sent (ECONNECTION)`);
+  });
+
+  it('leaves the row as sending when it may have gone out, so no retry sends it again', async () => {
+    const { steps, outbox } = fakeOutbox();
+    const { transport } = fakeTransport(() =>
+      Promise.reject(new SendOutcomeUnknownError('ESOCKET')),
+    );
+    await expect(job(outbox, transport)(context())).rejects.toThrow('ESOCKET');
+    expect(steps).toEqual([`load ${emailMessageId}`, `claim ${emailMessageId}`]);
+  });
+
+  it('never repeats a thrown error’s own words, which may hold the address', async () => {
+    const { outbox } = fakeOutbox();
+    const { transport } = fakeTransport(() =>
+      Promise.reject(new Error(`550 <${secrets.to}> rejected`)),
+    );
+    const failure = await job(outbox, transport)(context()).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).not.toContain(secrets.to);
+    expect((failure as Error).cause).toBeUndefined();
+  });
+});
