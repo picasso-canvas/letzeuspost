@@ -53,7 +53,8 @@ async function rowsSeenUnscoped(
   table: string,
 ): Promise<unknown[]> {
   try {
-    return (await client.query(`select * from "${table}"`)).rows;
+    const rows: unknown[] = (await client.query(`select * from "${table}"`)).rows;
+    return rows;
   } catch (error) {
     expect(NOT_SET).toContain(pgError(error).code);
     return [];
@@ -374,24 +375,21 @@ describe('exactly one Owner (§15)', () => {
         .returning({ role: member.role }),
     );
     expect(joined).toEqual([{ role: 'admin' }]);
-    const owners = await owner.query(
-      "select workspace_id from member where role = 'owner' and workspace_id = any($1) order by workspace_id",
+    const owners = await owner.query<{ workspace_id: string }>(
+      "select workspace_id from member where role = 'owner' and workspace_id = any($1)",
       [[ids.a, ids.b]],
     );
-    expect(owners.rows).toEqual(
-      [{ workspace_id: ids.a }, { workspace_id: ids.b }].sort((x, y) =>
-        x.workspace_id.localeCompare(y.workspace_id),
-      ),
-    );
+    expect(owners.rows.map((row) => row.workspace_id).sort()).toEqual([ids.a, ids.b].sort());
   });
 
   it('refuses a role outside the four of §01', async () => {
     const wrong = await refusal(
-      db
-        .forWorkspace({ workspaceId: ids.b })
-        .transaction((tx) =>
-          tx.insert(member).values({ workspaceId: ids.b, userId: ids.newcomer, role: 'member' }),
+      db.forWorkspace({ workspaceId: ids.b }).transaction((tx) =>
+        // Better Auth's default role, which none of LetZeusPost's roles is (raw SQL: the types refuse it already).
+        tx.execute(
+          sql`insert into member (workspace_id, user_id, role) values (${ids.b}, ${ids.newcomer}, 'member')`,
         ),
+      ),
     );
     expect(wrong.constraint).toBe('member_role_check');
   });
