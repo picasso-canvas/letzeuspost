@@ -9,9 +9,9 @@ import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAuthDb, type AuthDb } from './auth.ts';
-import { createDb, dbOnPool, type Db } from './db.ts';
+import { createDb, dbOnPool, type Db, type Tx } from './db.ts';
 import { migrate } from './migrate.ts';
-import { invitation, member, user, workspace } from './schema.ts';
+import { account, invitation, member, session, user, verification, workspace } from './schema.ts';
 
 const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
 const { DATABASE_URL: appUrl } = loadEnv('worker');
@@ -144,6 +144,7 @@ afterAll(async () => {
   // Deleting the workspaces and people removes their members and invitations with them.
   await owner.query('delete from workspace where id = any($1)', [[ids.a, ids.b, ids.c, ids.made]]);
   await owner.query('delete from "user" where email like $1', [emailOf('%')]);
+  await owner.query('delete from verification where identifier like $1', [`%-${run}`]);
   await owner.end();
 });
 
@@ -373,6 +374,298 @@ describe('the app role with no workspace set', () => {
     } finally {
       await fresh.end();
     }
+  });
+});
+
+/** Postgres refused for want of a privilege: "permission denied for table …". */
+const PERMISSION_DENIED = '42501';
+const AUTH_TABLES = ['session', 'account', 'verification'] as const;
+
+describe('the auth tables, from workspace code (#176)', () => {
+  it('refuses db.forWorkspace any read of session, account or verification', async () => {
+    const asA = db.forWorkspace({ workspaceId: ids.a });
+    for (const read of [
+      () => asA.transaction((tx) => tx.select().from(session)),
+      () => asA.transaction((tx) => tx.select().from(account)),
+      () => asA.transaction((tx) => tx.select().from(verification)),
+    ]) {
+      expect((await refusal(read())).code).toBe(PERMISSION_DENIED);
+    }
+  });
+
+  it('refuses db.forWorkspace any change to a person, in its workspace or not', async () => {
+    const asA = db.forWorkspace({ workspaceId: ids.a });
+    for (const target of [ids.ownerA, ids.ownerB]) {
+      const changes = [
+        () =>
+          asA.transaction((tx) =>
+            tx
+              .update(user)
+              .set({ email: emailOf('taken-over') })
+              .where(eq(user.id, target)),
+          ),
+        () => asA.transaction((tx) => tx.delete(user).where(eq(user.id, target))),
+        () =>
+          asA.transaction((tx) =>
+            tx.insert(user).values({ name: `Planted ${run}`, email: emailOf('planted') }),
+          ),
+      ];
+      for (const change of changes) expect((await refusal(change())).code).toBe(PERMISSION_DENIED);
+    }
+    const people = await owner.query<{ id: string; email: string }>(
+      'select id, email from "user" where id = any($1) or email = any($2) order by email',
+      [
+        [ids.ownerA, ids.ownerB],
+        [emailOf('taken-over'), emailOf('planted')],
+      ],
+    );
+    expect(people.rows).toEqual([
+      { id: ids.ownerA, email: emailOf('owner-a') },
+      { id: ids.ownerB, email: emailOf('owner-b') },
+    ]);
+  });
+
+  it("shows db.forWorkspace the workspace's members, and nobody outside it", async () => {
+    const seen = await db.forWorkspace({ workspaceId: ids.a }).transaction(async (tx) => ({
+      everyone: await tx.select({ id: user.id }).from(user),
+      askedForB: await tx.select({ email: user.email }).from(user).where(eq(user.id, ids.ownerB)),
+    }));
+    const everyone = seen.everyone.map((row) => row.id);
+    expect(everyone).toEqual(expect.arrayContaining([ids.ownerA, ids.person]));
+    expect(everyone).not.toContain(ids.ownerB);
+    expect(everyone).not.toContain(ids.newcomer);
+    expect(seen.askedForB).toEqual([]);
+  });
+
+  it('refuses plain lzp_app, which never takes lzp_auth’s rights without switching to it (INHERIT FALSE)', async () => {
+    const plain = new pg.Client({ connectionString: appUrl });
+    await plain.connect();
+    try {
+      const { rows } = await plain.query<{ who: string; inherits: boolean; may_switch: boolean }>(
+        `select current_user as who, pg_has_role('lzp_auth', 'USAGE') as inherits,
+                pg_has_role('lzp_auth', 'SET') as may_switch`,
+      );
+      expect(rows).toEqual([{ who: 'lzp_app', inherits: false, may_switch: true }]);
+      for (const table of AUTH_TABLES) {
+        expect((await refusal(plain.query(`select * from "${table}"`))).code, table).toBe(
+          PERMISSION_DENIED,
+        );
+      }
+      // A person's email, with no person or workspace set: row-level security can't read the settings, so Postgres
+      // refuses the query instead of returning it.
+      const email = await refusal(
+        plain.query('select email from "user" where id = $1', [ids.ownerB]),
+      );
+      expect(NOT_SET).toContain(email.code);
+    } finally {
+      await plain.end();
+    }
+  });
+
+  it('lets forUser read the person it acts for and no one else, as lzp_app', async () => {
+    const seen = await authDb.forUser({ userId: ids.person }).transaction(async (tx) => ({
+      who: await tx.execute<{ who: string }>(sql`select current_user as who`),
+      people: await tx.select({ id: user.id }).from(user),
+    }));
+    expect(seen.who.rows).toEqual([{ who: 'lzp_app' }]);
+    expect(seen.people).toEqual([{ id: ids.person }]);
+    expect(
+      (
+        await refusal(
+          authDb.forUser({ userId: ids.person }).transaction((tx) => tx.select().from(session)),
+        )
+      ).code,
+    ).toBe(PERMISSION_DENIED);
+  });
+});
+
+describe("the auth handle (@lzp/db/auth's db, for Better Auth)", () => {
+  it('runs as lzp_auth on every connection of its pool', async () => {
+    // Several at once, so the pool opens more than one connection.
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        authDb.db.execute<{ who: string; pid: number }>(
+          sql`select current_user as who, pg_backend_pid() as pid, pg_sleep(0.05)`,
+        ),
+      ),
+    );
+    const rows = results.flatMap((result) => result.rows);
+    expect(new Set(rows.map((row) => row.pid)).size).toBeGreaterThan(1);
+    expect(rows.map((row) => row.who)).toEqual(['lzp_auth', 'lzp_auth', 'lzp_auth', 'lzp_auth']);
+  });
+
+  it("does Better Auth's reads and writes on user, session, account and verification", async () => {
+    const auth = authDb.db;
+    // Sign-up: a person, their account and a session.
+    const [signedUp] = await auth
+      .insert(user)
+      .values({ name: `Better Auth ${run}`, email: emailOf('better-auth') })
+      .returning({ id: user.id });
+    if (signedUp === undefined) throw new Error('sign-up inserted nothing');
+    await auth.insert(account).values({
+      accountId: signedUp.id,
+      providerId: 'magic-link',
+      userId: signedUp.id,
+    });
+    const token = `token-${run}`;
+    await auth
+      .insert(session)
+      .values({ token, userId: signedUp.id, expiresAt: new Date(Date.now() + 86_400_000) });
+
+    // A request: the session by its token, with its person (Better Auth's findSession joins them).
+    const found = await auth
+      .select({ userId: session.userId, email: user.email })
+      .from(session)
+      .innerJoin(user, eq(user.id, session.userId))
+      .where(eq(session.token, token));
+    expect(found).toEqual([{ userId: signedUp.id, email: emailOf('better-auth') }]);
+    const accounts = await auth
+      .select({ providerId: account.providerId })
+      .from(account)
+      .where(eq(account.userId, signedUp.id));
+    expect(accounts).toEqual([{ providerId: 'magic-link' }]);
+
+    // A session refreshed, a profile updated, the active workspace switched.
+    const refreshed = await auth
+      .update(session)
+      .set({ expiresAt: new Date(Date.now() + 2 * 86_400_000), activeWorkspaceId: ids.a })
+      .where(eq(session.token, token))
+      .returning({ activeWorkspaceId: session.activeWorkspaceId });
+    expect(refreshed).toEqual([{ activeWorkspaceId: ids.a }]);
+    const renamed = await auth
+      .update(user)
+      .set({ name: `Renamed ${run}`, email: emailOf('better-auth-2'), emailVerified: true })
+      .where(eq(user.id, signedUp.id))
+      .returning({ email: user.email });
+    expect(renamed).toEqual([{ email: emailOf('better-auth-2') }]);
+
+    // A sign-in link: written, found by its identifier, used up.
+    const identifier = `sign-in-${run}`;
+    await auth
+      .insert(verification)
+      .values({ identifier, value: 'opaque', expiresAt: new Date(Date.now() + 600_000) });
+    const links = await auth
+      .select({ value: verification.value })
+      .from(verification)
+      .where(eq(verification.identifier, identifier));
+    expect(links).toEqual([{ value: 'opaque' }]);
+    const used = await auth
+      .delete(verification)
+      .where(eq(verification.identifier, identifier))
+      .returning({ id: verification.id });
+    expect(used).toHaveLength(1);
+
+    // Sign-out, then the person deleted (their account goes with them).
+    expect(
+      await auth.delete(session).where(eq(session.token, token)).returning({ id: session.id }),
+    ).toHaveLength(1);
+    expect(
+      await auth.delete(user).where(eq(user.id, signedUp.id)).returning({ id: user.id }),
+    ).toHaveLength(1);
+    const left = await owner.query<{ n: number }>(
+      'select count(*)::int as n from account where user_id = $1',
+      [signedUp.id],
+    );
+    expect(left.rows).toEqual([{ n: 0 }]);
+  });
+
+  it('reaches none of the workspace tables (#77, decision (a)): lzp_auth holds no grant on them', async () => {
+    const held = await authDb.db.execute<{ who: string; granted: string[] }>(sql`
+      select current_user as who,
+             coalesce(array_agg(t.name || ' ' || p.name)
+                        filter (where has_table_privilege(t.name, p.name)), '{}') as granted
+        from unnest(array['workspace', 'member', 'invitation']) as t(name),
+             unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(name)`);
+    expect(held.rows).toEqual([{ who: 'lzp_auth', granted: [] }]);
+
+    // Postgres plans a query, §13's policies included (they apply TO public, so to lzp_auth too), before it checks the
+    // table's privileges, and planning reads the settings the policies name: with none set the plan fails first
+    // (42704). Set here, the plan succeeds and the read is refused for want of a grant.
+    const asAuthHandle = <T>(read: (tx: Tx) => Promise<T>) =>
+      authDb.db.transaction(async (tx) => {
+        const { rows } = await tx.execute<{ who: string }>(
+          sql`select current_user as who, set_config('app.workspace_id', ${ids.a}, true), set_config('app.user_id', ${ids.person}, true)`,
+        );
+        expect(rows.map((row) => row.who)).toEqual(['lzp_auth']);
+        return read(tx);
+      });
+    for (const [name, read] of [
+      ['workspace', () => asAuthHandle((tx) => tx.select().from(workspace))],
+      ['member', () => asAuthHandle((tx) => tx.select().from(member))],
+      ['invitation', () => asAuthHandle((tx) => tx.select().from(invitation))],
+    ] as const) {
+      const refused = await refusal(read());
+      expect(refused, name).toEqual({
+        code: PERMISSION_DENIED,
+        message: `permission denied for table ${name}`,
+      });
+    }
+  });
+
+  it("refuses every query on a connection that can't become lzp_auth, and runs none of them (Argus F3, Cerberus F3)", async () => {
+    // The owner role logs in but may not take lzp_auth, so each connection the handle opens with it fails to start.
+    const premise = await owner.query<{ may_switch: boolean }>(
+      "select pg_has_role(current_user, 'lzp_auth', 'SET') as may_switch",
+    );
+    expect(premise.rows).toEqual([{ may_switch: false }]);
+    const unswitchable = createAuthDb(ownerUrl);
+    const identifier = `unswitched-${run}`;
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const refused = await refusal(
+          unswitchable.db
+            .insert(verification)
+            .values({ identifier, value: 'opaque', expiresAt: new Date(Date.now() + 600_000) }),
+        );
+        expect(refused.code).toBe(PERMISSION_DENIED);
+        expect(refused.message).toContain('lzp_auth');
+      }
+    } finally {
+      await unswitchable.close();
+    }
+    const written = await owner.query<{ n: number }>(
+      'select count(*)::int as n from verification where identifier = $1',
+      [identifier],
+    );
+    expect(written.rows).toEqual([{ n: 0 }]);
+  });
+});
+
+describe('the scoped helper on a switched connection (Cerberus F4 on #189)', () => {
+  it('refuses workspace work on a connection no longer running as the role it logged in as', async () => {
+    const pool = new pg.Pool({ connectionString: appUrl, max: 1 });
+    try {
+      const single = dbOnPool(pool);
+      // A switch only the auth handle may write (no-role-switch.test.ts), put together at run time as an injection
+      // would, on the pool's one connection; workspace work then gets that same connection.
+      await pool.query(['set', 'role', 'lzp_auth'].join(' '));
+      await expect(
+        single.forWorkspace({ workspaceId: ids.a }).transaction((tx) => tx.select().from(member)),
+      ).rejects.toThrow('refused: this connection runs as lzp_auth, not lzp_app');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+describe('invitation.role (Cerberus F4 on #173)', () => {
+  it('is NOT NULL, with its validated check beside it', async () => {
+    const { rows } = await owner.query<{ nullable: string; validated: boolean }>(
+      `select c.is_nullable as nullable,
+              (select k.convalidated from pg_constraint k
+                where k.conrelid = 'invitation'::regclass and k.conname = 'invitation_role_present') as validated
+         from information_schema.columns c
+        where c.table_schema = 'public' and c.table_name = 'invitation' and c.column_name = 'role'`,
+    );
+    expect(rows).toEqual([{ nullable: 'NO', validated: true }]);
+    const missing = await refusal(
+      owner.query(
+        `insert into invitation (workspace_id, email, role, expires_at, inviter_id)
+         values ($1, $2, null, now() + interval '7 days', $3)`,
+        [ids.a, `no-role-${run}@rls.invalid`, ids.ownerA],
+      ),
+    );
+    expect(missing.code).toBe('23502');
   });
 });
 

@@ -19,6 +19,19 @@ export interface MigrateOptions {
   migrationsSchema?: string;
 }
 
+/** The migrator's settings: each option given, the default for each one left out or `undefined` (Argus F3 on #173). */
+export function migratorConfig(options: MigrateOptions = {}): {
+  migrationsFolder: string;
+  migrationsSchema?: string;
+} {
+  return {
+    migrationsFolder: options.migrationsFolder ?? migrationsFolder,
+    ...(options.migrationsSchema === undefined
+      ? {}
+      : { migrationsSchema: options.migrationsSchema }),
+  };
+}
+
 export async function migrate(ownerUrl: string, options: MigrateOptions = {}): Promise<void> {
   const client = new pg.Client({ connectionString: ownerUrl });
   await client.connect();
@@ -26,7 +39,7 @@ export async function migrate(ownerUrl: string, options: MigrateOptions = {}): P
     await client.query('select pg_advisory_lock($1::bigint)', [MIGRATION_LOCK]);
     // drizzle-orm 0.45's migrator runs all pending files in one transaction, so a file that fails partway leaves
     // nothing applied: CI's squawk relies on that (assume_in_transaction), and migrate.int.test.ts checks it.
-    await applyMigrations(drizzle({ client }), { migrationsFolder, ...options });
+    await applyMigrations(drizzle({ client }), migratorConfig(options));
   } finally {
     await client.end(); // ending the session releases the lock
   }

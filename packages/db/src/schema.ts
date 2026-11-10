@@ -4,11 +4,13 @@
 // (Better Auth leaves them to the database), and times are `timestamptz`.
 //
 // `user`, `session`, `account` and `verification` are Better Auth's own and global: they carry no workspace data, and
-// sign-in reads them before anyone is known. Every table that holds workspace data has row-level security with §13's
-// policy, for reads and writes. The workspace table's own key is its `id`.
+// sign-in reads them before anyone is known. Only the auth role (lzp_auth) holds them, and only the auth handle in
+// @lzp/db/auth switches to it (#176); the app role (lzp_app) reads `user` alone, and only the people the policy below
+// lets it see. Every table that holds workspace data has row-level security with §13's policy, for reads and writes.
+// The workspace table's own key is its `id`.
 //
 // The migrations in ../migrations are written by hand from this file (§13 A4; why, in the migration). Change both
-// together. Three rules live only there: the app role's grants; `member_one_owner` (an exclusion constraint, which
+// together. Three rules live only there: each role's grants; `member_one_owner` (an exclusion constraint, which
 // Drizzle can't declare); and that only the owner role sets `user.is_platform_admin` (a column grant and a trigger).
 import { sql } from 'drizzle-orm';
 import {
@@ -46,17 +48,33 @@ function workspaceScope(key: 'id' | 'workspace_id') {
 const userScope = (using: string) =>
   pgPolicy('user_scope', { for: 'select', using: sql.raw(using) });
 
-export const user = pgTable('user', {
-  id: id(),
-  name: text('name').notNull(),
-  email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified').notNull().default(false),
-  image: text('image'), // the avatar
-  // Zeus (§15). Only the owner role sets it (the seeds, #79): the app role can't insert or update it.
-  isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+export const user = pgTable(
+  'user',
+  {
+    id: id(),
+    name: text('name').notNull(),
+    email: text('email').notNull().unique(),
+    emailVerified: boolean('email_verified').notNull().default(false),
+    image: text('image'), // the avatar
+    // Zeus (§15). Only the owner role sets it (the seeds, #79): neither the auth role nor the app role can.
+    isPlatformAdmin: boolean('is_platform_admin').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  () => [
+    // Better Auth finds anyone by email or session before anyone is known, so the auth role sees every person.
+    pgPolicy('auth_handle', { for: 'all', to: 'lzp_auth', using: sql`true`, withCheck: sql`true` }),
+    // Workspace code reads only the person it acts for (`forUser`) and the members of its workspace
+    // (`db.forWorkspace`), and changes nobody: the app role holds only SELECT on this table.
+    pgPolicy('member_scope', {
+      for: 'select',
+      to: 'lzp_app',
+      using: sql.raw(
+        "id = current_setting('app.user_id')::uuid or id in (select user_id from member where workspace_id = current_setting('app.workspace_id')::uuid)",
+      ),
+    }),
+  ],
+);
 
 export const workspace = pgTable(
   'workspace',
@@ -117,7 +135,7 @@ export const invitation = pgTable(
       .references(() => workspace.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
     // §15: Owners invite Admins, Admins invite Editors and Viewers; nobody is invited as the Owner.
-    role: text('role', { enum: ['admin', 'editor', 'viewer'] }),
+    role: text('role', { enum: ['admin', 'editor', 'viewer'] }).notNull(),
     status: text('status', { enum: ['pending', 'accepted', 'rejected', 'canceled'] })
       .notNull()
       .default('pending'),
@@ -129,6 +147,8 @@ export const invitation = pgTable(
   },
   () => [
     check('invitation_role_check', sql.raw("role in ('admin', 'editor', 'viewer')")),
+    // Beside NOT NULL: the migrations added it first, so that NOT NULL needed no scan of the table (#176).
+    check('invitation_role_present', sql.raw('"role" IS NOT NULL')),
     check(
       'invitation_status_check',
       sql.raw("status in ('pending', 'accepted', 'rejected', 'canceled')"),
