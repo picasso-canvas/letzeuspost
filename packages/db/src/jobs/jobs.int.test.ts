@@ -126,7 +126,7 @@ describe('pg-boss in the pgboss schema (§13)', () => {
         '42501',
       );
       expect(
-        await refusalCode(app.query(`update ${JOBS_SCHEMA}.version set version = version`)),
+        await refusalCode(app.query(`alter table ${JOBS_SCHEMA}.job add column intruder int`)),
       ).toBe('42501');
       expect(await refusalCode(app.query(`drop table ${JOBS_SCHEMA}.queue`))).toBe('42501');
     } finally {
