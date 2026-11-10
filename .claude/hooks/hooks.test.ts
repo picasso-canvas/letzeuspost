@@ -191,17 +191,29 @@ describe("builder settings and the clone's .git (#89)", () => {
 
   // git skips these through dispatch's environment (#174), but a builder can drop that in its own shell, or just cat
   // the file: the sandbox itself denies reading them (Argus F1, Cerberus F1 on #180).
-  it("denies the sandbox's reads of the operator's git config", () => {
-    const denyRead = (builderSettings as { sandbox: { filesystem: { denyRead: string[] } } })
-      .sandbox.filesystem.denyRead;
-    for (const path of [
+  // Both walls, like every other protected path here: the sandbox for Bash, a Read rule for the Read tool (Cerberus F1
+  // and Argus F1 in round 2 on #180). Absolute paths are `//` in a permission rule; the system files are where Apple's
+  // and Homebrew's git keep them on a Mac (Argus F2 in round 2).
+  it("denies reading the operator's git config, in the sandbox and to the Read tool", () => {
+    const { sandbox, permissions } = builderSettings as {
+      sandbox: { filesystem: { denyRead: string[] } };
+      permissions: { deny: string[] };
+    };
+    const home = [
       '~/.gitconfig',
       '~/.config/git/config',
       '~/.git-credentials',
       '~/.config/git/credentials',
+    ];
+    const system = [
       '/etc/gitconfig',
-    ])
-      expect(denyRead, path).toContain(path);
+      '/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig',
+      '/opt/homebrew/etc/gitconfig',
+    ];
+    for (const path of [...home, ...system])
+      expect(sandbox.filesystem.denyRead, path).toContain(path);
+    for (const path of home) expect(permissions.deny, path).toContain(`Read(${path})`);
+    for (const path of system) expect(permissions.deny, path).toContain(`Read(/${path})`);
   });
 
   it('allows no write back into .git or over the whole clone', () => {
