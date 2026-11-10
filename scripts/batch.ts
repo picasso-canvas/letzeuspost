@@ -87,15 +87,14 @@ function taskIssue(n: number): TaskIssue {
   );
 }
 
-/** The feature's journey test files on `staging` (`tests/journeys/<feature>.*` or `<feature>/…`), with their text. */
-function journeyFiles(feature: string): { path: string; text: string }[] {
+/**
+ * Every journey test file on `staging`, with its text; journeyMarked picks the feature's own. `main` fetched
+ * `origin/staging` from GitHub just before, so this reads the branch as it is now.
+ */
+function journeyFiles(): { path: string; text: string }[] {
   return run('git', ['ls-tree', '-r', '--name-only', 'origin/staging', '--', 'tests/journeys/'])
     .split('\n')
-    .filter(
-      (path) =>
-        path.startsWith(`tests/journeys/${feature}.`) ||
-        path.startsWith(`tests/journeys/${feature}/`),
-    )
+    .filter((path) => path !== '')
     .map((path) => ({ path, text: run('git', ['show', `origin/staging:${path}`]) }));
 }
 
@@ -183,7 +182,7 @@ function main(argv: string[]): number {
     onStaging,
     issues,
     featureTasks,
-    journeyMarked: feature !== undefined && journeyMarked(journeyFiles(feature), feature),
+    journeyMarked: feature !== undefined && journeyMarked(journeyFiles(), feature),
     lines,
   });
   console.log(

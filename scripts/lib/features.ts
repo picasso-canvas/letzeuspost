@@ -75,15 +75,27 @@ export function dispatchRefusal(
   return `feature "${other}" is open (${(numbers ?? []).map((n) => `#${String(n)}`).join(', ')}): #${String(task.number)} of feature "${feature}" waits until its batch merges`;
 }
 
-// Every way to switch a test off or mark it as failing: method marks (it.fails, test.skip, test.fixme, it.todo,
-// describe.skip, test.describe.skip, .only), the same through brackets (it['fails']) or an alias (const j = it.fails),
-// and Vitest's option form ({ fails: true }, { skip: true }, { todo: true }) (Cerberus F1 on #155).
-const SWITCHED_OFF =
-  /\.\s*(?:fails?|skip|fixme|todo|only)\b|\[\s*['"`](?:fails?|skip|fixme|todo|only)['"`]\s*\]|\b(?:fails|skip|todo)\s*:\s*true\b/;
+// The marks that switch a test runner's test off or expect it to fail, on an `it`, `test`, `describe` or `suite` chain
+// only (so `query.skip(10)` or `assert.fail()` don't count): a method (it.fails, test.skip, test.fixme, it.todo,
+// describe.skip, test.describe.skip, .only, it.skipIf(…), test.runIf(…)), the same through brackets (it['fails']), an
+// alias (const j = it.fails), a destructured one (const { fails } = it), and Vitest's option form ({ fails: true }).
+// This is an early warning, not the guard: a test can be switched off in ways no pattern finds. #156 opens a feature's
+// batch only on CI's proof that its journey ran and passed (Zeus, 2026-11-10, on #139).
+const MARK = '(?:fails?|skip|skipIf|runIf|fixme|todo|only)';
+const RUNNER = '\\b(?:it|test|describe|suite)\\b';
+const SWITCHED_OFF = new RegExp(
+  [
+    `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\.\\s*${MARK}\\b`,
+    `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\[\\s*['"\`]${MARK}['"\`]\\s*\\]`,
+    `\\{[^}]*\\b${MARK}\\b[^}]*\\}\\s*=\\s*${RUNNER}`,
+    '\\b(?:fails|skip|todo)\\s*:\\s*true\\b',
+  ].join('|'),
+);
 
 /**
  * Whether the feature's journey still counts as not done: it has no journey test (`tests/journeys/<feature>.*` or
- * `tests/journeys/<feature>/…`), or one of them is switched off or marked as expected to fail in any way.
+ * `tests/journeys/<feature>/…`), or one of them carries a mark that switches it off or expects it to fail. An early
+ * warning only (see SWITCHED_OFF); the guard is CI's result (#156).
  */
 export function journeyMarked(
   files: readonly { path: string; text: string }[],
