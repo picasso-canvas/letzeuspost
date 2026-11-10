@@ -15,7 +15,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
-import { featureBatch, featureOf, journeyMarked, type TaskIssue } from './lib/features.ts';
+import {
+  featureBatch,
+  journeyMarked,
+  stagingFeature,
+  toTaskIssue,
+  type TaskIssue,
+} from './lib/features.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -72,32 +78,24 @@ function run(cmd: string, args: string[], input?: string): string {
   });
 }
 
-/** An issue's labels, milestone and body, as dispatch and batch.ts judge a task by them. */
-export function taskIssue(
-  n: number,
-  gh: (args: string[]) => string = (args) => run('gh', args),
-): TaskIssue {
-  const view = JSON.parse(
-    gh(['issue', 'view', String(n), '-R', REPO, '--json', 'number,labels,milestone,body']),
-  ) as {
-    number: number;
-    labels: { name: string }[];
-    milestone: { title: string } | null;
-    body: string;
-  };
-  return {
-    number: view.number,
-    labels: view.labels.map((l) => l.name),
-    milestone: view.milestone?.title ?? null,
-    body: view.body,
-  };
+/** An issue's labels, milestone and body, as batch.ts judges a task by them. */
+function taskIssue(n: number): TaskIssue {
+  return toTaskIssue(
+    JSON.parse(
+      run('gh', ['issue', 'view', String(n), '-R', REPO, '--json', 'number,labels,milestone,body']),
+    ) as Parameters<typeof toTaskIssue>[0],
+  );
 }
 
-/** The feature's journey test files on `staging` (`tests/journeys/<feature>.*`), with their text. */
+/** The feature's journey test files on `staging` (`tests/journeys/<feature>.*` or `<feature>/…`), with their text. */
 function journeyFiles(feature: string): { path: string; text: string }[] {
   return run('git', ['ls-tree', '-r', '--name-only', 'origin/staging', '--', 'tests/journeys/'])
     .split('\n')
-    .filter((path) => path.startsWith(`tests/journeys/${feature}.`))
+    .filter(
+      (path) =>
+        path.startsWith(`tests/journeys/${feature}.`) ||
+        path.startsWith(`tests/journeys/${feature}/`),
+    )
     .map((path) => ({ path, text: run('git', ['show', `origin/staging:${path}`]) }));
 }
 
@@ -157,10 +155,9 @@ function main(argv: string[]): number {
   const onStaging = tasks.filter((t) => t.gated).flatMap((t) => t.issues);
   const issues: Record<number, TaskIssue> = {};
   for (const n of onStaging) issues[n] = taskIssue(n);
-  const features = [
-    ...new Set(onStaging.map((n) => featureOf(issues[n]?.labels ?? [])).filter((f) => f !== null)),
-  ];
-  const feature = features.length === 1 ? features[0] : undefined;
+  // The same helper featureBatch uses, so the two can't disagree on the open feature (Argus F3 on #155).
+  const found = stagingFeature(onStaging, issues);
+  const feature = 'feature' in found && found.feature !== null ? found.feature : undefined;
   const featureTasks =
     feature === undefined
       ? []

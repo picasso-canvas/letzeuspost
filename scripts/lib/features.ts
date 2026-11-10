@@ -75,15 +75,64 @@ export function dispatchRefusal(
   return `feature "${other}" is open (${(numbers ?? []).map((n) => `#${String(n)}`).join(', ')}): #${String(task.number)} of feature "${feature}" waits until its batch merges`;
 }
 
-/** Whether the feature's journey test (`tests/journeys/<feature>.*`) still carries an expected-failure mark. */
+// Every way to switch a test off or mark it as failing: method marks (it.fails, test.skip, test.fixme, it.todo,
+// describe.skip, test.describe.skip, .only), the same through brackets (it['fails']) or an alias (const j = it.fails),
+// and Vitest's option form ({ fails: true }, { skip: true }, { todo: true }) (Cerberus F1 on #155).
+const SWITCHED_OFF =
+  /\.\s*(?:fails?|skip|fixme|todo|only)\b|\[\s*['"`](?:fails?|skip|fixme|todo|only)['"`]\s*\]|\b(?:fails|skip|todo)\s*:\s*true\b/;
+
+/**
+ * Whether the feature's journey still counts as not done: it has no journey test (`tests/journeys/<feature>.*` or
+ * `tests/journeys/<feature>/…`), or one of them is switched off or marked as expected to fail in any way.
+ */
 export function journeyMarked(
   files: readonly { path: string; text: string }[],
   feature: string,
 ): boolean {
-  return files.some(
-    ({ path, text }) =>
-      path.startsWith(`tests/journeys/${feature}.`) && /\b(?:it\.fails|test\.fail)\s*\(/.test(text),
+  const own = files.filter(
+    ({ path }) =>
+      path.startsWith(`tests/journeys/${feature}.`) ||
+      path.startsWith(`tests/journeys/${feature}/`),
   );
+  return own.length === 0 || own.some(({ text }) => SWITCHED_OFF.test(text));
+}
+
+/** GitHub's issue JSON (`number,labels,milestone,body`) as the rules read it. */
+export function toTaskIssue(view: {
+  number: number;
+  labels: { name: string }[];
+  milestone: { title: string } | null;
+  body: string;
+}): TaskIssue {
+  return {
+    number: view.number,
+    labels: view.labels.map((l) => l.name),
+    milestone: view.milestone?.title ?? null,
+    body: view.body,
+  };
+}
+
+/** The one feature on staging, none (only tasks without one), or why there can't be one. */
+export function stagingFeature(
+  onStaging: readonly number[],
+  issues: Readonly<Record<number, TaskIssue>>,
+): { feature: string | null } | { refusal: string } {
+  const features: string[] = [];
+  for (const n of onStaging) {
+    const issue = issues[n];
+    if (issue === undefined) continue;
+    let feature: string | null;
+    try {
+      feature = featureOf(issue.labels);
+    } catch (error) {
+      return {
+        refusal: `#${String(n)} has ${error instanceof Error ? error.message : String(error)}: Athena fixes its labels first`,
+      };
+    }
+    if (feature !== null && !features.includes(feature)) features.push(feature);
+  }
+  if (features.length > 1) return { refusal: `staging holds two features: ${features.join(', ')}` };
+  return { feature: features[0] ?? null };
 }
 
 /**
@@ -99,27 +148,15 @@ export function featureBatch(input: {
 }): { due: boolean; feature: string | null; reason: string } {
   if (input.onStaging.length === 0)
     return { due: false, feature: null, reason: 'staging holds no task' };
-  const features = [
-    ...new Set(
-      input.onStaging
-        .map((n) => input.issues[n])
-        .map((issue) => (issue === undefined ? null : featureOf(issue.labels)))
-        .filter((f): f is string => f !== null),
-    ),
-  ];
-  if (features.length > 1)
-    return {
-      due: false,
-      feature: null,
-      reason: `staging holds two features: ${features.join(', ')}`,
-    };
-  const feature = features[0] ?? null;
+  const found = stagingFeature(input.onStaging, input.issues);
+  if ('refusal' in found) return { due: false, feature: null, reason: found.refusal };
+  const feature = found.feature;
   const list = (ns: readonly number[]) => ns.map((n) => `#${String(n)}`).join(', ');
   if (feature === null)
     return {
       due: true,
       feature: null,
-      reason: `staging holds only follow-ups (${list(input.onStaging)})`,
+      reason: `staging holds only tasks with no feature (${list(input.onStaging)})`,
     };
   if (input.lines >= BATCH_LINES)
     return {

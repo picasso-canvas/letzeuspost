@@ -32,8 +32,7 @@ import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { requireFindingIds } from './lib/handover-checks.ts';
-import { dispatchRefusal, type TaskIssue } from './lib/features.ts';
-import { taskIssue } from './batch.ts';
+import { dispatchRefusal, toTaskIssue } from './lib/features.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
 import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
@@ -218,6 +217,7 @@ const USAGE =
  * with a builder on them) set which feature is open.
  */
 function featureRule(issue: number): string | null {
+  type IssueJson = Parameters<typeof toTaskIssue>[0];
   const open = (
     JSON.parse(
       run('gh', [
@@ -234,23 +234,29 @@ function featureRule(issue: number): string | null {
         '--json',
         'number,labels,milestone,body',
       ]),
-    ) as {
-      number: number;
-      labels: { name: string }[];
-      milestone: { title: string } | null;
-      body: string;
-    }[]
-  ).map((i): TaskIssue => ({
-    number: i.number,
-    labels: i.labels.map((l) => l.name),
-    milestone: i.milestone?.title ?? null,
-    body: i.body,
-  }));
-  const task = open.find((i) => i.number === issue) ?? taskIssue(issue);
+    ) as IssueJson[]
+  ).map(toTaskIssue);
+  const task =
+    open.find((i) => i.number === issue) ??
+    toTaskIssue(
+      JSON.parse(
+        run('gh', [
+          'issue',
+          'view',
+          String(issue),
+          '-R',
+          REPO,
+          '--json',
+          'number,labels,milestone,body',
+        ]),
+      ) as IssueJson,
+    );
+  // Only a missing records folder means "nothing dispatched"; any other error stops dispatch (Cerberus F2 on #155).
   let records: string[];
   try {
     records = readdirSync(join(STATE_DIR, 'dispatch'));
-  } catch {
+  } catch (error) {
+    if ((error as { code?: unknown }).code !== 'ENOENT') throw error;
     records = [];
   }
   const dispatched = new Set(

@@ -345,7 +345,11 @@ function main(argv: string[]): number {
           ).labels,
       );
       batchFeatures[e.pr] = [
-        ...new Set(labels.filter((l) => l.name.startsWith('feature:')).map((l) => l.name.slice(8))),
+        ...new Set(
+          labels
+            .filter((l) => l.name.startsWith('feature:'))
+            .map((l) => l.name.slice('feature:'.length)),
+        ),
       ];
     } catch {
       batchFeatures[e.pr] = [];
