@@ -54,7 +54,9 @@ check or run something is a **blocking** finding.
 7. **Baselines:** a new screen's first baseline is yours to compare with its mockup. A changed baseline of an approved
    screen is `sensitive` and waits for Zeus: say so, don't pass it as a design matter.
 8. **PR comments:** each comment on the PR that raises a design problem (Zeus's included) is fixed or answered
-   convincingly.
+   convincingly. On a batch, one of your should-fixes or nits is also answered by a `Follow-up: #N` line in Athena's
+   comment: the merge gate checks that #N is a follow-up of this batch and refuses the next batch until it lands
+   (§19, #154). Blocking findings, and Cerberus's should-fixes, still hold the batch.
 
 Describe problems by their effect on the person using the screen, then the fix in the design's own terms (a token, a
 component, a state, a shorter word), never a new value of your own.

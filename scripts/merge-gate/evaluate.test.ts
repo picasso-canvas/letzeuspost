@@ -50,6 +50,10 @@ function facts(over: Partial<Facts> = {}): Facts {
     gatedIssues: [42, 43],
     evidenceShas: [SHA],
     earlierFindingIds: [],
+    openIssues: [],
+    openIssuesCutOff: false,
+    mergedBatches: [],
+    prComments: [],
     labels: ['routine'],
     checkRuns: [
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
@@ -457,6 +461,27 @@ describe('evaluate: the batch PR from staging into main', () => {
   it('gets the full review, with one ticked box per task', () => {
     expect(failedIds(batch())).toEqual([]);
     expect(failedIds(batch({ reviews: [] }))).toEqual([5]);
+  });
+
+  it('refuses a batch while a follow-up of an earlier batch is open, and checks its follow-up links (#154)', () => {
+    const open = {
+      number: 148,
+      labels: ['build-task', 'follow-up'],
+      body: '**Follow-up of:** #130',
+      comments: [],
+    };
+    const refused = batch({ openIssues: [open], mergedBatches: [130] });
+    expect(failedIds(refused)).toEqual([2]);
+    expect(evaluate(refused).items[1]?.detail).toContain(
+      '#148, a follow-up of batch #130, is still open',
+    );
+    expect(
+      failedIds(batch({ prComments: [{ author: 'picasso-canvas', body: 'Follow-up: #999' }] })),
+    ).toEqual([2]);
+    // A follow-up is a batch's business: a PR into staging or a harness PR isn't held by one.
+    expect(
+      evaluate(facts({ openIssues: [open], mergedBatches: [130] })).items[1]?.detail,
+    ).not.toContain('follow-up');
   });
 
   it('refuses a batch that carries a harness path, or misses a task box', () => {
