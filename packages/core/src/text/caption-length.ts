@@ -16,9 +16,37 @@ export type Network = (typeof NETWORKS)[number];
 /** What X counts a link as, however long it is (§07). */
 const X_URL_WEIGHT = 23;
 
-// A link starts with http:// or https:// and runs to the next space. Closing punctuation at the end, including the
-// Bangla danda (।), is not part of it. Links without a scheme (example.com) are counted as plain text.
-const URL_PATTERN = /https?:\/\/\S*[^\s.,;:!?)\]}'"।]/giu;
+// What X turns into a 23-weight link: http:// or https:// and everything to the next space, or a bare domain
+// (example.com, site.co.uk/path): dot-separated labels (any script, so বাংলা.com too) ending in a letters-only label
+// of 2+ characters, then an optional path. The rule is that a counter may count more than X, never less: X knows
+// the real top-level domains and we don't, so anything shaped like a domain counts as a link, and only what can't be
+// one (v1.2, e.g., 3.5, U.S.A) stays text.
+const LABEL = '[\\p{L}\\p{M}\\p{N}-]+';
+const LINK_PATTERN = new RegExp(
+  `https?://\\S*|(?:${LABEL}\\.)+[\\p{L}\\p{M}]{2,}(?![\\p{L}\\p{M}\\p{N}-])(?:[/?#]\\S*)?`,
+  'giu',
+);
+
+// Punctuation after a link isn't part of it, the Bangla danda (।) included. A closing bracket is, when it closes one
+// opened inside the link (en.wikipedia.org/wiki/Foo_(bar)); an extra one is the sentence's.
+const TRAILING_PUNCTUATION = new Set(['.', ',', ';', ':', '!', '?', "'", '"', '।']);
+const BRACKETS: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+function linkEnd(candidate: string): number {
+  let end = candidate.length;
+  while (end > 0) {
+    const last = candidate.charAt(end - 1);
+    const opener = BRACKETS[last];
+    if (opener !== undefined) {
+      const body = candidate.slice(0, end);
+      if (body.split(last).length <= body.split(opener).length) break;
+    } else if (!TRAILING_PUNCTUATION.has(last)) {
+      break;
+    }
+    end -= 1;
+  }
+  return end;
+}
 
 // An emoji grapheme: an emoji shown as a picture by default, a pictograph forced to picture style (U+FE0F), a flag
 // (regional indicators) or a keycap (U+20E3). Digits and symbols like © stay plain characters.
@@ -57,9 +85,9 @@ function xTextLength(text: string): number {
 function xLength(text: string): number {
   let total = 0;
   let end = 0;
-  for (const link of text.matchAll(URL_PATTERN)) {
-    total += xTextLength(text.slice(end, link.index)) + X_URL_WEIGHT;
-    end = link.index + link[0].length;
+  for (const candidate of text.matchAll(LINK_PATTERN)) {
+    total += xTextLength(text.slice(end, candidate.index)) + X_URL_WEIGHT;
+    end = candidate.index + linkEnd(candidate[0]);
   }
   return total + xTextLength(text.slice(end));
 }

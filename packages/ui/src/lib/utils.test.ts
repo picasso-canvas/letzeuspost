@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { cn } from '@lzp/ui/lib/utils';
+import { cn, typeSizes } from '@lzp/ui/lib/utils';
 
 const theme = readFileSync(new URL('../tokens/theme.css', import.meta.url), 'utf8');
 const namesOf = (prefix: string): string[] =>
@@ -18,6 +18,12 @@ describe('cn', () => {
       expect(cn(`text-${size}`, 'text-muted-foreground'), size).toBe(
         `text-${size} text-muted-foreground`,
       );
+  });
+
+  it("lists exactly DESIGN.md's type sizes: none missing, none extra", () => {
+    // A name missing from the list lets `text-<name>` be dropped as a colour; an extra one makes a class that isn't
+    // a size (a real colour called `text-x`) survive next to a size. Either way the list and the tokens must match.
+    expect([...typeSizes].sort()).toEqual([...namesOf('text')].sort());
   });
 
   it("lets a later size replace an earlier one, DESIGN.md's or Tailwind's", () => {

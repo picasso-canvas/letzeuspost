@@ -57,6 +57,52 @@ describe('captionLength: X (weighted)', () => {
     expect(captionLength('x', `${LONG_URL} https://example.org/x`)).toBe(23 + 1 + 23);
   });
 
+  // The rule: a counter may count more than X does, never less. So anything that could be a link counts as one
+  // (23), and only a word that clearly can't be (no letters-only ending of 2+ characters: v1.2, e.g., 3.5) stays text.
+  it('counts a bare domain as 23, like any link', () => {
+    expect(captionLength('x', 'example.com')).toBe(23);
+    expect(captionLength('x', 'a.co')).toBe(23);
+    expect(captionLength('x', 'site.co.uk/path')).toBe(23);
+    expect(captionLength('x', 'www.example.com/a/very/long/path/that/goes/on?x=1')).toBe(23);
+  });
+
+  it('counts the text around a bare domain normally, and its closing punctuation outside', () => {
+    expect(captionLength('x', 'Visit example.com today')).toBe(6 + 23 + 6);
+    expect(captionLength('x', 'Visit example.com.')).toBe(6 + 23 + 1);
+    expect(captionLength('x', '(see site.co.uk/path)')).toBe(5 + 23 + 1);
+  });
+
+  it('counts a bare domain in a Bangla caption as 23, and the danda after it as 1', () => {
+    expect(captionLength('x', 'বাংলা example.com।')).toBe(5 + 1 + 23 + 1);
+    expect(captionLength('x', 'বাংলা.com')).toBe(23);
+    expect(captionLength('x', 'দেখুন site.co.uk/path')).toBe(5 + 1 + 23);
+  });
+
+  it('counts a bare domain in capitals as 23 too', () => {
+    expect(captionLength('x', 'EXAMPLE.COM')).toBe(23);
+  });
+
+  it('leaves a word that is clearly not a link as text', () => {
+    expect(captionLength('x', 'v1.2')).toBe(4);
+    expect(captionLength('x', 'Costs 3.5 each, e.g. two')).toBe(24);
+    expect(captionLength('x', 'U.S.A')).toBe(5);
+    expect(captionLength('x', 'আজ ৩.৫ টাকা')).toBe(11);
+  });
+
+  it('keeps a ) that closes a ( inside a URL as part of the link', () => {
+    const wiki = 'https://en.wikipedia.org/wiki/Foo_(bar)';
+    expect(captionLength('x', wiki)).toBe(23);
+    expect(captionLength('x', `${wiki}.`)).toBe(24);
+    expect(captionLength('x', `(see ${wiki})`)).toBe(1 + 4 + 23 + 1);
+    expect(captionLength('x', 'en.wikipedia.org/wiki/Foo_(bar)')).toBe(23);
+  });
+
+  it('still drops a ) that closes a ( outside the link', () => {
+    expect(captionLength('x', '(see https://example.com/a)')).toBe(5 + 23 + 1);
+    expect(captionLength('x', '(see https://example.com/a).')).toBe(5 + 23 + 2);
+    expect(captionLength('x', 'https://example.com/a))')).toBe(23 + 2);
+  });
+
   it('fits 280 letters and refuses 281', () => {
     expect(fitsCaption('x', 'a'.repeat(280), 280)).toBe(true);
     expect(fitsCaption('x', 'a'.repeat(281), 280)).toBe(false);

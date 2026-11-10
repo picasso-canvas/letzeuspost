@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Button } from '@lzp/ui/components/button';
+import { Button, buttonVariantNames } from '@lzp/ui/components/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@lzp/ui/components/field';
 import { Input } from '@lzp/ui/components/input';
 import { Label } from '@lzp/ui/components/label';
@@ -59,8 +59,6 @@ describe('the shadcn components', () => {
       secondary: 'text-secondary-foreground',
       ghost: 'hover:bg-accent',
       destructive: 'text-destructive',
-      outline: 'border-border',
-      link: 'underline',
     } as const;
     for (const [variant, cls] of Object.entries(own) as [keyof typeof own, string][]) {
       const html = renderToStaticMarkup(<Button variant={variant}>Approve</Button>);
@@ -69,9 +67,20 @@ describe('the shadcn components', () => {
       expect(html).toContain('>Approve</button>');
       expect(classesOf(html), variant).toContain(cls);
       for (const [other, otherCls] of Object.entries(own))
-        if (other !== variant && otherCls !== 'underline')
+        if (other !== variant)
           expect(classesOf(html), `${variant} has ${other}'s ${otherCls}`).not.toContain(otherCls);
     }
+  });
+
+  it("has exactly §05's four button variants: primary (default), secondary, ghost, destructive (Zeus, #74)", () => {
+    // `outline` and `link` were shadcn's; §05 names neither and Zeus had them removed. Any variant added or kept
+    // makes this fail.
+    expect([...buttonVariantNames].sort()).toEqual([
+      'default',
+      'destructive',
+      'ghost',
+      'secondary',
+    ]);
   });
 
   it("draws the mockup's plain button: a strong border on the card colour, a surface tint on hover", () => {
@@ -146,8 +155,7 @@ describe('the shadcn components', () => {
   it("sets the ring colour at rest, in every variant, so focus never fades in from the text's colour", () => {
     // `transition` animates outline-color. With the colour set only on :focus-visible, it starts from currentColor
     // (the text, or the destructive red) and a read just after focus sees that, not the ring token (#74 round 2).
-    const variants = ['default', 'outline', 'secondary', 'ghost', 'destructive', 'link'] as const;
-    const buttons = variants.map((variant) =>
+    const buttons = buttonVariantNames.map((variant) =>
       renderToStaticMarkup(<Button variant={variant}>Approve</Button>),
     );
     const inputs = [
@@ -163,11 +171,14 @@ describe('the shadcn components', () => {
     }
   });
 
-  it('keeps gold off text in light mode: the link is ink, gold only in dark (§05, §21)', () => {
-    const classes = classesOf(renderToStaticMarkup(<Button variant="link">Open</Button>));
-    expect(classes).toContain('text-foreground');
-    expect(classes).toContain('dark:text-primary');
-    expect(classes).not.toContain('text-primary');
+  it('keeps gold off text in light mode: no variant sets gold text, outside the primary fill (§05, §21)', () => {
+    for (const variant of buttonVariantNames) {
+      const classes = classesOf(renderToStaticMarkup(<Button variant={variant}>Open</Button>));
+      expect(
+        classes.filter((c) => /(^|:)text-primary$/.test(c) || /(^|:)border-primary$/.test(c)),
+        variant,
+      ).toEqual([]);
+    }
   });
 
   it('moves nothing when reduced motion is asked for', () => {

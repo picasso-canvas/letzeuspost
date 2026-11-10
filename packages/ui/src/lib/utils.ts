@@ -4,7 +4,17 @@ import { extendTailwindMerge } from 'tailwind-merge';
 // DESIGN.md's type sizes become `text-<name>`. tailwind-merge can't tell that `text-label` is a size, not a colour, and
 // would drop it next to `text-muted-foreground`; so it is told the names. A test checks they match the generated
 // tokens. (A weight is asked for as `font-(weight:--font-weight-<name>)`: `font-<name>` would be the font family.)
-const typeSizes = ['body', 'meta', 'h1', 'h2', 'h3', 'eyebrow', 'label', 'button', 'numbers'];
+export const typeSizes = [
+  'body',
+  'meta',
+  'h1',
+  'h2',
+  'h3',
+  'eyebrow',
+  'label',
+  'button',
+  'numbers',
+];
 
 const twMerge = extendTailwindMerge({ extend: { theme: { text: typeSizes } } });
 
