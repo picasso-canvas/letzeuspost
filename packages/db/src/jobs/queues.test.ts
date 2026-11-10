@@ -60,8 +60,9 @@ describe('the queues (§13 Jobs)', () => {
   });
 
   it('runs at most 4 ai jobs at a time per workspace, with room for another workspace', () => {
-    expect(queues.ai.work.groupConcurrency).toBe(4);
-    expect(queues.ai.work.localConcurrency).toBeGreaterThan(4);
+    // pg-boss's in-process group limit: exact in the one worker §13 runs. Its database-tracked limit
+    // (groupConcurrency) takes no lock, so workers fetching at the same moment can start a fifth.
+    expect(queues.ai.work).toEqual({ localGroupConcurrency: 4, localConcurrency: 8 });
   });
 });
 
