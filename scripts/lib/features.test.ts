@@ -100,7 +100,8 @@ describe('journeyMarked', () => {
   });
 
   it("doesn't take other code's skip or fail for a mark (Argus F3 on #155)", () => {
-    const text = "const rows = query.skip(10);\nassert.fail('never');\nit('journey', () => {});";
+    const text =
+      "const rows = query.skip(10);\nassert.fail('never');\nit('journey', { skip: false }, () => {});";
     expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(false);
   });
 
@@ -131,6 +132,9 @@ describe('journeyMarked', () => {
       "test.runIf(false)('j', () => {})",
       'const { fails } = it;',
       'const { skip: off } = test;',
+      "it('j', { skip: 1 }, () => {})",
+      "it('j', { skip: !0 }, () => {})",
+      "it('j', { fails: isCI }, () => {})",
     ]) {
       expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data'), text).toBe(
         true,
