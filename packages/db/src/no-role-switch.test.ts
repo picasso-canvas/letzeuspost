@@ -3,6 +3,13 @@
 // does that, on its own pool. This check reads every code and SQL file in the repo (comments too) and refuses a role
 // switch anywhere else. It runs in `pnpm check`. The cases below put the SQL words together at run time, because the
 // check reads this file as well.
+//
+// Its limit (Argus F6 and Cerberus F4 on #189): it reads text, so it sees only a switch written out in a file. A
+// switch put together at run time gets past it, as these cases show: SQL built from pieces, a role name read from
+// config, or text from a request that reaches a query (an injection). So it is not the only wall. `scoped()` in db.ts
+// checks, in every unit of work, that the connection still runs as the role it logged in as, and refuses it if not.
+// Even so, SQL injected into workspace code could switch to lzp_auth inside its own transaction; parameterised
+// queries (Drizzle) are what keep that out.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -59,6 +66,10 @@ describe('the role-switch check', () => {
     [`"select pg_catalog.${glue('set_config ( ', "'role'")}, 'lzp_auth', false)"`],
     [`{ options: '${glue('-c role', '=lzp_auth')}' }`],
     [`PGOPTIONS='${glue('--role', '=lzp_auth')}'`],
+    // The same option inside a connection URL, percent-encoded or with `+` for the space (Cerberus F4 on #189).
+    [`postgres://lzp_app:pw@db/letzeuspost?options=${glue('-c%20', 'role%3D', 'lzp_auth')}`],
+    [`postgres://lzp_app:pw@db/letzeuspost?options=${glue('-c+', 'role%3d', 'lzp_auth')}`],
+    [`DATABASE_URL=postgres://db/x?options=${glue('--', 'role%3D', 'lzp_auth')}`],
     [`${w('SET', 'SESSION', 'AUTHORIZATION')} lzp_owner;`],
     [`${w('ALTER', 'ROLE', 'lzp_app', 'SET', 'role')} = 'lzp_auth';`],
   ])('finds a role switch in %s', (text) => {

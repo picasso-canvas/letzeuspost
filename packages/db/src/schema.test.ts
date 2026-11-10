@@ -161,6 +161,21 @@ describe('the accounts tables', () => {
   it('makes every invitation carry its role (Cerberus F4 on #173)', () => {
     expect(getTableColumns(table('invitation'))['role']?.notNull).toBe(true);
     expect(migrations).toContain('ALTER TABLE "invitation" ALTER COLUMN "role" SET NOT NULL;');
+    // The check that let NOT NULL skip the table scan stays beside it, in the schema as in the database: squawk
+    // refuses dropping a constraint (ban-drop-constraint), and Athena's round-1 note on #189 asks to keep it.
+    expect(
+      getTableConfig(table('invitation')).checks.map((c) => [c.name, JSON.stringify(c.value)]),
+    ).toContainEqual(['invitation_role_present', expect.stringContaining('"role" IS NOT NULL')]);
+    expect(migrations).toContain(
+      'ALTER TABLE "invitation" ADD CONSTRAINT "invitation_role_present" CHECK ("role" IS NOT NULL) NOT VALID;',
+    );
+    expect(migrations).toContain(
+      'ALTER TABLE "invitation" VALIDATE CONSTRAINT "invitation_role_present";',
+    );
+  });
+
+  it('drops no constraint in any migration (squawk: ban-drop-constraint)', () => {
+    expect(migrations).not.toMatch(/\bDROP\s+CONSTRAINT\b/i);
   });
 
   it('keeps the auth tables out of the app role’s reach: only lzp_auth holds them (#176)', () => {

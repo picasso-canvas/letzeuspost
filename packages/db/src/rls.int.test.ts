@@ -9,7 +9,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAuthDb, type AuthDb } from './auth.ts';
-import { createDb, dbOnPool, type Db } from './db.ts';
+import { createDb, dbOnPool, type Db, type Tx } from './db.ts';
 import { migrate } from './migrate.ts';
 import { account, invitation, member, session, user, verification, workspace } from './schema.ts';
 
@@ -569,14 +569,102 @@ describe("the auth handle (@lzp/db/auth's db, for Better Auth)", () => {
     expect(left.rows).toEqual([{ n: 0 }]);
   });
 
-  it('reaches none of the workspace tables (#77, decision (a))', async () => {
-    for (const read of [
-      () => authDb.db.select().from(workspace),
-      () => authDb.db.select().from(member),
-      () => authDb.db.select().from(invitation),
-    ]) {
-      expect((await refusal(read())).code).toBe(PERMISSION_DENIED);
+  it('reaches none of the workspace tables (#77, decision (a)): lzp_auth holds no grant on them', async () => {
+    const held = await authDb.db.execute<{ who: string; granted: string[] }>(sql`
+      select current_user as who,
+             coalesce(array_agg(t.name || ' ' || p.name) filter (where has_table_privilege(t.name, p.name)), '{}') as granted
+        from unnest(array['workspace', 'member', 'invitation']) as t(name),
+             unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(name)`);
+    expect(held.rows).toEqual([{ who: 'lzp_auth', granted: [] }]);
+
+    // Postgres plans a query, §13's policies included (they apply TO public, so to lzp_auth too), before it checks the
+    // table's privileges, and planning reads the settings the policies name: with none set the plan fails first
+    // (42704). Set here, the plan succeeds and the read is refused for want of a grant.
+    const asAuthHandle = <T>(read: (tx: Tx) => Promise<T>) =>
+      authDb.db.transaction(async (tx) => {
+        const { rows } = await tx.execute<{ who: string }>(
+          sql`select current_user as who, set_config('app.workspace_id', ${ids.a}, true), set_config('app.user_id', ${ids.person}, true)`,
+        );
+        expect(rows.map((row) => row.who)).toEqual(['lzp_auth']);
+        return read(tx);
+      });
+    for (const [name, read] of [
+      ['workspace', () => asAuthHandle((tx) => tx.select().from(workspace))],
+      ['member', () => asAuthHandle((tx) => tx.select().from(member))],
+      ['invitation', () => asAuthHandle((tx) => tx.select().from(invitation))],
+    ] as const) {
+      const refused = await refusal(read());
+      expect(refused, name).toEqual({
+        code: PERMISSION_DENIED,
+        message: `permission denied for table ${name}`,
+      });
     }
+  });
+
+  it("refuses every query on a connection that can't become lzp_auth, and runs none of them (Argus F3, Cerberus F3)", async () => {
+    // The owner role logs in but may not take lzp_auth, so each connection the handle opens with it fails to start.
+    const premise = await owner.query<{ may_switch: boolean }>(
+      "select pg_has_role(current_user, 'lzp_auth', 'SET') as may_switch",
+    );
+    expect(premise.rows).toEqual([{ may_switch: false }]);
+    const unswitchable = createAuthDb(ownerUrl);
+    const identifier = `unswitched-${run}`;
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const refused = await refusal(
+          unswitchable.db
+            .insert(verification)
+            .values({ identifier, value: 'opaque', expiresAt: new Date(Date.now() + 600_000) }),
+        );
+        expect(refused.code).toBe(PERMISSION_DENIED);
+        expect(refused.message).toContain('lzp_auth');
+      }
+    } finally {
+      await unswitchable.close();
+    }
+    const written = await owner.query<{ n: number }>(
+      'select count(*)::int as n from verification where identifier = $1',
+      [identifier],
+    );
+    expect(written.rows).toEqual([{ n: 0 }]);
+  });
+});
+
+describe('the scoped helper on a switched connection (Cerberus F4 on #189)', () => {
+  it('refuses workspace work on a connection no longer running as the role it logged in as', async () => {
+    const pool = new pg.Pool({ connectionString: appUrl, max: 1 });
+    try {
+      const single = dbOnPool(pool);
+      // A switch only the auth handle may write (no-role-switch.test.ts), put together at run time as an injection
+      // would, on the pool's one connection; workspace work then gets that same connection.
+      await pool.query(['set', 'role', 'lzp_auth'].join(' '));
+      await expect(
+        single.forWorkspace({ workspaceId: ids.a }).transaction((tx) => tx.select().from(member)),
+      ).rejects.toThrow('refused: this connection runs as lzp_auth, not lzp_app');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+describe('invitation.role (Cerberus F4 on #173)', () => {
+  it('is NOT NULL, with its validated check beside it', async () => {
+    const { rows } = await owner.query<{ nullable: string; validated: boolean }>(
+      `select c.is_nullable as nullable,
+              (select k.convalidated from pg_constraint k
+                where k.conrelid = 'invitation'::regclass and k.conname = 'invitation_role_present') as validated
+         from information_schema.columns c
+        where c.table_schema = 'public' and c.table_name = 'invitation' and c.column_name = 'role'`,
+    );
+    expect(rows).toEqual([{ nullable: 'NO', validated: true }]);
+    const missing = await refusal(
+      owner.query(
+        `insert into invitation (workspace_id, email, role, expires_at, inviter_id)
+         values ($1, $2, null, now() + interval '7 days', $3)`,
+        [ids.a, `no-role-${run}@rls.invalid`, ids.ownerA],
+      ),
+    );
+    expect(missing.code).toBe('23502');
   });
 });
 
