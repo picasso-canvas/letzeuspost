@@ -43,6 +43,7 @@ function codeFiles(): string[] {
 }
 
 const w = (...parts: string[]) => parts.join(' ');
+const glue = (...parts: string[]) => parts.join('');
 const q = (text: string) => `'${text}'`;
 
 describe('the role-switch check', () => {
@@ -54,10 +55,10 @@ describe('the role-switch check', () => {
     [`sql\`select 1;\n  ${w('set', 'role')} = 'lzp_auth'\``],
     [`sql\`${w('set', 'role', 'to')} lzp_auth\``],
     [`sql.raw(${q(w('RESET', 'ROLE'))})`],
-    [`sql\`select ${'set_config('}'role', 'lzp_auth', true)\``],
-    [`"select pg_catalog.${'set_config'} ( 'role', 'lzp_auth', false)"`],
-    [`{ options: '${'-c'} role=lzp_auth' }`],
-    [`PGOPTIONS='${'--'}role=lzp_auth'`],
+    [`sql\`select ${glue('set_config(', "'role'")}, 'lzp_auth', true)\``],
+    [`"select pg_catalog.${glue('set_config ( ', "'role'")}, 'lzp_auth', false)"`],
+    [`{ options: '${glue('-c role', '=lzp_auth')}' }`],
+    [`PGOPTIONS='${glue('--role', '=lzp_auth')}'`],
     [`${w('SET', 'SESSION', 'AUTHORIZATION')} lzp_owner;`],
     [`${w('ALTER', 'ROLE', 'lzp_app', 'SET', 'role')} = 'lzp_auth';`],
   ])('finds a role switch in %s', (text) => {

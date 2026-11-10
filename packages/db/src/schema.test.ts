@@ -159,7 +159,7 @@ describe('the accounts tables', () => {
   });
 
   it('makes every invitation carry its role (Cerberus F4 on #173)', () => {
-    expect(getTableColumns(table('invitation')).role.notNull).toBe(true);
+    expect(getTableColumns(table('invitation'))['role']?.notNull).toBe(true);
     expect(migrations).toContain('ALTER TABLE "invitation" ALTER COLUMN "role" SET NOT NULL;');
   });
 
@@ -176,8 +176,8 @@ describe('the accounts tables', () => {
     expect(migrations).toContain('ALTER TABLE "user" ENABLE ROW LEVEL SECURITY;');
     const policies = getTableConfig(table('user')).policies;
     expect(policies.map((p) => [p.name, p.for, p.to])).toEqual([
-      ['auth_handle', 'all', ['lzp_auth']],
-      ['member_scope', 'select', ['lzp_app']],
+      ['auth_handle', 'all', 'lzp_auth'],
+      ['member_scope', 'select', 'lzp_app'],
     ]);
     const memberScope = JSON.stringify(policies.find((p) => p.name === 'member_scope')?.using);
     expect(memberScope).toContain("id = current_setting('app.user_id')::uuid");
