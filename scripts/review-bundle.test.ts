@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -924,5 +925,127 @@ describe('runReviews: one reviewer failing (#84 review)', () => {
     expect(failed).toBe(1);
     expect(recorded).toEqual(['cerberus']);
     expect(errors.join('\n')).toContain('disk full');
+  });
+});
+
+describe('runReviews: a malformed answer gets one retry (#158)', () => {
+  const answer = (result: string, session: string) =>
+    JSON.stringify({ subtype: 'success', result, session_id: session });
+  const runWith = async (answers: string[], reviewer: 'argus' | 'cerberus' = 'argus') => {
+    const calls: number[] = [];
+    const written: string[] = [];
+    const metas: string[] = [];
+    const retries: unknown[] = [];
+    const original = console.log;
+    console.log = () => undefined;
+    try {
+      await runReviews(7, { bundle: '/b', outDir: '/o', refusal: null }, [reviewer], {
+        claude: () => {
+          calls.push(1);
+          const next = answers[calls.length - 1] ?? answer('VERDICT: pass', 'late');
+          if (next === 'THROW') throw new Error('timed out');
+          return next;
+        },
+        show: () => 'agent',
+        record: () => 'ok',
+        write: (path, text) => {
+          if (path.endsWith(`${reviewer}.md`)) written.push(text);
+          if (path.endsWith(`${reviewer}.meta.json`)) metas.push(text);
+        },
+        logRetry: (entry) => retries.push(entry),
+        env: {},
+      });
+    } finally {
+      console.log = original;
+    }
+    return { calls: calls.length, written, metas, retries };
+  };
+
+  it('asks once more when a pass has a preamble before its verdict line, and records only the new answer', async () => {
+    const r = await runWith([
+      answer('Checked round 4.\n\nVERDICT: pass\n[nit] F1 simplicity a.ts:1 — x', 's1'),
+      answer('VERDICT: pass\n[nit] F1 simplicity a.ts:1 — x', 's2'),
+    ]);
+    expect(r.calls).toBe(2);
+    expect(r.written).toEqual(['VERDICT: pass\n[nit] F1 simplicity a.ts:1 — x\n']);
+    expect(r.metas[0]).toContain('"sessionId":"s2"');
+    expect(r.retries).toEqual([
+      {
+        pr: 7,
+        reviewer: 'argus',
+        first: 's1',
+        second: 's2',
+        firstSha256: createHash('sha256')
+          .update('Checked round 4.\n\nVERDICT: pass\n[nit] F1 simplicity a.ts:1 — x')
+          .digest('hex'),
+      },
+    ]);
+  });
+
+  it('records a malformed answer that signals a block at once, without a retry', async () => {
+    for (const text of [
+      'Done.\nVERDICT: block\n[blocking] F1 correctness a.ts:1 — x',
+      'Done.\nVERDICT: pass\n[blocking] F1 correctness a.ts:1 — x',
+    ]) {
+      const r = await runWith([answer(text, 's1')]);
+      expect(r.calls, text).toBe(1);
+      expect(r.written, text).toEqual([`${text}\n`]);
+      expect(r.retries, text).toEqual([]);
+    }
+  });
+
+  it('reads block signals above the verdict line too, and never retries them (Argus F1, Cerberus F1 on #165)', async () => {
+    for (const [text, who] of [
+      ['[blocking] F1 correctness a.ts:1 — x\n\nVERDICT: pass', 'argus'],
+      ['**VERDICT: block**\nVERDICT: pass', 'argus'],
+      ['[should-fix] F1 security a.ts:1 — x\nVERDICT: pass', 'cerberus'],
+    ] as const) {
+      const r = await runWith([answer(text, 's1')], who);
+      expect(r.calls, text).toBe(1);
+      expect(r.retries, text).toEqual([]);
+    }
+  });
+
+  it('retries an answer with no verdict line at all, which carries no block signal (Argus F3 on #165)', async () => {
+    const r = await runWith([answer('Done.', 's1'), answer('VERDICT: pass', 's2')]);
+    expect(r.calls).toBe(2);
+    expect(r.written).toEqual(['VERDICT: pass\n']);
+  });
+
+  it('logs a retry even when the second session fails (Argus F6 on #165)', async () => {
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => errors.push(msg);
+    try {
+      const r = await runWith([answer('Preamble.\nVERDICT: pass', 's1'), 'THROW']);
+      expect(r.calls).toBe(2);
+      expect(r.written).toEqual([]);
+      expect(r.retries).toMatchObject([{ first: 's1', second: null }]);
+    } finally {
+      console.error = original;
+    }
+  });
+
+  it("doesn't retry Cerberus's pass that lists a should-fix: his should-fixes hold", async () => {
+    const text = 'Done.\nVERDICT: pass\n[should-fix] F1 security a.ts:1 — x';
+    const r = await runWith([answer(text, 's1')], 'cerberus');
+    expect(r.calls).toBe(1);
+    expect(r.retries).toEqual([]);
+  });
+
+  it('never retries a well-formed answer, pass or block', async () => {
+    for (const text of ['VERDICT: block\n[blocking] F1 plan a — x', 'VERDICT: pass']) {
+      const r = await runWith([answer(text, 's1')]);
+      expect(r.calls, text).toBe(1);
+    }
+  });
+
+  it('records a second malformed answer as it is (a block), and asks no third time', async () => {
+    const r = await runWith([
+      answer('Preamble.\nVERDICT: pass', 's1'),
+      answer('Again a preamble.\nVERDICT: pass', 's2'),
+    ]);
+    expect(r.calls).toBe(2);
+    expect(r.written).toEqual(['Again a preamble.\nVERDICT: pass\n']);
   });
 });

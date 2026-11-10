@@ -9,8 +9,9 @@
 // checkout with a minimal environment and no .env reads, and records each verdict with record-review.ts. Summaries go
 // to pr-<n>/out/<stamp>/, outside the bundle, so each reviewer starts fresh. A builder's code is only read here.
 import { execFile, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
@@ -23,6 +24,7 @@ import { gatedIntoStaging, taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
+import { parseVerdict } from './merge-gate/verdict.ts';
 
 import type { Reviewer } from './merge-gate/types.ts';
 
@@ -482,7 +484,31 @@ export interface ReviewDeps {
   /** Runs record-review.ts with these arguments. */
   record: (args: string[]) => string;
   write: (path: string, text: string) => void;
+  /** Notes a review that needed a retry (#158), for the weekly report. */
+  logRetry?: (entry: {
+    pr: number;
+    reviewer: Asker;
+    first: string | null;
+    second: string | null;
+    /** The first answer's hash, to audit it without its transcript (Cerberus F3 on #165). */
+    firstSha256: string;
+  }) => void;
   env: NodeJS.ProcessEnv;
+}
+
+/**
+ * A malformed answer worth asking again (#158): its first line isn't the verdict, and nowhere in it is there a block
+ * signal (a `VERDICT … block` line, a `[blocking]` finding, Cerberus's should-fix), as verdict.ts reads them. Anything
+ * that signals a block is recorded as it is, a block, so a retry can never turn a block into a pass. verdict.ts's rules
+ * don't change.
+ */
+export function retryWorthy(summary: string, reviewer: Asker): boolean {
+  const lines = summary.split(/\r\n?|\n/);
+  const first = lines.find((line) => line.trim() !== '' && !/^`{3,}\w*$/.test(line.trim()));
+  if (first !== undefined && /^VERDICT: (?:pass|block)$/.test(first.trim())) return false;
+  // The whole answer read as if it followed a pass, so verdict.ts finds a block signal anywhere in it, above the verdict
+  // line or below (Argus F1, Cerberus F1 on #165). An answer with no verdict line and no block signal is retried too.
+  return parseVerdict(`VERDICT: pass\n${summary}`, reviewer).verdict === 'pass';
 }
 
 /** The reason a reviewer run failed, from its output: never the command line, which holds local paths. */
@@ -555,33 +581,56 @@ export async function runReviews(
       summary = `VERDICT: block\n[blocking] .claude/agents/${agent}.md — main has no ${agent} agent file — add it before PRs need ${reviewer}`;
     } else {
       try {
-        const out = resultText(
-          await deps.claude(
-            [
-              '-p',
-              '--agent',
-              agent,
-              ...(model === null ? [] : ['--model', model]),
-              '--add-dir',
-              where.bundle,
-              '--disallowedTools',
-              'Read(**/.env*)',
-              'mcp__*',
-              '--setting-sources',
-              'project',
-              '--strict-mcp-config',
-              '--permission-mode',
-              'dontAsk',
-              '--max-turns',
-              '40',
-              '--output-format',
-              'json',
-              reviewPrompt(reviewer, where.bundle),
-            ],
-            reviewerEnv(deps.env),
-            REVIEW_TIMEOUT_MS,
-          ),
-        );
+        const ask = async () =>
+          resultText(
+            await deps.claude(
+              [
+                '-p',
+                '--agent',
+                agent,
+                ...(model === null ? [] : ['--model', model]),
+                '--add-dir',
+                where.bundle,
+                '--disallowedTools',
+                'Read(**/.env*)',
+                'mcp__*',
+                '--setting-sources',
+                'project',
+                '--strict-mcp-config',
+                '--permission-mode',
+                'dontAsk',
+                '--max-turns',
+                '40',
+                '--output-format',
+                'json',
+                reviewPrompt(reviewer, where.bundle),
+              ],
+              reviewerEnv(deps.env),
+              REVIEW_TIMEOUT_MS,
+            ),
+          );
+        let out = await ask();
+        if (retryWorthy(out.text, reviewer)) {
+          // One fresh session; its answer is recorded as it comes, well-formed or not (#158).
+          console.error(
+            `${reviewer}'s answer had a line before its verdict: asking once more in a fresh session.`,
+          );
+          const first = out;
+          let second: typeof out | undefined;
+          try {
+            second = await ask();
+          } finally {
+            // Logged whether or not the second session finishes (Argus F6 on #165).
+            deps.logRetry?.({
+              pr,
+              reviewer,
+              first: first.sessionId,
+              second: second?.sessionId ?? null,
+              firstSha256: createHash('sha256').update(first.text).digest('hex'),
+            });
+          }
+          out = second;
+        }
         summary = out.text;
         sessionId = out.sessionId;
       } catch (error) {
@@ -682,6 +731,14 @@ async function main(argv: string[]): Promise<number> {
       record: (args) => run('node', [join(ROOT, 'scripts/record-review.ts'), ...args]),
       write: (path, text) => {
         writeFileSync(path, text, { mode: 0o600 });
+      },
+      logRetry: (entry) => {
+        mkdirSync(join(STATE_DIR, 'logs'), { recursive: true, mode: 0o700 });
+        appendFileSync(
+          join(STATE_DIR, 'logs', 'review-retries.jsonl'),
+          `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`,
+          { mode: 0o600 },
+        );
       },
       env: process.env,
     },
