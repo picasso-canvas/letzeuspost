@@ -11,9 +11,13 @@ import {
   headsFrom,
   onTick,
   parseArgs,
+  appendTail,
+  endedRecord,
+  resumedRecord,
   resumePrompt,
   resumeRefusal,
   runEnding,
+  runEnvExtra,
   slugify,
   taskText,
 } from './dispatch.ts';
@@ -407,6 +411,51 @@ describe('resuming an interrupted builder (#157)', () => {
     expect(runEnding('not json\n{', false)).toBe('failed');
   });
 
+  it("counts a usage limit only from the session's own error, never from a summary that mentions one (Argus F2, Cerberus F2 on #166)", () => {
+    expect(
+      runEnding(
+        log({ type: 'result', is_error: false, result: 'Added the usage limit check to plans.' }),
+        false,
+      ),
+    ).toBe('finished');
+    expect(
+      runEnding(
+        log({
+          type: 'result',
+          is_error: false,
+          result: "You've hit your monthly limit, the test says.",
+        }),
+        false,
+      ),
+    ).toBe('finished');
+    expect(
+      runEnding(
+        log({ type: 'result', is_error: true, result: 'Shipped; the usage limit check is in.' }),
+        false,
+      ),
+    ).toBe('finished');
+  });
+
+  it('counts a run stopped at its turn limit as failed (Argus F4 on #166)', () => {
+    expect(
+      runEnding(log({ type: 'result', subtype: 'error_max_turns', is_error: true }), false),
+    ).toBe('failed');
+  });
+
+  it('keeps the end of the stream in memory, whatever the chunks, so the last event is never lost (Argus F1 on #166)', () => {
+    const final = JSON.stringify({
+      type: 'result',
+      is_error: true,
+      result: "You've hit your session limit · resets 5pm",
+    });
+    const stream = `${JSON.stringify({ type: 'assistant' })}\n${final}\n`;
+    let tail = '';
+    for (const chunk of [stream.slice(0, 7), stream.slice(7, 40), stream.slice(40)])
+      tail = appendTail(tail, chunk, 1024);
+    expect(runEnding(tail, false)).toBe('usage-limit');
+    expect(appendTail('x'.repeat(10), 'yz', 8)).toBe('xxxxxxyz');
+  });
+
   const record = {
     issue: 71,
     branch: '71-database',
@@ -431,11 +480,44 @@ describe('resuming an interrupted builder (#157)', () => {
     expect(resumeRefusal(record, false)).toBe("the builder's clone is gone: dispatch with --fresh");
   });
 
-  it('tells the resumed session it continues an interrupted run', () => {
-    const prompt = resumePrompt(71);
+  it("tells the resumed session it continues an interrupted run, and gives it dispatch's own task text (Cerberus F3 on #166)", () => {
+    const prompt = resumePrompt(71, '# Task #71: database\n\n**Done when**\n- [ ] a');
     expect(prompt).toContain('Build task #71');
     expect(prompt).toContain('stopped by a usage limit');
     expect(prompt).toContain('git log');
+    expect(prompt).toContain('# Task #71: database');
+    expect(prompt).toContain('overrides .lzp/task.md');
+  });
+
+  it("never points git's or gh's config at the clone, which the builder can write (Cerberus F1 on #166)", () => {
+    const clone = '/b/71-database';
+    const env = runEnvExtra({
+      lzp: `${clone}/.lzp`,
+      marker: 'm'.repeat(32),
+      configDir: '/b/.config/71',
+      harnessDir: '/h',
+    });
+    for (const [key, value] of Object.entries(env))
+      if (key.startsWith('GIT_') || key === 'GH_CONFIG_DIR')
+        expect(value.startsWith(clone), `${key}=${value}`).toBe(false);
+    expect(env.GIT_CONFIG_GLOBAL).toBe('/b/.config/71/gitconfig');
+  });
+
+  it("writes a resume's record and a run's ending as small pure steps (Argus F3 on #166)", () => {
+    const resumed = resumedRecord(record, 'n'.repeat(32), '2026-11-10T09:00:00Z');
+    expect(resumed).toEqual({
+      issue: 71,
+      branch: '71-database',
+      baseSha: 'b'.repeat(40),
+      dispatchedAt: '2026-11-10T07:00:00Z',
+      marker: 'n'.repeat(32),
+      resumedAt: '2026-11-10T09:00:00Z',
+    });
+    expect(endedRecord(resumed, 'finished', '2026-11-10T09:30:00Z')).toEqual({
+      ...resumed,
+      ending: 'finished',
+      endedAt: '2026-11-10T09:30:00Z',
+    });
   });
 
   it('keeps how a run ended in the dispatch record, and refuses any other value', () => {
