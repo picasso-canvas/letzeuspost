@@ -97,9 +97,11 @@ Reviewers never review their own work and always start from a fresh context. The
    Reviewers read a bundle: the PR's files as regular blobs (no `.git`, symlinks as stubs, `CLAUDE.md` and `.claude/` renamed),
    the diff, the history, the PR text, the issue, CI results and comments. They never run the PR's code, and only their
    own recorded verdicts count (§ merge gate, item 5). Blocking findings go back to a builder: on a task PR, a new
-   dispatch on the same branch; on a batch, a fix task on `staging`, then the batch is reviewed again. **Only blocking
-   findings hold a batch** (Zeus, 2026-11-10): for each should-fix and nit, Athena opens a follow-up task (or adds it to
-   a planned task's Done-when) and links it on the batch, which answers it. At most 3
+   dispatch on the same branch; on a batch, a fix task on `staging`, then the batch is reviewed again. **What holds a
+   batch** (Zeus, 2026-11-10): blocking findings and Cerberus's should-fixes. For each of Argus's and Iris's
+   should-fixes and every nit, Athena opens a follow-up task (or adds it to a planned task's Done-when) and links it on
+   the batch, which answers it. A follow-up must land by the next batch: the gate refuses a batch while a follow-up
+   from an earlier batch is still open, unless Zeus makes an exception on the record. At most 3
    rounds, then `needs-zeus` with a summary. The card moves to In review, and stays there until its batch merges.
 7. **Merge gate.** Athena runs `scripts/merge-gate.ts <pr>` from `main`. It checks every item in
    [the merge gate](#the-merge-gate) and only then squash-merges. After every merge into `main` it merges `main` into
