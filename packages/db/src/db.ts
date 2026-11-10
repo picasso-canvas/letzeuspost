@@ -46,10 +46,7 @@ export function checkedId(kind: 'workspace' | 'user', id: string): string {
 }
 
 /** The role a statement runs as, and the role its connection logged in as. */
-interface RoleRow {
-  who: string;
-  login: string;
-}
+type RoleRow = { who: string; login: string };
 
 /** The connection's roles from a statement that selects them, or why there's no answer. */
 async function connectionRoles(tx: Tx, statement: SQL): Promise<Partial<RoleRow>> {
