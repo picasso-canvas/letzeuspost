@@ -1,15 +1,20 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 
 // Screen and end-to-end tests (§17), run by `pnpm check:services` and CI's services job: the component gallery (the
-// built Storybook) and the app at 1440 px, light and dark. New screenshots land in tests/visual/output (CI uploads
-// them); approved baselines live in tests/visual/approved, which only Athena writes, after Iris and Zeus approve the
-// first ones (Q11).
+// built Storybook), the app at 1440 px, light and dark, and the features' journeys that drive the app (§19). New
+// screenshots land in tests/visual/output (CI uploads them); approved baselines live in tests/visual/approved, which
+// only Athena writes, after Iris and Zeus approve the first ones (Q11).
 const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } };
 const ci = process.env.CI !== undefined;
+// A feature's journey (§19) is a Playwright spec, `tests/journeys/<feature>.spec.ts` or under `<feature>/`; a
+// feature with no screen has a Vitest one (`<feature>.int.test.ts`), which this config never runs (#172).
+const journeySpecs =
+  existsSync('tests/journeys') &&
+  readdirSync('tests/journeys', { recursive: true }).some((f) => String(f).endsWith('.spec.ts'));
 // A server starts only when its tests exist, so `pnpm check:services` passes before the first screen tests land.
 const gallery = existsSync('tests/gallery');
-const app = existsSync('tests/e2e');
+const app = existsSync('tests/e2e') || journeySpecs;
 
 export default defineConfig({
   outputDir: 'tests/visual/output',
@@ -33,6 +38,13 @@ export default defineConfig({
       name: 'app-dark',
       testDir: 'tests/e2e',
       use: { ...desktop, colorScheme: 'dark', baseURL: 'http://localhost:3000' },
+    },
+    {
+      // Journeys check what a person can do, not how it looks: one theme is enough (#172).
+      name: 'journeys',
+      testDir: 'tests/journeys',
+      testMatch: '**/*.spec.ts',
+      use: { ...desktop, colorScheme: 'light', baseURL: 'http://localhost:3000' },
     },
   ],
   webServer: [
