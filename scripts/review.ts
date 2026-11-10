@@ -9,6 +9,7 @@
 // checkout with a minimal environment and no .env reads, and records each verdict with record-review.ts. Summaries go
 // to pr-<n>/out/<stamp>/, outside the bundle, so each reviewer starts fresh. A builder's code is only read here.
 import { execFile, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { appendFileSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -489,23 +490,25 @@ export interface ReviewDeps {
     reviewer: Asker;
     first: string | null;
     second: string | null;
+    /** The first answer's hash, to audit it without its transcript (Cerberus F3 on #165). */
+    firstSha256: string;
   }) => void;
   env: NodeJS.ProcessEnv;
 }
 
 /**
- * A malformed answer worth asking again (#158): its first line isn't the verdict, but read from its verdict line on, it
- * is a pass (a reviewer that wrote a line before `VERDICT: pass`). Anything that signals a block (a `VERDICT: block`
- * line, a `[blocking]` finding, Cerberus's should-fix) or has no verdict line at all is recorded as it is, a block, so
- * a retry can never turn a block into a pass. verdict.ts's rules don't change.
+ * A malformed answer worth asking again (#158): its first line isn't the verdict, and nowhere in it is there a block
+ * signal (a `VERDICT … block` line, a `[blocking]` finding, Cerberus's should-fix), as verdict.ts reads them. Anything
+ * that signals a block is recorded as it is, a block, so a retry can never turn a block into a pass. verdict.ts's rules
+ * don't change.
  */
 export function retryWorthy(summary: string, reviewer: Asker): boolean {
   const lines = summary.split(/\r\n?|\n/);
   const first = lines.find((line) => line.trim() !== '' && !/^`{3,}\w*$/.test(line.trim()));
   if (first !== undefined && /^VERDICT: (?:pass|block)$/.test(first.trim())) return false;
-  const at = lines.findIndex((line) => /^VERDICT: (?:pass|block)$/.test(line.trim()));
-  if (at === -1) return false;
-  return parseVerdict(lines.slice(at).join('\n'), reviewer).verdict === 'pass';
+  // The whole answer read as if it followed a pass, so verdict.ts finds a block signal anywhere in it, above the verdict
+  // line or below (Argus F1, Cerberus F1 on #165). An answer with no verdict line and no block signal is retried too.
+  return parseVerdict(`VERDICT: pass\n${summary}`, reviewer).verdict === 'pass';
 }
 
 /** The reason a reviewer run failed, from its output: never the command line, which holds local paths. */
@@ -612,8 +615,20 @@ export async function runReviews(
           console.error(
             `${reviewer}'s answer had a line before its verdict: asking once more in a fresh session.`,
           );
-          const second = await ask();
-          deps.logRetry?.({ pr, reviewer, first: out.sessionId, second: second.sessionId });
+          const first = out;
+          let second: typeof out | undefined;
+          try {
+            second = await ask();
+          } finally {
+            // Logged whether or not the second session finishes (Argus F6 on #165).
+            deps.logRetry?.({
+              pr,
+              reviewer,
+              first: first.sessionId,
+              second: second?.sessionId ?? null,
+              firstSha256: createHash('sha256').update(first.text).digest('hex'),
+            });
+          }
           out = second;
         }
         summary = out.text;

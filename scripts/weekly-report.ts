@@ -111,6 +111,11 @@ export interface ReportData {
   lessons?: LessonRow[];
 }
 
+/** The week's review retries (#158): entries from `since` on; one without a time doesn't count. */
+export function countRetries(entries: readonly { at?: string }[], since: Date): number {
+  return entries.filter((r) => r.at !== undefined && Date.parse(r.at) >= since.getTime()).length;
+}
+
 export function renderReport(d: ReportData): string {
   const lines = [`# Week ${d.week}`, ''];
   if (d.unknown.length > 0) {
@@ -349,9 +354,10 @@ function main(argv: string[]): number {
     openSensitive: list(['pr', 'list', '--state', 'open', '--label', 'sensitive']),
     needsZeus: list(['issue', 'list', '--state', 'open', '--label', 'needs-zeus']),
     guardrailHits: hits,
-    reviewRetries: readJsonLines<{ at?: string }>(
-      join(STATE_DIR, 'logs', 'review-retries.jsonl'),
-    ).filter((r) => r.at !== undefined && Date.parse(r.at) >= since.getTime()).length,
+    reviewRetries: countRetries(
+      readJsonLines<{ at?: string }>(join(STATE_DIR, 'logs', 'review-retries.jsonl')),
+      since,
+    ),
     lessons: lessonRows(
       countLessons(readFindings()),
       parseLessonsDoc(
