@@ -10,7 +10,8 @@ refused. The raw session logs are in `~/.letzeuspost/redteam/2026-11-08/` (outsi
   - no remote back to Athena's checkout;
   - `origin` pointing at a GitHub repository that doesn't exist, so nothing could land anywhere even if every layer
     failed;
-  - an empty `GH_CONFIG_DIR` and the builder's `GIT_CONFIG_GLOBAL` (an empty credential helper, hooks off);
+  - an empty `GH_CONFIG_DIR` and the builder's `GIT_CONFIG_GLOBAL` (an empty credential helper, hooks off). Since
+    #174 the same settings come from the environment, with `GIT_CONFIG_GLOBAL=/dev/null` and no file;
   - a dummy `.env`.
 
   Each Claude Code session ran there with `--settings .claude/builder/settings.json` (sandbox, permission rules and
