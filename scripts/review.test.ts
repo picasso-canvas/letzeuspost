@@ -17,6 +17,42 @@ describe('planReviewers', () => {
     expect(planReviewers(['packages/ui/a.ts'], null, CONFIG)).toEqual(['argus', 'cerberus']);
   });
 
+  it("adds Cerberus for a PR into staging that touches a risky area, as the gate's staging rule needs (#185)", () => {
+    const into = (cerberusList: string | null) => ({ base: 'staging', cerberusList });
+    expect(
+      planReviewers(
+        ['packages/storage/src/a.ts'],
+        'packages/auth/**',
+        CONFIG,
+        into('packages/storage/**'),
+      ),
+    ).toEqual(['argus', 'cerberus']);
+    expect(
+      planReviewers(
+        ['packages/core/a.ts'],
+        'packages/auth/**',
+        CONFIG,
+        into('packages/storage/**'),
+      ),
+    ).toEqual(['argus']);
+    // Without the list on main, every PR into staging gets Cerberus, as the gate says.
+    expect(planReviewers(['packages/core/a.ts'], 'packages/auth/**', CONFIG, into(null))).toEqual([
+      'argus',
+      'cerberus',
+    ]);
+    // Already asked for a sensitive PR: once, not twice.
+    expect(
+      planReviewers(['packages/auth/a.ts'], 'packages/auth/**', CONFIG, into('packages/auth/**')),
+    ).toEqual(['argus', 'cerberus']);
+    // A PR into main keeps main's rule.
+    expect(
+      planReviewers(['packages/storage/src/a.ts'], 'packages/auth/**', CONFIG, {
+        base: 'main',
+        cerberusList: 'packages/storage/**',
+      }),
+    ).toEqual(['argus']);
+  });
+
   it('adds Iris for UI paths once enabled', () => {
     const iris = { ...CONFIG, requireIris: true };
     expect(planReviewers(['packages/ui/a.ts'], '', iris)).toEqual(['argus', 'iris']);

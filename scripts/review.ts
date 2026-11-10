@@ -18,7 +18,7 @@ import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
 import { parsePatternList } from './lib/paths.ts';
 import { changedFilesFromGit, parseConfig, REPO } from './merge-gate/collect.ts';
 import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
-import { requiredReviewers, tierOf } from './merge-gate/evaluate.ts';
+import { requiredReviewers, stagingReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
 import { gatedIntoStaging, taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
@@ -45,16 +45,30 @@ const ENV_ALLOW = [
   'TMPDIR',
 ];
 
+/**
+ * Who reviews: main's rule (Argus; Cerberus when sensitive; Iris for UI once enabled), and for a PR into staging also
+ * Cerberus whenever the gate's staging rule needs him: a risky area on `.github/cerberus-paths.txt`, or every PR while
+ * main has no such list (#185).
+ */
 export function planReviewers(
   changedFiles: readonly string[],
   sensitiveList: string | null,
   config: { requireIris: boolean; uiPaths: string[] },
+  pr: { base: string; cerberusList: string | null } = { base: 'main', cerberusList: null },
 ): Asker[] {
-  return requiredReviewers(
+  const reviewers: Asker[] = requiredReviewers(
     changedFiles,
     sensitiveList === null ? null : parsePatternList(sensitiveList),
     config,
   );
+  const risky =
+    pr.base === 'staging' &&
+    stagingReviewers(
+      changedFiles,
+      pr.cerberusList === null ? null : parsePatternList(pr.cerberusList),
+    ).includes('cerberus');
+  if (risky && !reviewers.includes('cerberus')) reviewers.splice(1, 0, 'cerberus');
+  return reviewers;
 }
 
 /** Renames inside the bundle: files Claude Code could load as memory or settings, and files that hide others from search. */
@@ -189,6 +203,8 @@ export interface Bundle {
   bundle: string;
   outDir: string;
   sha: string;
+  /** The PR's base branch (`staging` or `main`), which decides who reviews (#185). */
+  base: string;
   changed: string[];
   /** Why the PR's files couldn't be laid out safely (a name collision, an unreadable entry, a huge blob), or null. */
   refusal: string | null;
@@ -335,7 +351,7 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
       taskHistory(taskPrs(subjects), gh, gatedIntoStaging(stateDir)),
     );
   }
-  return { bundle, outDir, sha, changed, refusal };
+  return { bundle, outDir, sha, base, changed, refusal };
 }
 
 /**
@@ -701,6 +717,7 @@ async function main(argv: string[]): Promise<number> {
     where.changed,
     sensitiveList,
     parseConfig(show('.github/merge-gate.json')),
+    { base: where.base, cerberusList: show('.github/cerberus-paths.txt') },
   );
   const tier = tierOf(
     where.changed,
