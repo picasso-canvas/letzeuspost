@@ -340,66 +340,75 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
  * tasks.md for a batch (#132): each task PR's own commits from GitHub, in parent-link order (not GitHub's list order,
  * which can follow dates a builder sets), with the files each one touched, so reviewers can see each task's tests came
  * before its code. A merge is checked: if its other parents are on `staging` or `main` it's an update from the base,
- * whose files aren't the task's; otherwise it's listed with its files and a warning. Titles, subjects and file names
- * are the builder's: one printable line each.
+ * and only the files that differ from every parent are listed (git's combined diff), since only those can hold code
+ * added in the merge itself; otherwise it's listed with all its files and a warning. Titles, subjects and file names
+ * are the builder's: one printable line each. A failed `gh` call stops the run; a reply that can't be read marks its
+ * task with a fixed reason. Reviewers have no GitHub access, so every gap tells them to block.
  */
 export function taskHistory(
   prs: readonly number[],
   gh: (args: string[]) => string,
   gated: ReadonlySet<number>,
 ): string {
+  const BLOCK = "reviewers can't see the rest, so block until Athena lists them";
   const inBase = (commit: string) =>
     ['staging', 'main'].some((base) =>
       ['behind', 'identical'].includes(
         gh(['api', `repos/${REPO}/compare/${base}...${commit}`, '--jq', '.status']).trim(),
       ),
     );
-  // GitHub pages a commit's files (300 a page) and stops at 3000.
-  const filesOf = (commit: string) => {
-    const pages = JSON.parse(
-      gh(['api', `repos/${REPO}/commits/${commit}`, '--paginate', '--slurp']),
-    ) as { files?: { filename: string }[] }[];
-    return pages.flatMap((page) => (page.files ?? []).map(({ filename }) => filename));
-  };
+  // `--slurp` puts every page in one array.
+  const pages = (path: string) => read(gh(['api', path, '--paginate', '--slurp'])) as unknown[];
+  const names = (list: unknown[]) => [
+    ...new Set(
+      (list as { files?: { filename: string }[] }[]).flatMap((page) =>
+        (page.files ?? []).map(({ filename }) => filename),
+      ),
+    ),
+  ];
+  // GitHub pages a commit's files (300 a page) against its first parent and stops at 3000; a comparison stops at 300.
+  const filesOf = (commit: string) => names(pages(`repos/${REPO}/commits/${commit}`));
+  const filesSince = (parent: string, commit: string) =>
+    names(pages(`repos/${REPO}/compare/${parent}...${commit}`));
   const task = (pr: number): string => {
-    const { title } = JSON.parse(gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'title'])) as {
+    const { title } = read(gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'title'])) as {
       title: string;
     };
     const listed = (
-      JSON.parse(
-        gh([
-          'api',
-          `repos/${REPO}/pulls/${String(pr)}/commits?per_page=100`,
-          '--paginate',
-          '--slurp',
-        ]),
-      ) as unknown[]
+      pages(`repos/${REPO}/pulls/${String(pr)}/commits?per_page=100`) as unknown[][]
     ).flat() as { sha: string; parents: { sha: string }[]; commit: { message: string } }[];
     // GitHub stops a PR's commit list at 250, whatever the paging.
     const count = Number(
       gh(['api', `repos/${REPO}/pulls/${String(pr)}`, '--jq', '.commits']).trim(),
     );
+    if (!Number.isInteger(count)) throw new UnreadableReply();
     const notes = [
       ...(gated.has(pr) ? [] : [' (not merged into staging by the gate: unverified)']),
     ];
     const lines = parentOrder(listed).map(({ sha, parents, commit }) => {
       const head = `- \`${sha.slice(0, 7)}\` ${safeName(commit.message.split('\n')[0] ?? '')}`;
-      const merge = parents.length > 1;
-      if (merge && parents.slice(1).every(({ sha: parent }) => inBase(parent)))
-        return `${head} (a merge from the base; its files aren't the task's)`;
+      const list = (files: string[]) => files.map((name) => `\`${safeName(name)}\``).join(', ');
       const files = filesOf(sha);
-      const shown = files.map((name) => `\`${safeName(name)}\``).join(', ');
-      const warning = `${merge ? ' (a merge NOT from the base: check it)' : ''}${
-        files.length >= 3000
-          ? " (GitHub lists only a commit's first 3000 files: check the rest)"
-          : ''
-      }`;
-      return shown === '' ? `${head}${warning}` : `${head}${warning} — ${shown}`;
+      const capped =
+        files.length >= 3000 ? ` (GitHub lists only a commit's first 3000 files: ${BLOCK})` : '';
+      const merge = parents.length > 1;
+      if (merge && parents.slice(1).every(({ sha: parent }) => inBase(parent))) {
+        const others = parents.slice(1).map(({ sha: parent }) => filesSince(parent, sha));
+        const own = files.filter((name) => others.every((other) => other.includes(name)));
+        const comparedAll = others.some((other) => other.length >= 300)
+          ? ` (GitHub compares at most 300 files: ${BLOCK})`
+          : '';
+        return own.length === 0
+          ? `${head} (a merge from the base; no file differs from every parent)${capped}${comparedAll}`
+          : `${head} (a merge from the base; these files differ from every parent: check them for code added in the merge)${capped}${comparedAll} — ${list(own)}`;
+      }
+      const warning = `${merge ? ' (a merge NOT from the base: check it)' : ''}${capped}`;
+      return files.length === 0 ? `${head}${warning}` : `${head}${warning} — ${list(files)}`;
     });
     const short =
       listed.length < count
         ? [
-            `Only ${String(listed.length)} of PR #${String(pr)}'s ${String(count)} commits are listed (GitHub's limit): check the rest on GitHub.`,
+            `Only ${String(listed.length)} of PR #${String(pr)}'s ${String(count)} commits are listed (GitHub's limit): ${BLOCK}.`,
             '',
           ]
         : [];
@@ -414,9 +423,10 @@ export function taskHistory(
     try {
       return task(pr);
     } catch (error) {
-      // A reply that isn't what GitHub's API returns: say so, so a reviewer checks by hand rather than trusting a gap.
-      const reason = error instanceof Error ? error.message : String(error);
-      return `## PR #${String(pr)}\n\nCouldn't list PR #${String(pr)}'s commits (${safeName(reason.split('\n')[0] ?? '')}): check them on GitHub before passing the batch.`;
+      // Only a reply that can't be read is marked here, with a fixed reason (never the command line); a failed gh call
+      // (a rate limit, auth, the network) stops the run, so no bundle goes out with a task missing.
+      if (!(error instanceof UnreadableReply)) throw error;
+      return `## PR #${String(pr)}\n\nCouldn't list PR #${String(pr)}'s commits: GitHub's reply couldn't be read. Reviewers can't see them, so block until Athena lists them.`;
     }
   });
   return [
@@ -427,6 +437,17 @@ export function taskHistory(
     '',
     ...sections.flatMap((section) => [section, '']),
   ].join('\n');
+}
+
+/** A GitHub reply tasks.md can't read: its task is marked, the rest of the batch is still listed. */
+class UnreadableReply extends Error {}
+
+function read(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new UnreadableReply();
+  }
 }
 
 /** Commits in parent-link order: each after every parent of it in the list; ties keep the list's order. */
