@@ -1,0 +1,147 @@
+// Feature batches (§19, Zeus 2026-11-10, #139): one feature open at a time on `staging`; its tasks build in parallel,
+// and its batch into `main` opens when every one of them is on `staging` and its journey test is no longer marked as
+// expected to fail, or as a part when `staging` outgrows the size cap. Follow-ups of a merged batch, and harness
+// tasks, run alongside. Dispatch and batch.ts gather the facts; these functions decide.
+
+/** An issue as dispatch and batch.ts read it (its labels and milestone are Athena's; its body is Athena's text). */
+export interface TaskIssue {
+  number: number;
+  labels: string[];
+  milestone: string | null;
+  body: string;
+}
+
+export const BATCH_LINES = 1500;
+
+/** The feature a task belongs to, from its `feature:<slug>` label; two labels are an error. */
+export function featureOf(labels: readonly string[]): string | null {
+  const features = labels
+    .filter((l) => l.startsWith('feature:'))
+    .map((l) => l.slice('feature:'.length));
+  if (features.length > 1) throw new Error(`two features (${features.join(', ')})`);
+  return features[0] ?? null;
+}
+
+/** The batch PR a follow-up names on its **Follow-up of:** line, or null. */
+export function followUpOf(body: string): number | null {
+  const n = /^\*\*Follow-up of:\*\*\s*#(\d+)/m.exec(body)?.[1];
+  return n === undefined ? null : Number(n);
+}
+
+/** A follow-up of a batch already merged into main: it rides whatever batch is open (Zeus, 2026-11-10, on #142). */
+function isFollowUp(task: TaskIssue, isMergedBatch: (pr: number) => boolean): boolean {
+  const of = followUpOf(task.body);
+  return task.labels.includes('follow-up') && of !== null && isMergedBatch(of);
+}
+
+/**
+ * Why dispatch must refuse this task, or null. `active` holds the other dispatched tasks whose issues are still open
+ * (on `staging`, or with a builder working on them).
+ */
+export function dispatchRefusal(
+  task: TaskIssue,
+  active: readonly TaskIssue[],
+  isMergedBatch: (pr: number) => boolean,
+): string | null {
+  let feature: string | null;
+  try {
+    feature = featureOf(task.labels);
+  } catch (error) {
+    return `#${String(task.number)} has ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (feature === null) {
+    if (task.labels.includes('follow-up'))
+      return isFollowUp(task, isMergedBatch)
+        ? null
+        : `#${String(task.number)} is labelled follow-up but its **Follow-up of:** line names no batch PR merged into main`;
+    if (task.milestone === 'H0 Harness') return null;
+    return `#${String(task.number)} has no feature:<slug> label: Athena labels it first (§19)`;
+  }
+  const open = new Map<string, number[]>();
+  for (const other of active) {
+    if (other.number === task.number) continue;
+    let theirs: string | null;
+    try {
+      theirs = featureOf(other.labels);
+    } catch {
+      return `#${String(other.number)}, already dispatched, has two features: Athena fixes its labels first`;
+    }
+    if (theirs !== null && theirs !== feature)
+      open.set(theirs, [...(open.get(theirs) ?? []), other.number]);
+  }
+  const [other, numbers] = [...open.entries()][0] ?? [];
+  if (other === undefined) return null;
+  return `feature "${other}" is open (${(numbers ?? []).map((n) => `#${String(n)}`).join(', ')}): #${String(task.number)} of feature "${feature}" waits until its batch merges`;
+}
+
+/** Whether the feature's journey test (`tests/journeys/<feature>.*`) still carries an expected-failure mark. */
+export function journeyMarked(
+  files: readonly { path: string; text: string }[],
+  feature: string,
+): boolean {
+  return files.some(
+    ({ path, text }) =>
+      path.startsWith(`tests/journeys/${feature}.`) && /\b(?:it\.fails|test\.fail)\s*\(/.test(text),
+  );
+}
+
+/**
+ * Whether the batch is due. `onStaging` are the task issues the gate merged into `staging` since `main`;
+ * `featureTasks` are the open feature's open task issues, wherever they are.
+ */
+export function featureBatch(input: {
+  onStaging: readonly number[];
+  issues: Readonly<Record<number, TaskIssue>>;
+  featureTasks: readonly number[];
+  journeyMarked: boolean;
+  lines: number;
+}): { due: boolean; feature: string | null; reason: string } {
+  if (input.onStaging.length === 0)
+    return { due: false, feature: null, reason: 'staging holds no task' };
+  const features = [
+    ...new Set(
+      input.onStaging
+        .map((n) => input.issues[n])
+        .map((issue) => (issue === undefined ? null : featureOf(issue.labels)))
+        .filter((f): f is string => f !== null),
+    ),
+  ];
+  if (features.length > 1)
+    return {
+      due: false,
+      feature: null,
+      reason: `staging holds two features: ${features.join(', ')}`,
+    };
+  const feature = features[0] ?? null;
+  const list = (ns: readonly number[]) => ns.map((n) => `#${String(n)}`).join(', ');
+  if (feature === null)
+    return {
+      due: true,
+      feature: null,
+      reason: `staging holds only follow-ups (${list(input.onStaging)})`,
+    };
+  if (input.lines >= BATCH_LINES)
+    return {
+      due: true,
+      feature,
+      reason: `staging is ${String(input.lines)} changed lines ahead: a part of feature "${feature}"`,
+    };
+  const missing = input.featureTasks.filter((n) => !input.onStaging.includes(n));
+  if (missing.length > 0)
+    return {
+      due: false,
+      feature,
+      reason: `feature "${feature}" still needs ${list(missing)} on staging`,
+    };
+  if (input.journeyMarked)
+    return {
+      due: false,
+      feature,
+      reason: `feature "${feature}"'s journey test is still marked as expected to fail`,
+    };
+  return {
+    due: true,
+    feature,
+    reason: `every task of feature "${feature}" is on staging (${list(input.featureTasks)})`,
+  };
+}

@@ -19,6 +19,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -31,6 +32,8 @@ import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { requireFindingIds } from './lib/handover-checks.ts';
+import { dispatchRefusal, type TaskIssue } from './lib/features.ts';
+import { taskIssue } from './batch.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
 import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
@@ -210,6 +213,71 @@ function isRegularFile(path: string): boolean {
 const USAGE =
   'usage: node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--fresh] [--dry-run]';
 
+/**
+ * Why the task must wait for the open feature, or null: the other tasks dispatched and still open (on `staging`, or
+ * with a builder on them) set which feature is open.
+ */
+function featureRule(issue: number): string | null {
+  const open = (
+    JSON.parse(
+      run('gh', [
+        'issue',
+        'list',
+        '-R',
+        REPO,
+        '--state',
+        'open',
+        '--label',
+        'build-task',
+        '--limit',
+        '500',
+        '--json',
+        'number,labels,milestone,body',
+      ]),
+    ) as {
+      number: number;
+      labels: { name: string }[];
+      milestone: { title: string } | null;
+      body: string;
+    }[]
+  ).map((i): TaskIssue => ({
+    number: i.number,
+    labels: i.labels.map((l) => l.name),
+    milestone: i.milestone?.title ?? null,
+    body: i.body,
+  }));
+  const task = open.find((i) => i.number === issue) ?? taskIssue(issue);
+  let records: string[];
+  try {
+    records = readdirSync(join(STATE_DIR, 'dispatch'));
+  } catch {
+    records = [];
+  }
+  const dispatched = new Set(
+    records
+      .map((f) => /^(\d+)\.json$/.exec(f)?.[1])
+      .filter((n) => n !== undefined)
+      .map(Number),
+  );
+  return dispatchRefusal(
+    task,
+    open.filter((i) => dispatched.has(i.number)),
+    isMergedBatch,
+  );
+}
+
+/** A batch PR (`staging` into `main`) that has merged: what a follow-up must name. */
+function isMergedBatch(pr: number): boolean {
+  try {
+    const view = JSON.parse(
+      run('gh', ['pr', 'view', String(pr), '-R', REPO, '--json', 'state,baseRefName,headRefName']),
+    ) as { state: string; baseRefName: string; headRefName: string };
+    return view.state === 'MERGED' && view.baseRefName === 'main' && view.headRefName === 'staging';
+  } catch {
+    return false; // not a PR at all
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   let args: Args;
   try {
@@ -234,6 +302,12 @@ async function main(argv: string[]): Promise<number> {
   ) as { title: string; body: string; state: string; labels: { name: string }[] };
   if (view.state !== 'OPEN' || !view.labels.some((l) => l.name === 'build-task')) {
     console.error(`#${String(issue)} isn't an open build-task issue.`);
+    return 1;
+  }
+  // One feature open at a time (§19, Zeus 2026-11-10, #139); follow-ups of a merged batch and harness tasks run alongside.
+  const featureRefusal = featureRule(issue);
+  if (featureRefusal !== null) {
+    console.error(`Refused: ${featureRefusal}.`);
     return 1;
   }
   const remoteBranches = headsFrom(
