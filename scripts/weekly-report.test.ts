@@ -3,6 +3,9 @@ import {
   auditMain,
   isoWeek,
   countRetries,
+  estimateMinutes,
+  monthDays,
+  monthEstimate,
   renderReport,
   type LogEntry,
   type MainCommit,
@@ -305,5 +308,74 @@ describe('renderReport: batches by feature (#139)', () => {
       guardrailHits: {},
     });
     expect(text).toContain('| #160 | [Batch] 5 tasks (feature: data) | sensitive |');
+  });
+});
+
+describe('estimateMinutes (#160)', () => {
+  it('bills each run as its whole minutes, at least one, the way GitHub bills a one-job workflow', () => {
+    expect(
+      estimateMinutes([
+        { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:00:17Z' },
+        { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:02:01Z' },
+        { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:00:00Z' },
+        { started: 'bad', updated: '2026-11-10T08:00:00Z' },
+      ]),
+    ).toBe(5);
+  });
+
+  it('shows the month so far against the free minutes', () => {
+    const text = renderReport({
+      week: '2026-W46',
+      merges: [],
+      titles: {},
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+      actionsMinutes: { month: '2026-11', minutes: 1234 },
+    });
+    expect(text).toContain(
+      'Actions minutes this month (2026-11, estimated from run times): about 1234 of the 2,000 free.',
+    );
+  });
+});
+
+describe("the month's minutes, a day at a time (Argus F1 on #168)", () => {
+  it('lists every day of the month up to today, so no query nears the 1,000-run cap', () => {
+    expect(monthDays(new Date('2026-11-03T10:00:00Z'))).toEqual([
+      '2026-11-01',
+      '2026-11-02',
+      '2026-11-03',
+    ]);
+  });
+
+  it('adds the days up, and says "at least" when a day reached the cap', () => {
+    const run = { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:01:30Z' };
+    expect(
+      monthEstimate([
+        { runs: [run, run], total: 2 },
+        { runs: [run], total: 1 },
+      ]),
+    ).toEqual({
+      minutes: 6,
+      capped: false,
+    });
+    expect(monthEstimate([{ runs: [run], total: 1200 }])).toEqual({ minutes: 2, capped: true });
+  });
+
+  it('shows "at least" in the report when capped', () => {
+    const text = renderReport({
+      week: '2026-W46',
+      merges: [],
+      titles: {},
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+      actionsMinutes: { month: '2026-11', minutes: 1234, capped: true },
+    });
+    expect(text).toContain('at least 1234 of the 2,000 free');
   });
 });
