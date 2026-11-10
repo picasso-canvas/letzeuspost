@@ -19,6 +19,7 @@ import { changedFilesFromGit, parseConfig, REPO } from './merge-gate/collect.ts'
 import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
 import { requiredReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
+import { gatedIntoStaging, taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
@@ -324,7 +325,153 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
     join(bundle, 'comments.json'),
     JSON.stringify({ conversation, reviewComments }, null, 2),
   );
+  if (base === 'main' && branch === 'staging') {
+    // A batch: the gate squash-merges each task PR into staging, so history.patch shows one commit per task (#132).
+    const subjects = git(['log', '--first-parent', '--format=%s', `origin/${base}..${sha}`]);
+    writeFileSync(
+      join(bundle, 'tasks.md'),
+      taskHistory(taskPrs(subjects), gh, gatedIntoStaging(stateDir)),
+    );
+  }
   return { bundle, outDir, sha, changed, refusal };
+}
+
+/**
+ * tasks.md for a batch (#132): each task PR's own commits from GitHub, in parent-link order (not GitHub's list order,
+ * which can follow dates a builder sets), with the files each one touched, so reviewers can see each task's tests came
+ * before its code. A merge is checked: if its other parents are on `staging` or `main` it's an update from the base,
+ * and only the files that differ from every parent are listed (git's combined diff), since only those can hold code
+ * added in the merge itself; otherwise it's listed with all its files and a warning. Titles, subjects and file names
+ * are the builder's: one printable line each. A failed `gh` call stops the run; a reply that can't be read marks its
+ * task with a fixed reason. Reviewers have no GitHub access, so every gap tells them to block.
+ */
+export function taskHistory(
+  prs: readonly number[],
+  gh: (args: string[]) => string,
+  gated: ReadonlySet<number>,
+): string {
+  const BLOCK = "reviewers can't see the rest, so block until Athena lists them";
+  const inBase = (commit: string) =>
+    ['staging', 'main'].some((base) =>
+      ['behind', 'identical'].includes(
+        gh(['api', `repos/${REPO}/compare/${base}...${commit}`, '--jq', '.status']).trim(),
+      ),
+    );
+  // `--slurp` puts every page in one array.
+  const pages = (path: string) => read(gh(['api', path, '--paginate', '--slurp'])) as unknown[];
+  const names = (list: unknown[]) => [
+    ...new Set(
+      (list as { files?: { filename: string }[] }[]).flatMap((page) =>
+        (page.files ?? []).map(({ filename }) => filename),
+      ),
+    ),
+  ];
+  // GitHub pages a commit's files (300 a page) against its first parent and stops at 3000; a comparison stops at 300.
+  const filesOf = (commit: string) => names(pages(`repos/${REPO}/commits/${commit}`));
+  const filesSince = (parent: string, commit: string) =>
+    names(pages(`repos/${REPO}/compare/${parent}...${commit}`));
+  const task = (pr: number): string => {
+    const { title } = read(gh(['pr', 'view', String(pr), '-R', REPO, '--json', 'title'])) as {
+      title: string;
+    };
+    const listed = (
+      pages(`repos/${REPO}/pulls/${String(pr)}/commits?per_page=100`) as unknown[][]
+    ).flat() as { sha: string; parents: { sha: string }[]; commit: { message: string } }[];
+    // GitHub stops a PR's commit list at 250, whatever the paging. A PR has at least one commit.
+    const reply = gh(['api', `repos/${REPO}/pulls/${String(pr)}`, '--jq', '.commits']).trim();
+    const count = Number(reply);
+    if (reply === '' || !Number.isInteger(count) || count < 1) throw new UnreadableReply();
+    const notes = [
+      ...(gated.has(pr) ? [] : [' (not merged into staging by the gate: unverified)']),
+    ];
+    const list = (files: string[]) => files.map((name) => `\`${safeName(name)}\``).join(', ');
+    // A merge from the base: only the files that differ from every parent can hold code added in the merge itself.
+    const baseMerge = (sha: string, others: string[], files: string[], capped: string) => {
+      const since = others.map((parent) => filesSince(parent, sha));
+      const own = files.filter((name) => since.every((other) => other.includes(name)));
+      const warnings = `${capped}${
+        since.some((other) => other.length >= 300)
+          ? ` (GitHub compares at most 300 files: ${BLOCK})`
+          : ''
+      }`;
+      return own.length === 0
+        ? ` (a merge from the base; no file differs from every parent)${warnings}`
+        : ` (a merge from the base; these files differ from every parent: check them for code added in the merge)${warnings} — ${list(own)}`;
+    };
+    const lines = parentOrder(listed).map(({ sha, parents, commit }) => {
+      const head = `- \`${sha.slice(0, 7)}\` ${safeName(commit.message.split('\n')[0] ?? '')}`;
+      const files = filesOf(sha);
+      const capped =
+        files.length >= 3000 ? ` (GitHub lists only a commit's first 3000 files: ${BLOCK})` : '';
+      const others = parents.slice(1).map(({ sha: parent }) => parent);
+      if (others.length > 0 && others.every(inBase))
+        return `${head}${baseMerge(sha, others, files, capped)}`;
+      const warning = `${others.length > 0 ? ' (a merge NOT from the base: check it)' : ''}${capped}`;
+      return files.length === 0 ? `${head}${warning}` : `${head}${warning} — ${list(files)}`;
+    });
+    const short =
+      listed.length < count
+        ? [
+            `Only ${String(listed.length)} of PR #${String(pr)}'s ${String(count)} commits are listed (GitHub's limit): ${BLOCK}.`,
+            '',
+          ]
+        : [];
+    return [
+      `## PR #${String(pr)}: ${safeName(title)}${notes.join('')}`,
+      '',
+      ...short,
+      ...lines,
+    ].join('\n');
+  };
+  const sections = prs.map((pr) => {
+    try {
+      return task(pr);
+    } catch (error) {
+      // Only a reply that can't be read is marked here, with a fixed reason (never the command line); a failed gh call
+      // (a rate limit, auth, the network) stops the run, so no bundle goes out with a task missing.
+      if (!(error instanceof UnreadableReply)) throw error;
+      return `## PR #${String(pr)}\n\nCouldn't list PR #${String(pr)}'s commits: GitHub's reply couldn't be read. Reviewers can't see them, so block until Athena lists them.`;
+    }
+  });
+  return [
+    "# The batch's task PRs, each with its own commits (oldest first, by parent links)",
+    '',
+    'The gate squash-merges each task PR into `staging`, so `history.patch` shows one commit per task. These are the',
+    "task PRs' own commits, as GitHub lists them, put in order by their parent links.",
+    '',
+    ...sections.flatMap((section) => [section, '']),
+  ].join('\n');
+}
+
+/** A GitHub reply tasks.md can't read: its task is marked, the rest of the batch is still listed. */
+class UnreadableReply extends Error {}
+
+function read(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new UnreadableReply();
+  }
+}
+
+/** Commits in parent-link order: each after every parent of it in the list; ties keep the list's order. */
+function parentOrder<T extends { sha: string; parents: { sha: string }[] }>(
+  commits: readonly T[],
+): T[] {
+  const inList = new Set(commits.map(({ sha }) => sha));
+  const placed = new Set<string>();
+  const ordered: T[] = [];
+  while (ordered.length < commits.length) {
+    const next = commits.find(
+      ({ sha, parents }) =>
+        !placed.has(sha) &&
+        parents.every(({ sha: parent }) => !inList.has(parent) || placed.has(parent)),
+    );
+    if (next === undefined) throw new Error("the task PR's commits have a parent loop");
+    placed.add(next.sha);
+    ordered.push(next);
+  }
+  return ordered;
 }
 
 export interface ReviewDeps {
