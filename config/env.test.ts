@@ -106,9 +106,7 @@ describe('loadEnv gives each process only its own settings', () => {
     ['SMTP_URL', 'smtps://smtp.example.com:465'],
     ['APP_URL', 'https://app.letzeuspost.com'],
     ['NEXT_DEPLOYMENT_ID', '4e2d495a1f7f91775cf938184066ffac48915a13'],
-    ['LZP_ENV', 'ci'],
-    ['LZP_ENV', 'staging'],
-    ['LZP_ENV', 'production'],
+    ['LZP_ENV', 'ci'], // staging and production need https:// addresses: tested below
   ])('accepts %s = %s', (setting, value) => {
     const env: Record<string, string> = loadEnv(readerOf(setting), { ...valid, [setting]: value });
     expect(env[setting]).toBe(value);
@@ -227,6 +225,7 @@ describe('the app and file-store addresses are https:// outside development and 
         ...secure,
         LZP_ENV: environment,
       });
+      expect(env.LZP_ENV).toBe(environment);
       expect(env.APP_URL).toBe(secure.APP_URL);
       expect(env.STORAGE_ENDPOINT).toBe(secure.STORAGE_ENDPOINT);
     }
@@ -250,6 +249,17 @@ describe('the app and file-store addresses are https:// outside development and 
       expect(printed).not.toContain(environment);
     },
   );
+
+  it('leaves the processes without these addresses alone in production', () => {
+    const source = { ...valid, LZP_ENV: 'production' };
+    expect(loadEnv('fetcher', source)).toEqual({ LZP_ENV: 'production' });
+    for (const name of ['migrate', 'seed'] as const) {
+      expect(loadEnv(name, source)).toEqual({
+        LZP_ENV: 'production',
+        DATABASE_OWNER_URL: valid.DATABASE_OWNER_URL,
+      });
+    }
+  });
 
   it('refuses http:// however its scheme is written', () => {
     const source = { ...valid, LZP_ENV: 'production', STORAGE_ENDPOINT: `HTTP://${LEAK}.example` };
