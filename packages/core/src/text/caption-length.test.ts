@@ -150,8 +150,8 @@ describe('captionLength: X (weighted)', () => {
   it('counts a bare domain inside text written without spaces as a link, and the text around it normally', () => {
     expect(captionLength('x', '请访问example.com了解更多')).toBe(6 + 23 + 8);
     expect(captionLength('x', 'ดูที่example.comเลย')).toBe(5 + 23 + 3);
-    expect(captionLength('x', '请访问example.com/path了解更多')).toBe(6 + 23 + 8);
-    expect(captionLength('x', '请访问https://example.com了解更多')).toBeGreaterThanOrEqual(6 + 23 + 8);
+    // A link with a scheme runs to the next space, the way X reads it.
+    expect(captionLength('x', '请访问https://example.com了解更多')).toBe(6 + 23);
     expect(captionLength('x', 'বাংলাexample.com')).toBe(5 + 23);
     expect(captionLength('x', 'example.com了解更多')).toBe(23 + 8);
   });
@@ -304,6 +304,10 @@ describe('captionLength: hostile input stays linear', () => {
     ['a link ending in 25,000 ()', `https://example.com/a${'()'.repeat(25_000)}`],
     ['http:// repeated to 100,000 characters', 'http://'.repeat(14_286).slice(0, 100_000)],
     ['a chain of comma-separated links', 'https://a.com,'.repeat(7_143).slice(0, 100_000)],
+    ['ASCII and Bangla letters alternating', 'aক'.repeat(50_000)],
+    ['ASCII and Bangla labels alternating between dots', 'a.ক.'.repeat(25_000)],
+    ['Chinese text with a dotted ASCII letter after each character', '请a.'.repeat(33_333)],
+    ['61-character labels and dots, past the domain cap', `${'a'.repeat(60)}.`.repeat(1_600)],
   ];
 
   describe.each(hostile)('%s', (_name, text) => {
