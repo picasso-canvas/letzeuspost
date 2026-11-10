@@ -458,7 +458,8 @@ describe('buildBundle for a batch (#132)', () => {
     titles: Record<number, string> = {},
     opts: {
       gated?: number[];
-      counts?: Record<number, number>;
+      /** What GitHub replies for a task PR's commit count. */
+      counts?: Record<number, number | string>;
       /** A merge's files against one of its other parents, keyed `<parent sha>...<merge sha>`. */
       compares?: Record<string, string[]>;
       /** gh calls that fail, as `execFileSync` fails on a rate limit. */
@@ -696,16 +697,24 @@ describe('buildBundle for a batch (#132)', () => {
     expect(tasks).not.toMatch(/JSON|Unexpected token|repos\//);
   });
 
-  it("marks a task whose commit count isn't a number, so a cut-short list can't pass unnoticed", () => {
-    const tasks = bundleFor(
-      { 93: restCommits([{ c: 'a', subject: 'test: a', parents: ['0'] }]) },
-      { [sha('a')]: ['a.test.ts'] },
-      [],
-      {},
-      { counts: { 93: Number.NaN } },
-    );
-    expect(tasks).toContain("Couldn't list PR #93's commits: GitHub's reply couldn't be read.");
-  });
+  it.each([
+    ['not a number', 'NaN'],
+    ['empty', ''],
+    ['zero', '0'],
+    ['negative', '-1'],
+  ])(
+    "marks a task whose commit count is %s, so a cut-short list can't pass unnoticed",
+    (_, count) => {
+      const tasks = bundleFor(
+        { 93: restCommits([{ c: 'a', subject: 'test: a', parents: ['0'] }]) },
+        { [sha('a')]: ['a.test.ts'] },
+        [],
+        {},
+        { counts: { 93: count } },
+      );
+      expect(tasks).toContain("Couldn't list PR #93's commits: GitHub's reply couldn't be read.");
+    },
+  );
 
   it('stops the review when a gh call fails, instead of writing a tasks.md with a task missing', () => {
     expect(() =>
