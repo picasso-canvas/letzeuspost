@@ -7,7 +7,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isEntryPoint } from './lib/entry.ts';
-import { STATE_DIR } from './merge-gate/reviews.ts';
+import { REVIEW_FILE, STATE_DIR } from './merge-gate/reviews.ts';
 
 /** The review checklist's finding types, in its order (a test keeps the two the same). */
 export const FINDING_TYPES = [
@@ -115,16 +115,17 @@ export function readFindings(stateDir = STATE_DIR): (Finding & { pr: number })[]
     if (!Number.isInteger(pr)) continue;
     for (const sha of list(join(root, prDir))) {
       for (const file of list(join(root, prDir, sha))) {
-        if (!/^(argus|cerberus|iris)-\d+-[0-9a-f]{8}\.json$/.test(file)) continue;
-        let summary: unknown;
+        // Reviews only: a red-team record is Athena's, and the record must say the reviewer its name does.
+        const named = REVIEW_FILE.exec(file)?.[1];
+        if (named === undefined || named === 'redteam') continue;
+        let record: { reviewer?: unknown; summary?: unknown };
         try {
-          ({ summary } = JSON.parse(readFileSync(join(root, prDir, sha, file), 'utf8')) as {
-            summary?: unknown;
-          });
+          record = JSON.parse(readFileSync(join(root, prDir, sha, file), 'utf8')) as typeof record;
         } catch {
           continue;
         }
-        if (typeof summary !== 'string') continue;
+        const { reviewer, summary } = record;
+        if (reviewer !== named || typeof summary !== 'string') continue;
         findings.push(...parseFindings(summary).map((f) => ({ ...f, pr })));
       }
     }
@@ -181,13 +182,13 @@ export function parseLessonsDoc(
   return rows;
 }
 
-/** The weekly report's lessons: each type found on 2 or more PRs, with its prevention, or none yet (untyped older findings aren't a type). */
+/** The weekly report's lessons: each type found on 2 or more PRs, with its prevention, or none yet (untyped older findings and mistyped ones aren't a type). */
 export function lessonRows(
   counts: readonly LessonCount[],
   doc: ReadonlyMap<string, { prevention: string; status: string }>,
 ): LessonRow[] {
   return counts
-    .filter((c) => c.prs.length >= 2 && c.type !== 'other')
+    .filter((c) => c.prs.length >= 2 && c.type !== 'other' && c.type !== 'unknown')
     .map((c) => ({
       ...c,
       prevention: doc.get(c.type)?.prevention ?? null,

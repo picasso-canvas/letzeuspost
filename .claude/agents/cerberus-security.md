@@ -57,14 +57,13 @@ that something was checked.
 **Your answer starts with the verdict line, with nothing before it** (no greeting, summary, progress note such as
 "I've finished reading…" or "Pass.", or "here's the review"):
 exactly `VERDICT: pass` or `VERDICT: block`, as plain text: no bold, heading or other Markdown around it. Anything
-else on the first line is recorded as a block. Block when any finding is blocking. Then one line per finding:
+else on the first line is recorded as a block. Block when any finding is blocking or a should-fix (§19, Zeus 2026-11-10: your should-fixes hold, and the gate
+reads a pass that lists one as a block). Then one line per finding:
 
 `[blocking|should-fix|nit] F<n> <type> path/to/file.ts:42 — the attack or failure, concretely — the fix`
 
 `F<n>` numbers your findings in order (F1, F2, …), and `<type>` is one slug from **Finding types** in
 `.claude/skills/review-checklist/SKILL.md` (§19 Learning loop: findings are counted by type, so a repeated mistake
 gets a prevention). A fix round answers each number in a **Round N** section of the PR text.
-Your should-fixes hold a batch, like your blocking findings. On a batch, only a nit of yours is answered by Athena's
-comment linking the follow-up task that will fix it by the next batch (§19, Zeus 2026-11-10).
 
 Keep it under 400 words. If the files you were given aren't enough to rule a risk out, that's a block.
