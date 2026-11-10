@@ -2,7 +2,7 @@ import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
-import type { OpenIssue } from '../lib/follow-ups.ts';
+import { wantsComments, type OpenIssue } from '../lib/follow-ups.ts';
 import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
@@ -284,8 +284,9 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   const mergedBatches = mergeLog
     .filter((e) => e.result === 'merged' && e.kind === 'batch' && typeof e.pr === 'number')
     .map((e) => e.pr as number);
-  // Every open issue's text (a planned task's follow-up item); a follow-up's comments in full, with their authors, for
-  // an exception. A list that reaches its limit may be cut off, and the gate refuses then (#170).
+  // Every open issue's text (a planned task's follow-up item); the comments, with their authors, of a follow-up and of a
+  // task with an unticked follow-up item, for an exception (Argus F2 in round 2 on #170). A list that reaches its limit
+  // may be cut off, and the gate refuses then (#170).
   const ISSUE_LIMIT = 1000;
   const listed = isBatch
     ? (JSON.parse(
@@ -306,7 +307,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   const openIssuesCutOff = listed.length >= ISSUE_LIMIT;
   const openIssues: OpenIssue[] = listed.map((i) => {
     const labels = i.labels.map((l) => l.name);
-    const comments = labels.includes('follow-up')
+    const comments = wantsComments(labels, i.body)
       ? (
           JSON.parse(gh(['issue', 'view', String(i.number), '-R', repo, '--json', 'comments'])) as {
             comments: { author: { login: string } | null; body: string }[];
@@ -315,12 +316,13 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       : [];
     return { number: i.number, labels, body: i.body, comments };
   });
-  const prComments: string[] = isBatch
+  // With their authors: only Zeus's account links a follow-up (Argus F1 in round 2 on #170).
+  const prComments: { author: string; body: string }[] = isBatch
     ? (
         JSON.parse(gh(['pr', 'view', String(pr), '-R', repo, '--json', 'comments'])) as {
-          comments: { body: string }[];
+          comments: { author: { login: string } | null; body: string }[];
         }
-      ).comments.map((c) => c.body)
+      ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body }))
     : [];
   const closingIssues: ClosingIssue[] = references.map(({ number, url }) => {
     if (!url.startsWith(issuePrefix))

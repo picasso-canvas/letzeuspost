@@ -81,7 +81,8 @@ export interface Facts {
   /** The open-issue list hit its limit (#170): the gate refuses rather than miss a follow-up. */
   openIssuesCutOff: boolean;
   mergedBatches: number[];
-  prComments: string[];
+  /** A batch PR's comments with their authors: only Zeus's account links a follow-up (#154). */
+  prComments: { author: string; body: string }[];
   labels: string[];
   checkRuns: CheckRun[];
   statuses: { context: string; state: string }[];
