@@ -110,6 +110,17 @@ describe('captionLength: X (weighted)', () => {
     expect(captionLength('x', 'https://a.com।https://b.com।')).toBe(23 + 1 + 23 + 1);
   });
 
+  it('counts a link whose scheme is in capitals, or mixed case, as a link', () => {
+    expect(captionLength('x', 'HTTPS://example.com/x')).toBe(23);
+    expect(captionLength('x', 'Http://example.com/x')).toBe(23);
+    expect(captionLength('x', 'see HTTPS://EXAMPLE.COM/X now')).toBe(4 + 23 + 4);
+  });
+
+  it('counts two links with capital schemes next to each other as two links', () => {
+    expect(captionLength('x', 'HTTPS://a.com,HTTPS://b.com')).toBe(23 + 1 + 23);
+    expect(captionLength('x', 'https://a.com/x).HTTP://b.com/y')).toBe(23 + 2 + 23);
+  });
+
   it('starts a link only at a word start', () => {
     expect(captionLength('x', 'x-example.com')).toBe(23);
     expect(captionLength('x', 'a'.repeat(64))).toBe(64);
