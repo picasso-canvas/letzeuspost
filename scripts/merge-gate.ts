@@ -51,8 +51,8 @@ function readJourneyReport(runId: number): Record<string, string> | null {
     } catch (error) {
       // No such artifact reads as none; any other failure stops the gate rather than drop a report (Argus F1 in round 2
       // on #171).
-      const stderr = String((error as { stderr?: unknown }).stderr ?? '');
-      if (stderr.includes('no artifact matches')) return null;
+      const { stderr } = error as { stderr?: unknown };
+      if (typeof stderr === 'string' && stderr.includes('no artifact matches')) return null;
       throw error;
     }
     const path = join(into, file);
