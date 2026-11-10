@@ -104,6 +104,14 @@ describe('the shadcn components', () => {
     ).toEqual([]);
   });
 
+  it('gives no button an invalid look: nobody approved one (#144)', () => {
+    // Zeus took the see-through red halo off the field on #74; no story shows an invalid button.
+    for (const variant of buttonVariantNames) {
+      const classes = classesOf(renderToStaticMarkup(<Button variant={variant}>Save</Button>));
+      expect(classes.filter((c) => c.includes('aria-invalid')), variant).toEqual([]);
+    }
+  });
+
   it("fills the primary button with the mockup's hover gold on hover, from the token", () => {
     const classes = classesOf(renderToStaticMarkup(<Button>Approve</Button>));
     expect(classes).toContain('hover:bg-primary-hover');
