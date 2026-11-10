@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAuthDb, type AuthDb } from './auth.ts';
 import { createDb, dbOnPool, type Db } from './db.ts';
 import { migrate } from './migrate.ts';
-import { invitation, member, workspace } from './schema.ts';
+import { invitation, member, user, workspace } from './schema.ts';
 
 const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
 const { DATABASE_URL: appUrl } = loadEnv('worker');
@@ -417,6 +417,61 @@ describe('exactly one Owner (§15)', () => {
       ),
     );
     expect(wrong.constraint).toBe('member_role_check');
+  });
+});
+
+describe('the platform-admin flag (§15)', () => {
+  it('is never set by the app role, on sign-up or by an update; only the owner role sets it', async () => {
+    // Sign-up and a profile update through Better Auth's handle, with the flag left alone, work as before.
+    const [signedUp] = await authDb.db
+      .insert(user)
+      .values({ name: `Signed up ${run}`, email: emailOf('signed-up') })
+      .returning({ id: user.id, isPlatformAdmin: user.isPlatformAdmin });
+    if (signedUp === undefined) throw new Error('sign-up inserted nothing');
+    expect(signedUp.isPlatformAdmin).toBe(false);
+    const renamed = await authDb.db
+      .update(user)
+      .set({ name: `Renamed ${run}`, updatedAt: new Date() })
+      .where(eq(user.id, signedUp.id))
+      .returning({ name: user.name });
+    expect(renamed).toEqual([{ name: `Renamed ${run}` }]);
+
+    // A request that slips the flag in is refused, whichever way it reaches the table.
+    const slipped = [
+      () =>
+        authDb.db.insert(user).values({
+          name: `Admin ${run}`,
+          email: emailOf('self-made-admin'),
+          isPlatformAdmin: true,
+        }),
+      () => authDb.db.update(user).set({ isPlatformAdmin: true }).where(eq(user.id, signedUp.id)),
+      () =>
+        db
+          .forWorkspace({ workspaceId: ids.a })
+          .transaction((tx) =>
+            tx.update(user).set({ isPlatformAdmin: true }).where(eq(user.id, ids.ownerA)),
+          ),
+    ];
+    for (const attempt of slipped) expect((await refusal(attempt())).code).toBe('42501');
+    const admins = await owner.query<{ n: number }>(
+      'select count(*)::int as n from "user" where is_platform_admin and email like $1',
+      [emailOf('%')],
+    );
+    expect(admins.rows).toEqual([{ n: 0 }]);
+
+    // The owner role (the seeds, #79) sets it, on a new person or an existing one ...
+    const zeus = await insertId(
+      'insert into "user" (name, email, is_platform_admin) values ($1, $2, true)',
+      [`Zeus ${run}`, emailOf('zeus')],
+    );
+    await owner.query('update "user" set is_platform_admin = true where id = $1', [signedUp.id]);
+    // ... and the app still updates an admin's profile, which leaves the flag as it is.
+    const zeusRenamed = await authDb.db
+      .update(user)
+      .set({ name: `Zeus renamed ${run}` })
+      .where(eq(user.id, zeus))
+      .returning({ isPlatformAdmin: user.isPlatformAdmin });
+    expect(zeusRenamed).toEqual([{ isPlatformAdmin: true }]);
   });
 });
 
