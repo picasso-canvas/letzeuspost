@@ -103,6 +103,7 @@ jobs:
             echo "EMAIL_FROM=noreply@letzeuspost.invalid"
             echo "APP_URL=http://localhost:3000"
             echo "NEXT_DEPLOYMENT_ID=ci-${GITHUB_SHA}"
+            echo "LZP_ENV=ci" # development and ci allow http:// addresses (#105, #187); this job runs on plain HTTP
           } >> "$GITHUB_ENV"
 
       # The roles Q4 settles (#18): the app logs in without BYPASSRLS and can't create tables; the owner can; a wrong

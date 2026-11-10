@@ -48,8 +48,12 @@ boundary** (checked on code.claude.com, 2026-11-06). The hard limits here come f
 ### 1. Identity and access
 
 - **Builders have no GitHub credential.** `scripts/dispatch.ts` starts each builder with `GH_TOKEN` and
-  `GITHUB_TOKEN` unset, an empty `GH_CONFIG_DIR`, git's credential helpers switched off (`GIT_CONFIG_NOSYSTEM=1` and a
-  `GIT_CONFIG_GLOBAL` file holding only the commit name, email and an empty `credential.helper`), `LZP_ROLE=builder`,
+  `GITHUB_TOKEN` unset, an empty `GH_CONFIG_DIR`, git's settings in the environment with no config file anywhere
+  (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, and `GIT_CONFIG_*` entries for the commit name and email,
+  an empty `credential.helper` and hooks off, #174), the sandbox and the Read rules denying reads of the operator's
+  git settings and credential stores in their usual places (`~/.gitconfig`, `~/.config/git/config`,
+  `~/.git-credentials`, `~/.config/git/credentials`, and the system `gitconfig` of `/etc`, Apple's CommandLineTools
+  and Homebrew; #179), `LZP_ROLE=builder`,
   and no GitHub host on the sandbox's network allowlist. A builder can't push, open or edit PRs, comment, label or
   merge, whatever command it tries (`gh`, `gh api`, `curl`, `git push`).
 - **No Docker socket and no shared `.git`.** A container is root-equivalent and could write anywhere on the Mac.
