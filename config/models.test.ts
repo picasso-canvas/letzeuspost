@@ -24,7 +24,10 @@ const section09Models = {
 // USD per million tokens, checked 2026-11-06 (§09).
 const section09Prices = { 'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2 } };
 
-const valid = () => ({ models: structuredClone(section09Models), prices: structuredClone(section09Prices) });
+const valid = () => ({
+  models: structuredClone(section09Models),
+  prices: structuredClone(section09Prices),
+});
 
 describe('config/models.ts', () => {
   it('holds the 11 AI tasks of §09, in its order', () => {
@@ -57,10 +60,8 @@ describe('config/models.ts', () => {
   describe('the schema refuses', () => {
     it('a task without an effort', () => {
       const config = valid();
-      const { effort: _effort, ...rest } = config.models.qc;
-      expect(
-        modelConfigSchema.safeParse({ ...config, models: { ...config.models, qc: rest } }).success,
-      ).toBe(false);
+      Reflect.deleteProperty(config.models.qc, 'effort');
+      expect(modelConfigSchema.safeParse(config).success).toBe(false);
     });
 
     it('an effort Opus 5.5 does not have', () => {
@@ -103,10 +104,8 @@ describe('config/models.ts', () => {
       negative.prices['claude-opus-5-5'].output = -1;
       expect(modelConfigSchema.safeParse(negative).success).toBe(false);
       const missing = valid();
-      const { cacheRead: _cacheRead, ...rest } = missing.prices['claude-opus-5-5'];
-      expect(
-        modelConfigSchema.safeParse({ ...missing, prices: { 'claude-opus-5-5': rest } }).success,
-      ).toBe(false);
+      Reflect.deleteProperty(missing.prices['claude-opus-5-5'], 'cacheRead');
+      expect(modelConfigSchema.safeParse(missing).success).toBe(false);
     });
   });
 });

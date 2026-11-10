@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { extraPack, globalDailyAiCap, plans, plansConfigSchema, type PlansConfig } from './plans.ts';
+import {
+  extraPack,
+  globalDailyAiCap,
+  plans,
+  plansConfigSchema,
+  type PlansConfig,
+} from './plans.ts';
 
 // Money units (§13 and Q16): dollars and every AI amount in integer micro-dollars, taka in integer poisha.
 const USD = 1_000_000;
@@ -30,6 +36,7 @@ const section02 = {
 const ceilings = { starter: [20, 15], agency: [75, 50], scale: [250, 125] } as const;
 
 const names = ['starter', 'agency', 'scale'] as const;
+const currencies = ['usd', 'bdt'] as const;
 
 const valid = (): PlansConfig => structuredClone({ plans, extraPack, globalDailyAiCap });
 
@@ -70,7 +77,7 @@ describe('config/plans.ts', () => {
   it.each(names)(
     '%s: annual is 10 × the monthly price (2 months free), in both currencies',
     (name) => {
-      for (const currency of ['usd', 'bdt'] as const) {
+      for (const currency of currencies) {
         const price = plans[name].prices[currency];
         expect(price.annual).toBe(10 * price.monthly);
       }
@@ -85,7 +92,7 @@ describe('config/plans.ts', () => {
 
   it("follows §02's ceiling rule: each plan's posts at a pessimistic $0.20, plus 25%", () => {
     for (const name of names) {
-      for (const { postsPerMonth, aiCeiling } of Object.values(plans[name].prices)) {
+      for (const { postsPerMonth, aiCeiling } of currencies.map((c) => plans[name].prices[c])) {
         expect(aiCeiling).toBe(ceilingFor(postsPerMonth));
       }
     }
@@ -105,11 +112,10 @@ describe('config/plans.ts', () => {
   it('stores every amount as a whole number of the smallest unit', () => {
     const amounts = [
       ...names.flatMap((name) =>
-        Object.values(plans[name].prices).flatMap(({ monthly, annual, aiCeiling }) => [
-          monthly,
-          annual,
-          aiCeiling,
-        ]),
+        currencies.flatMap((currency) => {
+          const { monthly, annual, aiCeiling } = plans[name].prices[currency];
+          return [monthly, annual, aiCeiling];
+        }),
       ),
       extraPack.price.usd,
       extraPack.price.bdt,
@@ -149,20 +155,17 @@ describe('config/plans.ts', () => {
 
     it('a plan without a currency, or with another currency', () => {
       const missing = valid();
-      const { bdt: _bdt, ...usdOnly } = missing.plans.starter.prices;
-      const withoutBdt = {
-        ...missing,
-        plans: { ...missing.plans, starter: { ...missing.plans.starter, prices: usdOnly } },
-      };
-      expect(plansConfigSchema.safeParse(withoutBdt).success).toBe(false);
+      Reflect.deleteProperty(missing.plans.starter.prices, 'bdt');
+      expect(plansConfigSchema.safeParse(missing).success).toBe(false);
       const extra = valid();
       Object.assign(extra.plans.starter.prices, { eur: extra.plans.starter.prices.usd });
       expect(plansConfigSchema.safeParse(extra).success).toBe(false);
     });
 
     it('a missing global daily cap', () => {
-      const { globalDailyAiCap: _cap, ...rest } = valid();
-      expect(plansConfigSchema.safeParse(rest).success).toBe(false);
+      const config = valid();
+      Reflect.deleteProperty(config, 'globalDailyAiCap');
+      expect(plansConfigSchema.safeParse(config).success).toBe(false);
     });
   });
 });
