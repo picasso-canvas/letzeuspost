@@ -377,32 +377,36 @@ export function taskHistory(
     const listed = (
       pages(`repos/${REPO}/pulls/${String(pr)}/commits?per_page=100`) as unknown[][]
     ).flat() as { sha: string; parents: { sha: string }[]; commit: { message: string } }[];
-    // GitHub stops a PR's commit list at 250, whatever the paging.
-    const count = Number(
-      gh(['api', `repos/${REPO}/pulls/${String(pr)}`, '--jq', '.commits']).trim(),
-    );
-    if (!Number.isInteger(count)) throw new UnreadableReply();
+    // GitHub stops a PR's commit list at 250, whatever the paging. A PR has at least one commit.
+    const reply = gh(['api', `repos/${REPO}/pulls/${String(pr)}`, '--jq', '.commits']).trim();
+    const count = Number(reply);
+    if (reply === '' || !Number.isInteger(count) || count < 1) throw new UnreadableReply();
     const notes = [
       ...(gated.has(pr) ? [] : [' (not merged into staging by the gate: unverified)']),
     ];
+    const list = (files: string[]) => files.map((name) => `\`${safeName(name)}\``).join(', ');
+    // A merge from the base: only the files that differ from every parent can hold code added in the merge itself.
+    const baseMerge = (sha: string, others: string[], files: string[], capped: string) => {
+      const since = others.map((parent) => filesSince(parent, sha));
+      const own = files.filter((name) => since.every((other) => other.includes(name)));
+      const warnings = `${capped}${
+        since.some((other) => other.length >= 300)
+          ? ` (GitHub compares at most 300 files: ${BLOCK})`
+          : ''
+      }`;
+      return own.length === 0
+        ? ` (a merge from the base; no file differs from every parent)${warnings}`
+        : ` (a merge from the base; these files differ from every parent: check them for code added in the merge)${warnings} — ${list(own)}`;
+    };
     const lines = parentOrder(listed).map(({ sha, parents, commit }) => {
       const head = `- \`${sha.slice(0, 7)}\` ${safeName(commit.message.split('\n')[0] ?? '')}`;
-      const list = (files: string[]) => files.map((name) => `\`${safeName(name)}\``).join(', ');
       const files = filesOf(sha);
       const capped =
         files.length >= 3000 ? ` (GitHub lists only a commit's first 3000 files: ${BLOCK})` : '';
-      const merge = parents.length > 1;
-      if (merge && parents.slice(1).every(({ sha: parent }) => inBase(parent))) {
-        const others = parents.slice(1).map(({ sha: parent }) => filesSince(parent, sha));
-        const own = files.filter((name) => others.every((other) => other.includes(name)));
-        const comparedAll = others.some((other) => other.length >= 300)
-          ? ` (GitHub compares at most 300 files: ${BLOCK})`
-          : '';
-        return own.length === 0
-          ? `${head} (a merge from the base; no file differs from every parent)${capped}${comparedAll}`
-          : `${head} (a merge from the base; these files differ from every parent: check them for code added in the merge)${capped}${comparedAll} — ${list(own)}`;
-      }
-      const warning = `${merge ? ' (a merge NOT from the base: check it)' : ''}${capped}`;
+      const others = parents.slice(1).map(({ sha: parent }) => parent);
+      if (others.length > 0 && others.every(inBase))
+        return `${head}${baseMerge(sha, others, files, capped)}`;
+      const warning = `${others.length > 0 ? ' (a merge NOT from the base: check it)' : ''}${capped}`;
       return files.length === 0 ? `${head}${warning}` : `${head}${warning} — ${list(files)}`;
     });
     const short =
