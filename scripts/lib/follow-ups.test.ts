@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { followUpRefusals, type OpenIssue } from './follow-ups.ts';
+import { followUpRefusals, wantsComments, type OpenIssue } from './follow-ups.ts';
 
 const ZEUS = 'picasso-canvas';
 const issue = (
@@ -18,7 +18,7 @@ const base = {
   closes: [69, 71, 144],
   mergedBatches: [130],
   openIssues: [] as OpenIssue[],
-  comments: [] as string[],
+  comments: [] as { author: string; body: string }[],
   zeusLogin: ZEUS,
   listCutOff: false,
 };
@@ -55,7 +55,7 @@ describe('followUpRefusals (#154)', () => {
     expect(followUpRefusals({ ...base, openIssues: [excused] })).toEqual([]);
   });
 
-  it("takes only Zeus's own record of an exception for this very follow-up (Argus F2, Cerberus F2 on #170)", () => {
+  it("takes only Zeus's own record that grants an exception for this very follow-up (Argus F2, Cerberus F2 on #170; Cerberus F1, Argus F3 in round 2)", () => {
     const record = (author: string, body: string) =>
       issue(148, ['follow-up'], '**Follow-up of:** #130', [{ author, body }]);
     for (const wrong of [
@@ -64,6 +64,15 @@ describe('followUpRefusals (#154)', () => {
         '🦉 Athena: Zeus decided (2026-11-12, in chat): exception granted for #148.',
       ),
       record(ZEUS, '🦉 Athena: Zeus decided (2026-11-12, in chat): no exception for #148.'),
+      record(ZEUS, '🦉 Athena: Zeus decided (2026-11-12, in chat): no exception granted for #148.'),
+      record(
+        ZEUS,
+        '🦉 Athena: Zeus decided (2026-11-12, in chat): exception granted for #148? No, it lands first.',
+      ),
+      record(
+        ZEUS,
+        '🦉 Athena: Zeus decided (2026-11-12, in chat): it lands first, so the exception granted for #148 earlier is withdrawn.',
+      ),
       record(ZEUS, '🦉 Athena: Zeus decided (2026-11-12, in chat): exception granted for #149.'),
       record(
         ZEUS,
@@ -86,6 +95,40 @@ describe('followUpRefusals (#154)', () => {
     expect(followUpRefusals({ ...base, openIssues: [ticked] })).toEqual([]);
   });
 
+  it("takes Zeus's exception on a planned task's follow-up item too (Argus F2 in round 2 on #170)", () => {
+    const planned = issue(72, ['build-task'], '- [ ] a migration test (follow-up of #130)', [
+      {
+        author: ZEUS,
+        body: '🦉 Athena: Zeus decided (2026-11-12, in chat): exception granted for #72.',
+      },
+    ]);
+    expect(followUpRefusals({ ...base, openIssues: [planned] })).toEqual([]);
+  });
+
+  it('reads every batch a follow-up item names, and refuses one it cannot read (Cerberus F2, Argus F4 in round 2 on #170)', () => {
+    const refusals = (line: string) =>
+      followUpRefusals({
+        ...base,
+        mergedBatches: [130, 146],
+        openIssues: [issue(72, ['build-task'], line)],
+      });
+    expect(refusals('- [ ] a test (follow-up of #130) (follow-up of #146)')).toHaveLength(2);
+    expect(refusals('- [ ] a test (follow-up of #165, #130)')).toEqual([
+      '#72\'s Done-when item "a test (follow-up of #165, #130)" is a follow-up of batch #130 and still unticked',
+    ]);
+    expect(refusals('- [ ] a test (follow-up of PR #146)')).toHaveLength(1);
+    expect(refusals('- [ ] a test (follow-up of the Data batch)')).toEqual([
+      '#72\'s Done-when item "a test (follow-up of the Data batch)" says it is a follow-up but names no batch PR (#N): Athena names it',
+    ]);
+  });
+
+  it('wants the comments of a follow-up issue and of a task with an unticked follow-up item, for an exception', () => {
+    expect(wantsComments(['follow-up'], 'x')).toBe(true);
+    expect(wantsComments(['build-task'], '- [ ] a test (follow-up of #130)')).toBe(true);
+    expect(wantsComments(['build-task'], '- [x] a test (follow-up of #130)')).toBe(false);
+    expect(wantsComments(['build-task'], '**Goal:** x')).toBe(false);
+  });
+
   it('finds a follow-up item however it is bulleted, indented or capitalised (Argus F4, Cerberus F3 on #170)', () => {
     for (const line of [
       '  - [ ] a test (follow-up of #130)',
@@ -104,7 +147,7 @@ describe('followUpRefusals (#154)', () => {
     ]);
   });
 
-  it('checks each `Follow-up: #N` line on this batch names a follow-up of this batch', () => {
+  it("checks each `Follow-up: #N` line from Zeus's account names a follow-up of this batch (Argus F1 in round 2 on #170)", () => {
     const real = issue(171, ['build-task', 'follow-up'], '**Follow-up of:** #170');
     const wrong = issue(172, ['build-task'], '**Goal:** x');
     const elsewhere = issue(173, ['follow-up'], '**Follow-up of:** #130');
@@ -114,8 +157,13 @@ describe('followUpRefusals (#154)', () => {
         mergedBatches: [],
         openIssues: [real, wrong, elsewhere],
         comments: [
-          "🦉 Athena: Argus F2's nit.\nFollow-up: #171\nFollow-ups: #172, #173, #999",
-          'A note that mentions follow-up #172 in prose is not a link.',
+          {
+            author: ZEUS,
+            body: "🦉 Athena: Argus F2's nit.\nFollow-up: #171\nFollow-ups: #172, #173, #999",
+          },
+          { author: ZEUS, body: 'A note that mentions follow-up #172 in prose is not a link.' },
+          // Another account's line is no answer, so the gate doesn't vouch for it either way.
+          { author: 'someone-else', body: 'Follow-up: #998' },
         ],
       }),
     ).toEqual([

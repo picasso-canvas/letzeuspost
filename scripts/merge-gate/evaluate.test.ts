@@ -475,7 +475,9 @@ describe('evaluate: the batch PR from staging into main', () => {
     expect(evaluate(refused).items[1]?.detail).toContain(
       '#148, a follow-up of batch #130, is still open',
     );
-    expect(failedIds(batch({ prComments: ['Follow-up: #999'] }))).toEqual([2]);
+    expect(
+      failedIds(batch({ prComments: [{ author: 'picasso-canvas', body: 'Follow-up: #999' }] })),
+    ).toEqual([2]);
     // A follow-up is a batch's business: a PR into staging or a harness PR isn't held by one.
     expect(
       evaluate(facts({ openIssues: [open], mergedBatches: [130] })).items[1]?.detail,

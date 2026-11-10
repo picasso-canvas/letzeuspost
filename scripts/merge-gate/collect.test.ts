@@ -325,12 +325,16 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     const gh = fakeGh({
       'pr view': batchView,
       'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
-        comments: [{ body: 'Follow-up: #148' }],
+        comments: [{ author: { login: 'picasso-canvas' }, body: 'Follow-up: #148' }],
       }),
       'issue list': JSON.stringify([
         { number: 148, labels: [{ name: 'follow-up' }], body: '**Follow-up of:** #130' },
-        { number: 72, labels: [{ name: 'build-task' }], body: 'x' },
+        { number: 72, labels: [{ name: 'build-task' }], body: '- [ ] a test (follow-up of #130)' },
+        { number: 73, labels: [{ name: 'build-task' }], body: 'x' },
       ]),
+      'issue view 72 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [],
+      }),
       'issue view 148 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
         comments: [{ author: { login: 'picasso-canvas' }, body: 'a note' }],
       }),
@@ -351,7 +355,8 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
       }),
     );
     expect(f.mergedBatches).toEqual([130]);
-    // A follow-up's comments come in full, with their authors; other open issues need only their text.
+    // A follow-up's comments come in full, with their authors, and so do a planned task's with an unticked follow-up
+    // item (Argus F2 in round 2); other open issues need only their text.
     expect(f.openIssues).toEqual([
       {
         number: 148,
@@ -359,10 +364,18 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
         body: '**Follow-up of:** #130',
         comments: [{ author: 'picasso-canvas', body: 'a note' }],
       },
-      { number: 72, labels: ['build-task'], body: 'x', comments: [] },
+      {
+        number: 72,
+        labels: ['build-task'],
+        body: '- [ ] a test (follow-up of #130)',
+        comments: [],
+      },
+      { number: 73, labels: ['build-task'], body: 'x', comments: [] },
     ]);
+    expect(calls).toContain('issue view 72 -R picasso-canvas/letzeuspost --json comments');
+    expect(calls).not.toContain('issue view 73 -R picasso-canvas/letzeuspost --json comments');
     expect(f.openIssuesCutOff).toBe(false);
-    expect(f.prComments).toEqual(['Follow-up: #148']);
+    expect(f.prComments).toEqual([{ author: 'picasso-canvas', body: 'Follow-up: #148' }]);
 
     calls.length = 0;
     const other = collectFacts(
