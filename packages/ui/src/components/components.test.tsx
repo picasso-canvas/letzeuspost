@@ -94,14 +94,21 @@ describe('the shadcn components', () => {
     const classes = classesOf(renderToStaticMarkup(<Button variant="destructive">Delete</Button>));
     for (const cls of ['border-destructive', 'bg-card', 'text-destructive', 'hover:bg-secondary'])
       expect(classes).toContain(cls);
-    // No other colour for the resting border, and no see-through red in a theme (the invalid halo is shared).
+    // No other colour for the resting border, and no see-through red in a theme.
     expect(
-      classes.filter(
-        (c) =>
-          !c.includes('aria-invalid') &&
-          /border-(border|input)|border-destructive\/|dark:border/.test(c),
-      ),
+      classes.filter((c) => /border-(border|input)|border-destructive\/|dark:border/.test(c)),
     ).toEqual([]);
+  });
+
+  it('gives no button an invalid look: nobody approved one (#144)', () => {
+    // Zeus took the see-through red halo off the field on #74; no story shows an invalid button.
+    for (const variant of buttonVariantNames) {
+      const classes = classesOf(renderToStaticMarkup(<Button variant={variant}>Save</Button>));
+      expect(
+        classes.filter((c) => c.includes('aria-invalid')),
+        variant,
+      ).toEqual([]);
+    }
   });
 
   it("fills the primary button with the mockup's hover gold on hover, from the token", () => {
