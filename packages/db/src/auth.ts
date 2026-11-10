@@ -45,9 +45,27 @@ function authPool(url: string): pg.Pool {
   return openPool(authUrl(url));
 }
 
+/** A role in startup options, as `-c role=…` or `--role=…`, any case (Postgres's setting names are). */
+const ROLE_OPTION = /(?:-c|--)\s*role\s*=/i;
+
+/**
+ * The auth handle's URL: DATABASE_URL with the role added after the startup options already in it (a
+ * `statement_timeout`, say), so none is lost (Argus F2, Cerberus F2 on #189). A URL whose options set a role already,
+ * or that has `options` twice (pg reads only the last), is refused: which role a connection ends up with must not
+ * depend on the order Postgres reads them in.
+ */
 export function authUrl(url: string): string {
   const withRole = new URL(url);
-  withRole.searchParams.set('options', `-c role=${AUTH_ROLE}`);
+  const given = withRole.searchParams.getAll('options');
+  if (given.length > 1) throw new Error('database: refused: DATABASE_URL has options twice');
+  const [options] = given;
+  if (options !== undefined && ROLE_OPTION.test(options)) {
+    throw new Error(
+      "database: refused: DATABASE_URL's options set a role; the auth handle sets its own",
+    );
+  }
+  const role = `-c role=${AUTH_ROLE}`;
+  withRole.searchParams.set('options', options === undefined ? role : `${options} ${role}`);
   return withRole.href;
 }
 
