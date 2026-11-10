@@ -210,7 +210,7 @@ export function evaluate(f: Facts): GateResult {
       checks.push(
         `the journey report of the services run on this commit can't be read: ${f.journey.unreadable}`,
       );
-    else checks.push(...journeyProof(f.journey.entries, f.journey.feature));
+    else checks.push(...journeyProof(f.journey.entries, f.journey.feature, f.journey.files));
   }
   add(3, 'Checks green', checks);
 

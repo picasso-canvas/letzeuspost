@@ -28,7 +28,10 @@ export interface CollectDeps {
   listReviewedShas?: (pr: number) => string[];
   /** The gate's merge log (`merges.jsonl`); a batch is checked against it. Missing: nothing counts as gated. */
   readMergeLog?: () => StagingLogEntry[];
-  /** The `journeys` artifact of an Actions run, as file name → text, or null when it has none (#156). */
+  /**
+   * An Actions run's journey reports (#156), as file name → text: `vitest.json` from `journeys-vitest`, and
+   * `playwright.json` from `journeys-playwright` when the end-to-end step ran. Null when there's no Vitest report.
+   */
   readJourneyReport?: (runId: number) => Record<string, string> | null;
   /** A Claude Code transcript by session id, or null. */
   readTranscript?: (sessionId: string) => string | null;
@@ -405,10 +408,15 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
         const files =
           runId === undefined ? null : (deps.readJourneyReport?.(Number(runId)) ?? null);
         const parsed = files === null ? null : parseJourneyReport(files);
+        // The head commit's journey files: one no runner reported holds the batch (Argus F1 in round 2 on #171).
+        const journeyFiles = deps
+          .git(['ls-tree', '-r', '--name-only', sha, '--', 'tests/journeys/'])
+          .split('\n')
+          .filter((line) => line !== '');
         journey =
           typeof parsed === 'string'
-            ? { feature, entries: null, unreadable: parsed }
-            : { feature, entries: parsed };
+            ? { feature, entries: null, files: journeyFiles, unreadable: parsed }
+            : { feature, entries: parsed, files: journeyFiles };
       }
     }
   }

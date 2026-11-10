@@ -48,26 +48,41 @@ export function toJourneyEntries(modules: Iterable<ReporterModule>, root: string
   return entries;
 }
 
-/** Why the report doesn't prove the feature's journey passed, or nothing when it does. */
-export function journeyProof(entries: readonly JourneyEntry[] | null, feature: string): string[] {
+const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+
+/**
+ * Why the report doesn't prove the feature's journey passed, or nothing when it does. `files` are the journey files at
+ * the head commit: a test file of the feature that no runner reported (one Playwright doesn't run yet, or a name the
+ * services job doesn't include) holds the batch too (Argus F1 in round 2 on #171).
+ */
+export function journeyProof(
+  entries: readonly JourneyEntry[] | null,
+  feature: string,
+  files: readonly string[] = [],
+): string[] {
   if (entries === null)
     return [
       "the services run on this commit left no journey report, so the journey can't be shown to pass",
     ];
-  const own = entries.filter(
-    (e) =>
-      e.file.startsWith(`tests/journeys/${feature}.`) ||
-      e.file.startsWith(`tests/journeys/${feature}/`),
-  );
+  const ofFeature = (file: string) =>
+    file.startsWith(`tests/journeys/${feature}.`) || file.startsWith(`tests/journeys/${feature}/`);
+  const own = entries.filter((e) => ofFeature(e.file));
   if (own.length === 0)
     return [`no journey test of feature "${feature}" ran in the services run on this commit`];
-  return own.flatMap((e) => {
+  const unreported = files
+    .filter((f) => ofFeature(f) && TEST_FILE.test(f) && !own.some((e) => e.file === f))
+    .map(
+      (f) =>
+        `journey test file ${f} has no result in the services run on this commit: no runner ran it`,
+    );
+  const results = own.flatMap((e) => {
     const which = `journey test "${e.name}" (${e.file})`;
     if (e.fails) return [`${which} is marked as expected to fail`];
     if (e.mode !== 'run' && e.mode !== 'only') return [`${which} didn't run (${e.mode})`];
     if (e.state !== 'passed') return [`${which} ${e.state === 'skipped' ? "didn't run" : e.state}`];
     return [];
   });
+  return [...results, ...unreported];
 }
 
 /** What Playwright's reporter knows of one test when it ends (only what's read here). */

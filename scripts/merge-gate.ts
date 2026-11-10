@@ -48,8 +48,12 @@ function readJourneyReport(runId: number): Record<string, string> | null {
     const into = join(dir, artifact);
     try {
       run('gh', ['run', 'download', String(runId), '-R', REPO, '-n', artifact, '-D', into]);
-    } catch {
-      return null;
+    } catch (error) {
+      // No such artifact reads as none; any other failure stops the gate rather than drop a report (Argus F1 in round 2
+      // on #171).
+      const stderr = String((error as { stderr?: unknown }).stderr ?? '');
+      if (stderr.includes('no artifact matches')) return null;
+      throw error;
     }
     const path = join(into, file);
     return existsSync(path) && lstatSync(path).isFile() ? readFileSync(path, 'utf8') : null;

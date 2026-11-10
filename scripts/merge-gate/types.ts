@@ -84,7 +84,13 @@ export interface Facts {
    * `entries` is null when there's no report, and `unreadable` says why one can't be read. Null for any other PR, a
    * batch with no feature, and a part of a feature whose other tasks are still open.
    */
-  journey: { feature: string; entries: JourneyEntry[] | null; unreadable?: string } | null;
+  journey: {
+    feature: string;
+    entries: JourneyEntry[] | null;
+    /** Every file under `tests/journeys/` at the head commit, so an unreported journey test is caught. */
+    files: string[];
+    unreadable?: string;
+  } | null;
   /** For a batch that is a part of a feature: the feature's open build tasks it doesn't close, which the gate prints. */
   journeyPart: { feature: string; open: number[] } | null;
   /** For a batch: the open issues, the batch PRs merged into main, and this PR's comments (#154, follow-ups). */
