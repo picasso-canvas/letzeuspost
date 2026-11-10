@@ -149,7 +149,7 @@ interface MailpitSearch {
 }
 
 describe('the Data feature: two workspaces stay apart through every layer', () => {
-  it.fails(
+  it(
     'keeps A and B apart in the database, jobs, email, files and config',
     { timeout: 90_000 },
     async () => {
