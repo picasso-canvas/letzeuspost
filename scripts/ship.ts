@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { athenaGitEnv } from './lib/athena-git.ts';
 import { assertCleanMain } from './lib/clean-main.ts';
+import { handoverRefusals } from './lib/handover-checks.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, takeHandover } from './lib/handover.ts';
 import { historyRefusals, parseRawDiff, parseRevList, shipRefusals } from './lib/protected.ts';
@@ -48,6 +49,8 @@ export interface DispatchRecord {
   shippedAt?: string;
   /** The random `LZP_DISPATCH` value in the builder's environment, to find its leftover processes. */
   marker?: string;
+  /** A fix round's finding ids (`Argus F1`), from Athena's findings file: its PR text must answer each (#138). */
+  findings?: string[];
 }
 
 export function parseDispatchRecord(text: string, issue: number): DispatchRecord {
@@ -59,7 +62,13 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     typeof r.baseSha !== 'string' ||
     !/^[0-9a-f]{40}$/.test(r.baseSha) ||
     typeof r.dispatchedAt !== 'string' ||
-    (r.marker !== undefined && (typeof r.marker !== 'string' || !/^[0-9a-f]{32}$/.test(r.marker)))
+    (r.marker !== undefined &&
+      (typeof r.marker !== 'string' || !/^[0-9a-f]{32}$/.test(r.marker))) ||
+    (r.findings !== undefined &&
+      (!Array.isArray(r.findings) ||
+        !r.findings.every(
+          (id: unknown) => typeof id === 'string' && /^(Argus|Cerberus|Iris) F\d+$/.test(id),
+        )))
   ) {
     throw new Error(`the dispatch record for #${String(issue)} is malformed`);
   }
@@ -70,6 +79,7 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     dispatchedAt: r.dispatchedAt,
     ...(r.shippedAt ? { shippedAt: r.shippedAt } : {}),
     ...(r.marker ? { marker: r.marker } : {}),
+    ...(r.findings ? { findings: r.findings } : {}),
   };
 }
 
@@ -250,6 +260,18 @@ function main(argv: string[]): number {
 
   // Any entry named branch.bundle, even a link, goes the bundle's way and its checks.
   if (!hasEntry(lzp, 'branch.bundle')) {
+    // A text-only round still names its commit (the branch's, unchanged) and answers its findings.
+    const textRefusals = handoverRefusals({
+      prText,
+      issueBody: issueBody(issue),
+      changedFiles: [],
+      headSha: record.baseSha,
+      findings: record.findings ?? [],
+    });
+    if (textRefusals.length > 0) {
+      console.error(`Refused to ship #${String(issue)}:\n- ${textRefusals.join('\n- ')}`);
+      return 1;
+    }
     const target = textOnlyTarget(
       openPr(),
       remoteHead(run('git', ['ls-remote', 'origin', `refs/heads/${branch}`]), branch),
@@ -310,7 +332,17 @@ function main(argv: string[]): number {
           )
         : [],
   }));
-  const refusals = [...shipRefusals(changes), ...historyRefusals(commits)];
+  const refusals = [
+    ...shipRefusals(changes),
+    ...historyRefusals(commits),
+    ...handoverRefusals({
+      prText,
+      issueBody: issueBody(issue),
+      changedFiles: changes.map(({ path }) => path),
+      headSha: sha,
+      findings: record.findings ?? [],
+    }),
+  ];
   if (refusals.length > 0) {
     console.error(
       `Refused to ship #${String(issue)} (${sha.slice(0, 7)}):\n- ${refusals.join('\n- ')}`,
@@ -384,6 +416,11 @@ function main(argv: string[]): number {
   }
   console.log(`Shipped as PR #${String(pr)}${flagNote(flags)}.`);
   return 0;
+}
+
+/** The issue Athena wrote: its Areas say which files the task may change. */
+function issueBody(issue: number): string {
+  return run('gh', ['issue', 'view', String(issue), '-R', REPO, '--json', 'body', '--jq', '.body']);
 }
 
 function hasEntry(dir: string, name: string): boolean {

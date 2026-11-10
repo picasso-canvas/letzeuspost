@@ -43,6 +43,8 @@ export interface ClosingIssue {
   labels: string[];
   /** Boxes in the issue's own Done-when list, which Athena wrote. */
   doneWhenBoxes: number;
+  /** The paths and globs on the issue's **Areas:** line (#138); null when it can't be read. */
+  areas: string[] | null;
 }
 
 /** Everything the gate looks at. Only check runs, `main`'s files and the local record count as proof. */
@@ -69,6 +71,10 @@ export interface Facts {
   ungatedStaging: string[];
   /** Task issues the merge log shows were merged into staging (a batch may close only these). */
   gatedIssues: number[];
+  /** Commits the Done-when evidence may name: the head, and any reviewed commit it only merged main into (#138). */
+  evidenceShas: string[];
+  /** The previous review round's numbered findings (`Argus F1`), which a Round section must answer (#138). */
+  earlierFindingIds: string[];
   labels: string[];
   checkRuns: CheckRun[];
   statuses: { context: string; state: string }[];

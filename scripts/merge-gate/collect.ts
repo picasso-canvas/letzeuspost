@@ -2,6 +2,7 @@ import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
+import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
@@ -42,6 +43,61 @@ function reviewsFor(pr: number, sha: string, base: string, deps: CollectDeps): R
     changeId: (commit) => changeId(deps.git, commit, base),
     verify: (r, commit) => verify(r, pr, commit, deps),
   });
+}
+
+const NAMES: Record<Exclude<ReviewRecord['reviewer'], 'redteam'>, string> = {
+  argus: 'Argus',
+  cerberus: 'Cerberus',
+  iris: 'Iris',
+};
+
+/**
+ * For the hand-over checks on Athena's PRs (#138): the commits the evidence may name (the head, and any reviewed commit
+ * whose change is the same, as carry.ts decides), and the numbered findings of the latest review round before them.
+ */
+function handoverFacts(
+  pr: number,
+  sha: string,
+  base: string,
+  deps: CollectDeps,
+): { evidenceShas: string[]; earlierFindingIds: string[] } {
+  const reviewed = deps.listReviewedShas?.(pr) ?? [];
+  const idOf = (commit: string): string | null => {
+    try {
+      return changeId(deps.git, commit, base);
+    } catch {
+      return null;
+    }
+  };
+  const head = idOf(sha);
+  const evidenceShas = [
+    sha,
+    ...reviewed.filter((commit) => commit !== sha && head !== null && idOf(commit) === head),
+  ];
+  const earlier = reviewed
+    .filter((commit) => !evidenceShas.includes(commit))
+    .map((commit) => deps.readReviews(pr, commit).filter(isReview))
+    .filter((records) => records.length > 0)
+    .sort((a, b) => latest(b) - latest(a))[0];
+  const earlierFindingIds = [
+    ...new Set(
+      (earlier ?? []).flatMap((r) =>
+        numberedFindings(r.summary).map((n) => `${NAMES[r.reviewer]} F${String(n)}`),
+      ),
+    ),
+  ];
+  return { evidenceShas, earlierFindingIds };
+}
+
+/** A reviewer's record, not Athena's red-team one. */
+function isReview(
+  r: ReviewRecord,
+): r is ReviewRecord & { reviewer: Exclude<ReviewRecord['reviewer'], 'redteam'> } {
+  return r.reviewer !== 'redteam';
+}
+
+function latest(records: readonly ReviewRecord[]): number {
+  return Math.max(...records.map((r) => Date.parse(r.at)));
 }
 
 /** The gate re-checks every runner-made review against its transcript; anything that doesn't check out isn't verified. */
@@ -224,16 +280,18 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     .map((e) => e.issue as number);
   const closingIssues: ClosingIssue[] = references.map(({ number, url }) => {
     if (!url.startsWith(issuePrefix))
-      return { number, inRepo: false, labels: [], doneWhenBoxes: 0 };
+      return { number, inRepo: false, labels: [], doneWhenBoxes: 0, areas: null };
     const issue = JSON.parse(
       gh(['issue', 'view', String(number), '-R', repo, '--json', 'labels,body']),
     ) as { labels: { name: string }[]; body: string };
     const boxes = doneWhenBoxes(issue.body);
+    const areas = parseAreas(issue.body);
     return {
       number,
       inRepo: true,
       labels: issue.labels.map((label) => label.name),
       doneWhenBoxes: boxes.ticked + boxes.unticked,
+      areas: 'patterns' in areas ? areas.patterns : null,
     };
   });
 
@@ -274,6 +332,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     changes,
     ungatedStaging,
     gatedIssues,
+    ...handoverFacts(pr, sha, base, deps),
     labels: view.labels.map((label) => label.name),
     checkRuns,
     statuses,

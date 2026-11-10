@@ -5,7 +5,8 @@ import { bodyHash, doneWhenBoxes, evaluate } from './evaluate.ts';
 import type { Facts, ReviewRecord } from './types.ts';
 
 const SHA = 'a'.repeat(40);
-const BODY = 'Closes #42\n\n**Done when**\n- [x] it works\n- [x] tests pass\n\nAgent: Daedalus';
+const BODY =
+  'Closes #42\n\n**Done when**\n- [x] it works at `aaaaaaa`\n- [x] tests pass\n\nAgent: Daedalus';
 
 function review(
   reviewer: ReviewRecord['reviewer'],
@@ -40,11 +41,15 @@ function facts(over: Partial<Facts> = {}): Facts {
     mergeable: 'MERGEABLE',
     behindBy: 0,
     body: BODY,
-    closingIssues: [{ number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 }],
+    closingIssues: [
+      { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
+    ],
     changedFiles: ['packages/ui/src/button.ts'],
     changes: [{ mode: '100644', path: 'packages/ui/src/button.ts' }],
     ungatedStaging: [],
     gatedIssues: [42, 43],
+    evidenceShas: [SHA],
+    earlierFindingIds: [],
     labels: ['routine'],
     checkRuns: [
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
@@ -99,7 +104,13 @@ describe('evaluate', () => {
       failedIds(
         facts({
           closingIssues: [
-            { number: 3, inRepo: true, labels: ['partner-feedback'], doneWhenBoxes: 0 },
+            {
+              number: 3,
+              inRepo: true,
+              labels: ['partner-feedback'],
+              doneWhenBoxes: 0,
+              areas: ['**'],
+            },
           ],
         }),
       ),
@@ -110,7 +121,9 @@ describe('evaluate', () => {
     expect(
       failedIds(
         facts({
-          closingIssues: [{ number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 0 }],
+          closingIssues: [
+            { number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 0, areas: ['**'] },
+          ],
         }),
       ),
     ).toEqual([]);
@@ -291,12 +304,18 @@ describe('evaluate', () => {
 
   it('refuses a title that would skip CI on main, and an issue in another repo', () => {
     expect(failedIds(facts({ title: 'fix [skip ci]' }))).toEqual([2]);
-    const other = { number: 42, inRepo: false, labels: [], doneWhenBoxes: 0 };
+    const other = { number: 42, inRepo: false, labels: [], doneWhenBoxes: 0, areas: ['**'] };
     expect(failedIds(facts({ closingIssues: [other] }))).toEqual([2]);
   });
 
   it('needs at least as many ticked boxes as the issue lists', () => {
-    const issue = { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 3 };
+    const issue = {
+      number: 42,
+      inRepo: true,
+      labels: ['build-task'],
+      doneWhenBoxes: 3,
+      areas: ['**'],
+    };
     expect(failedIds(facts({ closingIssues: [issue] }))).toEqual([6]);
   });
 
@@ -428,8 +447,8 @@ describe('evaluate: the batch PR from staging into main', () => {
       headRef: 'staging',
       body: batchBody,
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 6 },
-        { number: 43, inRepo: true, labels: ['build-task'], doneWhenBoxes: 4 },
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 6, areas: ['**'] },
+        { number: 43, inRepo: true, labels: ['build-task'], doneWhenBoxes: 4, areas: ['**'] },
       ],
       reviews: [review('argus', { bodyHash: bodyHash(batchBody) })],
       ...over,
@@ -506,13 +525,90 @@ describe('evaluate: round 3 of the #63 review', () => {
       headRef: 'staging',
       body,
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
-        { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
+        { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
       ],
       reviews: [review('argus', { bodyHash: bodyHash(body) })],
     });
     expect(evaluate(batch).items.find((i) => i.id === 2)?.detail).toMatch(
       /#99 wasn't merged into staging/,
     );
+  });
+});
+
+describe("evaluate: Athena's own PRs get ship's hand-over checks (#138)", () => {
+  it('refuses Done-when evidence that names no commit the reviews hold for', () => {
+    const body = 'Closes #42\n\n**Done when**\n- [x] it works at `a767b3d`\n- [x] tests pass\n';
+    const f = facts({ body, reviews: [review('argus', { bodyHash: bodyHash(body) })] });
+    expect(failedIds(f)).toEqual([6]);
+    expect(evaluate(f).items[5]?.detail).toContain("doesn't name the head commit aaaaaaa");
+    expect(failedIds({ ...f, evidenceShas: [SHA, 'a767b3d'.padEnd(40, '0')] })).toEqual([]);
+  });
+
+  it("refuses a changed file outside the closing issue's Areas, and an issue whose Areas can't be read", () => {
+    const outside = facts({
+      closingIssues: [
+        {
+          number: 42,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 2,
+          areas: ['scripts/**'],
+        },
+      ],
+    });
+    expect(failedIds(outside)).toEqual([2]);
+    expect(evaluate(outside).items[1]?.detail).toContain(
+      "packages/ui/src/button.ts is outside the task's Areas",
+    );
+    const unread = facts({
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: null },
+      ],
+    });
+    expect(evaluate(unread).items[1]?.detail).toContain("#42's Areas can't be read");
+  });
+
+  it("needs a Round section answering the previous round's numbered findings", () => {
+    const f = facts({ earlierFindingIds: ['Argus F1'] });
+    expect(failedIds(f)).toEqual([6]);
+    const body = `${BODY}\n\n**Round 2**\n- Argus F1 [blocking]: fixed.`;
+    expect(
+      failedIds({
+        ...f,
+        body,
+        reviews: [review('argus', { bodyHash: bodyHash(body) })],
+      }),
+    ).toEqual([]);
+  });
+
+  it('leaves builder PRs into staging to ship, and batches alone', () => {
+    const staging = facts({
+      baseRef: 'staging',
+      body: BODY.replace(' at `aaaaaaa`', ''),
+      reviews: [],
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: null },
+      ],
+    });
+    expect(evaluate(staging).items[5]?.detail).not.toContain('head commit');
+    expect(evaluate(staging).items[1]?.detail).not.toContain('Areas');
+  });
+});
+
+describe("evaluate: Areas are a build task's (#138, Argus F2 on #152)", () => {
+  it('leaves a section issue, which has no Areas, alone; a build task with none is still refused', () => {
+    const section = facts({
+      closingIssues: [
+        { number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 2, areas: null },
+      ],
+    });
+    expect(evaluate(section).items[1]?.detail).not.toContain('Areas');
+    const task = facts({
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: null },
+      ],
+    });
+    expect(evaluate(task).items[1]?.detail).toContain("#42's Areas can't be read");
   });
 });
