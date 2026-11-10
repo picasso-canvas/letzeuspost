@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./auth": "./src/auth.ts"
   },
   "dependencies": {
     "@lzp/config": "workspace:*",
@@ -18,7 +19,7 @@
     "drizzle-kit": "0.31.11"
   },
   "scripts": {
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:generate": "drizzle-kit generate --dialect postgresql --schema ./src/schema.ts --out ./migrations",
+    "migrate": "node src/bin/migrate.ts"
   }
 }

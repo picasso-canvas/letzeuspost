@@ -29,6 +29,15 @@ function url(protocols: readonly string[], ok: (parsed: URL, value: string) => b
     });
 }
 
+/** Where a process runs (§13 and §14 Environments). Every process is told by LZP_ENV, never guesses (Zeus on #105). */
+const ENVIRONMENTS = ['development', 'ci', 'staging', 'production'] as const;
+
+/** Only Zeus's Mac and CI run without TLS; staging and production are HTTPS only (§14). */
+const PLAIN_HTTP_IN: readonly string[] = ['development', 'ci'];
+
+/** The addresses sign-in links, review links and files travel through: https:// outside PLAIN_HTTP_IN. */
+const HTTPS_ONLY = ['APP_URL', 'STORAGE_ENDPOINT'] as const;
+
 const postgresUrl = url(
   ['postgres:', 'postgresql:'],
   (parsed) => parsed.username !== '' && parsed.hostname !== '' && parsed.pathname.length > 1,
@@ -36,6 +45,12 @@ const postgresUrl = url(
 const POSTGRES_URL = 'postgres://user:password@host:port/database';
 
 export const settings = {
+  LZP_ENV: {
+    group: 'Environment',
+    note: 'Where it runs (§14)',
+    expects: 'development on your Mac, ci, staging or production',
+    schema: z.enum(ENVIRONMENTS),
+  },
   DATABASE_URL: {
     group: 'Database',
     note: 'Postgres as the app role, under row-level security',
@@ -51,7 +66,7 @@ export const settings = {
   STORAGE_ENDPOINT: {
     group: 'File store',
     note: "The file store's S3 API (SeaweedFS in development)",
-    expects: 'an http:// or https:// URL',
+    expects: 'an https:// URL (http:// in development and ci)',
     schema: url(['http:', 'https:'], () => true),
   },
   STORAGE_REGION: {
@@ -98,8 +113,8 @@ export const settings = {
   },
   APP_URL: {
     group: 'Sign-in',
-    note: "The app's base URL, for sign-in and email links",
-    expects: 'an http(s) origin, no path or trailing slash',
+    note: "The app's URL, for links",
+    expects: 'an https:// origin, no path or trailing slash (http:// in development and ci)',
     schema: url(['http:', 'https:'], (parsed, value) => parsed.origin === value),
   },
   NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: {
@@ -127,10 +142,14 @@ const FILE_STORE = [
   'STORAGE_SECRET_ACCESS_KEY',
 ] as const;
 
-/** The settings each process holds (§13 What runs, §14 Secrets). A process never sees another's. */
+/**
+ * The settings each process holds (§13 What runs, §14 Secrets). A process never sees another's. Every process holds
+ * LZP_ENV, so it knows where it runs (Zeus on #105).
+ */
 export const processSettings = {
   // Database, file store (signing), auth, email; the Next.js key and deployment id (§14 Deploys).
   web: [
+    'LZP_ENV',
     'DATABASE_URL',
     ...FILE_STORE,
     'SMTP_URL',
@@ -141,12 +160,12 @@ export const processSettings = {
     'NEXT_DEPLOYMENT_ID',
   ],
   // Database, file store, email, and the app's base URL for the links in its emails. The Anthropic key arrives in M3.
-  worker: ['DATABASE_URL', ...FILE_STORE, 'SMTP_URL', 'EMAIL_FROM', 'APP_URL'],
-  // None: the fetcher holds nothing but its token, which arrives in M2.
-  fetcher: [],
+  worker: ['LZP_ENV', 'DATABASE_URL', ...FILE_STORE, 'SMTP_URL', 'EMAIL_FROM', 'APP_URL'],
+  // Nothing else: the fetcher holds no secret but its token, which arrives in M2.
+  fetcher: ['LZP_ENV'],
   // The owner role, which the app never holds.
-  migrate: ['DATABASE_OWNER_URL'],
-  seed: ['DATABASE_OWNER_URL'],
+  migrate: ['LZP_ENV', 'DATABASE_OWNER_URL'],
+  seed: ['LZP_ENV', 'DATABASE_OWNER_URL'],
 } as const satisfies Record<string, readonly SettingName[]>;
 
 export type ProcessName = keyof typeof processSettings;
@@ -174,6 +193,19 @@ export function loadEnv<P extends ProcessName>(
       env[name] = result.data;
     } else {
       problems.push(`  ${name} is ${result ? 'malformed' : 'missing'}: expected ${expects}.`);
+    }
+  }
+  // Checked only once LZP_ENV is valid: a missing or unknown one already stops the process, and the message then names
+  // only it. A malformed address is already named above, so it isn't named twice.
+  const where = env.LZP_ENV;
+  if (where !== undefined && !PLAIN_HTTP_IN.includes(where)) {
+    for (const name of HTTPS_ONLY) {
+      const address = env[name];
+      if (address !== undefined && URL.parse(address)?.protocol !== 'https:') {
+        problems.push(
+          `  ${name} is malformed: expected an https:// URL outside development and ci.`,
+        );
+      }
     }
   }
   if (problems.length > 0) {
