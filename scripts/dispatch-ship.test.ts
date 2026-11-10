@@ -13,6 +13,7 @@ import {
   parseArgs,
   appendTail,
   endedRecord,
+  gitIntact,
   resumedRecord,
   resumePrompt,
   resumeRefusal,
@@ -501,6 +502,30 @@ describe('resuming an interrupted builder (#157)', () => {
       if (key.startsWith('GIT_') || key === 'GH_CONFIG_DIR')
         expect(value.startsWith(clone), `${key}=${value}`).toBe(false);
     expect(env.GIT_CONFIG_GLOBAL).toBe('/b/.config/71/gitconfig');
+    expect(env.LZP_RESUMED).toBeUndefined();
+    expect(
+      runEnvExtra({
+        lzp: `${clone}/.lzp`,
+        marker: 'm',
+        configDir: '/c',
+        harnessDir: '/h',
+        resumed: true,
+      }).LZP_RESUMED,
+    ).toBe('1');
+  });
+
+  it("refuses a resume when the clone's .git was swapped or its config changed (Cerberus F2 on #166)", () => {
+    const sha = 'c'.repeat(64);
+    expect(gitIntact({ isDirectory: true, isSymlink: false, configSha256: sha }, sha)).toBeNull();
+    expect(gitIntact({ isDirectory: false, isSymlink: true, configSha256: sha }, sha)).toBe(
+      "the clone's .git is not the folder dispatch made: dispatch with --fresh",
+    );
+    expect(
+      gitIntact({ isDirectory: true, isSymlink: false, configSha256: 'd'.repeat(64) }, sha),
+    ).toBe("the clone's .git/config changed since dispatch: dispatch with --fresh");
+    expect(gitIntact({ isDirectory: true, isSymlink: false, configSha256: sha }, undefined)).toBe(
+      'the dispatch record has no hash of .git/config: dispatch with --fresh',
+    );
   });
 
   it("writes a resume's record and a run's ending as small pure steps (Argus F3 on #166)", () => {
