@@ -473,15 +473,28 @@ describe('evaluate: the batch PR from staging into main', () => {
       fails: false,
       mode: 'run',
     };
-    expect(failedIds(batch({ journey: { feature: 'data', entries: [passed] } }))).toEqual([]);
-    const none = batch({ journey: { feature: 'data', entries: null } });
+    expect(
+      failedIds(batch({ journey: { feature: 'data', entries: [passed], files: [passed.file] } })),
+    ).toEqual([]);
+    // A journey file no runner reported holds the batch too (Argus F1 in round 2 on #171).
+    const unreported = batch({
+      journey: {
+        feature: 'data',
+        entries: [passed],
+        files: [passed.file, 'tests/journeys/data.spec.ts'],
+      },
+    });
+    expect(failedIds(unreported)).toEqual([3]);
+    const none = batch({ journey: { feature: 'data', entries: null, files: [] } });
     expect(failedIds(none)).toEqual([3]);
     expect(evaluate(none).items[2]?.detail).toContain('left no journey report');
     expect(
-      failedIds(batch({ journey: { feature: 'data', entries: [{ ...passed, fails: true }] } })),
+      failedIds(
+        batch({ journey: { feature: 'data', entries: [{ ...passed, fails: true }], files: [] } }),
+      ),
     ).toEqual([3]);
     const unreadable = batch({
-      journey: { feature: 'data', entries: null, unreadable: "vitest.json isn't JSON" },
+      journey: { feature: 'data', entries: null, files: [], unreadable: "vitest.json isn't JSON" },
     });
     expect(failedIds(unreadable)).toEqual([3]);
     expect(evaluate(unreadable).items[2]?.detail).toBe(
@@ -489,7 +502,7 @@ describe('evaluate: the batch PR from staging into main', () => {
     );
     // Only a batch is held by its journey: a PR into staging isn't.
     expect(
-      evaluate(facts({ journey: { feature: 'data', entries: null } })).items[2]?.detail,
+      evaluate(facts({ journey: { feature: 'data', entries: null, files: [] } })).items[2]?.detail,
     ).not.toContain('journey');
   });
 

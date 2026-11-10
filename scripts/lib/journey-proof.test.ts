@@ -160,3 +160,20 @@ describe('parseJourneyReport (the artifact the gate downloads)', () => {
       );
   });
 });
+
+describe('journeyProof: every journey test file of the feature has a result (Argus F1 in round 2 on #171)', () => {
+  it('refuses a journey test file at the head that no runner reported, and ignores helpers and other features', () => {
+    const files = [
+      'tests/journeys/data.int.test.ts',
+      'tests/journeys/data.spec.ts',
+      'tests/journeys/data/helpers.ts',
+      'tests/journeys/sign-in.spec.ts',
+    ];
+    expect(journeyProof([entry()], 'data', files)).toEqual([
+      'journey test file tests/journeys/data.spec.ts has no result in the services run on this commit: no runner ran it',
+    ]);
+    expect(
+      journeyProof([entry(), entry({ file: 'tests/journeys/data.spec.ts' })], 'data', files),
+    ).toEqual([]);
+  });
+});

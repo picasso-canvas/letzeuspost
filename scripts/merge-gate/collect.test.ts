@@ -347,7 +347,12 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
   const batchDeps = (gh: CollectDeps['gh'], over: Partial<CollectDeps> = {}) =>
     deps({
       gh,
-      git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+      git: (args) =>
+        args[0] === 'log'
+          ? ''
+          : args[0] === 'ls-tree'
+            ? 'tests/journeys/data.int.test.ts\ntests/journeys/sign-in.spec.ts\n'
+            : fakeGit()(args),
       ...over,
     });
   const report = { 'vitest.json': JSON.stringify([]) };
@@ -367,10 +372,15 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
       ),
     );
     expect(runs).toEqual([4242]);
-    expect(f.journey).toEqual({ feature: 'data', entries: [] });
+    expect(f.journey).toEqual({
+      feature: 'data',
+      entries: [],
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
     expect(calls).toContain(
       'issue list -R picasso-canvas/letzeuspost --label feature:data --state open --limit 1000 --json number,labels',
     );
+    // The head commit's journey files, so one no runner reported is caught (Argus F1 in round 2 on #171).
   });
 
   it('has no report to read without a services run or its artifact, and says why one is unreadable', () => {
@@ -378,9 +388,17 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
       7,
       batchDeps(batchGh({ 'check-runs': '' }), { readJourneyReport: () => report }),
     );
-    expect(none.journey).toEqual({ feature: 'data', entries: null });
+    expect(none.journey).toEqual({
+      feature: 'data',
+      entries: null,
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
     const gone = collectFacts(7, batchDeps(batchGh(), { readJourneyReport: () => null }));
-    expect(gone.journey).toEqual({ feature: 'data', entries: null });
+    expect(gone.journey).toEqual({
+      feature: 'data',
+      entries: null,
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
     const bad = collectFacts(
       7,
       batchDeps(batchGh(), { readJourneyReport: () => ({ 'vitest.json': 'nope' }) }),
@@ -389,6 +407,7 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
       feature: 'data',
       entries: null,
       unreadable: "vitest.json isn't JSON",
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
     });
   });
 
@@ -558,7 +577,12 @@ describe('collectFacts: what makes a part of a feature (Argus F3-F4, Cerberus F2
       7,
       deps({
         gh: g,
-        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        git: (args) =>
+          args[0] === 'log'
+            ? ''
+            : args[0] === 'ls-tree'
+              ? 'tests/journeys/data.int.test.ts\ntests/journeys/sign-in.spec.ts\n'
+              : fakeGit()(args),
         readJourneyReport: () => ({ 'vitest.json': '[]' }),
       }),
     );
@@ -569,7 +593,11 @@ describe('collectFacts: what makes a part of a feature (Argus F3-F4, Cerberus F2
 
   it('counts only open build tasks: a stray issue with the label still leaves the batch held', () => {
     const f = run(gh([task(72), { number: 90, labels: [{ name: 'feature:data' }] }]));
-    expect(f.journey).toEqual({ feature: 'data', entries: [] });
+    expect(f.journey).toEqual({
+      feature: 'data',
+      entries: [],
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
     expect(f.journeyPart).toBeNull();
   });
 
