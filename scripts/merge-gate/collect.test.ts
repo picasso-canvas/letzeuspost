@@ -32,7 +32,7 @@ function fakeGh(overrides: Record<string, string | Error> = {}): CollectDeps['gh
     compare: '0\n',
     'issue view': JSON.stringify({
       labels: [{ name: 'build-task' }],
-      body: '**Done when**\n- [ ] a\n- [ ] b',
+      body: '**Done when**\n- [ ] a\n- [ ] b\n\n**Areas:** `packages/ui/**`',
     }),
     'check-runs':
       '{"name":"ci","status":"completed","conclusion":"success","app":"github-actions"}\n',
@@ -81,8 +81,14 @@ describe('collectFacts', () => {
     expect(f.paused).toBe('false');
     expect(f.changedFiles).toEqual(['packages/ui/a.ts', 'packages/auth/old.ts', 'odd\nname.ts']);
     expect(f.closingIssues).toEqual([
-      { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2 },
-      { number: 9, inRepo: false, labels: [], doneWhenBoxes: 0 },
+      {
+        number: 42,
+        inRepo: true,
+        labels: ['build-task'],
+        doneWhenBoxes: 2,
+        areas: ['packages/ui/**'],
+      },
+      { number: 9, inRepo: false, labels: [], doneWhenBoxes: 0, areas: null },
     ]);
     expect(f.checkRuns).toEqual([
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
@@ -236,5 +242,64 @@ describe('collectFacts takes the verdict from the verified summary', () => {
       }),
     );
     expect(f.reviews[0]?.verdict).toBe('block');
+  });
+});
+
+describe("collectFacts: what Athena's hand-over is checked against (#138)", () => {
+  it('lets the evidence name a commit with the same change, and takes the findings of the latest earlier round', () => {
+    const OLD = '1'.repeat(40);
+    const OLDER = '2'.repeat(40);
+    const CARRIED = '3'.repeat(40);
+    const git: CollectDeps['git'] = (args) => {
+      if (args[0] === 'merge-base') return `${'b'.repeat(40)}\n`;
+      // changeId: the raw diff from the merge-base; the head and CARRIED have the same change, OLD and OLDER don't.
+      if (args[0] === 'diff' && args.includes('--raw'))
+        return args.at(-1) === OLD || args.at(-1) === OLDER ? `old${args.at(-1) ?? ''}` : 'same';
+      return fakeGit()(args);
+    };
+    const record = (sha: string, reviewer: 'argus' | 'cerberus', summary: string, at: string) => ({
+      pr: 7,
+      sha,
+      reviewer,
+      verdict: 'block' as const,
+      bodyHash: 'h',
+      summary,
+      at,
+    });
+    const f = collectFacts(
+      7,
+      deps({
+        git,
+        listReviewedShas: () => [OLDER, OLD, CARRIED],
+        readReviews: (_pr, sha) =>
+          sha === OLD
+            ? [
+                record(
+                  OLD,
+                  'argus',
+                  'VERDICT: block\n[blocking] F1 evidence pr.md — x',
+                  '2026-11-10T02:00:00Z',
+                ),
+                record(
+                  OLD,
+                  'cerberus',
+                  'VERDICT: pass\n[nit] F2 security a.ts — y',
+                  '2026-11-10T02:00:01Z',
+                ),
+              ]
+            : sha === OLDER
+              ? [
+                  record(
+                    OLDER,
+                    'argus',
+                    'VERDICT: block\n[blocking] F7 plan a — z',
+                    '2026-11-10T01:00:00Z',
+                  ),
+                ]
+              : [],
+      }),
+    );
+    expect(f.evidenceShas).toEqual([SHA, CARRIED]);
+    expect(f.earlierFindingIds).toEqual(['Argus F1', 'Cerberus F2']);
   });
 });

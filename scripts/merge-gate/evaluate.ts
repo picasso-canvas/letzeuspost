@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { shipRefusals } from '../lib/protected.ts';
 import { matchesAny } from '../lib/paths.ts';
 import type { Facts, GateConfig, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
+import { areaRefusals, evidenceRefusal, roundRefusals } from '../lib/handover-checks.ts';
 
 /** The PR text a review was given, normalised so only real edits change it. */
 export function bodyHash(body: string): string {
@@ -131,6 +132,17 @@ export function evaluate(f: Facts): GateResult {
         linked.push(`#${String(issue.number)} wasn't merged into staging through the gate`);
     }
   }
+  // Athena's own PRs get ship's Areas check (#138): builders' PRs had it at ship, and a batch's tasks each did.
+  if (kind === 'main') {
+    // A build task's Areas (Argus F2 on #152): a section or feedback issue has none to check.
+    const buildTasks = f.closingIssues.filter(
+      (i) => i.inRepo && i.labels.some((l) => l.toLowerCase() === 'build-task'),
+    );
+    for (const issue of buildTasks) {
+      if (issue.areas === null) linked.push(`#${String(issue.number)}'s Areas can't be read`);
+      else linked.push(...areaRefusals(f.changedFiles, issue.areas));
+    }
+  }
   if (kind === 'batch' && f.ungatedStaging.length > 0) {
     linked.push(
       `staging holds commits that didn't come through the gate: ${f.ungatedStaging.map((sha) => sha.slice(0, 7)).join(', ')}`,
@@ -224,6 +236,12 @@ export function evaluate(f: Facts): GateResult {
     kind === 'batch' ? tasks.length : Math.max(0, ...tasks.map((issue) => issue.doneWhenBoxes));
   if (boxes.ticked < expected) {
     doneProblems.push(`${String(boxes.ticked)} ticked, the issue lists ${String(expected)}`);
+  }
+  // Athena's own PRs: the evidence names a commit the reviews hold for, and a fix round answers each finding (#138).
+  if (kind === 'main') {
+    const evidence = evidenceRefusal(f.body, f.evidenceShas);
+    if (evidence !== null) doneProblems.push(evidence);
+    doneProblems.push(...roundRefusals(f.body, f.earlierFindingIds));
   }
   add(6, 'Done-when complete', doneProblems);
 
