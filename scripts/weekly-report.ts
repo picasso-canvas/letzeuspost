@@ -107,6 +107,8 @@ export interface ReportData {
   openSensitive: { number: number; title: string }[];
   needsZeus: { number: number; title: string }[];
   guardrailHits: Record<string, number>;
+  /** The month's Actions minutes so far, estimated from run times (#160). */
+  actionsMinutes?: { month: string; minutes: number };
   /** Reviews that needed a retry this week (#158): a line before the verdict. */
   reviewRetries?: number;
   /** The learning loop's repeated finding types (scripts/lessons.ts). */
@@ -115,10 +117,44 @@ export interface ReportData {
   batchFeatures?: Record<number, string[]>;
 }
 
+/** This month's runs from GitHub, estimated; undefined when GitHub can't be read (the report says nothing then). */
+function monthMinutes(): { month: string; minutes: number } | undefined {
+  const month = new Date().toISOString().slice(0, 7);
+  try {
+    const runs = run('gh', [
+      'api',
+      '--paginate',
+      `repos/${REPO}/actions/runs?created=>=${month}-01&per_page=100`,
+      '--jq',
+      '.workflow_runs[] | {started: .run_started_at, updated: .updated_at}',
+    ])
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => JSON.parse(line) as { started: string; updated: string });
+    return { month, minutes: estimateMinutes(runs) };
+  } catch (error) {
+    console.error(
+      `weekly report: couldn't read this month's Actions runs: ${error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error)}`,
+    );
+    return undefined;
+  }
+}
+
 function featureNote(features: readonly string[] | undefined): string {
   return features === undefined || features.length === 0
     ? ''
     : ` (feature: ${features.join(', ')})`;
+}
+
+/**
+ * The Actions minutes a list of runs costs, estimated the way GitHub bills a one-job workflow: each run's whole
+ * minutes, rounded up, at least one (#160). A run with an unreadable time counts nothing.
+ */
+export function estimateMinutes(runs: readonly { started: string; updated: string }[]): number {
+  return runs.reduce((sum, { started, updated }) => {
+    const ms = Date.parse(updated) - Date.parse(started);
+    return Number.isNaN(ms) ? sum : sum + Math.max(1, Math.ceil(ms / 60_000));
+  }, 0);
 }
 
 /** The week's review retries (#158): entries from `since` on; one without a time doesn't count. */
@@ -182,6 +218,11 @@ export function renderReport(d: ReportData): string {
       '| Rule | Hits |',
       '|---|---|',
       ...hits.map(([rule, n]) => `| ${rule} | ${String(n)} |`),
+    );
+  if (d.actionsMinutes !== undefined)
+    lines.push(
+      '',
+      `Actions minutes this month (${d.actionsMinutes.month}, estimated from run times): about ${String(d.actionsMinutes.minutes)} of the 2,000 free.`,
     );
   if (d.reviewRetries !== undefined)
     lines.push(
@@ -399,6 +440,7 @@ function main(argv: string[]): number {
       since,
     ),
     batchFeatures,
+    actionsMinutes: monthMinutes(),
     lessons: lessonRows(
       countLessons(readFindings()),
       parseLessonsDoc(

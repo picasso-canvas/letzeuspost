@@ -7,9 +7,9 @@
 name: design
 
 on:
+  # Pull requests only (#160): the gate merges only a branch that's current with its base, so the tree it lands on
+  # main or staging is the tree checked here.
   pull_request:
-  push:
-    branches: [main, staging]
 
 permissions:
   contents: read
@@ -39,26 +39,58 @@ jobs:
           persist-credentials: false
           fetch-depth: 2 # a PR's merge commit and its base, for the DESIGN.md diff
 
+      # Can this PR affect the checks below (#160)? Only when every file it changes is on this list does the job skip
+      # them and pass in seconds; any other file, an empty diff or any doubt runs them all. Lists, not guesses: a file
+      # that could affect this job never goes on its list.
+      - name: Scope (can this PR affect the design checks?)
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            mapfile -t files < <(git diff --name-only HEAD^1 HEAD)
+            if [ "${#files[@]}" -gt 0 ]; then
+              run=false
+              for f in "${files[@]}"; do
+                case "$f" in
+                  DESIGN.md | scripts/design-lint.mjs) run=true ;;
+                  docs/* | *.md | .claude/* | scripts/* | packages/db/* | packages/storage/* | packages/email/* | apps/worker/* | docker/* | tests/journeys/* | tests/tenancy/* | .github/workflows/ci.yml | .github/workflows/services.yml | .github/workflows/risk-gate.yml | .github/*.txt) ;;
+                  *) run=true ;;
+                esac
+              done
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          if [ "$run" = false ]; then
+            echo "Nothing this PR changes can affect the design checks: they're skipped, and the job passes."
+          fi
+
       - name: Set up pnpm (version from packageManager)
+        if: steps.scope.outputs.run == 'true'
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node (version from .nvmrc)
+        if: steps.scope.outputs.run == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Install dependencies (frozen lockfile)
+        if: steps.scope.outputs.run == 'true'
         id: install
         run: pnpm install --frozen-lockfile
 
       # Every error, and every warning except an unused token: a text pair under WCAG AA is only a warning in
       # `design.md lint`, and §05 says every pair passes AA. Each check below runs even when an earlier one failed.
       - name: DESIGN.md lint (references and WCAG AA contrast)
+        if: steps.scope.outputs.run == 'true'
         run: pnpm design:lint
 
       - name: Generated tokens match a fresh export
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.install.outcome == 'success' }}
         run: |
           set -euo pipefail
           pnpm tokens
@@ -73,7 +105,7 @@ jobs:
       # unused-token warnings, which every border or ring colour adds (no component can name one), and the lint step
       # above already fails on any other new warning or error. A file it can't read (exit 2) still fails.
       - name: DESIGN.md diff against the base
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.install.outcome == 'success' && github.event_name == 'pull_request' }}
         run: |
           set -euo pipefail
           if git diff --quiet HEAD^1 HEAD -- DESIGN.md; then
@@ -101,11 +133,11 @@ jobs:
       # project `gallery`). Each step starts once its files exist.
       - name: Build the component gallery (Storybook)
         id: gallery
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && hashFiles('packages/ui/.storybook/**') != '' }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.install.outcome == 'success' && hashFiles('packages/ui/.storybook/**') != '' }}
         run: pnpm --filter @lzp/ui build-storybook
 
       - name: Upload the component gallery
-        if: ${{ !cancelled() && steps.gallery.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.gallery.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gallery
@@ -113,12 +145,12 @@ jobs:
           retention-days: 14
 
       - name: Gallery screenshots and axe
-        if: ${{ !cancelled() && steps.gallery.outcome == 'success' && hashFiles('tests/gallery/**') != '' }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.gallery.outcome == 'success' && hashFiles('tests/gallery/**') != '' }}
         run: pnpm exec playwright test --project gallery
 
       # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines.
       - name: Upload the gallery screenshots
-        if: ${{ !cancelled() && hashFiles('tests/visual/output/**') != '' }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && hashFiles('tests/visual/output/**') != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gallery-screenshots

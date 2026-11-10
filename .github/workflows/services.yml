@@ -8,9 +8,9 @@
 name: services
 
 on:
+  # Pull requests only (#160): the gate merges only a branch that's current with its base, so the tree it lands on
+  # main or staging is the tree checked here.
   pull_request:
-  push:
-    branches: [main, staging]
 
 permissions:
   contents: read
@@ -31,8 +31,38 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2 # a PR's merge commit and its base, for the scope step
+
+      # Can this PR affect the checks below (#160)? Only when every file it changes is on this list does the job skip
+      # them and pass in seconds; any other file, an empty diff or any doubt runs them all. Lists, not guesses: a file
+      # that could affect this job never goes on its list.
+      - name: Scope (can this PR affect the services checks?)
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            mapfile -t files < <(git diff --name-only HEAD^1 HEAD)
+            if [ "${#files[@]}" -gt 0 ]; then
+              run=false
+              for f in "${files[@]}"; do
+                case "$f" in
+                  *.int.test.* | DESIGN.md) run=true ;;
+                  docs/* | *.md | .claude/* | scripts/* | tests/gallery/* | .github/workflows/ci.yml | .github/workflows/design.yml | .github/workflows/risk-gate.yml | .github/*.txt) ;;
+                  *) run=true ;;
+                esac
+              done
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          if [ "$run" = false ]; then
+            echo "Nothing this PR changes can affect the services checks: they're skipped, and the job passes."
+          fi
 
       - name: Passwords for this run
+        if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           for name in LZP_PG_SUPERUSER_PASSWORD LZP_PG_OWNER_PASSWORD LZP_PG_APP_PASSWORD STORAGE_SECRET_ACCESS_KEY; do
@@ -52,9 +82,11 @@ jobs:
 
       # Before any of the branch's code is installed or run: only the Compose file and its two scripts.
       - name: Start the services
+        if: steps.scope.outputs.run == 'true'
         run: docker compose -f docker/compose.yml up --detach --wait --wait-timeout 180
 
       - name: Settings for the tests (config/env.ts's names)
+        if: steps.scope.outputs.run == 'true'
         run: |
           {
             echo "DATABASE_URL=postgres://lzp_app:${LZP_PG_APP_PASSWORD}@127.0.0.1:5432/letzeuspost"
@@ -70,6 +102,7 @@ jobs:
       # The roles Q4 settles (#18): the app logs in without BYPASSRLS and can't create tables; the owner can; a wrong
       # password is refused (connections through the published port need one).
       - name: 'Smoke: Postgres roles'
+        if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           [ "$(psql "$DATABASE_URL" -tAc 'select rolbypassrls or rolsuper from pg_roles where rolname = current_user')" = f ]
@@ -85,6 +118,7 @@ jobs:
           grep -q 'password authentication failed for user "lzp_app"' "$RUNNER_TEMP/pg.err" # not just any failure
 
       - name: 'Smoke: file store'
+        if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           echo smoke > "$RUNNER_TEMP/smoke.txt"
@@ -94,6 +128,7 @@ jobs:
           [ "$(curl -s -o /dev/null -w '%{http_code}' "${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/smoke.txt")" = 403 ]
 
       - name: 'Smoke: mail'
+        if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           printf 'Subject: smoke\r\n\r\nsmoke\r\n' |
@@ -101,20 +136,24 @@ jobs:
           [ "$(curl -fsS http://127.0.0.1:8025/api/v1/messages | jq .total)" -ge 1 ]
 
       - name: Set up pnpm (version from packageManager)
+        if: steps.scope.outputs.run == 'true'
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - name: Set up Node (version from .nvmrc)
+        if: steps.scope.outputs.run == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
 
       - name: Install dependencies (frozen lockfile)
+        if: steps.scope.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       # The settings above are the ones config/env.ts reads: each process loads its own, or the job fails here
       # (Argus on #119). loadEnv names a bad setting, never its value.
       - name: 'Smoke: the settings load (config/env.ts)'
+        if: steps.scope.outputs.run == 'true'
         run: >-
           node --input-type=module -e "const { loadEnv } = await import('./config/env.ts');
           for (const p of ['web', 'worker', 'migrate']) loadEnv(p);
@@ -123,13 +162,14 @@ jobs:
       # `pnpm check:services`, in two steps: its Vitest half here, and its Playwright half for the app below. The
       # gallery's Playwright project runs in the `design` job instead (#70).
       - name: Integration tests and the tenancy suite
+        if: steps.scope.outputs.run == 'true'
         run: LZP_SERVICES=1 pnpm exec vitest run
 
       # From the first journey (#78) on: the app at 1440 px, light and dark (playwright.config.ts starts the built app
       # and the worker). The step starts once tests/e2e/ exists, since builders can't change this file.
       - name: End-to-end tests
         id: e2e
-        if: ${{ hashFiles('tests/e2e/**') != '' }}
+        if: ${{ steps.scope.outputs.run == 'true' && hashFiles('tests/e2e/**') != '' }}
         run: |
           set -euo pipefail
           pnpm exec playwright install --with-deps chromium
@@ -139,7 +179,7 @@ jobs:
       # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
       # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
       - name: Upload the end-to-end screenshots
-        if: ${{ !cancelled() && steps.e2e.outcome != 'skipped' && hashFiles('tests/visual/output/**') != '' }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.e2e.outcome != 'skipped' && hashFiles('tests/visual/output/**') != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-screenshots
