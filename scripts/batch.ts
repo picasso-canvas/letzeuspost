@@ -3,22 +3,28 @@
 // (Argus, Cerberus, and Iris from the first UI milestone) happens once per batch, on the PR from `staging` into
 // `main`.
 //   node scripts/batch.ts [--open]
-// It runs from a clean `main` and reports how far `staging` is ahead: the task PRs the gate merged there and the
-// changed lines. The batch is due at 5 tasks or ~1,500 changed lines, whichever comes first. With --open, a due
-// batch's PR is opened (or its text brought up to date): it closes every task's issues and ticks a task only when the
-// merge log shows the gate merged it into staging. Then Athena runs scripts/review.ts and the merge gate on it.
+// It runs from a clean `main` and reports the open feature (§19, Zeus 2026-11-10, #139): its tasks, which of them the
+// gate merged into `staging`, and the changed lines. The batch is due when every task of the feature is there and its
+// journey test is no longer marked as expected to fail, as a part when `staging` is ~1,500 changed lines ahead, or when
+// `staging` holds only follow-ups (lib/features.ts decides). With --open, a due batch's PR is opened (or its text
+// brought up to date): it closes every task's issues and ticks a task only when the merge log shows the gate merged it
+// into staging. Then Athena runs scripts/review.ts and the merge gate on it.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
+import {
+  featureBatch,
+  journeyMarked,
+  stagingFeature,
+  toTaskIssue,
+  type TaskIssue,
+} from './lib/features.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
-
-export const BATCH_TASKS = 5;
-export const BATCH_LINES = 1500;
 
 /** The task PRs on `staging` and not on `main`, oldest first, from the gate's squash subjects (`Title (#n)`). */
 export function taskPrs(firstParentLog: string): number[] {
@@ -28,10 +34,6 @@ export function taskPrs(firstParentLog: string): number[] {
     .filter((n): n is string => n !== undefined)
     .map(Number)
     .reverse();
-}
-
-export function batchDue(tasks: number, lines: number): boolean {
-  return tasks >= BATCH_TASKS || lines >= BATCH_LINES;
 }
 
 export interface BatchTask {
@@ -74,6 +76,26 @@ function run(cmd: string, args: string[], input?: string): string {
     input,
     stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
   });
+}
+
+/** An issue's labels, milestone and body, as batch.ts judges a task by them. */
+function taskIssue(n: number): TaskIssue {
+  return toTaskIssue(
+    JSON.parse(
+      run('gh', ['issue', 'view', String(n), '-R', REPO, '--json', 'number,labels,milestone,body']),
+    ) as Parameters<typeof toTaskIssue>[0],
+  );
+}
+
+/**
+ * Every journey test file on `staging`, with its text; journeyMarked picks the feature's own. `main` fetched
+ * `origin/staging` from GitHub just before, so this reads the branch as it is now.
+ */
+function journeyFiles(): { path: string; text: string }[] {
+  return run('git', ['ls-tree', '-r', '--name-only', 'origin/staging', '--', 'tests/journeys/'])
+    .split('\n')
+    .filter((path) => path !== '')
+    .map((path) => ({ path, text: run('git', ['show', `origin/staging:${path}`]) }));
 }
 
 /** The task PRs the gate merged into staging, from its merge log (#132 reads it too); none when there's no log. */
@@ -119,12 +141,6 @@ function main(argv: string[]): number {
     (n, m) => n + Number(m[1]),
     0,
   );
-  const due = batchDue(prs.length, lines);
-  console.log(
-    `staging is ${String(prs.length)} task PRs and ${String(lines)} changed lines ahead of main: the batch is ${due ? 'due' : `not due (${String(BATCH_TASKS)} tasks or ${String(BATCH_LINES)} lines)`}.`,
-  );
-  if (!argv.includes('--open') || !due) return 0;
-
   const gated = gatedIntoStaging();
   // GitHub links no issues for PRs into staging: each task's issue comes from its branch name (dispatch's record).
   const tasks: BatchTask[] = prs.map((pr) => {
@@ -134,6 +150,45 @@ function main(argv: string[]): number {
     const issue = issueFromBranch(view.headRefName);
     return { pr, title: view.title, issues: issue === null ? [] : [issue], gated: gated.has(pr) };
   });
+  // Only what the gate merged counts as on staging.
+  const onStaging = tasks.filter((t) => t.gated).flatMap((t) => t.issues);
+  const issues: Record<number, TaskIssue> = {};
+  for (const n of onStaging) issues[n] = taskIssue(n);
+  // The same helper featureBatch uses, so the two can't disagree on the open feature (Argus F3 on #155).
+  const found = stagingFeature(onStaging, issues);
+  const feature = 'feature' in found && found.feature !== null ? found.feature : undefined;
+  const featureTasks =
+    feature === undefined
+      ? []
+      : (
+          JSON.parse(
+            run('gh', [
+              'issue',
+              'list',
+              '-R',
+              REPO,
+              '--label',
+              `feature:${feature}`,
+              '--state',
+              'open',
+              '--limit',
+              '100',
+              '--json',
+              'number',
+            ]),
+          ) as { number: number }[]
+        ).map((i) => i.number);
+  const verdict = featureBatch({
+    onStaging,
+    issues,
+    featureTasks,
+    journeyMarked: feature !== undefined && journeyMarked(journeyFiles(), feature),
+    lines,
+  });
+  console.log(
+    `staging is ${String(prs.length)} task PRs and ${String(lines)} changed lines ahead of main${feature === undefined ? '' : `; open feature "${feature}": ${featureTasks.map((n) => `#${String(n)}${onStaging.includes(n) ? ' (on staging)' : ''}`).join(', ')}`}. The batch is ${verdict.due ? 'due' : 'not due'}: ${verdict.reason}.`,
+  );
+  if (!argv.includes('--open') || !verdict.due) return 0;
   const body = batchBody(tasks);
   const open = JSON.parse(
     run('gh', [
