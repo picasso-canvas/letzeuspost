@@ -572,7 +572,8 @@ describe("the auth handle (@lzp/db/auth's db, for Better Auth)", () => {
   it('reaches none of the workspace tables (#77, decision (a)): lzp_auth holds no grant on them', async () => {
     const held = await authDb.db.execute<{ who: string; granted: string[] }>(sql`
       select current_user as who,
-             coalesce(array_agg(t.name || ' ' || p.name) filter (where has_table_privilege(t.name, p.name)), '{}') as granted
+             coalesce(array_agg(t.name || ' ' || p.name)
+                        filter (where has_table_privilege(t.name, p.name)), '{}') as granted
         from unnest(array['workspace', 'member', 'invitation']) as t(name),
              unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) as p(name)`);
     expect(held.rows).toEqual([{ who: 'lzp_auth', granted: [] }]);

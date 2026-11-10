@@ -3,8 +3,9 @@
 // are exported from here only (#176).
 //
 // - `db` is Better Auth's handle, for its drizzle adapter. It runs as lzp_auth, the role that holds those four tables
-//   (#176): its pool is its own, and each connection takes that role when it opens, before its first query. lzp_app only
-//   may switch to lzp_auth, never inherits it, and this file is the only one that switches (no-role-switch.test.ts).
+//   (#176): its pool is its own, and each connection takes that role when it opens, before its first query. lzp_app
+//   only may switch to lzp_auth, never inherits it, and this file is the only one that switches
+//   (no-role-switch.test.ts).
 //   The workspace tables stay closed to it: lzp_auth holds no grant on them.
 // - `forUser(ctx)` runs a unit of work as one signed-in person, as lzp_app on a pool that never switches: Q5's second
 //   policy lets it read that person's own memberships and their workspaces, for the workspace switcher and the

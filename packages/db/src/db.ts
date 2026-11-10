@@ -49,7 +49,8 @@ export function checkedId(kind: 'workspace' | 'user', id: string): string {
  * A unit of work with both settings the policies read set first, for this transaction only. It runs only as the role
  * the connection logged in as (lzp_app): a pooled connection that something switched to another role (lzp_auth, by
  * SQL injected into an earlier query, say) is refused before the work starts, so the switch can't reach the next
- * request on that connection (Cerberus F4 on #189). Only the auth handle's own pool runs as another role (auth.ts), and it never comes here.
+ * request on that connection (Cerberus F4 on #189). Only the auth handle's own pool runs as another role (auth.ts),
+ * and it never comes here.
  */
 export function scoped(orm: Orm, settings: { workspaceId: string; userId: string }): Scoped {
   return {
