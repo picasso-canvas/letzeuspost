@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   auditMain,
   isoWeek,
+  countRetries,
   renderReport,
   type LogEntry,
   type MainCommit,
@@ -242,6 +243,40 @@ describe('auditMain: staging merges (#63 review)', () => {
       },
     ];
     expect(auditMain([commit('m'.repeat(40), '2026-11-07T09:00:00Z', 'x')], log)).toEqual([]);
+  });
+});
+
+describe('renderReport: review retries (#158)', () => {
+  it('counts the reviews that needed a retry this week', () => {
+    const text = renderReport({
+      week: '2026-W46',
+      merges: [],
+      titles: {},
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+      reviewRetries: 2,
+    });
+    expect(text).toContain('Review answers that needed a retry (a line before the verdict): 2.');
+  });
+});
+
+describe('countRetries (Argus F4 on #165)', () => {
+  it("counts the week's retries from the log, leaving out older ones and ones without a time", () => {
+    const since = new Date('2026-11-09T00:00:00Z');
+    expect(
+      countRetries(
+        [
+          { at: '2026-11-10T08:00:00Z' },
+          { at: '2026-11-08T23:59:59Z' },
+          {},
+          { at: '2026-11-09T00:00:00Z' },
+        ],
+        since,
+      ),
+    ).toBe(2);
   });
 });
 
