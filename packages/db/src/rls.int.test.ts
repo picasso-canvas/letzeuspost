@@ -3,7 +3,7 @@
 // around it. Runs against real Postgres in `pnpm check:services` and CI's `services` job (docker/compose.yml's roles:
 // lzp_owner runs the migrations, lzp_app is the app). Every row here is made for this run and removed after it, so the
 // file can share the database with other test files.
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { loadEnv } from '@lzp/config';
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
@@ -76,7 +76,11 @@ const ids = {
   b: '',
   c: '', // owned by ownerA
   personInA: '', // the person's membership in A
+  made: randomUUIDv7(), // a workspace the app creates through the helper, with an id it made
 };
+
+/** Every person this run makes has an email ending in this, so the cleanup finds them all. */
+const emailOf = (label: string) => `${label}-${run}@rls.invalid`;
 
 async function insertId(text: string, values: unknown[]): Promise<string> {
   const { rows } = await owner.query<{ id: string }>(`${text} returning id`, values);
@@ -94,7 +98,7 @@ beforeAll(async () => {
   const person = (label: string) =>
     insertId('insert into "user" (name, email) values ($1, $2)', [
       `${label} ${run}`,
-      `${label}-${run}@rls.invalid`,
+      emailOf(label),
     ]);
   ids.ownerA = await person('owner-a');
   ids.ownerB = await person('owner-b');
@@ -138,10 +142,8 @@ afterAll(async () => {
   await db.close();
   await authDb.close();
   // Deleting the workspaces and people removes their members and invitations with them.
-  await owner.query('delete from workspace where id = any($1)', [[ids.a, ids.b, ids.c]]);
-  await owner.query('delete from "user" where id = any($1)', [
-    [ids.ownerA, ids.ownerB, ids.person, ids.newcomer],
-  ]);
+  await owner.query('delete from workspace where id = any($1)', [[ids.a, ids.b, ids.c, ids.made]]);
+  await owner.query('delete from "user" where email like $1', [emailOf('%')]);
   await owner.end();
 });
 
@@ -295,6 +297,29 @@ describe('db.forWorkspace(ctx)', () => {
     expect(b.rows).toEqual([
       { name: `Workspace b ${run}`, roles: ['admin', 'owner'], invitations: 1, planted: 0 },
     ]);
+  });
+
+  it('creates a workspace and its Owner in one unit of work, set to the id the app made for it', async () => {
+    const made = await db.forWorkspace({ workspaceId: ids.made }).transaction(async (tx) => ({
+      workspace: await tx
+        .insert(workspace)
+        .values({ id: ids.made, name: `Made ${run}`, slug: `made-${run}` })
+        .returning({ id: workspace.id }),
+      owner: await tx
+        .insert(member)
+        .values({ workspaceId: ids.made, userId: ids.newcomer, role: 'owner' })
+        .returning({ workspaceId: member.workspaceId, role: member.role }),
+    }));
+    expect(made).toEqual({
+      workspace: [{ id: ids.made }],
+      owner: [{ workspaceId: ids.made, role: 'owner' }],
+    });
+
+    // Both rows were committed, and the new Owner finds the workspace among their own (Q5).
+    const theirs = await authDb
+      .forUser({ userId: ids.newcomer })
+      .transaction((tx) => tx.select({ id: workspace.id }).from(workspace));
+    expect(theirs.map((row) => row.id)).toContain(ids.made);
   });
 
   it("doesn't carry the setting over to the next transaction on the same pooled connection", async () => {
