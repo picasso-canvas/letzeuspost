@@ -1,8 +1,8 @@
 // The journey reporters (#156): CI's `services` job adds them to Vitest's and Playwright's reporters. At the end of a
 // run each writes every journey test (`tests/journeys/…`), with its state and whether it was marked as expected to
-// fail, skipped or todo, into the folder named by LZP_JOURNEY_DIR (`vitest.json`, `playwright.json`). The job uploads
-// that folder as the `journeys` artifact, and the merge gate reads it. They live under scripts/, which builders can't
-// change.
+// fail, skipped or todo, into the folder named by LZP_JOURNEY_DIR (`vitest.json`, `playwright.json`). The job gives
+// each runner its own folder and uploads it right after the runner's step (`journeys-vitest`, `journeys-playwright`),
+// and the merge gate reads them. They live under scripts/, which builders can't change.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {

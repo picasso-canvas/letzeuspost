@@ -167,16 +167,25 @@ jobs:
 
       # `pnpm check:services`, in two steps: its Vitest half here, and its Playwright half for the app below. The
       # gallery's Playwright project runs in the `design` job instead (#70).
-      # The journey reporters (#156) write each journey test's result into $LZP_JOURNEY_DIR, uploaded below: the merge
-      # gate holds a feature's batch until the run on its head shows the journey ran and passed.
+      # The journey reporters (#156) write each journey test's result: the merge gate holds a feature's batch until the
+      # run on its head shows the journey ran and passed. Each runner gets its own folder, uploaded right after its step,
+      # so no later step's code can write the other's report (Argus F2, Cerberus F1 on #171).
       - name: Integration tests and the tenancy suite
         if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
-          export LZP_JOURNEY_DIR="$RUNNER_TEMP/journeys"
+          export LZP_JOURNEY_DIR="$RUNNER_TEMP/journeys-vitest"
           mkdir -p "$LZP_JOURNEY_DIR"
-          echo "LZP_JOURNEY_DIR=$LZP_JOURNEY_DIR" >> "$GITHUB_ENV"
           LZP_SERVICES=1 pnpm exec vitest run --reporter=default --reporter=./scripts/ci/journey-reporter.ts
+
+      - name: Upload the Vitest journey report
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: journeys-vitest
+          path: ${{ runner.temp }}/journeys-vitest
+          if-no-files-found: warn
+          retention-days: 30
 
       # From the first journey (#78) on: the app at 1440 px, light and dark (playwright.config.ts starts the built app
       # and the worker). The step starts once tests/e2e/ exists, since builders can't change this file.
@@ -187,7 +196,9 @@ jobs:
           set -euo pipefail
           pnpm exec playwright install --with-deps chromium
           pnpm --filter @lzp/web build
-          pnpm exec playwright test --project app-light --project app-dark \
+          rm -rf "$RUNNER_TEMP/journeys-playwright"
+          mkdir "$RUNNER_TEMP/journeys-playwright"
+          LZP_JOURNEY_DIR="$RUNNER_TEMP/journeys-playwright" pnpm exec playwright test --project app-light --project app-dark \
             --reporter=github,./scripts/ci/journey-reporter-playwright.ts
 
       # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
@@ -200,13 +211,14 @@ jobs:
           path: tests/visual/output
           retention-days: 14
 
-      # Rendered from the PR's code, like the screenshots: the gate reads it as data and checks its shape (#156).
-      - name: Upload the journey reports
-        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' }}
+      # Rendered from the PR's code, like the screenshots: the gate reads both reports as data and checks their shape
+      # (#156). Only when the end-to-end step ran, from the folder it started empty.
+      - name: Upload the Playwright journey report
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.e2e.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: journeys
-          path: ${{ runner.temp }}/journeys
+          name: journeys-playwright
+          path: ${{ runner.temp }}/journeys-playwright
           if-no-files-found: warn
           retention-days: 30
 

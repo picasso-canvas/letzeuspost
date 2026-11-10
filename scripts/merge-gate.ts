@@ -38,21 +38,30 @@ function run(cmd: string, args: string[]): string {
 }
 
 /**
- * A run's `journeys` artifact (#156), downloaded into a fresh folder outside the checkout and read as data: only the two
- * report files, only as plain files, then the folder is removed. No artifact (or no run of it) reads as null.
+ * A run's journey reports (#156), each from its own artifact (`journeys-vitest`, and `journeys-playwright` when the
+ * end-to-end step ran), downloaded into a fresh folder outside the checkout and read as data: only that artifact's one
+ * file, only as a plain file, then the folder is removed. No Vitest artifact (or no such run) reads as null.
  */
 function readJourneyReport(runId: number): Record<string, string> | null {
   const dir = mkdtempSync(join(tmpdir(), 'lzp-journeys-'));
-  try {
-    run('gh', ['run', 'download', String(runId), '-R', REPO, '-n', 'journeys', '-D', dir]);
-    const files: Record<string, string> = {};
-    for (const name of ['vitest.json', 'playwright.json']) {
-      const path = join(dir, name);
-      if (existsSync(path) && lstatSync(path).isFile()) files[name] = readFileSync(path, 'utf8');
+  const fetch = (artifact: string, file: string): string | null => {
+    const into = join(dir, artifact);
+    try {
+      run('gh', ['run', 'download', String(runId), '-R', REPO, '-n', artifact, '-D', into]);
+    } catch {
+      return null;
     }
-    return files;
-  } catch {
-    return null;
+    const path = join(into, file);
+    return existsSync(path) && lstatSync(path).isFile() ? readFileSync(path, 'utf8') : null;
+  };
+  try {
+    const vitest = fetch('journeys-vitest', 'vitest.json');
+    if (vitest === null) return null;
+    const playwright = fetch('journeys-playwright', 'playwright.json');
+    return {
+      'vitest.json': vitest,
+      ...(playwright === null ? {} : { 'playwright.json': playwright }),
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -122,6 +131,11 @@ function main(argv: string[], pr: number): number {
   for (const item of result.items) {
     console.log(`${item.ok ? '✓' : '✗'} ${String(item.id)}. ${item.title}: ${item.detail}`);
   }
+  // A part of a feature isn't held by its journey: say so, with the tasks that made it a part (Cerberus F2 on #171).
+  if (facts.journeyPart !== null)
+    console.log(
+      `  Journey: a part of feature "${facts.journeyPart.feature}" (${facts.journeyPart.open.map((n) => `#${String(n)}`).join(', ')} still open), so its journey isn't checked yet.`,
+    );
   const entry = {
     at: new Date().toISOString(),
     pr,

@@ -355,8 +355,10 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     ]),
   );
   // A batch that completes a feature is held until the services run on its head shows the journey passed (§19, #156).
-  // A part of a feature (another of its tasks still open) isn't: its journey is still marked, by design.
+  // A part of a feature (another of its build tasks still open) isn't: its journey is still marked, by design. The gate
+  // names the open tasks that made it a part (Argus F3, Cerberus F2 on #171).
   let journey: Facts['journey'] = null;
+  let journeyPart: Facts['journeyPart'] = null;
   if (isBatch) {
     const features = [
       ...new Set(
@@ -386,12 +388,18 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
             '--limit',
             '1000',
             '--json',
-            'number',
+            'number,labels',
           ]),
-        ) as { number: number }[]
-      ).map((i) => i.number);
-      const closes = new Set(closingIssues.map((i) => i.number));
-      if (open.every((n) => closes.has(n))) {
+        ) as { number: number; labels: { name: string }[] }[]
+      )
+        // Only a build task makes the feature unfinished: a stray issue with the label doesn't (Argus F3 on #171).
+        .filter((i) => i.labels.some((l) => l.name === 'build-task'))
+        .map((i) => i.number);
+      // This repository's issues only: another's #73 isn't this feature's task (Argus F4 on #171).
+      const closes = new Set(closingIssues.filter((i) => i.inRepo).map((i) => i.number));
+      const rest = open.filter((n) => !closes.has(n));
+      if (rest.length > 0) journeyPart = { feature, open: rest };
+      else {
         const services = checkRuns.find((r) => r.name === 'services' && r.app === 'github-actions');
         const runId = /\/actions\/runs\/(\d+)\//.exec(services?.url ?? '')?.[1];
         const files =
@@ -440,6 +448,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     labels: view.labels.map((label) => label.name),
     checkRuns,
     journey,
+    journeyPart,
     statuses,
     reviews: reviewsFor(pr, sha, base, deps),
     sensitivePatterns: sensitiveList === null ? null : parsePatternList(sensitiveList),
