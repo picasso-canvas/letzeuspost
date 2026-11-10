@@ -1,6 +1,6 @@
 // Feature batches (§19, Zeus 2026-11-10, #139): one feature open at a time on `staging`; its tasks build in parallel,
-// and its batch into `main` opens when every one of them is on `staging` and its journey test is no longer marked as
-// expected to fail, or as a part when `staging` outgrows the size cap. Follow-ups of a merged batch, and harness
+// and its batch into `main` opens when every one of them is on `staging` (the merge gate then holds it until CI shows
+// the journey ran and passed, #156), or as a part when `staging` outgrows the size cap. Follow-ups of a merged batch, and harness
 // tasks, run alongside. Dispatch and batch.ts gather the facts; these functions decide.
 
 /** An issue as dispatch and batch.ts read it (its labels and milestone are Athena's; its body is Athena's text). */
@@ -80,9 +80,10 @@ export function dispatchRefusal(
 // only (so `query.skip(10)` or `assert.fail()` don't count): a method (it.fails, test.skip, test.fixme, it.todo,
 // describe.skip, test.describe.skip, .only, it.skipIf(…), test.runIf(…)), the same through brackets (it['fails']), an
 // alias (const j = it.fails), a destructured one (const { fails } = it), and Vitest's option form with any value
-// but `false` ({ fails: true }, { skip: 1 }).
-// This is an early warning, not the guard: a test can be switched off in ways no pattern finds. #156 opens a feature's
-// batch only on CI's proof that its journey ran and passed (Zeus, 2026-11-10, on #139).
+// but `false` ({ fails: true }, { skip: 1 }, { 'skip': true }, { fails: false || true }) or as a shorthand ({ skip }).
+// This is an early warning in batch.ts's report, not the guard: a test can be switched off in ways no pattern finds.
+// The merge gate holds a feature's batch until CI's report shows its journey ran and passed (#156; Zeus, 2026-11-10,
+// on #139).
 const MARK = '(?:fails?|skip|skipIf|runIf|fixme|todo|only)';
 const RUNNER = '\\b(?:it|test|describe|suite)\\b';
 const SWITCHED_OFF = new RegExp(
@@ -90,10 +91,13 @@ const SWITCHED_OFF = new RegExp(
     `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\.\\s*${MARK}\\b`,
     `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\[\\s*['"\`]${MARK}['"\`]\\s*\\]`,
     `\\{[^}]*\\b${MARK}\\b[^}]*\\}\\s*=\\s*${RUNNER}`,
-    // An option key with any value but a literal `false` (`{ skip: 1 }`, `{ fails: isCI }`), wherever it sits: in the
-    // call, in a variable, after the function. It errs toward keeping the batch shut, the safe side (Zeus, 2026-11-10,
-    // round 5 of #155), so any object with such a key counts, test options or not.
-    `\\b${MARK}\\s*:\\s*(?!false\\b)[^\\s,}]`,
+    // An option key, bare or quoted, with any value but just `false` (`{ skip: 1 }`, `{ fails: isCI }`, `{ 'skip': true }`,
+    // `{ fails: false || true }`), wherever it sits: in the call, in a variable, after the function. It errs toward
+    // warning, the safe side (Zeus, 2026-11-10, round 5 of #155), so any object with such a key counts, test options
+    // or not.
+    `(?:\\b${MARK}|['"\`]${MARK}['"\`])\\s*:\\s*(?!false\\s*(?:[,}]|$))\\S`,
+    // The shorthand (`{ skip }`, `{ timeout: 5000, fails }`) (Argus F1, Cerberus F1, nits on #155).
+    `[{,]\\s*${MARK}\\s*(?=[,}])`,
   ].join('|'),
 );
 
@@ -188,15 +192,13 @@ export function featureBatch(input: {
       feature,
       reason: `feature "${feature}" still needs ${list(missing)} on staging`,
     };
-  if (input.journeyMarked)
-    return {
-      due: false,
-      feature,
-      reason: `feature "${feature}"'s journey test is still marked as expected to fail`,
-    };
+  // The mark is only reported: the merge gate holds the batch on CI's result, which no pattern here can fool (#156).
+  const warning = input.journeyMarked
+    ? '. Warning: its journey test still looks marked or switched off, and the merge gate holds the batch until CI shows the journey ran and passed'
+    : '';
   return {
     due: true,
     feature,
-    reason: `every task of feature "${feature}" is on staging (${list(input.featureTasks)})`,
+    reason: `every task of feature "${feature}" is on staging (${list(input.featureTasks)})${warning}`,
   };
 }

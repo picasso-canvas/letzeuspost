@@ -1,4 +1,5 @@
 import type { OpenIssue } from '../lib/follow-ups.ts';
+import type { JourneyEntry } from '../lib/journey-proof.ts';
 import type { RawChange } from '../lib/protected.ts';
 export const REVIEWERS = ['argus', 'cerberus', 'iris', 'redteam'] as const;
 export type Reviewer = (typeof REVIEWERS)[number];
@@ -35,6 +36,8 @@ export interface CheckRun {
   conclusion: string | null;
   /** The GitHub App that created the run; required checks must come from GitHub Actions. */
   app: string | null;
+  /** The run's page (`…/actions/runs/<id>/job/<id>` for an Actions job), where the gate finds its artifacts (#156). */
+  url?: string | null;
 }
 
 export interface ClosingIssue {
@@ -76,6 +79,20 @@ export interface Facts {
   evidenceShas: string[];
   /** The previous review round's numbered findings (`Argus F1`), which a Round section must answer (#138). */
   earlierFindingIds: string[];
+  /**
+   * For a batch that completes a feature: the journey tests the `services` run on its head commit reported (#156);
+   * `entries` is null when there's no report, and `unreadable` says why one can't be read. Null for any other PR, a
+   * batch with no feature, and a part of a feature whose other tasks are still open.
+   */
+  journey: {
+    feature: string;
+    entries: JourneyEntry[] | null;
+    /** Every file under `tests/journeys/` at the head commit, so an unreported journey test is caught. */
+    files: string[];
+    unreadable?: string;
+  } | null;
+  /** For a batch that is a part of a feature: the feature's open build tasks it doesn't close, which the gate prints. */
+  journeyPart: { feature: string; open: number[] } | null;
   /** For a batch: the open issues, the batch PRs merged into main, and this PR's comments (#154, follow-ups). */
   openIssues: OpenIssue[];
   /** The open-issue list hit its limit (#170): the gate refuses rather than miss a follow-up. */

@@ -5,8 +5,8 @@
 // It merges builder PRs into `staging`, and the batch PR from `staging` or Athena's harness PRs into `main`; after every
 // merge into `main` it merges `main` into `staging` on GitHub, so builders always start from main's harness (§19).
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
@@ -35,6 +35,40 @@ function run(cmd: string, args: string[]): string {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+/**
+ * A run's journey reports (#156), each from its own artifact (`journeys-vitest`, and `journeys-playwright` when the
+ * end-to-end step ran), downloaded into a fresh folder outside the checkout and read as data: only that artifact's one
+ * file, only as a plain file, then the folder is removed. No Vitest artifact (or no such run) reads as null.
+ */
+function readJourneyReport(runId: number): Record<string, string> | null {
+  const dir = mkdtempSync(join(tmpdir(), 'lzp-journeys-'));
+  const fetch = (artifact: string, file: string): string | null => {
+    const into = join(dir, artifact);
+    try {
+      run('gh', ['run', 'download', String(runId), '-R', REPO, '-n', artifact, '-D', into]);
+    } catch (error) {
+      // No such artifact reads as none; any other failure stops the gate rather than drop a report (Argus F1 in round 2
+      // on #171).
+      const { stderr } = error as { stderr?: unknown };
+      if (typeof stderr === 'string' && stderr.includes('no artifact matches')) return null;
+      throw error;
+    }
+    const path = join(into, file);
+    return existsSync(path) && lstatSync(path).isFile() ? readFileSync(path, 'utf8') : null;
+  };
+  try {
+    const vitest = fetch('journeys-vitest', 'vitest.json');
+    if (vitest === null) return null;
+    const playwright = fetch('journeys-playwright', 'playwright.json');
+    return {
+      'vitest.json': vitest,
+      ...(playwright === null ? {} : { 'playwright.json': playwright }),
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -87,6 +121,7 @@ function main(argv: string[], pr: number): number {
     listReviewedShas: (n) => listReviewedShas(n),
     readMergeLog: () => readMergeLog().map((e) => toStagingLogEntry(e)) satisfies StagingLogEntry[],
     // The gate re-verifies every runner-made review against Claude Code's own transcript.
+    readJourneyReport,
     readTranscript: (sessionId) => {
       const file = transcriptPath(homedir(), ROOT, sessionId);
       return existsSync(file) ? readFileSync(file, 'utf8') : null;
@@ -100,6 +135,11 @@ function main(argv: string[], pr: number): number {
   for (const item of result.items) {
     console.log(`${item.ok ? '✓' : '✗'} ${String(item.id)}. ${item.title}: ${item.detail}`);
   }
+  // A part of a feature isn't held by its journey: say so, with the tasks that made it a part (Cerberus F2 on #171).
+  if (facts.journeyPart !== null)
+    console.log(
+      `  Journey: a part of feature "${facts.journeyPart.feature}" (${facts.journeyPart.open.map((n) => `#${String(n)}`).join(', ')} still open), so its journey isn't checked yet.`,
+    );
   const entry = {
     at: new Date().toISOString(),
     pr,

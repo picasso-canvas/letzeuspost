@@ -50,6 +50,8 @@ function facts(over: Partial<Facts> = {}): Facts {
     gatedIssues: [42, 43],
     evidenceShas: [SHA],
     earlierFindingIds: [],
+    journey: null,
+    journeyPart: null,
     openIssues: [],
     openIssuesCutOff: false,
     mergedBatches: [],
@@ -461,6 +463,47 @@ describe('evaluate: the batch PR from staging into main', () => {
   it('gets the full review, with one ticked box per task', () => {
     expect(failedIds(batch())).toEqual([]);
     expect(failedIds(batch({ reviews: [] }))).toEqual([5]);
+  });
+
+  it("refuses a feature's batch unless CI's journey report shows its journey ran and passed (#156)", () => {
+    const passed = {
+      file: 'tests/journeys/data.int.test.ts',
+      name: 'two workspaces stay apart',
+      state: 'passed',
+      fails: false,
+      mode: 'run',
+    };
+    expect(
+      failedIds(batch({ journey: { feature: 'data', entries: [passed], files: [passed.file] } })),
+    ).toEqual([]);
+    // A journey file no runner reported holds the batch too (Argus F1 in round 2 on #171).
+    const unreported = batch({
+      journey: {
+        feature: 'data',
+        entries: [passed],
+        files: [passed.file, 'tests/journeys/data.spec.ts'],
+      },
+    });
+    expect(failedIds(unreported)).toEqual([3]);
+    const none = batch({ journey: { feature: 'data', entries: null, files: [] } });
+    expect(failedIds(none)).toEqual([3]);
+    expect(evaluate(none).items[2]?.detail).toContain('left no journey report');
+    expect(
+      failedIds(
+        batch({ journey: { feature: 'data', entries: [{ ...passed, fails: true }], files: [] } }),
+      ),
+    ).toEqual([3]);
+    const unreadable = batch({
+      journey: { feature: 'data', entries: null, files: [], unreadable: "vitest.json isn't JSON" },
+    });
+    expect(failedIds(unreadable)).toEqual([3]);
+    expect(evaluate(unreadable).items[2]?.detail).toBe(
+      "the journey report of the services run on this commit can't be read: vitest.json isn't JSON",
+    );
+    // Only a batch is held by its journey: a PR into staging isn't.
+    expect(
+      evaluate(facts({ journey: { feature: 'data', entries: null, files: [] } })).items[2]?.detail,
+    ).not.toContain('journey');
   });
 
   it('refuses a batch while a follow-up of an earlier batch is open, and checks its follow-up links (#154)', () => {
