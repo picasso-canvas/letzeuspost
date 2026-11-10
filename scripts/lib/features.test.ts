@@ -99,6 +99,11 @@ describe('journeyMarked', () => {
     expect(journeyMarked(files, 'data-export')).toBe(true); // no journey test of its own: still to do
   });
 
+  it("doesn't take other code's skip or fail for a mark (Argus F3 on #155)", () => {
+    const text = "const rows = query.skip(10);\nassert.fail('never');\nit('journey', () => {});";
+    expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(false);
+  });
+
   it('counts a feature with no journey test as not done, and finds one in its own folder', () => {
     expect(journeyMarked([], 'data')).toBe(true);
     expect(
@@ -121,6 +126,11 @@ describe('journeyMarked', () => {
       'const journey = it.fails;',
       "it['fails']('j', () => {})",
       "test.describe.skip('d', () => {})",
+      "it.skipIf(true)('j', () => {})",
+      "describe.skipIf(process.env.CI)('d', () => {})",
+      "test.runIf(false)('j', () => {})",
+      'const { fails } = it;',
+      'const { skip: off } = test;',
     ]) {
       expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data'), text).toBe(
         true,
