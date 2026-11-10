@@ -69,6 +69,37 @@ describe('globals.css', () => {
     expect(source).not.toMatch(/https?:\/\//);
   });
 
+  it("builds the components' named utilities from components.css, with no colour of their own (#205)", async () => {
+    const css = await build([
+      'z-toast',
+      'toast-stack',
+      'toast-transition',
+      'data-expanded:toast-expanded',
+      'tooltip-arrow-offset',
+      'w-sidebar-icon-gap',
+      'group-data-[collapsible=offcanvas]:left-sidebar-hidden',
+      'transition-width',
+      'shadow-sidebar-outline',
+    ]);
+    expect(css).toMatch(/\.z-toast\s*\{[^}]*z-index:\s*calc\(1000 - var\(--toast-index\)\)/);
+    expect(css).toMatch(/\.toast-stack\s*\{[^}]*transform:/);
+    expect(css).toMatch(/\.w-sidebar-icon-gap\s*\{[^}]*width:\s*calc\(var\(--sidebar-width-icon\)/);
+    expect(css).toMatch(
+      /left-sidebar-hidden[^{]*\{[^}]*left:\s*calc\(var\(--sidebar-width\) \* -1\)/,
+    );
+    expect(css).toMatch(/\.shadow-sidebar-outline\s*\{[^}]*var\(--color-border\)/);
+    // Nothing moves under reduced motion (§05).
+    expect(css).toMatch(
+      /\.toast-transition\s*\{[^}]*@media \(prefers-reduced-motion: reduce\)\s*\{\s*transition:\s*none/,
+    );
+    // Comments aside (they cite issues like #205), no raw colour.
+    const rules = readFileSync(new URL('components.css', import.meta.url), 'utf8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    );
+    expect(rules).not.toMatch(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch)\(/i);
+  });
+
   it('uses no other interface font', () => {
     const families = [...source.matchAll(/font-family:\s*([^;]+);/g)].map((m) => m[1] ?? '');
     for (const family of families) expect(family).toMatch(/Inter|var\(--font-sans\)/);

@@ -1,0 +1,133 @@
+/*
+ * Component mechanics that the shadcn registry writes as arbitrary values (#205), as named utilities instead, so the
+ * components keep to `lzp/tokens-only` (§21). They hold only calc() over the components' own runtime variables
+ * (Base UI's toast and the sidebar's widths): no colour, size or radius of their own. Anything that moves stops under
+ * reduced motion (§05). SOURCES.md lists which registry class each one replaces.
+ */
+
+/* The toast stack (toast.tsx): Base UI sets --toast-index, --toast-offset-y, the heights and the swipe movement. */
+@utility z-toast {
+  z-index: calc(1000 - var(--toast-index));
+}
+
+@utility toast-vars {
+  --gap: 0.75rem;
+  --peek: 0.75rem;
+  --height: var(--toast-frontmost-height, var(--toast-height));
+  --offset-y: calc(
+    var(--toast-offset-y) * -1 + calc(var(--toast-index) * var(--gap) * -1) +
+      var(--toast-swipe-movement-y)
+  );
+  --scale: calc(max(0, 1 - (var(--toast-index) * 0.1)));
+  --shrink: calc(1 - var(--scale));
+}
+
+@utility toast-stack {
+  transform: translateX(var(--toast-swipe-movement-x))
+    translateY(
+      calc(
+        var(--toast-swipe-movement-y) - (var(--toast-index) * var(--peek)) -
+          (var(--shrink) * var(--height))
+      )
+    )
+    scale(var(--scale));
+}
+
+@utility toast-transition {
+  transition:
+    transform 500ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 500ms,
+    height 150ms;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+@utility ease-toast {
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@utility h-toast-gap {
+  height: calc(var(--gap) + 1px);
+}
+
+@utility toast-expanded {
+  transform: translateX(var(--toast-swipe-movement-x)) translateY(var(--offset-y));
+}
+
+@utility toast-out {
+  transform: translateY(150%);
+}
+
+@utility toast-swipe-down {
+  transform: translateY(calc(var(--toast-swipe-movement-y) + 150%));
+}
+
+@utility toast-swipe-up {
+  transform: translateY(calc(var(--toast-swipe-movement-y) - 150%));
+}
+
+@utility toast-swipe-left {
+  transform: translateX(calc(var(--toast-swipe-movement-x) - 150%)) translateY(var(--offset-y));
+}
+
+@utility toast-swipe-right {
+  transform: translateX(calc(var(--toast-swipe-movement-x) + 150%)) translateY(var(--offset-y));
+}
+
+/* The tooltip's arrow (tooltip.tsx): half its size up, and 2 px more to meet the bubble's edge. */
+@utility tooltip-arrow-offset {
+  --tw-translate-y: calc(-50% - 2px);
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}
+
+/* The sidebar (sidebar.tsx): --sidebar-width and --sidebar-width-icon come from SidebarProvider. */
+@utility w-sidebar-icon-gap {
+  width: calc(var(--sidebar-width-icon) + --spacing(4));
+}
+
+@utility w-sidebar-icon-gap-border {
+  width: calc(var(--sidebar-width-icon) + --spacing(4) + 2px);
+}
+
+@utility left-sidebar-hidden {
+  left: calc(var(--sidebar-width) * -1);
+}
+
+@utility right-sidebar-hidden {
+  right: calc(var(--sidebar-width) * -1);
+}
+
+@utility transition-width {
+  transition-property: width;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+@utility transition-inset-width {
+  transition-property: left, right, width;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+@utility transition-margin-opacity {
+  transition-property: margin, opacity;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+@utility transition-size-padding {
+  transition-property: width, height, padding;
+  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+  transition-duration: var(--tw-duration, var(--default-transition-duration));
+}
+
+/* The menu button's outline variant: a 1 px ring in the border colour, the accent on hover. */
+@utility shadow-sidebar-outline {
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+@utility shadow-sidebar-outline-accent {
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
