@@ -138,10 +138,11 @@ export async function installJobs(ownerUrl: string): Promise<void> {
       await boss.createQueue(name, queues[name].queue);
       await boss.updateQueue(name, queues[name].queue);
     }
+    // Rows of every table, the version row included: a running pg-boss stamps its cron, monitor and reindex passes
+    // there. Never the schema or a table's structure, which stay the owner's.
     await boss.getDb().executeSql(
       `GRANT USAGE ON SCHEMA ${JOBS_SCHEMA} TO lzp_app;
        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${JOBS_SCHEMA} TO lzp_app;
-       REVOKE INSERT, UPDATE, DELETE ON ${JOBS_SCHEMA}.version FROM lzp_app;
        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ${JOBS_SCHEMA} TO lzp_app;`,
     );
   } finally {
