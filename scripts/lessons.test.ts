@@ -152,6 +152,14 @@ describe('the lessons doc and the weekly rows', () => {
     expect(rows.map((r) => r.type)).toEqual(['evidence', 'correctness']);
     expect(rows[1]).toMatchObject({ prevention: null, status: null });
   });
+
+  it("leaves out older findings no keyword could type: they aren't a lesson", () => {
+    const rows = lessonRows(
+      [{ type: 'other', prs: [1, 2, 3], findings: 9, blocking: 1, approximate: true }],
+      parseLessonsDoc(doc),
+    );
+    expect(rows).toEqual([]);
+  });
 });
 
 describe('the finding types', () => {
