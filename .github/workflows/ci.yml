@@ -149,11 +149,21 @@ jobs:
 
       # Every migration under packages/db/ (#71 adds the first); squawk reads the SQL files, it doesn't run them. Its
       # config is written here and passed explicitly, so a `.squawk.toml` in the branch can't switch a rule off or skip
-      # a file (Cerberus on #119): every rule, Postgres 18.
+      # a file (Cerberus on #119): every rule, Postgres 18. Nor can a migration's own comments: any `squawk-ignore` in
+      # a SQL file fails the step, and so does a SQL file outside packages/db/, which squawk would never see.
       - name: Migrations (squawk)
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
+          if git grep -nIi 'squawk-ignore' -- '*.sql'; then
+            echo "::error::a SQL file silences squawk (safe-migrations: no rule silenced, no file skipped)"
+            exit 1
+          fi
+          mapfile -t outside < <(git ls-files -- '*.sql' ':!packages/db/**')
+          if [ "${#outside[@]}" -gt 0 ]; then
+            echo "::error::SQL files outside packages/db/ get no squawk check: ${outside[*]}"
+            exit 1
+          fi
           mapfile -t migrations < <(git ls-files -- 'packages/db/**.sql')
           if [ "${#migrations[@]}" -eq 0 ]; then
             echo "No migrations yet."

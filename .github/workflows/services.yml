@@ -62,8 +62,9 @@ jobs:
             echo "STORAGE_ENDPOINT=http://127.0.0.1:8333"
             echo "STORAGE_REGION=us-east-1"
             echo "SMTP_URL=smtp://127.0.0.1:1025"
-            echo "EMAIL_FROM=LetZeusPost <noreply@letzeuspost.invalid>"
+            echo "EMAIL_FROM=noreply@letzeuspost.invalid"
             echo "APP_URL=http://localhost:3000"
+            echo "NEXT_DEPLOYMENT_ID=ci-${GITHUB_SHA}"
           } >> "$GITHUB_ENV"
 
       # The roles Q4 settles (#18): the app logs in without BYPASSRLS and can't create tables; the owner can; a wrong
@@ -110,6 +111,14 @@ jobs:
 
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
+
+      # The settings above are the ones config/env.ts reads: each process loads its own, or the job fails here
+      # (Argus on #119). loadEnv names a bad setting, never its value.
+      - name: 'Smoke: the settings load (config/env.ts)'
+        run: >-
+          node --input-type=module -e "const { loadEnv } = await import('./config/env.ts');
+          for (const p of ['web', 'worker', 'migrate']) loadEnv(p);
+          console.log('web, worker and migrate settings load')"
 
       # `pnpm check:services`, in two steps: its Vitest half here, and its Playwright half for the app below. The
       # gallery's Playwright project runs in the `design` job instead (#70).
