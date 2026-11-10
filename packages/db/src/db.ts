@@ -3,7 +3,7 @@
 // `set_config(…, true)`, so it lasts only for that transaction and never reaches the next request on the same pooled
 // connection. Row-level security then filters every read and refuses every write outside that workspace, even for a
 // query that forgets the filter. The raw client stays in this package: the app gets `forWorkspace`, `ping` and `close`.
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { z } from 'zod';
@@ -45,27 +45,54 @@ export function checkedId(kind: 'workspace' | 'user', id: string): string {
   return id;
 }
 
+/** The role a statement runs as, and the role its connection logged in as. */
+interface RoleRow {
+  who: string;
+  login: string;
+}
+
+/** The connection's roles from a statement that selects them, or why there's no answer. */
+async function connectionRoles(tx: Tx, statement: SQL): Promise<Partial<RoleRow>> {
+  const { rows } = await tx.execute<RoleRow>(statement);
+  return rows[0] ?? {};
+}
+
 /**
  * A unit of work with both settings the policies read set first, for this transaction only. It runs only as the role
- * the connection logged in as (lzp_app): a pooled connection that something switched to another role (lzp_auth, by
- * SQL injected into an earlier query, say) is refused before the work starts, so the switch can't reach the next
- * request on that connection (Cerberus F4 on #189). Only the auth handle's own pool runs as another role (auth.ts),
- * and it never comes here.
+ * the connection logged in as (lzp_app), checked twice:
+ * - before the work: a pooled connection that something switched to another role (lzp_auth, by SQL injected into an
+ *   earlier query, say) is refused, so the switch can't reach the next request on that connection (Cerberus F4 on
+ *   #189);
+ * - after it: work that switched role inside its own transaction (by injected SQL, for the transaction or the session)
+ *   has its result refused, and the transaction rolls back with everything it wrote and the switch itself (Cerberus F1
+ *   on #189).
+ * Its limit: work that switches, reads and switches back ends as lzp_app, and gets past the second check. Postgres
+ * can't be asked to refuse the switch itself: an event trigger never sees a role switch, and Postgres allows one by
+ * the session's login, so only a login that may not take lzp_auth stops it (#195's notes). Parameterised queries
+ * (Drizzle) keep the SQL out in the first place.
+ * Only the auth handle's own pool runs as another role (auth.ts), and it never comes here.
  */
 export function scoped(orm: Orm, settings: { workspaceId: string; userId: string }): Scoped {
   return {
     transaction: (work) =>
       orm.transaction(async (tx) => {
-        const { rows } = await tx.execute<{ who: string; login: string }>(
+        const before = await connectionRoles(
+          tx,
           sql`select current_user as who, session_user as login, set_config('app.workspace_id', ${settings.workspaceId}, true), set_config('app.user_id', ${settings.userId}, true)`,
         );
-        const role = rows[0];
-        if (role === undefined || role.who !== role.login) {
+        if (before.who === undefined || before.who !== before.login) {
           throw new Error(
-            `database: refused: this connection runs as ${role?.who ?? 'an unknown role'}, not ${role?.login ?? 'its login'}`,
+            `database: refused: this connection runs as ${before.who ?? 'an unknown role'}, not ${before.login ?? 'its login'}`,
           );
         }
-        return work(tx);
+        const result = await work(tx);
+        const after = await connectionRoles(tx, sql`select current_user as who`);
+        if (after.who === undefined || after.who !== before.login) {
+          throw new Error(
+            `database: refused: the work switched this connection to ${after.who ?? 'an unknown role'}, not ${before.login}`,
+          );
+        }
+        return result;
       }),
   };
 }

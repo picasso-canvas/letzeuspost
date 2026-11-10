@@ -8,9 +8,8 @@
 // Its limit (Argus F6 and Cerberus F4 on #189): it reads text, so it sees only a switch written out in a file. A
 // switch put together at run time gets past it, as these cases show: SQL built from pieces, a role name read from
 // config, or text from a request that reaches a query (an injection). So it is not the only wall. `scoped()` in db.ts
-// checks, in every unit of work, that the connection still runs as the role it logged in as, and refuses it if not.
-// Even so, SQL injected into workspace code could switch to lzp_auth inside its own transaction; parameterised
-// queries (Drizzle) are what keep that out.
+// checks, before and after every unit of work, that the connection runs as the role it logged in as, and refuses the
+// work if not (Cerberus F1 on #189); its own comment says what still gets past it.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
