@@ -60,15 +60,15 @@ Reviewers never review their own work and always start from a fresh context. The
    every minute while it runs, dispatch copies the repo variable `AGENTS_PAUSED` into `~/.letzeuspost/paused` with the
    time, which the builder's hooks read before every tool call (builders can't reach GitHub to read it themselves); a
    flag older than 3 minutes counts as frozen. One builder at a time in H0; up to 3 later, only on tasks whose Areas
-   don't overlap and whose dependencies are Done or
-   on `staging` in the same feature. A task built on another that is only on `staging` stands or falls with it: a
-   block on that one in the batch review sends back every task built on it. **One feature is open at a time:**
-   dispatch refuses a task from another feature while `staging` holds, or a builder is working on, a task of the open
-   feature. Harness tasks (Athena's, straight into `main`) run alongside, and so do follow-ups, which ride the open
-   batch ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/142), so a follow-up of a closed
-   feature can't deadlock with the open one). A follow-up is an issue labelled `follow-up` whose **Follow-up of:**
-   line names an earlier batch PR that has merged into `main`; the label alone doesn't exempt a task. The card moves
-   to In progress.
+   don't overlap and whose dependencies are Done or on `staging` in the same feature. A task built on another that is
+   only on `staging` stands or falls with it: a block on that one in the batch review sends back every task built on
+   it. **One feature is open at a time:** dispatch refuses a task from another feature while `staging` holds, or a
+   builder is working on, a task of the open feature. Harness tasks (Athena's, straight into `main`) run alongside,
+   and so do follow-ups, which ride the open batch ([Zeus,
+   2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/142), so a follow-up of a closed feature can't
+   deadlock with the open one). A follow-up is an issue labelled `follow-up` whose **Follow-up of:** line names an
+   earlier batch PR that has merged into `main`; the label alone doesn't exempt a task. The card moves to In
+   progress.
 4. **Build.** The builder reads `.lzp/task.md` and the section docs, writes a 3–5 line approach to
    `.lzp/approach.md`, writes tests first for logic, implements, runs `pnpm check` until it is green, commits on its
    branch, and writes the PR text to `.lzp/pr.md`: `Closes #n`, an `Agent: <name>` line, the section link, the
@@ -106,11 +106,11 @@ Reviewers never review their own work and always start from a fresh context. The
    dispatch on the same branch; on a batch, a fix task on `staging`, then the batch is reviewed again. **What holds a
    batch** ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/136)): blocking findings and
    Cerberus's should-fixes. For each of Argus's and Iris's should-fixes and every nit, Athena opens a follow-up task,
-   labelled `follow-up`, with a **Follow-up of:** line naming the batch PR (or adds it to a planned task's
-   Done-when), and links it on the batch, which answers it. A follow-up must land by the next batch: the gate refuses
-   a batch while a follow-up from an earlier batch is still open, unless Zeus makes an exception on the record. At
-   most 3 rounds, then `needs-zeus` with a summary. The card moves to In review, and stays there until its batch
-   merges.
+   labelled `follow-up`, with a **Follow-up of:** line naming the batch PR (or adds it to the Done-when of a planned
+   task in the open feature; never to a later feature's, which would bring the deadlock back), and links it on the
+   batch, which answers it. A follow-up must land by the next batch: the gate refuses a batch while a follow-up from
+   an earlier batch is still open, unless Zeus makes an exception on the record. At most 3 rounds, then `needs-zeus`
+   with a summary. The card moves to In review, and stays there until its batch merges.
 7. **Merge gate.** Athena runs `scripts/merge-gate.ts <pr>` from `main`. It checks every item in
    [the merge gate](#the-merge-gate) and only then squash-merges. After every merge into `main` it merges `main` into
    `staging`, so builders always start from main's harness. **Builders can't merge.** Only `main` is ever deployed
