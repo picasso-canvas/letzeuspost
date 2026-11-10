@@ -51,6 +51,12 @@ export interface DispatchRecord {
   marker?: string;
   /** A fix round's finding ids (`Argus F1`), from Athena's findings file: its PR text must answer each (#138). */
   findings?: string[];
+  /** How the last run ended (#157): a run a usage limit stopped can be resumed. */
+  ending?: 'finished' | 'usage-limit' | 'frozen' | 'failed';
+  endedAt?: string;
+  resumedAt?: string;
+  /** .git/config's sha256 as dispatch left it: a resume refuses a clone whose config changed (#166). */
+  gitConfigSha256?: string;
 }
 
 export function parseDispatchRecord(text: string, issue: number): DispatchRecord {
@@ -68,7 +74,13 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
       (!Array.isArray(r.findings) ||
         !r.findings.every(
           (id: unknown) => typeof id === 'string' && /^(Argus|Cerberus|Iris) F\d+$/.test(id),
-        )))
+        ))) ||
+    (r.ending !== undefined &&
+      !['finished', 'usage-limit', 'frozen', 'failed'].includes(r.ending)) ||
+    (r.endedAt !== undefined && typeof r.endedAt !== 'string') ||
+    (r.resumedAt !== undefined && typeof r.resumedAt !== 'string') ||
+    (r.gitConfigSha256 !== undefined &&
+      (typeof r.gitConfigSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(r.gitConfigSha256)))
   ) {
     throw new Error(`the dispatch record for #${String(issue)} is malformed`);
   }
@@ -80,6 +92,10 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     ...(r.shippedAt ? { shippedAt: r.shippedAt } : {}),
     ...(r.marker ? { marker: r.marker } : {}),
     ...(r.findings ? { findings: r.findings } : {}),
+    ...(r.ending ? { ending: r.ending } : {}),
+    ...(r.endedAt ? { endedAt: r.endedAt } : {}),
+    ...(r.resumedAt ? { resumedAt: r.resumedAt } : {}),
+    ...(r.gitConfigSha256 ? { gitConfigSha256: r.gitConfigSha256 } : {}),
   };
 }
 
