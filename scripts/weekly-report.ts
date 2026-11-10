@@ -148,7 +148,8 @@ function featureNote(features: readonly string[] | undefined): string {
 
 /**
  * The Actions minutes a list of runs costs, estimated the way GitHub bills a one-job workflow: each run's whole
- * minutes, rounded up, at least one (#160). A run with an unreadable time counts nothing.
+ * minutes, rounded up, at least one (#160). A run with an unreadable time counts nothing. Only an estimate:
+ * `updated_at` moves with any later change to a run, and a re-run's earlier attempts count once (Argus F3 on #168).
  */
 export function estimateMinutes(runs: readonly { started: string; updated: string }[]): number {
   return runs.reduce((sum, { started, updated }) => {

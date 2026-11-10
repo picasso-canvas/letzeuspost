@@ -44,13 +44,17 @@ jobs:
           set -euo pipefail
           run=true
           if [ "$EVENT" = pull_request ]; then
-            mapfile -t files < <(git diff --name-only HEAD^1 HEAD)
+            mapfile -t files < <(git diff --no-renames --name-only HEAD^1 HEAD) # a moved file counts under its old path too
             if [ "${#files[@]}" -gt 0 ]; then
               run=false
               for f in "${files[@]}"; do
                 case "$f" in
                   *.int.test.* | DESIGN.md) run=true ;;
-                  docs/* | *.md | .claude/* | scripts/* | tests/gallery/* | .github/workflows/ci.yml | .github/workflows/design.yml | .github/workflows/risk-gate.yml | .github/*.txt) ;;
+                  docs/* | .claude/* | scripts/* | tests/gallery/* | .github/workflows/ci.yml | .github/workflows/design.yml | .github/workflows/risk-gate.yml | .github/*.txt) ;;
+                  *.md)
+                    # Markdown at the root only (docs/ is listed above); one deeper may be a package's input.
+                    if [[ "$f" == */* ]]; then run=true; fi
+                    ;;
                   *) run=true ;;
                 esac
               done
