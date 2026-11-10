@@ -324,12 +324,14 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     const calls: string[] = [];
     const gh = fakeGh({
       'pr view': batchView,
-      '--json comments': JSON.stringify({ comments: [{ body: 'Follow-up: #148' }] }),
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [{ body: 'Follow-up: #148' }],
+      }),
       'issue list': JSON.stringify([
         { number: 148, labels: [{ name: 'follow-up' }], body: '**Follow-up of:** #130' },
         { number: 72, labels: [{ name: 'build-task' }], body: 'x' },
       ]),
-      'issue view 148': JSON.stringify({
+      'issue view 148 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
         comments: [{ author: { login: 'picasso-canvas' }, body: 'a note' }],
       }),
       'log --first-parent': '',

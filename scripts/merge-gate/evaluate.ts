@@ -5,6 +5,9 @@ import type { Facts, GateConfig, GateResult, ItemResult, Reviewer, Tier } from '
 import { areaRefusals, evidenceRefusal, roundRefusals } from '../lib/handover-checks.ts';
 import { followUpRefusals } from '../lib/follow-ups.ts';
 
+/** Zeus's GitHub account, the repository's owner, which Athena works through (§20): only its records grant an exception. */
+const ZEUS_LOGIN = 'picasso-canvas';
+
 /** The PR text a review was given, normalised so only real edits change it. */
 export function bodyHash(body: string): string {
   return createHash('sha256').update(body.replace(/\r\n/g, '\n')).digest('hex');
@@ -153,6 +156,8 @@ export function evaluate(f: Facts): GateResult {
         mergedBatches: f.mergedBatches,
         openIssues: f.openIssues,
         comments: f.prComments,
+        zeusLogin: ZEUS_LOGIN,
+        listCutOff: f.openIssuesCutOff,
       }),
     );
   if (kind === 'batch' && f.ungatedStaging.length > 0) {

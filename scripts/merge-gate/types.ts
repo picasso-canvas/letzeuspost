@@ -78,6 +78,8 @@ export interface Facts {
   earlierFindingIds: string[];
   /** For a batch: the open issues, the batch PRs merged into main, and this PR's comments (#154, follow-ups). */
   openIssues: OpenIssue[];
+  /** The open-issue list hit its limit (#170): the gate refuses rather than miss a follow-up. */
+  openIssuesCutOff: boolean;
   mergedBatches: number[];
   prComments: string[];
   labels: string[];

@@ -284,34 +284,37 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   const mergedBatches = mergeLog
     .filter((e) => e.result === 'merged' && e.kind === 'batch' && typeof e.pr === 'number')
     .map((e) => e.pr as number);
-  const openIssues: OpenIssue[] = isBatch
-    ? (
-        JSON.parse(
-          gh([
-            'issue',
-            'list',
-            '-R',
-            repo,
-            '--state',
-            'open',
-            '--limit',
-            '500',
-            '--json',
-            'number,labels,body,comments',
-          ]),
-        ) as {
-          number: number;
-          labels: { name: string }[];
-          body: string;
-          comments: { body: string }[];
-        }[]
-      ).map((i) => ({
-        number: i.number,
-        labels: i.labels.map((l) => l.name),
-        body: i.body,
-        comments: i.comments.map((c) => c.body),
-      }))
+  // Every open issue's text (a planned task's follow-up item); a follow-up's comments in full, with their authors, for
+  // an exception. A list that reaches its limit may be cut off, and the gate refuses then (#170).
+  const ISSUE_LIMIT = 1000;
+  const listed = isBatch
+    ? (JSON.parse(
+        gh([
+          'issue',
+          'list',
+          '-R',
+          repo,
+          '--state',
+          'open',
+          '--limit',
+          String(ISSUE_LIMIT),
+          '--json',
+          'number,labels,body',
+        ]),
+      ) as { number: number; labels: { name: string }[]; body: string }[])
     : [];
+  const openIssuesCutOff = listed.length >= ISSUE_LIMIT;
+  const openIssues: OpenIssue[] = listed.map((i) => {
+    const labels = i.labels.map((l) => l.name);
+    const comments = labels.includes('follow-up')
+      ? (
+          JSON.parse(gh(['issue', 'view', String(i.number), '-R', repo, '--json', 'comments'])) as {
+            comments: { author: { login: string } | null; body: string }[];
+          }
+        ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body }))
+      : [];
+    return { number: i.number, labels, body: i.body, comments };
+  });
   const prComments: string[] = isBatch
     ? (
         JSON.parse(gh(['pr', 'view', String(pr), '-R', repo, '--json', 'comments'])) as {
@@ -374,6 +377,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     ungatedStaging,
     gatedIssues,
     openIssues,
+    openIssuesCutOff,
     mergedBatches,
     prComments,
     ...handoverFacts(pr, sha, base, deps),
