@@ -1,6 +1,7 @@
 // What the scoped helper promises before it ever reaches Postgres (§13 Keeping workspaces apart, #71). Nothing here
 // connects: pg's pool opens a connection only for a query, and every case below is refused before one.
 import { afterEach, describe, expect, it } from 'vitest';
+import * as authModule from './auth.ts';
 import { createAuthDb } from './auth.ts';
 import { createDb } from './db.ts';
 import * as index from './index.ts';
@@ -24,6 +25,20 @@ describe('@lzp/db', () => {
     );
   });
 
+  it('exports none of the auth tables: only @lzp/db/auth does, for packages/auth (#176)', () => {
+    for (const name of ['user', 'session', 'account', 'verification']) {
+      expect(index, name).not.toHaveProperty(name);
+      expect(authModule.schema, name).toHaveProperty(name);
+    }
+    expect(index).toEqual(
+      expect.objectContaining({
+        workspace: authModule.schema.workspace,
+        member: authModule.schema.member,
+        invitation: authModule.schema.invitation,
+      }),
+    );
+  });
+
   it('hands the app the scoped helper, a ping for the health route and close, nothing else', () => {
     expect(Object.keys(open(createDb(URL))).sort()).toEqual(['close', 'forWorkspace', 'ping']);
   });
@@ -33,7 +48,7 @@ describe('db.forWorkspace(ctx)', () => {
   it.each([
     ['an empty id', ''],
     ['not an id', 'workspace-a'],
-    ['an id with SQL in it', "019a6c3e-8f2b-7c4d-9e1f-0123456789ab'; reset role; --"],
+    ['an id with SQL in it', "019a6c3e-8f2b-7c4d-9e1f-0123456789ab'; drop table member; --"],
     ['the nil id, which the helpers use to match nothing', '00000000-0000-0000-0000-000000000000'],
     ['a UUIDv4, which no workspace has (§13: UUIDv7)', 'f47ac10b-58cc-4372-a567-0e02b2c3d479'],
   ])('refuses %s before any query', (_label, workspaceId) => {

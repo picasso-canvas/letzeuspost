@@ -56,7 +56,9 @@ const betterAuth: Record<string, Record<string, boolean>> = {
   invitation: {
     workspaceId: true,
     email: true,
-    role: false,
+    // Optional in the plugin's table schema, but every invitation it creates has one: the create-invitation route
+    // requires `role` and refuses an empty list, and its invitation zod schema requires it. NOT NULL here (Cerberus F4).
+    role: true,
     status: true,
     expiresAt: true,
     createdAt: true,
@@ -154,6 +156,34 @@ describe('the accounts tables', () => {
     expect(getTableConfig(table('invitation')).policies.map((p) => p.name)).toEqual([
       'workspace_scope',
     ]);
+  });
+
+  it('makes every invitation carry its role (Cerberus F4 on #173)', () => {
+    expect(getTableColumns(table('invitation')).role.notNull).toBe(true);
+    expect(migrations).toContain('ALTER TABLE "invitation" ALTER COLUMN "role" SET NOT NULL;');
+  });
+
+  it('keeps the auth tables out of the app role’s reach: only lzp_auth holds them (#176)', () => {
+    // Everything lzp_app held on them goes; lzp_auth, which only the auth handle switches to, gets it instead.
+    expect(migrations).toContain(
+      'REVOKE ALL ON "user", "session", "account", "verification" FROM lzp_app;',
+    );
+    expect(migrations).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON "session", "account", "verification" TO lzp_auth;',
+    );
+    // On "user", lzp_app reads only, under row-level security: the person set, or members of the workspace set.
+    expect(migrations).toContain('GRANT SELECT ON "user" TO lzp_app;');
+    expect(migrations).toContain('ALTER TABLE "user" ENABLE ROW LEVEL SECURITY;');
+    const policies = getTableConfig(table('user')).policies;
+    expect(policies.map((p) => [p.name, p.for, p.to])).toEqual([
+      ['auth_handle', 'all', ['lzp_auth']],
+      ['member_scope', 'select', ['lzp_app']],
+    ]);
+    const memberScope = JSON.stringify(policies.find((p) => p.name === 'member_scope')?.using);
+    expect(memberScope).toContain("id = current_setting('app.user_id')::uuid");
+    expect(memberScope).toContain(
+      "id in (select user_id from member where workspace_id = current_setting('app.workspace_id')::uuid)",
+    );
   });
 
   it('carries no workspace data in the global tables', () => {
