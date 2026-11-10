@@ -106,6 +106,23 @@ describe('checkKey', () => {
       expect(() => checkKey(ctx, key), JSON.stringify(key)).toThrow(StorageKeyError);
   });
 
+  it("refuses a path under the workspace that isn't one of the three key shapes", () => {
+    const strangers = [
+      `ws/${WORKSPACE}/anything/x`,
+      `ws/${WORKSPACE}/renders/not-a-hash.png`,
+      `ws/${WORKSPACE}/renders/${HASH}.gif`,
+      `ws/${WORKSPACE}/renders/${HASH}.png/extra`,
+      `ws/${WORKSPACE}/brands/${BRAND}/assets/${ASSET}/huge`,
+      `ws/${WORKSPACE}/brands/${BRAND}/assets/${ASSET}`,
+      `ws/${WORKSPACE}/brands/${BRAND}/assets/${ASSET}/original/extra`,
+      `ws/${WORKSPACE}/brands/${BRAND}/logo.png`,
+      `ws/${WORKSPACE}/exports/${EXPORT}`,
+      `ws/${WORKSPACE}/exports/${EXPORT}/a/b.zip`,
+      `ws/${WORKSPACE}/exports/not-an-id/a.zip`,
+    ];
+    for (const key of strangers) expect(() => checkKey(ctx, key), key).toThrow(StorageKeyError);
+  });
+
   it('refuses when the context itself has no valid workspace', () => {
     expect(() => checkKey({ workspaceId: '' }, `ws//renders/${HASH}.png`)).toThrow(StorageKeyError);
   });

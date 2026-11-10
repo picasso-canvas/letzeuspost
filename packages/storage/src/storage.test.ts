@@ -2,11 +2,13 @@
 // what they sign, who they are for, and for how long. That a real server accepts and refuses them is checked in
 // storage.int.test.ts, against SeaweedFS.
 import { describe, expect, it } from 'vitest';
-import { exportKey, renderKey, StorageKeyError } from './keys.ts';
+import { assetKey, exportKey, renderKey, StorageKeyError } from './keys.ts';
 import { createStorage, type UploadLimits } from './storage.ts';
 
 const WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8e9f';
 const OTHER_WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8ea0';
+const BRAND = '019a5c3e-7b1b-7000-8000-000000000001';
+const ASSET = '019a5c3e-7b1b-7000-8000-000000000002';
 const EXPORT = '019a5c3e-7b1b-7000-8000-000000000003';
 const HASH = 'b'.repeat(64);
 const ctx = { workspaceId: WORKSPACE };
@@ -69,6 +71,27 @@ describe('download links', () => {
     expect(url).not.toContain(settings.STORAGE_SECRET_ACCESS_KEY);
   });
 
+  it('are refused for any key that is not an export file when asked for 7 days', async () => {
+    const notExports = [
+      assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' }),
+      renderKey(ctx, { hash: HASH, format: 'png' }),
+      `ws/${WORKSPACE}/exports/x`,
+    ];
+    for (const each of notExports) {
+      await expect(storage.signDownload(ctx, each, { export: true }), each).rejects.toThrow(
+        StorageKeyError,
+      );
+    }
+  });
+
+  it('last 15 minutes for an export file when 7 days is not asked for', async () => {
+    const link = await storage.signDownload(
+      ctx,
+      exportKey(ctx, { exportId: EXPORT, name: 'a.zip' }),
+    );
+    expect(lifetime(link.url).expires).toBe(15 * 60);
+  });
+
   it("are refused for a key outside the context's workspace", async () => {
     const other = renderKey({ workspaceId: OTHER_WORKSPACE }, { hash: HASH, format: 'png' });
     await expect(storage.signDownload(ctx, other)).rejects.toThrow(StorageKeyError);
@@ -79,7 +102,7 @@ describe('download links', () => {
 });
 
 describe('upload links', () => {
-  const key = renderKey(ctx, { hash: HASH, format: 'png' });
+  const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
   const photo = { contentType: 'image/png', size: 1234 } as const;
 
   it('are PUT links for this key, good for 15 minutes', async () => {
@@ -131,7 +154,36 @@ describe('upload links', () => {
   });
 
   it("are refused for a key outside the context's workspace", async () => {
-    const other = renderKey({ workspaceId: OTHER_WORKSPACE }, { hash: HASH, format: 'png' });
+    const other = assetKey(
+      { workspaceId: OTHER_WORKSPACE },
+      { brandId: BRAND, assetId: ASSET, variant: 'original' },
+    );
     await expect(storage.signUpload(ctx, other, photo, limits)).rejects.toThrow(StorageKeyError);
+  });
+
+  it('are refused for a render or an export file, which only the worker writes', async () => {
+    const finished = [
+      renderKey(ctx, { hash: HASH, format: 'png' }),
+      exportKey(ctx, { exportId: EXPORT, name: 'a.zip' }),
+      assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: '1600' }),
+      assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: '360' }),
+    ];
+    for (const each of finished) {
+      await expect(storage.signUpload(ctx, each, photo, limits), each).rejects.toThrow(
+        StorageKeyError,
+      );
+    }
+  });
+
+  it('are refused for a path inside the workspace that is none of the three key shapes', async () => {
+    for (const each of [
+      `ws/${WORKSPACE}/anything/x`,
+      `ws/${WORKSPACE}/brands/${BRAND}/assets/${ASSET}/original/extra`,
+      `ws/${WORKSPACE}/brands/${BRAND}/assets/${ASSET}/huge`,
+    ]) {
+      await expect(storage.signUpload(ctx, each, photo, limits), each).rejects.toThrow(
+        StorageKeyError,
+      );
+    }
   });
 });
