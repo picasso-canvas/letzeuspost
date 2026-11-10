@@ -54,10 +54,9 @@ export function dispatchRefusal(
   if (feature === null) {
     // Harness tasks run alongside any feature, follow-ups of harness PRs among them.
     if (task.milestone === 'H0 Harness') return null;
+    // A real follow-up was let through above, so the label alone is all that's left here (Argus F2 on #155).
     if (task.labels.includes('follow-up'))
-      return isFollowUp(task, isMergedBatch)
-        ? null
-        : `#${String(task.number)} is labelled follow-up but its **Follow-up of:** line names no batch PR merged into main`;
+      return `#${String(task.number)} is labelled follow-up but its **Follow-up of:** line names no batch PR merged into main`;
     return `#${String(task.number)} has no feature:<slug> label: Athena labels it first (§19)`;
   }
   const open = new Map<string, number[]>();
@@ -91,9 +90,10 @@ const SWITCHED_OFF = new RegExp(
     `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\.\\s*${MARK}\\b`,
     `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\[\\s*['"\`]${MARK}['"\`]\\s*\\]`,
     `\\{[^}]*\\b${MARK}\\b[^}]*\\}\\s*=\\s*${RUNNER}`,
-    // In a test call's options, any value but a literal `false` (`{ skip: 1 }`, `{ fails: isCI }`), as Vitest reads it
-    // as on; an object anywhere else isn't a test's options (Argus F1 on #155).
-    `${RUNNER}(?:\\s*\\.\\s*\\w+)*\\s*\\([^)]*\\{[^}]*\\b${MARK}\\s*:\\s*(?!false\\b)[^\\s,}]`,
+    // An option key with any value but a literal `false` (`{ skip: 1 }`, `{ fails: isCI }`), wherever it sits: in the
+    // call, in a variable, after the function. It errs toward keeping the batch shut, the safe side (Zeus, 2026-11-10,
+    // round 5 of #155), so any object with such a key counts, test options or not.
+    `\\b${MARK}\\s*:\\s*(?!false\\b)[^\\s,}]`,
   ].join('|'),
 );
 
