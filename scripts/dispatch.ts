@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Dispatch (§19 step 3, #32): starts one builder on one build task.
-//   node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--dry-run]
+//   node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--fresh | --resume] [--dry-run]
 // It runs from a clean `main`; the builder starts from `staging` (which must contain main). It gets a fresh `--no-local` clone (never a worktree: a worktree shares .git
 // hooks and settings with this checkout) with no remote, the task in .lzp/task.md, and a headless Claude Code session
 // with main's builder settings (sandbox on), an allowlisted environment, LZP_ROLE=builder, LZP_HARNESS_DIR, no GitHub
@@ -36,7 +36,13 @@ import { dispatchRefusal, toTaskIssue } from './lib/features.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
 import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
-import { BUILDERS_DIR, dispatchRecordPath, parseDispatchRecord, takenPath } from './ship.ts';
+import {
+  BUILDERS_DIR,
+  dispatchRecordPath,
+  parseDispatchRecord,
+  takenPath,
+  type DispatchRecord,
+} from './ship.ts';
 
 /** What a builder's environment may carry over from Athena's: enough to run Claude Code and tools, no tokens. */
 const ENV_ALLOW = [
@@ -63,6 +69,8 @@ export interface Args {
   issue: number;
   dryRun: boolean;
   fresh: boolean;
+  /** Continue a run a usage limit stopped, in its own clone (#157). */
+  resume: boolean;
   findings: string | undefined;
   maxTurns: string | undefined;
 }
@@ -73,6 +81,7 @@ export function parseArgs(argv: readonly string[]): Args {
     issue: Number.NaN,
     dryRun: false,
     fresh: false,
+    resume: false,
     findings: undefined,
     maxTurns: undefined,
   };
@@ -85,13 +94,56 @@ export function parseArgs(argv: readonly string[]): Args {
     const arg = argv[i] ?? '';
     if (arg === '--dry-run') args.dryRun = true;
     else if (arg === '--fresh') args.fresh = true;
+    else if (arg === '--resume') args.resume = true;
     else if (arg === '--findings') args.findings = value(++i, arg);
     else if (arg === '--max-turns') args.maxTurns = value(++i, arg);
     else if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
     else if (!Number.isNaN(args.issue)) throw new Error('dispatch takes one issue');
     else args.issue = Number(arg);
   }
+  if (args.resume && (args.fresh || args.findings !== undefined))
+    throw new Error(
+      "--resume continues the last run as it was: it can't go with --fresh or --findings",
+    );
   return args;
+}
+
+/** How a builder run ended, from the session's own final `result` event in its log (#157). */
+export function runEnding(
+  log: string,
+  frozen: boolean,
+): 'finished' | 'usage-limit' | 'frozen' | 'failed' {
+  if (frozen) return 'frozen';
+  let result: { result?: unknown } | undefined;
+  for (const line of log.split('\n')) {
+    try {
+      const event = JSON.parse(line) as { type?: unknown; result?: unknown };
+      if (event.type === 'result') result = event;
+    } catch {
+      // not an event line
+    }
+  }
+  if (result === undefined) return 'failed';
+  return typeof result.result === 'string' &&
+    /\bhit your (?:\w+ )?limit\b|\busage limit\b/i.test(result.result)
+    ? 'usage-limit'
+    : 'finished';
+}
+
+/** Why a run can't be resumed, or null: only one a usage limit stopped, with nothing shipped since (#157). */
+export function resumeRefusal(record: DispatchRecord | null, cloneExists: boolean): string | null {
+  if (record === null) return 'there is no dispatch record for this task: dispatch it first';
+  if (record.ending !== 'usage-limit')
+    return `the last run ended "${record.ending ?? 'unknown'}", not on a usage limit: ship it, or dispatch with --fresh`;
+  if (record.shippedAt !== undefined && record.shippedAt >= record.dispatchedAt)
+    return 'the branch shipped after this run: dispatch a new round instead';
+  if (!cloneExists) return "the builder's clone is gone: dispatch with --fresh";
+  return null;
+}
+
+/** The resumed session's prompt: dispatch writes nothing into the clone on a resume, so it's told here (#157). */
+export function resumePrompt(issue: number): string {
+  return `Build task #${String(issue)}. Your task is in .lzp/task.md. Follow your instructions and CLAUDE.md. Your previous session on this task was stopped by a usage limit: this one continues it in the same clone. Check what is already done first (git log, git status, the files in .lzp/), then finish the task and hand over as your instructions say.`;
 }
 
 /** Branch names from `git ls-remote` output, exactly as `refs/heads/<name>` gives them. */
@@ -210,7 +262,7 @@ function isRegularFile(path: string): boolean {
 }
 
 const USAGE =
-  'usage: node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--fresh] [--dry-run]';
+  'usage: node scripts/dispatch.ts <issue> [--findings <file>] [--max-turns <n>] [--fresh | --resume] [--dry-run]';
 
 /**
  * Why the task must wait for the open feature, or null: the other tasks dispatched and still open (on `staging`, or
@@ -323,6 +375,7 @@ async function main(argv: string[]): Promise<number> {
   const clone = join(BUILDERS_DIR, branch);
   // Never wipe work that hasn't been shipped yet.
   const recordFile = dispatchRecordPath(issue);
+  if (args.resume) return resume(issue, view.body, recordFile, args);
   if (existsSync(clone) && !args.fresh) {
     const record = existsSync(recordFile)
       ? parseDispatchRecord(readFileSync(recordFile, 'utf8'), issue)
@@ -508,6 +561,82 @@ async function main(argv: string[]): Promise<number> {
     join(lzp, 'gitconfig'),
     '[user]\n\tname = Daedalus\n\temail = daedalus@letzeuspost.invalid\n[credential]\n\thelper =\n[core]\n\thooksPath = /dev/null\n',
   );
+  return runBuilder({
+    issue,
+    body: view.body,
+    branch,
+    clone,
+    lzp,
+    marker,
+    prompt: `Build task #${String(issue)}. Your task is in .lzp/task.md. Follow your instructions and CLAUDE.md.`,
+    maxTurns: args.maxTurns,
+    recordFile,
+  });
+}
+
+/**
+ * Resumes a run a usage limit stopped (#157): the same clone, branch, base and findings, a new session with the same
+ * settings, environment and sandbox, and a fresh marker. Nothing here runs git in the clone or writes into it.
+ */
+async function resume(
+  issue: number,
+  body: string,
+  recordFile: string,
+  args: Args,
+): Promise<number> {
+  const record = existsSync(recordFile)
+    ? parseDispatchRecord(readFileSync(recordFile, 'utf8'), issue)
+    : null;
+  const clone = record === null ? '' : join(BUILDERS_DIR, record.branch);
+  const refusal = resumeRefusal(record, record !== null && existsSync(clone));
+  if (refusal !== null || record === null) {
+    console.error(`Refused to resume #${String(issue)}: ${refusal ?? 'no record'}.`);
+    return 1;
+  }
+  console.log(`#${String(issue)} → resuming in ${clone} on ${record.branch}`);
+  if (args.dryRun) return 0;
+  if (record.marker !== undefined && killMarkedProcesses(record.marker).length > 0)
+    console.log('Killed processes left from the last run.');
+  const left = builderProcesses(clone);
+  if (left.length > 0) {
+    console.error(
+      `Refused: processes still work in ${clone} (pids ${left.join(', ')}). They carry no marker, so they may not be the builder's: look, stop them, then resume again.`,
+    );
+    return 1;
+  }
+  const marker = randomBytes(16).toString('hex');
+  // The new run's ending replaces the old one's when it finishes.
+  writeFileSync(
+    recordFile,
+    `${JSON.stringify({ ...record, ending: undefined, endedAt: undefined, marker, resumedAt: new Date().toISOString() })}\n`,
+    { mode: 0o600 },
+  );
+  return runBuilder({
+    issue,
+    body,
+    branch: record.branch,
+    clone,
+    lzp: join(clone, '.lzp'),
+    marker,
+    prompt: resumePrompt(issue),
+    maxTurns: args.maxTurns,
+    recordFile,
+  });
+}
+
+/** Starts the builder in its clone and supervises it to the end; the same for a fresh run and a resumed one. */
+async function runBuilder(o: {
+  issue: number;
+  body: string;
+  branch: string;
+  clone: string;
+  lzp: string;
+  marker: string;
+  prompt: string;
+  maxTurns: string | undefined;
+  recordFile: string;
+}): Promise<number> {
+  const { issue, branch, clone, lzp, marker } = o;
   const env = builderEnv(process.env, {
     LZP_ROLE: 'builder',
     LZP_HARNESS_DIR: ROOT,
@@ -525,9 +654,8 @@ async function main(argv: string[]): Promise<number> {
 
   const log = join(STATE_DIR, 'runs', `${branch}-${String(Date.now())}.jsonl`);
   mkdirSync(dirname(log), { recursive: true, mode: 0o700 });
-  const model = builderModel(view.body);
+  const model = builderModel(o.body);
   console.log(`Builder model: ${model ?? 'Opus (the agent file)'}`);
-  const prompt = `Build task #${String(issue)}. Your task is in .lzp/task.md. Follow your instructions and CLAUDE.md.`;
   const child = spawn(
     'claude',
     [
@@ -540,11 +668,11 @@ async function main(argv: string[]): Promise<number> {
       '--permission-mode',
       'dontAsk',
       '--max-turns',
-      args.maxTurns ?? '200',
+      o.maxTurns ?? '200',
       '--output-format',
       'stream-json',
       '--verbose',
-      prompt,
+      o.prompt,
     ],
     { cwd: clone, env, detached: true, stdio: ['ignore', 'pipe', 'inherit'] },
   );
@@ -607,6 +735,18 @@ async function main(argv: string[]): Promise<number> {
   );
   console.log(`Handed over: ${ready.join(', ')}. Next: node scripts/ship.ts ${String(issue)}`);
   console.log(noGit);
+  // How it ended, in Athena's record: a run a usage limit stopped can be resumed (#157).
+  const ending = runEnding(readFileSync(log, 'utf8'), state.frozen);
+  const now = parseDispatchRecord(readFileSync(o.recordFile, 'utf8'), issue);
+  writeFileSync(
+    o.recordFile,
+    `${JSON.stringify({ ...now, ending, endedAt: new Date().toISOString() })}\n`,
+    { mode: 0o600 },
+  );
+  if (ending === 'usage-limit')
+    console.log(
+      `The run was stopped by a usage limit. Once it resets: node scripts/dispatch.ts ${String(issue)} --resume`,
+    );
   return state.frozen ? 1 : code;
 }
 
