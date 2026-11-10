@@ -1,0 +1,71 @@
+# Development and CI services (§13 Environments, #67): Postgres 18, SeaweedFS (S3) and Mailpit, pinned by digest.
+# CI's `services` job runs it on every PR. Builders get none of it: their sandbox stays closed to localhost, because
+# Claude Code's sandbox can't open one task's ports only (Zeus, 2026-11-09, #67). Ports bind to 127.0.0.1 only.
+#
+# Every secret comes from the environment and has no default, so nothing here is a password:
+#   LZP_PG_SUPERUSER_PASSWORD, LZP_PG_OWNER_PASSWORD, LZP_PG_APP_PASSWORD (Postgres's three roles)
+#   STORAGE_ACCESS_KEY_ID, STORAGE_SECRET_ACCESS_KEY, STORAGE_BUCKET (config/env.ts's names, for the S3 side too)
+name: letzeuspost
+
+services:
+  postgres:
+    # postgres:18.6-alpine
+    image: postgres@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da026f957395
+    environment:
+      POSTGRES_USER: lzp_superuser # init and maintenance only; the app and migrations use the roles below
+      POSTGRES_PASSWORD: ${LZP_PG_SUPERUSER_PASSWORD:?set LZP_PG_SUPERUSER_PASSWORD}
+      POSTGRES_DB: letzeuspost
+      LZP_PG_OWNER_PASSWORD: ${LZP_PG_OWNER_PASSWORD:?set LZP_PG_OWNER_PASSWORD}
+      LZP_PG_APP_PASSWORD: ${LZP_PG_APP_PASSWORD:?set LZP_PG_APP_PASSWORD}
+    # The roles script is copied into the container before the image's own entrypoint runs: Docker Desktop won't
+    # execute a script straight from a mounted folder.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - install -m 0755 /lzp/roles.sh /docker-entrypoint-initdb.d/10-roles.sh && exec docker-entrypoint.sh postgres
+    volumes:
+      - ./postgres/roles.sh:/lzp/roles.sh:ro
+      - postgres:/var/lib/postgresql # Postgres 18's image keeps its data in a versioned folder under here
+    ports:
+      - 127.0.0.1:${LZP_PG_PORT:-5432}:5432
+    healthcheck:
+      test: [CMD-SHELL, pg_isready --username lzp_superuser --dbname letzeuspost]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  storage:
+    # chrislusf/seaweedfs:4.52
+    image: chrislusf/seaweedfs@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
+    entrypoint: [/bin/sh, /lzp/start.sh]
+    environment:
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?set STORAGE_ACCESS_KEY_ID}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?set STORAGE_SECRET_ACCESS_KEY}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?set STORAGE_BUCKET}
+    volumes:
+      - ./seaweedfs/start.sh:/lzp/start.sh:ro
+      - storage:/data
+    ports:
+      - 127.0.0.1:${LZP_S3_PORT:-8333}:8333
+    healthcheck:
+      # Ready once the bucket exists: start.sh creates it after the server is up.
+      test: [CMD-SHELL, test -f /tmp/lzp-ready]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  mail:
+    # axllent/mailpit:v1.33.1
+    image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    ports:
+      - 127.0.0.1:${LZP_SMTP_PORT:-1025}:1025 # SMTP: config/env.ts's SMTP_URL
+      - 127.0.0.1:${LZP_MAILPIT_PORT:-8025}:8025 # web UI and API: the caught emails
+    healthcheck:
+      test: [CMD, /mailpit, readyz]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres:
+  storage:
