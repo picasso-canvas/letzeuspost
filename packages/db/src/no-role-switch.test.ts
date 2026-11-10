@@ -40,8 +40,13 @@ function roleSwitches(text: string): string[] {
   return SWITCHES.flatMap((pattern) => pattern.exec(text)?.[0] ?? []);
 }
 
+/** The role switches in a file's text. */
+function roleSwitchesIn(_file: string, text: string): string[] {
+  return roleSwitches(text);
+}
+
 /** Every code file in the repo, tracked or new (not ignored), from the repo root. */
-function codeFiles(): string[] {
+function textFiles(): string[] {
   return execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
     cwd: ROOT,
     encoding: 'utf8',
@@ -89,26 +94,59 @@ describe('the role-switch check', () => {
     expect(roleSwitches(text)).toEqual([]);
   });
 
-  it('reads the files that matter: code and SQL, the auth handle among them', () => {
-    const files = codeFiles();
+  // Outside the code too: a script, a workflow, a config file or a Markdown code block can open a connection with
+  // the role set, or run the command through psql (Argus F1 on #189).
+  it.each([
+    ['ops/restore.sh', `PGOPTIONS='${glue('-c ', 'role=lzp_auth')}' psql "$DATABASE_URL"`],
+    ['ops/restore.sh', `psql "$DATABASE_URL" -c "${w('SET', 'ROLE', 'lzp_auth')}"`],
+    ['.github/workflows/ci.yml', `env:\n  PGOPTIONS: ${glue('-c ', 'role=lzp_auth')}\n`],
+    ['.github/workflows/ci.yml', `run: psql -c '${w('set', 'role', 'lzp_auth')}'\n`],
+    ['config/db.json', `{ "options": "${glue('-c ', 'role=lzp_auth')}" }`],
+    [
+      'docs/ops/restore.md',
+      `Run:\n\n\`\`\`sh\npsql -c "${w('SET', 'ROLE', 'lzp_auth')}"\n\`\`\`\n`,
+    ],
+    ['docs/ops/restore.md', `~~~sql\n${w('RESET', 'ROLE')};\n~~~\n`],
+  ])('finds a role switch in %s: %s', (file, text) => {
+    expect(roleSwitchesIn(file, text)).not.toEqual([]);
+  });
+
+  it('reads Markdown only in its code blocks, where a command can be copied and run', () => {
+    const prose = `lzp_app takes lzp_auth only by ${w('SET', 'ROLE')}, which the auth handle does.\n`;
+    expect(roleSwitchesIn('docs/plan/13-architecture.md', prose)).toEqual([]);
+    expect(roleSwitchesIn('docker/postgres/roles.sh', `# ${prose}`)).not.toEqual([]);
+  });
+
+  it('reads every text file: code, SQL, shell, YAML, JSON and Markdown, the auth handle among them', () => {
+    const files = textFiles();
     expect(files).toEqual(
       expect.arrayContaining([
         AUTH_HANDLE,
         'packages/db/src/db.ts',
         'packages/db/migrations/0000_accounts.sql',
         'packages/db/src/no-role-switch.test.ts',
+        'docker/postgres/roles.sh',
+        'docker/compose.yml',
+        '.github/workflows/services.yml',
+        'packages/db/package.json',
+        'docs/plan/13-architecture.md',
+        'CLAUDE.md',
       ]),
     );
     expect(files.filter((file) => file.includes('node_modules/'))).toEqual([]);
+    // Images and other binaries are no text, and skipped.
+    expect(files).not.toContain('docs/design/logos/letzeuspost/mark.png');
   });
 });
 
 describe('the repo', () => {
   it('switches the database role nowhere but in the auth handle', () => {
-    const found = codeFiles()
+    const found = textFiles()
       .filter((file) => file !== AUTH_HANDLE)
       .flatMap((file) =>
-        roleSwitches(readFileSync(`${ROOT}${file}`, 'utf8')).map((hit) => `${file}: ${hit}`),
+        roleSwitchesIn(file, readFileSync(`${ROOT}${file}`, 'utf8')).map(
+          (hit) => `${file}: ${hit}`,
+        ),
       );
     expect(found).toEqual([]);
   });
