@@ -400,6 +400,8 @@ describe('failure reasons and refusals', () => {
       return '';
     };
     const result = buildBundle(99, { gh, git, blob: () => Buffer.from('a'), now: () => 4 }, state);
+    // The base, so review.ts asks the reviewers the gate's staging rule needs (#185).
+    expect(result.base).toBe('staging');
     const issues = readFileSync(join(result.bundle, 'issues.md'), 'utf8');
     expect(issues).toContain('# Issue #65');
     expect(issues).toContain('Config env');
