@@ -338,7 +338,7 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
       // The open-issue list and the PR's comments are #154's; the feature's own list is the one asked here.
       'issue list': '[]',
       'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify([
-        { number: 72 },
+        { number: 72, labels: [{ name: 'build-task' }] },
       ]),
       'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'check-runs': `${JSON.stringify({ name: 'services', status: 'completed', conclusion: 'success', app: 'github-actions', url: RUN_URL })}\n`,
@@ -369,7 +369,7 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
     expect(runs).toEqual([4242]);
     expect(f.journey).toEqual({ feature: 'data', entries: [] });
     expect(calls).toContain(
-      'issue list -R picasso-canvas/letzeuspost --label feature:data --state open --limit 1000 --json number',
+      'issue list -R picasso-canvas/letzeuspost --label feature:data --state open --limit 1000 --json number,labels',
     );
   });
 
@@ -401,8 +401,8 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
       batchDeps(
         batchGh({
           'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify([
-            { number: 72 },
-            { number: 73 },
+            { number: 72, labels: [{ name: 'build-task' }] },
+            { number: 73, labels: [{ name: 'build-task' }] },
           ]),
         }),
         {
@@ -522,5 +522,70 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     expect(other.openIssues).toEqual([]);
     expect(other.prComments).toEqual([]);
     expect(calls.some((c) => c.startsWith('issue list'))).toBe(false);
+  });
+});
+
+describe('collectFacts: what makes a part of a feature (Argus F3-F4, Cerberus F2 on #171)', () => {
+  const view = (refs: { number: number; url: string }[]) =>
+    JSON.stringify({
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'main',
+      headRefName: 'staging',
+      isCrossRepository: false,
+      headRefOid: SHA,
+      title: 'Batch',
+      mergeable: 'MERGEABLE',
+      body: 'Closes #72',
+      labels: [{ name: 'sensitive' }],
+      closingIssuesReferences: refs,
+    });
+  const own = { number: 72, url: 'https://github.com/picasso-canvas/letzeuspost/issues/72' };
+  const gh = (featureList: unknown[], refs = [own]) =>
+    fakeGh({
+      'pr view': view(refs),
+      'issue view 72 ': JSON.stringify({
+        labels: [{ name: 'build-task' }, { name: 'feature:data' }],
+        body: 'x',
+      }),
+      'issue list': '[]',
+      'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify(featureList),
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'check-runs': `${JSON.stringify({ name: 'services', status: 'completed', conclusion: 'success', app: 'github-actions', url: 'https://github.com/picasso-canvas/letzeuspost/actions/runs/4242/job/99' })}\n`,
+    });
+  const run = (g: CollectDeps['gh']) =>
+    collectFacts(
+      7,
+      deps({
+        gh: g,
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readJourneyReport: () => ({ 'vitest.json': '[]' }),
+      }),
+    );
+  const task = (number: number) => ({
+    number,
+    labels: [{ name: 'build-task' }, { name: 'feature:data' }],
+  });
+
+  it('counts only open build tasks: a stray issue with the label still leaves the batch held', () => {
+    const f = run(gh([task(72), { number: 90, labels: [{ name: 'feature:data' }] }]));
+    expect(f.journey).toEqual({ feature: 'data', entries: [] });
+    expect(f.journeyPart).toBeNull();
+  });
+
+  it('says which open tasks make a batch a part, so the gate can show why it is not held', () => {
+    const f = run(gh([task(72), task(73)]));
+    expect(f.journey).toBeNull();
+    expect(f.journeyPart).toEqual({ feature: 'data', open: [73] });
+  });
+
+  it("doesn't take another repository's issue for one of this feature's tasks", () => {
+    const f = run(
+      gh(
+        [task(72), task(73)],
+        [own, { number: 73, url: 'https://github.com/someone/else/issues/73' }],
+      ),
+    );
+    expect(f.journeyPart).toEqual({ feature: 'data', open: [73] });
   });
 });
