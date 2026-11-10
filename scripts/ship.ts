@@ -55,6 +55,8 @@ export interface DispatchRecord {
   ending?: 'finished' | 'usage-limit' | 'frozen' | 'failed';
   endedAt?: string;
   resumedAt?: string;
+  /** .git/config's sha256 as dispatch left it: a resume refuses a clone whose config changed (#166). */
+  gitConfigSha256?: string;
 }
 
 export function parseDispatchRecord(text: string, issue: number): DispatchRecord {
@@ -76,7 +78,9 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     (r.ending !== undefined &&
       !['finished', 'usage-limit', 'frozen', 'failed'].includes(r.ending)) ||
     (r.endedAt !== undefined && typeof r.endedAt !== 'string') ||
-    (r.resumedAt !== undefined && typeof r.resumedAt !== 'string')
+    (r.resumedAt !== undefined && typeof r.resumedAt !== 'string') ||
+    (r.gitConfigSha256 !== undefined &&
+      (typeof r.gitConfigSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(r.gitConfigSha256)))
   ) {
     throw new Error(`the dispatch record for #${String(issue)} is malformed`);
   }
@@ -91,6 +95,7 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     ...(r.ending ? { ending: r.ending } : {}),
     ...(r.endedAt ? { endedAt: r.endedAt } : {}),
     ...(r.resumedAt ? { resumedAt: r.resumedAt } : {}),
+    ...(r.gitConfigSha256 ? { gitConfigSha256: r.gitConfigSha256 } : {}),
   };
 }
 

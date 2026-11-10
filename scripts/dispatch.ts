@@ -13,7 +13,7 @@
 // nothing here runs git inside its clone (its .git could point git at config the builder wrote); the builder hands its
 // work over as .lzp/branch.bundle, which ship.ts reads. Services (database, storage, mail) arrive in M0.
 import { execFileSync, spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   createWriteStream,
   existsSync,
@@ -33,6 +33,8 @@ import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts'
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
 import { requireFindingIds } from './lib/handover-checks.ts';
 import { dispatchRefusal, toTaskIssue } from './lib/features.ts';
+import { readRegularFile } from './lib/safe-read.ts';
+import { stampPath } from '../.claude/hooks/lib/stamp.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
 import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
@@ -167,6 +169,8 @@ export function runEnvExtra(o: {
   marker: string;
   configDir: string;
   harnessDir: string;
+  /** A resumed run: the SessionStart hook then stamps no base (#166). */
+  resumed?: boolean;
 }): Record<string, string> {
   return {
     LZP_ROLE: 'builder',
@@ -181,7 +185,22 @@ export function runEnvExtra(o: {
     pnpm_config_store_dir: join(o.lzp, 'pnpm/store'),
     pnpm_config_cache_dir: join(o.lzp, 'pnpm/cache'),
     pnpm_config_state_dir: join(o.lzp, 'pnpm/state'),
+    ...(o.resumed === true ? { LZP_RESUMED: '1' } : {}),
   };
+}
+
+/** Why the clone's .git can't be trusted for a resume, or null; nothing here runs git (Cerberus F2 on #166). */
+export function gitIntact(
+  found: { isDirectory: boolean; isSymlink: boolean; configSha256: string },
+  recorded: string | undefined,
+): string | null {
+  if (recorded === undefined)
+    return 'the dispatch record has no hash of .git/config: dispatch with --fresh';
+  if (!found.isDirectory || found.isSymlink)
+    return "the clone's .git is not the folder dispatch made: dispatch with --fresh";
+  if (found.configSha256 !== recorded)
+    return "the clone's .git/config changed since dispatch: dispatch with --fresh";
+  return null;
 }
 
 /** Why a run can't be resumed, or null: only one a usage limit stopped, with nothing shipped since (#157). */
@@ -611,6 +630,17 @@ async function main(argv: string[]): Promise<number> {
   if (run('git', ['rev-parse', 'HEAD'], clone).trim() !== baseSha)
     throw new Error('the clone is not on the expected commit');
   run('git', ['remote', 'remove', 'origin'], clone); // nothing to push to, even by path
+  // .git/config as dispatch leaves it, before the builder starts: a resume checks it's unchanged (#166).
+  writeFileSync(
+    recordFile,
+    `${JSON.stringify({
+      ...parseDispatchRecord(readFileSync(recordFile, 'utf8'), issue),
+      gitConfigSha256: createHash('sha256')
+        .update(readFileSync(join(clone, '.git', 'config')))
+        .digest('hex'),
+    })}\n`,
+    { mode: 0o600 },
+  );
 
   const lzp = join(clone, '.lzp');
   for (const dir of ['pnpm/store', 'pnpm/cache', 'pnpm/state'])
@@ -660,6 +690,31 @@ async function resume(
     );
     return 1;
   }
+  // The .git the resumed session's own git will read must be the folder dispatch made, its config unchanged (#166).
+  const gitDir = join(clone, '.git');
+  const st = lstatSync(gitDir, { throwIfNoEntry: false });
+  let configSha256 = '';
+  if (st?.isDirectory() === true && !st.isSymbolicLink()) {
+    try {
+      configSha256 = createHash('sha256')
+        .update(readRegularFile(gitDir, 'config', 1 << 16))
+        .digest('hex');
+    } catch {
+      configSha256 = '';
+    }
+  }
+  const gitProblem = gitIntact(
+    {
+      isDirectory: st?.isDirectory() ?? false,
+      isSymlink: st?.isSymbolicLink() ?? false,
+      configSha256,
+    },
+    record.gitConfigSha256,
+  );
+  if (gitProblem !== null) {
+    console.error(`Refused to resume #${String(issue)}: ${gitProblem}.`);
+    return 1;
+  }
   let task: string;
   try {
     task = readFileSync(taskCopyPath(issue), 'utf8');
@@ -675,6 +730,7 @@ async function resume(
     `${JSON.stringify(resumedRecord(record, marker, new Date().toISOString()))}\n`,
     { mode: 0o600 },
   );
+  rmSync(stampPath(clone, 'base'), { force: true }); // the first session's base; the resumed one stamps none
   return runBuilder({
     issue,
     body,
@@ -683,6 +739,7 @@ async function resume(
     lzp: join(clone, '.lzp'),
     marker,
     prompt: resumePrompt(issue, task),
+    resumed: true,
     maxTurns: args.maxTurns,
     recordFile,
   });
@@ -699,6 +756,7 @@ async function runBuilder(o: {
   prompt: string;
   maxTurns: string | undefined;
   recordFile: string;
+  resumed?: boolean;
 }): Promise<number> {
   const { issue, branch, clone, lzp, marker } = o;
   // Git's and gh's config, outside the clone and written fresh for every run (Cerberus F1 on #166).
@@ -710,7 +768,10 @@ async function runBuilder(o: {
     '[user]\n\tname = Daedalus\n\temail = daedalus@letzeuspost.invalid\n[credential]\n\thelper =\n[core]\n\thooksPath = /dev/null\n',
     { mode: 0o644, flag: 'wx' },
   );
-  const env = builderEnv(process.env, runEnvExtra({ lzp, marker, configDir, harnessDir: ROOT }));
+  const env = builderEnv(
+    process.env,
+    runEnvExtra({ lzp, marker, configDir, harnessDir: ROOT, resumed: o.resumed }),
+  );
 
   const log = join(STATE_DIR, 'runs', `${branch}-${String(Date.now())}.jsonl`);
   mkdirSync(dirname(log), { recursive: true, mode: 0o700 });
@@ -739,8 +800,9 @@ async function runBuilder(o: {
   child.stdout.pipe(createWriteStream(log));
   // The stream's end, kept in memory: reading the log file back could miss what isn't flushed yet (Argus F1 on #166).
   let tail = '';
-  child.stdout.on('data', (chunk: Buffer) => {
-    tail = appendTail(tail, chunk.toString('utf8'), 256 * 1024);
+  child.stdout.setEncoding('utf8'); // decoded once, so a character split across chunks stays whole (Argus F1 on #166)
+  child.stdout.on('data', (chunk: string) => {
+    tail = appendTail(tail, chunk, 256 * 1024);
   });
   const killGroup = () => {
     try {
