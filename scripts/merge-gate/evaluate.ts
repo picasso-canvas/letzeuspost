@@ -4,6 +4,7 @@ import { matchesAny } from '../lib/paths.ts';
 import type { Facts, GateConfig, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
 import { areaRefusals, evidenceRefusal, roundRefusals } from '../lib/handover-checks.ts';
 import { followUpRefusals } from '../lib/follow-ups.ts';
+import { journeyProof } from '../lib/journey-proof.ts';
 
 /** Zeus's GitHub account, the repository's owner, which Athena works through (§20): only its records grant an exception. */
 const ZEUS_LOGIN = 'picasso-canvas';
@@ -202,6 +203,14 @@ export function evaluate(f: Facts): GateResult {
   }
   for (const status of f.statuses) {
     if (status.state !== 'success') checks.push(`status "${status.context}" is ${status.state}`);
+  }
+  // A batch that completes a feature: CI's own report shows its journey ran and passed (§19, #156).
+  if (kind === 'batch' && f.journey !== null) {
+    if (f.journey.unreadable !== undefined)
+      checks.push(
+        `the journey report of the services run on this commit can't be read: ${f.journey.unreadable}`,
+      );
+    else checks.push(...journeyProof(f.journey.entries, f.journey.feature));
   }
   add(3, 'Checks green', checks);
 

@@ -335,7 +335,12 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
         labels: [{ name: 'build-task' }, { name: 'follow-up' }],
         body: '**Done when**\n- [ ] a',
       }),
-      'issue list': JSON.stringify([{ number: 72 }]),
+      // The open-issue list and the PR's comments are #154's; the feature's own list is the one asked here.
+      'issue list': '[]',
+      'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify([
+        { number: 72 },
+      ]),
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'check-runs': `${JSON.stringify({ name: 'services', status: 'completed', conclusion: 'success', app: 'github-actions', url: RUN_URL })}\n`,
       ...over,
     });
@@ -393,9 +398,17 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
     };
     const part = collectFacts(
       7,
-      batchDeps(batchGh({ 'issue list': JSON.stringify([{ number: 72 }, { number: 73 }]) }), {
-        readJourneyReport: read,
-      }),
+      batchDeps(
+        batchGh({
+          'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify([
+            { number: 72 },
+            { number: 73 },
+          ]),
+        }),
+        {
+          readJourneyReport: read,
+        },
+      ),
     );
     expect(part.journey).toBeNull();
     const noFeature = collectFacts(

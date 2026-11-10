@@ -5,8 +5,8 @@
 // It merges builder PRs into `staging`, and the batch PR from `staging` or Athena's harness PRs into `main`; after every
 // merge into `main` it merges `main` into `staging` on GitHub, so builders always start from main's harness (§19).
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
@@ -35,6 +35,27 @@ function run(cmd: string, args: string[]): string {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+/**
+ * A run's `journeys` artifact (#156), downloaded into a fresh folder outside the checkout and read as data: only the two
+ * report files, only as plain files, then the folder is removed. No artifact (or no run of it) reads as null.
+ */
+function readJourneyReport(runId: number): Record<string, string> | null {
+  const dir = mkdtempSync(join(tmpdir(), 'lzp-journeys-'));
+  try {
+    run('gh', ['run', 'download', String(runId), '-R', REPO, '-n', 'journeys', '-D', dir]);
+    const files: Record<string, string> = {};
+    for (const name of ['vitest.json', 'playwright.json']) {
+      const path = join(dir, name);
+      if (existsSync(path) && lstatSync(path).isFile()) files[name] = readFileSync(path, 'utf8');
+    }
+    return files;
+  } catch {
+    return null;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -87,6 +108,7 @@ function main(argv: string[], pr: number): number {
     listReviewedShas: (n) => listReviewedShas(n),
     readMergeLog: () => readMergeLog().map((e) => toStagingLogEntry(e)) satisfies StagingLogEntry[],
     // The gate re-verifies every runner-made review against Claude Code's own transcript.
+    readJourneyReport,
     readTranscript: (sessionId) => {
       const file = transcriptPath(homedir(), ROOT, sessionId);
       return existsSync(file) ? readFileSync(file, 'utf8') : null;

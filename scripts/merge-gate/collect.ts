@@ -2,7 +2,9 @@ import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
+import { featureOf } from '../lib/features.ts';
 import { wantsComments, type OpenIssue } from '../lib/follow-ups.ts';
+import { parseJourneyReport } from '../lib/journey-proof.ts';
 import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
@@ -26,6 +28,8 @@ export interface CollectDeps {
   listReviewedShas?: (pr: number) => string[];
   /** The gate's merge log (`merges.jsonl`); a batch is checked against it. Missing: nothing counts as gated. */
   readMergeLog?: () => StagingLogEntry[];
+  /** The `journeys` artifact of an Actions run, as file name → text, or null when it has none (#156). */
+  readJourneyReport?: (runId: number) => Record<string, string> | null;
   /** A Claude Code transcript by session id, or null. */
   readTranscript?: (sessionId: string) => string | null;
   /** Where bundles live (`~/.letzeuspost`). */
@@ -347,9 +351,59 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       `repos/${repo}/commits/${sha}/check-runs`,
       '--paginate',
       '--jq',
-      '.check_runs[] | {name, status, conclusion, app: .app.slug}',
+      '.check_runs[] | {name, status, conclusion, app: .app.slug, url: .details_url}',
     ]),
   );
+  // A batch that completes a feature is held until the services run on its head shows the journey passed (§19, #156).
+  // A part of a feature (another of its tasks still open) isn't: its journey is still marked, by design.
+  let journey: Facts['journey'] = null;
+  if (isBatch) {
+    const features = [
+      ...new Set(
+        closingIssues
+          .filter((i) => i.inRepo)
+          .map((i) => featureOf(i.labels))
+          .filter((x) => x !== null),
+      ),
+    ];
+    if (features.length > 1)
+      throw new Error(
+        `the batch closes tasks of two features (${features.join(', ')}): §19 batches one feature at a time`,
+      );
+    const feature = features[0];
+    if (feature !== undefined) {
+      const open = (
+        JSON.parse(
+          gh([
+            'issue',
+            'list',
+            '-R',
+            repo,
+            '--label',
+            `feature:${feature}`,
+            '--state',
+            'open',
+            '--limit',
+            '1000',
+            '--json',
+            'number',
+          ]),
+        ) as { number: number }[]
+      ).map((i) => i.number);
+      const closes = new Set(closingIssues.map((i) => i.number));
+      if (open.every((n) => closes.has(n))) {
+        const services = checkRuns.find((r) => r.name === 'services' && r.app === 'github-actions');
+        const runId = /\/actions\/runs\/(\d+)\//.exec(services?.url ?? '')?.[1];
+        const files =
+          runId === undefined ? null : (deps.readJourneyReport?.(Number(runId)) ?? null);
+        const parsed = files === null ? null : parseJourneyReport(files);
+        journey =
+          typeof parsed === 'string'
+            ? { feature, entries: null, unreadable: parsed }
+            : { feature, entries: parsed };
+      }
+    }
+  }
   const statuses = jsonLines<{ context: string; state: string }>(
     gh([
       'api',
@@ -385,6 +439,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     ...handoverFacts(pr, sha, base, deps),
     labels: view.labels.map((label) => label.name),
     checkRuns,
+    journey,
     statuses,
     reviews: reviewsFor(pr, sha, base, deps),
     sensitivePatterns: sensitiveList === null ? null : parsePatternList(sensitiveList),
