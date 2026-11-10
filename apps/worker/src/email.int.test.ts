@@ -10,17 +10,20 @@ import {
   createJobs,
   emailMessage,
   installJobs,
+  INTERRUPTED,
   migrate,
   queueEmail,
+  SENDING_STALE_AFTER_SECONDS,
   workspace,
   type Db,
   type JobContext,
   type Jobs,
 } from '@lzp/db';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { emailJob, type EmailJobDeps } from './email-job.ts';
 import { log } from './log.ts';
-import { smtpTransport, type EmailTransport } from './smtp.ts';
+import { NotSentError, smtpTransport, type EmailTransport } from './smtp.ts';
 import type { Worker } from './worker.ts';
 
 const env = loadEnv('worker');
@@ -70,6 +73,50 @@ async function rowStatus(id: string): Promise<string | undefined> {
       tx.select({ id: emailMessage.id, status: emailMessage.status }).from(emailMessage),
     );
   return rows.find((row) => row.id === id)?.status;
+}
+
+async function rowFailure(id: string): Promise<string | null | undefined> {
+  const [row] = await db
+    .forWorkspace(ctx)
+    .transaction((tx) =>
+      tx
+        .select({ failure: emailMessage.failure })
+        .from(emailMessage)
+        .where(eq(emailMessage.id, id)),
+    );
+  return row?.failure;
+}
+
+/** As if the run that set the row's status had done so `seconds` ago. */
+async function age(id: string, seconds: number): Promise<void> {
+  await db.forWorkspace(ctx).transaction(async (tx) => {
+    await tx
+      .update(emailMessage)
+      .set({ updatedAt: sql`now() - make_interval(secs => ${seconds})` })
+      .where(eq(emailMessage.id, id));
+  });
+}
+
+/** A transport that sends, then holds the run there until `finish` is called: a run caught mid-send. */
+function holdsAfterSending() {
+  let finish: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let sent: () => void = () => undefined;
+  const hasSent = new Promise<void>((resolve) => {
+    sent = resolve;
+  });
+  const transport: EmailTransport = {
+    send: async (email) => {
+      const result = await smtp.send(email);
+      sent();
+      await held;
+      return result;
+    },
+    close: () => undefined,
+  };
+  return { transport, hasSent, finish };
 }
 
 /** Queues a row for `to`, as a feature would. */
@@ -125,7 +172,13 @@ beforeAll(async () => {
       .insert(workspace)
       .values({ id: workspaceId, name: `Email ${run}`, slug: `email-${run}` });
   });
-  sender = createJobs({ url: env.DATABASE_URL, db });
+  sender = createJobs({
+    url: env.DATABASE_URL,
+    db,
+    onError: (error) => {
+      console.error(`jobs: ${error.name}`);
+    },
+  });
   await sender.start();
   worker = await startWorker(env, { pollingIntervalSeconds: 0.5 });
   smtp = smtpTransport(env.SMTP_URL);
@@ -142,7 +195,8 @@ afterAll(async () => {
   await db.close();
 });
 
-describe('the email job (§13: a retried job never sends twice)', () => {
+// Each test waits up to 30 s for Mailpit or the row (waitFor), so vitest's own limit is longer than that.
+describe('the email job (§13: a retried job never sends twice)', { timeout: 60_000 }, () => {
   it('the first real job: a queued row reaches Mailpit through the worker, with HTML and plain text', async () => {
     const to = `first-${run}@example.test`;
     const id = await queue(to);
@@ -178,14 +232,30 @@ describe('the email job (§13: a retried job never sends twice)', () => {
     expect(await inbox(to)).toHaveLength(1);
   });
 
+  it('a second run while the first is mid-send sends nothing, and the first records the send', async () => {
+    const to = `mid-send-${run}@example.test`;
+    const id = await rowWithoutJob(to);
+    const first = holdsAfterSending();
+    const firstRun = emailJob({ ...deps, transport: first.transport })(jobFor(id));
+    await first.hasSent; // the message is out; the first run hasn't recorded it yet
+    await emailJob({ ...deps, transport: smtp })(jobFor(id)); // the second run
+    expect(await rowStatus(id)).toBe('sending'); // left to the first run, not marked failed
+    first.finish();
+    await firstRun;
+    expect(await rowStatus(id)).toBe('sent');
+    await waitFor('the email in Mailpit', async () => (await inbox(to)).length > 0);
+    expect(await inbox(to)).toHaveLength(1);
+  });
+
   it('a job that failed before sending sends once on retry', async () => {
     const to = `retry-${run}@example.test`;
     const id = await rowWithoutJob(to);
-    // Nothing listens on port 9: the connection is refused, so the email certainly didn't go out.
+    // Nothing listens on port 9: the connection is refused, so the email certainly didn't go out. The code nodemailer
+    // gives it differs by machine (ECONNECTION, ESOCKET), so the test checks the outcome, not the code.
     const down = smtpTransport('smtp://127.0.0.1:9');
     try {
-      await expect(emailJob({ ...deps, transport: down })(jobFor(id))).rejects.toThrow(
-        'ECONNECTION',
+      await expect(emailJob({ ...deps, transport: down })(jobFor(id))).rejects.toBeInstanceOf(
+        NotSentError,
       );
     } finally {
       down.close();
@@ -199,19 +269,18 @@ describe('the email job (§13: a retried job never sends twice)', () => {
   it('a job killed after sending, before it recorded the send, sends nothing on retry', async () => {
     const to = `killed-${run}@example.test`;
     const id = await rowWithoutJob(to);
-    // The message goes out, then the run dies before it can mark the row sent.
-    const dies: EmailTransport = {
-      send: async (email) => {
-        await smtp.send(email);
-        throw new Error('killed');
-      },
-      close: () => undefined,
-    };
-    await expect(emailJob({ ...deps, transport: dies })(jobFor(id))).rejects.toThrow();
+    // The message goes out, then the run never comes back: as if its process were killed there.
+    const killed = holdsAfterSending();
+    void emailJob({ ...deps, transport: killed.transport })(jobFor(id));
+    await killed.hasSent;
     expect(await rowStatus(id)).toBe('sending'); // where the killed run left it
+    // pg-boss retries a killed job only once it has expired, so the retry finds the row that old.
+    await age(id, SENDING_STALE_AFTER_SECONDS + 1);
     await emailJob({ ...deps, transport: smtp })(jobFor(id)); // the retry
     await waitFor('the email in Mailpit', async () => (await inbox(to)).length > 0);
     expect(await inbox(to)).toHaveLength(1);
     expect(await rowStatus(id)).toBe('failed'); // interrupted: never sent again, and says why
+    expect(await rowFailure(id)).toBe(INTERRUPTED);
+    // The killed run is never let go: a killed process doesn't come back.
   });
 });

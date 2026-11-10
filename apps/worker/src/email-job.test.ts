@@ -40,7 +40,7 @@ function fakeOutbox(found: { email: OutboxEmail } | { skip: OutboxSkip } = { ema
     },
     sent: (id, providerId) => {
       steps.push(`sent ${id} ${providerId}`);
-      return Promise.resolve();
+      return Promise.resolve(sentRecorded);
     },
     release: (id) => {
       steps.push(`release ${id}`);
@@ -52,11 +52,15 @@ function fakeOutbox(found: { email: OutboxEmail } | { skip: OutboxSkip } = { ema
     },
   };
   let claimWins = true;
+  let sentRecorded = true;
   return {
     steps,
     outbox,
     loseClaim: () => {
       claimWins = false;
+    },
+    recordNothing: () => {
+      sentRecorded = false;
     },
   };
 }
@@ -160,7 +164,7 @@ describe('the email job', () => {
     expect(written).toContain(emailMessageId); // the log names the row by its id
   });
 
-  it.each(['sent', 'failed', 'missing', 'interrupted'] as const)(
+  it.each(['sent', 'failed', 'missing', 'interrupted', 'sending'] as const)(
     'leaves a row it finds %s alone, and sends nothing',
     async (skip) => {
       const { steps, outbox } = fakeOutbox({ skip });
@@ -206,13 +210,27 @@ describe('the email job', () => {
     expect(steps.at(-1)).toBe(`fail ${emailMessageId}: not sent (ECONNECTION)`);
   });
 
-  it('leaves the row as sending when it may have gone out, so no retry sends it again', async () => {
+  it('fails the row at once when it may have gone out, so no retry sends it again', async () => {
     const { steps, outbox } = fakeOutbox();
     const { transport } = fakeTransport(() =>
       Promise.reject(new SendOutcomeUnknownError('ESOCKET')),
     );
     await expect(job(outbox, transport)(context())).rejects.toThrow('ESOCKET');
-    expect(steps).toEqual([`load ${emailMessageId}`, `claim ${emailMessageId}`]);
+    expect(steps).toEqual([
+      `load ${emailMessageId}`,
+      `claim ${emailMessageId}`,
+      `fail ${emailMessageId}: the send broke off (ESOCKET): it may have gone out, so it is not sent again`,
+    ]);
+  });
+
+  it('says so in the log when the send went out but the row could not record it', async () => {
+    const { outbox, recordNothing } = fakeOutbox();
+    recordNothing();
+    const { sent, transport } = fakeTransport(() => Promise.resolve({ providerId: '<p-2>' }));
+    await job(outbox, transport)(context());
+    expect(sent).toHaveLength(1);
+    expect(written).toContain('"event":"email.unrecorded"');
+    expect(written).not.toContain('"event":"email.sent"');
   });
 
   it('never repeats a thrown error’s own words, which may hold the address', async () => {
