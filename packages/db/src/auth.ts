@@ -42,9 +42,13 @@ const AUTH_ROLE = 'lzp_auth';
  * given beside it.
  */
 function authPool(url: string): pg.Pool {
+  return openPool(authUrl(url));
+}
+
+export function authUrl(url: string): string {
   const withRole = new URL(url);
   withRole.searchParams.set('options', `-c role=${AUTH_ROLE}`);
-  return openPool(withRole.href);
+  return withRole.href;
 }
 
 /** Better Auth's database: `url` is DATABASE_URL, the app role's login (config/env.ts). */

@@ -646,6 +646,61 @@ describe('the scoped helper on a switched connection (Cerberus F4 on #189)', () 
       await pool.end();
     }
   });
+
+  // Cerberus F1 on #189: SQL injected into workspace code switching inside its own transaction. Each switch is put
+  // together at run time, as an injection would be.
+  it.each([
+    ['for the transaction', ['set', 'local', 'role', 'lzp_auth'].join(' ')],
+    ['through set_config', `select ${['set_config(', "'role'"].join('')}, 'lzp_auth', true)`],
+    ['for the session', ['set', 'role', 'lzp_auth'].join(' ')],
+  ])(
+    'refuses the result of work that switched role %s, keeps none of its writes, and hands the next work lzp_app',
+    async (_label, switchRole) => {
+      const pool = new pg.Pool({ connectionString: appUrl, max: 1 });
+      const identifier = `switched-${run}`;
+      try {
+        const single = dbOnPool(pool);
+        const switched = single.forWorkspace({ workspaceId: ids.a }).transaction(async (tx) => {
+          await tx.execute(sql.raw(switchRole));
+          await tx
+            .insert(verification)
+            .values({ identifier, value: 'planted', expiresAt: new Date(Date.now() + 600_000) });
+          return tx.select({ token: session.token }).from(session);
+        });
+        await expect(switched).rejects.toThrow(
+          'refused: the work switched this connection to lzp_auth, not lzp_app',
+        );
+        const written = await owner.query<{ n: number }>(
+          'select count(*)::int as n from verification where identifier = $1',
+          [identifier],
+        );
+        expect(written.rows).toEqual([{ n: 0 }]);
+        // The pool's one connection, handed out again, runs as lzp_app: the switch went with the transaction.
+        const next = await single
+          .forWorkspace({ workspaceId: ids.a })
+          .transaction((tx) => tx.execute<{ who: string }>(sql`select current_user as who`));
+        expect(next.rows).toEqual([{ who: 'lzp_app' }]);
+      } finally {
+        await pool.end();
+      }
+    },
+  );
+});
+
+describe("the auth handle's startup options (Argus F2 and Cerberus F2 on #189)", () => {
+  it('keeps the options already in DATABASE_URL beside the role', async () => {
+    const withTimeout = new URL(appUrl);
+    withTimeout.searchParams.set('options', '-c statement_timeout=4321');
+    const timed = createAuthDb(withTimeout.href);
+    try {
+      const { rows } = await timed.db.execute<{ who: string; timeout: string }>(
+        sql`select current_user as who, current_setting('statement_timeout') as timeout`,
+      );
+      expect(rows).toEqual([{ who: 'lzp_auth', timeout: '4321ms' }]);
+    } finally {
+      await timed.close();
+    }
+  });
 });
 
 describe('invitation.role (Cerberus F4 on #173)', () => {
