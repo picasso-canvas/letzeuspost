@@ -77,7 +77,7 @@ describe('sending a job', () => {
 
   it('refuses a payload whose ids are not ids', async () => {
     await expect(
-      jobs.send('render', { workspaceId, postId: 'post 1', postVersionId: 'v2' } as never),
+      jobs.send('render', { workspaceId, postId: 'post 1', postVersionId: 'v2' }),
     ).rejects.toThrow(JobPayloadError);
   });
 });
