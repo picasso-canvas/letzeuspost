@@ -69,6 +69,14 @@ describe('dispatchRefusal', () => {
     ).toBeNull();
   });
 
+  it("exempts a harness task even when it's a follow-up of a harness PR, not of a batch", () => {
+    const harnessFollowUp = task(148, ['follow-up'], {
+      milestone: 'H0 Harness',
+      body: '**Follow-up of:** #146, #119, #152',
+    });
+    expect(dispatchRefusal(harnessFollowUp, [data], isMergedBatch)).toBeNull();
+  });
+
   it('refuses a task with two feature labels', () => {
     expect(
       dispatchRefusal(task(72, ['feature:data', 'feature:sign-in']), [], isMergedBatch),
