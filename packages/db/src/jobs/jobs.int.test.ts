@@ -1,0 +1,357 @@
+// pg-boss on the same Postgres (§13 Jobs, #72), against real Postgres in `pnpm check:services` and CI's `services`
+// job: the owner role installs the `pgboss` schema and the app role only uses it; payloads hold ids only; a job runs
+// in its own workspace; the ai queue runs at most 4 of a workspace's jobs at once; retries stop at the limit; and the
+// email outbox's steps. Every row and job here is this run's, so the file can share the database with other files;
+// each handler ignores jobs from other runs. The `email` queue is the worker's (apps/worker/src/email.int.test.ts).
+import { randomUUID, randomUUIDv7 } from 'node:crypto';
+import { loadEnv } from '@lzp/config';
+import { sql } from 'drizzle-orm';
+import pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createDb, type Db } from '../db.ts';
+import { migrate } from '../migrate.ts';
+import { emailMessage } from '../schema/email-message.ts';
+import { createJobs, installJobs, JOBS_SCHEMA, type Jobs } from './boss.ts';
+import { emailOutbox, INTERRUPTED } from './email-outbox.ts';
+import { JobPayloadError, queueNames, queues } from './queues.ts';
+
+const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
+const { DATABASE_URL: appUrl } = loadEnv('worker');
+
+const run = randomUUID();
+const owner = new pg.Client({ connectionString: ownerUrl });
+let db: Db;
+let jobs: Jobs;
+const ids = { a: '', b: '', rowA: '', rowB: '' };
+
+/** Polls `check` until it returns something truthy; fails after `timeoutMs`. */
+async function waitFor<T>(
+  what: string,
+  check: () => T | Promise<T>,
+  timeoutMs = 30_000,
+): Promise<NonNullable<T>> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await check();
+    if (value) return value;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/** The Postgres error code a promise was refused with. */
+async function refusalCode(promise: Promise<unknown>): Promise<string> {
+  try {
+    await promise;
+  } catch (error) {
+    return String((error as { code?: unknown }).code);
+  }
+  throw new Error('expected Postgres to refuse this, and it did not');
+}
+
+async function insertRow(workspaceId: string, to: string): Promise<string> {
+  const { rows } = await owner.query<{ id: string }>(
+    `insert into email_message (workspace_id, template, to_address, data)
+     values ($1, 'email-check', $2, '{"name": "Picasso Studio"}') returning id`,
+    [workspaceId, to],
+  );
+  const id = rows[0]?.id;
+  if (id === undefined) throw new Error('no row');
+  return id;
+}
+
+async function statusOf(id: string): Promise<{ status: string; failure: string | null }> {
+  const { rows } = await owner.query<{ status: string; failure: string | null }>(
+    'select status, failure from email_message where id = $1',
+    [id],
+  );
+  const row = rows[0];
+  if (row === undefined) throw new Error('no row');
+  return row;
+}
+
+beforeAll(async () => {
+  await owner.connect();
+  await migrate(ownerUrl);
+  // Two installs at once take turns, and a third changes nothing.
+  await Promise.all([installJobs(ownerUrl), installJobs(ownerUrl)]);
+  await installJobs(ownerUrl);
+  for (const key of ['a', 'b'] as const) {
+    const { rows } = await owner.query<{ id: string }>(
+      'insert into workspace (name, slug) values ($1, $2) returning id',
+      [`Jobs ${key} ${run}`, `jobs-${key}-${run}`],
+    );
+    ids[key] = rows[0]?.id ?? '';
+  }
+  ids.rowA = await insertRow(ids.a, `a-${run}@example.test`);
+  ids.rowB = await insertRow(ids.b, `b-${run}@example.test`);
+  db = createDb(appUrl);
+  jobs = createJobs({ url: appUrl, db, pollingIntervalSeconds: 0.5 });
+  await jobs.start(); // as the app role, with migrate off: it finds pg-boss installed at its version
+}, 60_000);
+
+afterAll(async () => {
+  await jobs.stop();
+  await db.close();
+  await owner.query('delete from workspace where id = any($1::uuid[])', [[ids.a, ids.b]]);
+  await owner.end();
+});
+
+describe('pg-boss in the pgboss schema (§13)', () => {
+  it("is installed by the owner role: the schema and every table in it are lzp_owner's", async () => {
+    const schema = await owner.query<{ owner: string }>(
+      'select nspowner::regrole::text as owner from pg_namespace where nspname = $1',
+      [JOBS_SCHEMA],
+    );
+    expect(schema.rows).toEqual([{ owner: 'lzp_owner' }]);
+    const tables = await owner.query<{ owner: string; count: number }>(
+      'select tableowner as owner, count(*)::int as count from pg_tables where schemaname = $1 group by tableowner',
+      [JOBS_SCHEMA],
+    );
+    expect(tables.rows.map((row) => row.owner)).toEqual(['lzp_owner']);
+    expect(tables.rows[0]?.count).toBeGreaterThan(3);
+  });
+
+  it("gives the app role pg-boss's rows, never its schema", async () => {
+    const privilege = await owner.query<{ create: boolean; usage: boolean }>(
+      `select has_schema_privilege('lzp_app', $1, 'CREATE') as create,
+              has_schema_privilege('lzp_app', $1, 'USAGE') as usage`,
+      [JOBS_SCHEMA],
+    );
+    expect(privilege.rows).toEqual([{ create: false, usage: true }]);
+    const app = new pg.Client({ connectionString: appUrl });
+    await app.connect();
+    try {
+      expect(await refusalCode(app.query(`create table ${JOBS_SCHEMA}.intruder (i int)`))).toBe(
+        '42501',
+      );
+      expect(
+        await refusalCode(app.query(`update ${JOBS_SCHEMA}.version set version = version`)),
+      ).toBe('42501');
+      expect(await refusalCode(app.query(`drop table ${JOBS_SCHEMA}.queue`))).toBe('42501');
+    } finally {
+      await app.end();
+    }
+  });
+
+  it('declares the five queues, each with its bounded retries and backoff', async () => {
+    const { rows } = await owner.query<{
+      name: string;
+      retryLimit: number;
+      retryDelay: number;
+      retryBackoff: boolean;
+      retryDelayMax: number;
+    }>(
+      `select name, retry_limit as "retryLimit", retry_delay as "retryDelay", retry_backoff as "retryBackoff",
+              retry_delay_max as "retryDelayMax"
+       from ${JOBS_SCHEMA}.queue where name = any($1::text[]) order by name`,
+      [[...queueNames]],
+    );
+    expect(rows).toEqual([...queueNames].sort().map((name) => ({ name, ...queues[name].queue })));
+  });
+
+  it('refuses a payload carrying content, and queues nothing', async () => {
+    const count = async () =>
+      (
+        await owner.query<{ n: number }>(
+          `select count(*)::int as n from ${JOBS_SCHEMA}.job where name = 'export' and data->>'workspaceId' = $1`,
+          [ids.a],
+        )
+      ).rows[0]?.n;
+    const before = await count();
+    await expect(
+      jobs.send('export', {
+        workspaceId: ids.a,
+        exportId: randomUUIDv7(),
+        caption: 'আমাদের নতুন মেনু',
+      } as never),
+    ).rejects.toThrow(JobPayloadError);
+    expect(await count()).toBe(before);
+  });
+});
+
+describe('a job runs in its own workspace (§13, the tenant-isolation skill)', () => {
+  const seen = new Map<string, { rows: { id: string; workspaceId: string }[]; byId: string[] }>();
+
+  beforeAll(async () => {
+    await jobs.work('export', async ({ payload, db: scoped }) => {
+      if (!expectedExports.has(payload.exportId)) return; // another run's job
+      const result = await scoped.transaction(async (tx) => ({
+        // No filter at all: row-level security alone decides what comes back.
+        rows: await tx
+          .select({ id: emailMessage.id, workspaceId: emailMessage.workspaceId })
+          .from(emailMessage),
+        // The other workspace's row, asked for by its id.
+        byId: (
+          await tx.execute<{ id: string }>(
+            sql`select id from email_message where id = ${expectedExports.get(payload.exportId) ?? ''}`,
+          )
+        ).rows.map((row) => row.id),
+      }));
+      seen.set(payload.exportId, result);
+    });
+  });
+
+  const expectedExports = new Map<string, string>(); // export id → the other workspace's row
+
+  it.each([
+    ['A', 'a', 'rowA', 'rowB'],
+    ['B', 'b', 'rowB', 'rowA'],
+  ] as const)(
+    "a job for %s sees only its own workspace's rows, even asked for the other's by id",
+    async (_, workspace, own, other) => {
+      const exportId = randomUUIDv7();
+      expectedExports.set(exportId, ids[other]);
+      await jobs.send('export', { workspaceId: ids[workspace], exportId });
+      const result = await waitFor('the export job', () => seen.get(exportId));
+      expect(result.rows).toEqual([{ id: ids[own], workspaceId: ids[workspace] }]);
+      expect(result.byId).toEqual([]);
+    },
+  );
+});
+
+describe('the ai queue runs at most 4 jobs at a time per workspace (§13)', () => {
+  it("with 6 queued for A and 1 for B, A never has more than 4 running and B's starts without waiting", async () => {
+    const batchId = randomUUIDv7(); // marks this run's jobs
+    const running = new Map<string, number>();
+    const most = new Map<string, number>();
+    let finishedA = 0;
+    let bStarted: { runningA: number; finishedA: number } | undefined;
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+
+    await jobs.work('ai', async ({ payload }) => {
+      if (payload.batchId !== batchId) return;
+      const ws = payload.workspaceId;
+      running.set(ws, (running.get(ws) ?? 0) + 1);
+      most.set(ws, Math.max(most.get(ws) ?? 0, running.get(ws) ?? 0));
+      try {
+        if (ws === ids.b) {
+          bStarted = { runningA: running.get(ids.a) ?? 0, finishedA };
+        } else {
+          await gate; // A's jobs hold their slots until the test lets them go
+          finishedA += 1;
+        }
+      } finally {
+        running.set(ws, (running.get(ws) ?? 0) - 1);
+      }
+    });
+
+    for (let i = 0; i < 6; i += 1) {
+      await jobs.send('ai', { workspaceId: ids.a, batchId, postId: randomUUIDv7() });
+    }
+    await waitFor("A's first 4 jobs running", () => running.get(ids.a) === 4);
+    await jobs.send('ai', { workspaceId: ids.b, batchId, postId: randomUUIDv7() });
+
+    const started = await waitFor("B's job", () => bStarted);
+    expect(started.finishedA).toBe(0); // B didn't wait for any of A's
+    expect(started.runningA).toBe(4);
+    expect(most.get(ids.a)).toBe(4);
+
+    open();
+    await waitFor("all of A's jobs", () => finishedA === 6);
+    expect(most.get(ids.a)).toBe(4); // never a fifth, before or after the gate opened
+  }, 60_000);
+});
+
+describe('retries are bounded, with backoff (§13)', () => {
+  it('a job that keeps failing is retried with growing waits, then stops at the limit', async () => {
+    const postId = randomUUIDv7();
+    const runs: number[] = [];
+    await jobs.work('render', ({ payload, retryCount }) => {
+      if (payload.postId !== postId) return Promise.resolve();
+      runs.push(retryCount);
+      return Promise.reject(new Error('render failed on purpose'));
+    });
+    const jobId = await jobs.send('render', {
+      workspaceId: ids.a,
+      postId,
+      postVersionId: randomUUIDv7(),
+    });
+    const state = async () =>
+      (
+        await owner.query<{ state: string; retryCount: number; wait: number }>(
+          `select state, retry_count as "retryCount", extract(epoch from start_after - now())::float as wait
+           from ${JOBS_SCHEMA}.job where name = 'render' and id = $1`,
+          [jobId],
+        )
+      ).rows[0];
+
+    const { retryLimit, retryDelay, retryDelayMax } = queues.render.queue;
+    const waits: number[] = [];
+    for (let retry = 1; retry <= retryLimit; retry += 1) {
+      const waiting = await waitFor(`retry ${String(retry)}`, async () => {
+        const now = await state();
+        return now?.state === 'retry' && now.retryCount === retry - 1 ? now : undefined;
+      });
+      waits.push(waiting.wait);
+      // The wait has been checked; skip it rather than sit through minutes of backoff.
+      await owner.query(
+        `update ${JOBS_SCHEMA}.job set start_after = now() where name = 'render' and id = $1 and state = 'retry'`,
+        [jobId],
+      );
+    }
+    const last = await waitFor('the job to fail for good', async () => {
+      const now = await state();
+      return now?.state === 'failed' ? now : undefined;
+    });
+
+    expect(runs).toEqual([0, 1, 2, 3]); // the first run and retryLimit retries, then no more
+    expect(last.retryCount).toBe(retryLimit);
+    // pg-boss's backoff: retryDelay × 1-2, × 2-4, × 4-8, never past retryDelayMax (a second's slack for the clock).
+    expect(waits[0]).toBeGreaterThan(retryDelay - 2);
+    for (let i = 1; i < waits.length; i += 1) {
+      expect(waits[i]).toBeGreaterThan((waits[i - 1] ?? 0) - 2);
+    }
+    for (const wait of waits) expect(wait).toBeLessThanOrEqual(retryDelayMax + 1);
+  }, 120_000);
+});
+
+describe('the email outbox (§13 Data model)', () => {
+  it('sends a row only from queued: a second claim and a sent row are refused', async () => {
+    const id = await insertRow(ids.a, `claim-${run}@example.test`);
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
+    expect(await outbox.load(id)).toEqual({
+      email: {
+        id,
+        template: 'email-check',
+        to: `claim-${run}@example.test`,
+        replyTo: null,
+        data: { name: 'Picasso Studio' },
+      },
+    });
+    const claims = await Promise.all([outbox.claim(id), outbox.claim(id)]);
+    expect(claims.sort()).toEqual([false, true]); // two runs at once: one claim wins
+    await outbox.sent(id, '<provider-id@example.test>');
+    expect(await outbox.load(id)).toEqual({ skip: 'sent' });
+    expect(await outbox.claim(id)).toBe(false);
+  });
+
+  it('puts a row that certainly did not go out back in the queue', async () => {
+    const id = await insertRow(ids.a, `release-${run}@example.test`);
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
+    expect(await outbox.claim(id)).toBe(true);
+    await outbox.release(id);
+    expect((await statusOf(id)).status).toBe('queued');
+    expect(await outbox.claim(id)).toBe(true);
+  });
+
+  it('never sends an interrupted row again, and says why', async () => {
+    const id = await insertRow(ids.a, `interrupted-${run}@example.test`);
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
+    expect(await outbox.claim(id)).toBe(true); // the run that was killed here
+    expect(await outbox.load(id)).toEqual({ skip: 'interrupted' });
+    expect(await statusOf(id)).toEqual({ status: 'failed', failure: INTERRUPTED });
+    expect(await outbox.claim(id)).toBe(false);
+  });
+
+  it("finds nothing of another workspace's, and changes nothing of it", async () => {
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
+    expect(await outbox.load(ids.rowB)).toEqual({ skip: 'missing' });
+    expect(await outbox.claim(ids.rowB)).toBe(false);
+    await outbox.fail(ids.rowB, 'should not land');
+    expect(await statusOf(ids.rowB)).toEqual({ status: 'queued', failure: null });
+  });
+});
