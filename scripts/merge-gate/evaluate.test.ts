@@ -595,3 +595,20 @@ describe("evaluate: Athena's own PRs get ship's hand-over checks (#138)", () => 
     expect(evaluate(staging).items[1]?.detail).not.toContain('Areas');
   });
 });
+
+describe("evaluate: Areas are a build task's (#138, Argus F2 on #152)", () => {
+  it('leaves a section issue, which has no Areas, alone; a build task with none is still refused', () => {
+    const section = facts({
+      closingIssues: [
+        { number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 2, areas: null },
+      ],
+    });
+    expect(evaluate(section).items[1]?.detail).not.toContain('Areas');
+    const task = facts({
+      closingIssues: [
+        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: null },
+      ],
+    });
+    expect(evaluate(task).items[1]?.detail).toContain("#42's Areas can't be read");
+  });
+});

@@ -9,6 +9,7 @@ import {
   handoverRefusals,
   numberedFindings,
   parseAreas,
+  requireFindingIds,
   roundRefusals,
 } from './handover-checks.ts';
 
@@ -27,20 +28,38 @@ describe('parseAreas', () => {
     ).toEqual({ patterns: ['packages/db/**', 'config/env.ts'] });
   });
 
-  it('adds the tests and stories next to each file when the line says so', () => {
-    const areas = parseAreas(
-      '**Areas:** `packages/ui/src/components/button.tsx` and its tests and stories, `scripts/batch.ts`',
-    );
-    expect(areas).toEqual({
+  it("adds a file's own tests and stories only where the line says so, beside that file", () => {
+    expect(
+      parseAreas(
+        '**Areas:** `packages/ui/src/components/button.tsx` and its tests and stories, `scripts/batch.ts`',
+      ),
+    ).toEqual({
       patterns: [
         'packages/ui/src/components/button.tsx',
         'scripts/batch.ts',
-        'packages/ui/src/components/button*.test.*',
-        'packages/ui/src/components/button*.spec.*',
-        'scripts/batch*.test.*',
-        'scripts/batch*.spec.*',
-        'packages/ui/src/components/button*.stories.*',
-        'scripts/batch*.stories.*',
+        'packages/ui/src/components/button.test.*',
+        'packages/ui/src/components/button.*.test.*',
+        'packages/ui/src/components/button.spec.*',
+        'packages/ui/src/components/button.*.spec.*',
+        'packages/ui/src/components/button.stories.*',
+        'packages/ui/src/components/button.*.stories.*',
+      ],
+    });
+  });
+
+  it('gives "their tests" to every file before it on the line', () => {
+    expect(parseAreas('**Areas:** `scripts/a.ts`, `scripts/b.ts`, their tests')).toEqual({
+      patterns: [
+        'scripts/a.ts',
+        'scripts/b.ts',
+        'scripts/a.test.*',
+        'scripts/a.*.test.*',
+        'scripts/a.spec.*',
+        'scripts/a.*.spec.*',
+        'scripts/b.test.*',
+        'scripts/b.*.test.*',
+        'scripts/b.spec.*',
+        'scripts/b.*.spec.*',
       ],
     });
   });
@@ -54,6 +73,19 @@ describe('parseAreas', () => {
 });
 
 describe('areaRefusals', () => {
+  it('matches strictly: letter case counts, and a dot folder is never a plain one', () => {
+    expect(areaRefusals(['.github/x', 'Package.json'], ['github/x', 'package.json'])).toEqual([
+      ".github/x is outside the task's Areas",
+      "Package.json is outside the task's Areas",
+    ]);
+    expect(
+      areaRefusals(
+        ['packages/ui/.storybook/main.mjs', 'scripts/shipping-x.test.ts'],
+        ['packages/ui/**', 'scripts/ship.test.*'],
+      ),
+    ).toEqual(["scripts/shipping-x.test.ts is outside the task's Areas"]);
+  });
+
   const areas = [
     'packages/core/src/text/caption-length.ts',
     'packages/core/src/text/caption-length*.test.*',
@@ -121,6 +153,34 @@ describe('findingIds', () => {
       'Argus F2',
       'Cerberus F1',
     ]);
+  });
+});
+
+describe('requireFindingIds (what dispatch records)', () => {
+  it("reads the reviewers' own output, grouped under each reviewer's name", () => {
+    expect(
+      requireFindingIds(
+        [
+          'Argus:',
+          'VERDICT: block',
+          '[blocking] F1 evidence pr.md — x',
+          '- **[nit]** F2 simplicity a.ts:1 — y',
+          '',
+          '## Cerberus',
+          '[should-fix] F1 security a.ts:2 — z',
+          '**Iris**',
+          '[nit] F3 copy b.tsx — w',
+        ].join('\n'),
+      ),
+    ).toEqual(['Argus F1', 'Argus F2', 'Cerberus F1', 'Iris F3']);
+  });
+
+  it('also takes ids Athena wrote out, and refuses a findings file with none', () => {
+    expect(requireFindingIds('Fix Argus F2 and Cerberus F1.')).toEqual(['Argus F2', 'Cerberus F1']);
+    expect(() => requireFindingIds('[blocking] F1 evidence pr.md — no reviewer named')).toThrow(
+      /no finding ids/,
+    );
+    expect(() => requireFindingIds('please fix the button')).toThrow(/no finding ids/);
   });
 });
 
