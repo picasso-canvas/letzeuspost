@@ -244,3 +244,20 @@ describe('auditMain: staging merges (#63 review)', () => {
     expect(auditMain([commit('m'.repeat(40), '2026-11-07T09:00:00Z', 'x')], log)).toEqual([]);
   });
 });
+
+describe('renderReport: review retries (#158)', () => {
+  it('counts the reviews that needed a retry this week', () => {
+    const text = renderReport({
+      week: '2026-W46',
+      merges: [],
+      titles: {},
+      unknown: [],
+      froze: false,
+      openSensitive: [],
+      needsZeus: [],
+      guardrailHits: {},
+      reviewRetries: 2,
+    });
+    expect(text).toContain('Review answers that needed a retry (a line before the verdict): 2.');
+  });
+});
