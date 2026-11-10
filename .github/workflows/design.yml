@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: design-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # runs on main are never cancelled
+  cancel-in-progress: true # pull requests only (#160): a new push cancels the older run
 
 jobs:
   design:

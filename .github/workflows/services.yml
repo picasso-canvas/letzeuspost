@@ -17,7 +17,7 @@ permissions:
 
 concurrency:
   group: services-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # runs on main are never cancelled
+  cancel-in-progress: true # pull requests only (#160): a new push cancels the older run
 
 jobs:
   services:
@@ -35,7 +35,8 @@ jobs:
 
       # Can this PR affect the checks below (#160)? Only when every file it changes is on this list does the job skip
       # them and pass in seconds; any other file, an empty diff or any doubt runs them all. Lists, not guesses: a file
-      # that could affect this job never goes on its list.
+      # that could affect this job never goes on its list. `scripts/` is on it because no integration or tenancy test
+      # imports from it; a test that ever does takes `scripts/` off this list (Cerberus F1 on #168).
       - name: Scope (can this PR affect the services checks?)
         id: scope
         env:
@@ -49,7 +50,7 @@ jobs:
               run=false
               for f in "${files[@]}"; do
                 case "$f" in
-                  *.int.test.* | DESIGN.md) run=true ;;
+                  *.int.test.* | *.int.spec.* | DESIGN.md) run=true ;;
                   docs/* | .claude/* | scripts/* | tests/gallery/* | .github/workflows/ci.yml | .github/workflows/design.yml | .github/workflows/risk-gate.yml | .github/*.txt) ;;
                   *.md)
                     # Markdown at the root only (docs/ is listed above); one deeper may be a package's input.
