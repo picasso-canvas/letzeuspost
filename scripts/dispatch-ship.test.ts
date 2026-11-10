@@ -506,8 +506,8 @@ describe('resuming an interrupted builder (#157)', () => {
     expect(env.GIT_CONFIG_GLOBAL).toBe('/dev/null');
     expect(env.GIT_CONFIG_NOSYSTEM).toBe('1');
     const settings = Object.fromEntries(
-      Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i) => [
-        env[`GIT_CONFIG_KEY_${String(i)}`],
+      Array.from({ length: Number(env.GIT_CONFIG_COUNT) }, (_, i): [string, string | undefined] => [
+        env[`GIT_CONFIG_KEY_${String(i)}`] ?? '',
         env[`GIT_CONFIG_VALUE_${String(i)}`],
       ]),
     );
