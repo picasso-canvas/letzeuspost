@@ -17,9 +17,9 @@ matched whole reviews, including their "checked and fine" lines, and gave higher
 
 | Type | Slug | PRs | Prevention | Status |
 |---|---|---|---|---|
-| PR text or Done-when evidence out of date, or missing | `evidence` | 11 | Ship (builders) and the merge gate (Athena's PRs) refuse evidence that doesn't name the head commit (#138) | Planned |
-| A file changed outside the task's Areas | `areas` | 12 | Ship refuses a branch that changes a file outside the task's Areas (#138) | Planned |
-| A finding left unanswered in a fix round | `unanswered` | 7 | Numbered findings (#137); ship and the gate refuse a fix round whose Round section misses a number (#138) | Planned |
+| PR text or Done-when evidence out of date, or missing | `evidence` | 11 | Ship (builders) and the merge gate (Athena's PRs) refuse evidence that doesn't name the head commit (#138) | Done 2026-11-10 (#138) |
+| A file changed outside the task's Areas | `areas` | 12 | Ship refuses a branch that changes a file outside the task's Areas (#138) | Done 2026-11-10 (#138) |
+| A finding left unanswered in a fix round | `unanswered` | 7 | Numbered findings (#137); ship and the gate refuse a fix round whose Round section misses a number (#138) | Done 2026-11-10 (#138) |
 | Tests-first not visible in a batch's history | `tests-first` | 4 | `tasks.md` in batch bundles (#134) | Done 2026-11-10 |
 | A decision of Zeus's not recorded where the reviewers look | `decision-record` | 3 | Athena records each chat decision, dated, on the task's own issue or PR (the one in the reviewers' bundle) in the same turn | In force 2026-11-10 |
 
