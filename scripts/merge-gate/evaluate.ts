@@ -3,6 +3,10 @@ import { shipRefusals } from '../lib/protected.ts';
 import { matchesAny } from '../lib/paths.ts';
 import type { Facts, GateConfig, GateResult, ItemResult, Reviewer, Tier } from './types.ts';
 import { areaRefusals, evidenceRefusal, roundRefusals } from '../lib/handover-checks.ts';
+import { followUpRefusals } from '../lib/follow-ups.ts';
+
+/** Zeus's GitHub account, the repository's owner, which Athena works through (§20): only its records grant an exception. */
+const ZEUS_LOGIN = 'picasso-canvas';
 
 /** The PR text a review was given, normalised so only real edits change it. */
 export function bodyHash(body: string): string {
@@ -143,6 +147,19 @@ export function evaluate(f: Facts): GateResult {
       else linked.push(...areaRefusals(f.changedFiles, issue.areas));
     }
   }
+  // An earlier batch's follow-ups land before this one merges, and this batch's follow-up links are real (#154).
+  if (kind === 'batch')
+    linked.push(
+      ...followUpRefusals({
+        pr: f.pr,
+        closes: f.closingIssues.map((i) => i.number),
+        mergedBatches: f.mergedBatches,
+        openIssues: f.openIssues,
+        comments: f.prComments,
+        zeusLogin: ZEUS_LOGIN,
+        listCutOff: f.openIssuesCutOff,
+      }),
+    );
   if (kind === 'batch' && f.ungatedStaging.length > 0) {
     linked.push(
       `staging holds commits that didn't come through the gate: ${f.ungatedStaging.map((sha) => sha.slice(0, 7)).join(', ')}`,

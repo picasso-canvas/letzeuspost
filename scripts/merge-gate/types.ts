@@ -1,3 +1,4 @@
+import type { OpenIssue } from '../lib/follow-ups.ts';
 import type { RawChange } from '../lib/protected.ts';
 export const REVIEWERS = ['argus', 'cerberus', 'iris', 'redteam'] as const;
 export type Reviewer = (typeof REVIEWERS)[number];
@@ -75,6 +76,13 @@ export interface Facts {
   evidenceShas: string[];
   /** The previous review round's numbered findings (`Argus F1`), which a Round section must answer (#138). */
   earlierFindingIds: string[];
+  /** For a batch: the open issues, the batch PRs merged into main, and this PR's comments (#154, follow-ups). */
+  openIssues: OpenIssue[];
+  /** The open-issue list hit its limit (#170): the gate refuses rather than miss a follow-up. */
+  openIssuesCutOff: boolean;
+  mergedBatches: number[];
+  /** A batch PR's comments with their authors: only Zeus's account links a follow-up (#154). */
+  prComments: { author: string; body: string }[];
   labels: string[];
   checkRuns: CheckRun[];
   statuses: { context: string; state: string }[];

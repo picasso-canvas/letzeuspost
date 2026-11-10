@@ -7,6 +7,9 @@ export interface StagingLogEntry {
   mergeCommit?: string;
   /** For a merge into staging: the task issue (from the branch name). */
   issue?: number;
+  pr?: number;
+  /** `batch` for the PR from staging into main. */
+  kind?: string;
 }
 
 /**
@@ -58,4 +61,20 @@ export function stagingProblems(
 /** How the gate merges each kind: a batch with a merge commit (staging stays); everything else squashed and deleted. */
 export function mergeArgs(kind: 'staging' | 'batch' | 'main'): string[] {
   return kind === 'batch' ? ['--merge'] : ['--squash', '--delete-branch'];
+}
+
+/**
+ * One merge-log line as the gate reads it: the fields it uses, each only when it has the right type. `pr` and `kind`
+ * name a batch merged into main, which an earlier batch's follow-ups are checked against (Argus F1, Cerberus F1 on
+ * #170).
+ */
+export function toStagingLogEntry(e: Record<string, unknown>): StagingLogEntry {
+  return {
+    result: String(e.result),
+    ...(typeof e.base === 'string' ? { base: e.base } : {}),
+    ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
+    ...(typeof e.issue === 'number' ? { issue: e.issue } : {}),
+    ...(typeof e.pr === 'number' ? { pr: e.pr } : {}),
+    ...(typeof e.kind === 'string' ? { kind: e.kind } : {}),
+  };
 }

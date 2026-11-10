@@ -189,11 +189,15 @@ describe('the finding types', () => {
       const text = readFileSync(join(ROOT, `.claude/agents/${agent}.md`), 'utf8');
       expect(text, agent).toContain('[blocking|should-fix|nit] F<n> <type>');
       expect(text, agent).toContain('.claude/skills/review-checklist/SKILL.md');
-      // Answering a finding by a follow-up waits for the gate check that makes it land (#139).
-      expect(text, agent).not.toMatch(/follow-up/i);
     }
-    expect(readFileSync(join(ROOT, '.claude/agents/cerberus-security.md'), 'utf8')).toContain(
-      'Block when any finding is blocking or a should-fix',
-    );
+    // A follow-up answers Argus's and Iris's should-fixes and nits on a batch, through a `Follow-up: #N` line the gate
+    // checks and makes land (#154); Cerberus's should-fixes still hold the batch, so his file offers no follow-up.
+    for (const agent of ['argus-reviewer', 'iris-design'])
+      expect(readFileSync(join(ROOT, `.claude/agents/${agent}.md`), 'utf8'), agent).toContain(
+        '`Follow-up: #N`',
+      );
+    const cerberus = readFileSync(join(ROOT, '.claude/agents/cerberus-security.md'), 'utf8');
+    expect(cerberus).toContain('Block when any finding is blocking or a should-fix');
+    expect(cerberus).not.toMatch(/follow-up/i);
   });
 });
