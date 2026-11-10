@@ -117,6 +117,9 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
  * their retry bounds, and lets the app role (lzp_app) use them: rows only, never the schema. Safe to run again and
  * at the same time as another run (pg-boss takes an advisory lock). Run it with the migrations.
  */
+/** An advisory lock held while granting; any fixed number, this one the task's (the migrations hold 71). */
+const GRANTS_LOCK = 72;
+
 export async function installJobs(ownerUrl: string): Promise<void> {
   const boss = new PgBoss({
     connectionString: ownerUrl,
@@ -139,9 +142,11 @@ export async function installJobs(ownerUrl: string): Promise<void> {
       await boss.updateQueue(name, queues[name].queue);
     }
     // Rows of every table, the version row included: a running pg-boss stamps its cron, monitor and reindex passes
-    // there. Never the schema or a table's structure, which stay the owner's.
+    // there. Never the schema or a table's structure, which stay the owner's. One statement list is one transaction,
+    // and the lock makes two installs at once take turns: Postgres refuses two GRANTs racing on one object.
     await boss.getDb().executeSql(
-      `GRANT USAGE ON SCHEMA ${JOBS_SCHEMA} TO lzp_app;
+      `SELECT pg_advisory_xact_lock(${String(GRANTS_LOCK)});
+       GRANT USAGE ON SCHEMA ${JOBS_SCHEMA} TO lzp_app;
        GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${JOBS_SCHEMA} TO lzp_app;
        GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ${JOBS_SCHEMA} TO lzp_app;`,
     );
