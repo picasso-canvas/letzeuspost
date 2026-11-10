@@ -50,6 +50,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     gatedIssues: [42, 43],
     evidenceShas: [SHA],
     earlierFindingIds: [],
+    journey: null,
     labels: ['routine'],
     checkRuns: [
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
@@ -457,6 +458,27 @@ describe('evaluate: the batch PR from staging into main', () => {
   it('gets the full review, with one ticked box per task', () => {
     expect(failedIds(batch())).toEqual([]);
     expect(failedIds(batch({ reviews: [] }))).toEqual([5]);
+  });
+
+  it("refuses a feature's batch unless CI's journey report shows its journey ran and passed (#156)", () => {
+    const passed = {
+      file: 'tests/journeys/data.int.test.ts',
+      name: 'two workspaces stay apart',
+      state: 'passed',
+      fails: false,
+      mode: 'run',
+    };
+    expect(failedIds(batch({ journey: { feature: 'data', entries: [passed] } }))).toEqual([]);
+    const none = batch({ journey: { feature: 'data', entries: null } });
+    expect(failedIds(none)).toEqual([3]);
+    expect(evaluate(none).items[2]?.detail).toContain('left no journey report');
+    expect(
+      failedIds(batch({ journey: { feature: 'data', entries: [{ ...passed, fails: true }] } })),
+    ).toEqual([3]);
+    // Only a batch is held by its journey: a PR into staging isn't.
+    expect(
+      evaluate(facts({ journey: { feature: 'data', entries: null } })).items[2]?.detail,
+    ).not.toContain('journey');
   });
 
   it('refuses a batch that carries a harness path, or misses a task box', () => {
