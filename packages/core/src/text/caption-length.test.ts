@@ -103,6 +103,37 @@ describe('captionLength: X (weighted)', () => {
     expect(captionLength('x', 'https://example.com/a))')).toBe(23 + 2);
   });
 
+  it('counts two http(s) links with only punctuation between them as two links', () => {
+    expect(captionLength('x', 'https://a.com,https://b.com')).toBe(23 + 1 + 23);
+    expect(captionLength('x', 'http://a.com/x).https://b.com/y')).toBe(23 + 2 + 23);
+    expect(captionLength('x', 'example.com/a,https://b.com')).toBe(23 + 1 + 23);
+    expect(captionLength('x', 'https://a.com।https://b.com।')).toBe(23 + 1 + 23 + 1);
+  });
+
+  it('starts a link only at a word start', () => {
+    expect(captionLength('x', 'x-example.com')).toBe(23);
+    expect(captionLength('x', 'a'.repeat(64))).toBe(64);
+    expect(captionLength('x', 'v1.2.3')).toBe(6);
+  });
+
+  it('counts a label of up to 63 characters as a domain, and a longer one as text', () => {
+    expect(captionLength('x', `${'a'.repeat(63)}.com`)).toBe(23);
+    expect(captionLength('x', `${'a'.repeat(64)}.com`)).toBe(68);
+    expect(captionLength('x', `a.${'b'.repeat(64)}.com`)).toBe(2 + 64 + 4);
+  });
+
+  it('counts a domain of up to 253 characters as a link, and a longer one as text', () => {
+    // Three 63-character labels and dots (192), then a last label: 253 characters in all.
+    const label = 'a'.repeat(63);
+    const domain253 = `${label}.${label}.${label}.${'b'.repeat(57)}.com`;
+    expect(domain253).toHaveLength(253);
+    expect(captionLength('x', domain253)).toBe(23);
+    expect(captionLength('x', `${domain253}.`)).toBe(24);
+    const domain259 = `${label}.${label}.${label}.${label}.com`;
+    expect(domain259).toHaveLength(259);
+    expect(captionLength('x', domain259)).toBeGreaterThan(23);
+  });
+
   it('fits 280 letters and refuses 281', () => {
     expect(fitsCaption('x', 'a'.repeat(280), 280)).toBe(true);
     expect(fitsCaption('x', 'a'.repeat(281), 280)).toBe(false);
@@ -231,5 +262,28 @@ describe('captionLength: the other networks (plain characters)', () => {
   it('fits 63,206 Facebook characters and refuses one more', () => {
     expect(fitsCaption('facebook', 'a'.repeat(63_206), 63_206)).toBe(true);
     expect(fitsCaption('facebook', 'a'.repeat(63_207), 63_206)).toBe(false);
+  });
+});
+
+// A caption can be up to 63,206 characters (Facebook), and the counter runs in the web and worker processes, so no
+// input may take more than linear time (the first version took about 10^9 steps on these).
+describe('captionLength: hostile input stays linear', () => {
+  const LIMIT_MS = 1000;
+  const hostile: [string, string][] = [
+    ['a 100,000-character word with no dot', 'a'.repeat(100_000)],
+    ['a1. repeated to 100,000 characters', 'a1.'.repeat(33_334).slice(0, 100_000)],
+    ['a. repeated to 100,000 characters', 'a.'.repeat(50_000)],
+    ['a link ending in 50,000 )', `https://example.com/a${')'.repeat(50_000)}`],
+    ['a link ending in 25,000 ()', `https://example.com/a${'()'.repeat(25_000)}`],
+    ['http:// repeated to 100,000 characters', 'http://'.repeat(14_286).slice(0, 100_000)],
+    ['a chain of comma-separated links', 'https://a.com,'.repeat(7_143).slice(0, 100_000)],
+  ];
+
+  describe.each(hostile)('%s', (_name, text) => {
+    it.each(NETWORKS)('is counted within the limit on %s', (network) => {
+      const start = performance.now();
+      captionLength(network, text);
+      expect(performance.now() - start).toBeLessThan(LIMIT_MS);
+    });
   });
 });
