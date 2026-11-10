@@ -4,8 +4,9 @@
 // `main`.
 //   node scripts/batch.ts [--open]
 // It runs from a clean `main` and reports the open feature (§19, Zeus 2026-11-10, #139): its tasks, which of them the
-// gate merged into `staging`, and the changed lines. The batch is due when every task of the feature is there and its
-// journey test is no longer marked as expected to fail, as a part when `staging` is ~1,500 changed lines ahead, or when
+// gate merged into `staging`, and the changed lines. The batch is due when every task of the feature is there (a journey
+// test that still looks marked is reported as a warning; the merge gate holds the batch until CI shows the journey ran
+// and passed, #156), as a part when `staging` is ~1,500 changed lines ahead, or when
 // `staging` holds only follow-ups (lib/features.ts decides). With --open, a due batch's PR is opened (or its text
 // brought up to date): it closes every task's issues and ticks a task only when the merge log shows the gate merged it
 // into staging. Then Athena runs scripts/review.ts and the merge gate on it.

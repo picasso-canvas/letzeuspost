@@ -107,9 +107,14 @@ describe('journeyMarked', () => {
   });
 
   it("doesn't take other code's skip or fail for a mark (Argus F3 on #155)", () => {
-    const text =
-      "const rows = query.skip(10);\nassert.fail('never');\nit('journey', { skip: false }, () => {});";
-    expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data')).toBe(false);
+    for (const text of [
+      "const rows = query.skip(10);\nassert.fail('never');\nit('journey', { skip: false }, () => {});",
+      "it('journey', { 'fails': false, timeout: 5000 }, () => {})",
+      "it('journey', {\n  skip: false\n}, () => {})",
+    ])
+      expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data'), text).toBe(
+        false,
+      );
   });
 
   it('errs toward shut: an option-like key in any object counts as a mark (Zeus, 2026-11-10, round 5 of #155)', () => {
@@ -150,6 +155,13 @@ describe('journeyMarked', () => {
       "it('the journey (data)', { fails: true }, () => {})",
       "const opts = { skip: true };\nit('j', opts, () => {})",
       "it('j', async () => {}, { fails: true })",
+      // A quoted key, the shorthand, and a value that only starts with false (Argus F1, Cerberus F1, nits on #155).
+      "it('j', { 'skip': true }, () => {})",
+      'it("j", { "fails": 1 }, () => {})',
+      'const skip = true;\nit("j", { skip }, () => {})',
+      "it('j', { timeout: 5000, fails }, () => {})",
+      "it('j', { fails: false || true }, () => {})",
+      "it('j', { skip: falsey }, () => {})",
     ]) {
       expect(journeyMarked([{ path: 'tests/journeys/data.int.test.ts', text }], 'data'), text).toBe(
         true,
@@ -180,16 +192,17 @@ describe('featureBatch', () => {
     });
   });
 
-  it("waits for the feature's missing tasks, and for the journey mark to go", () => {
+  it("waits for the feature's missing tasks; a journey mark is only a warning, since the gate holds the batch on CI's result (#156)", () => {
     expect(featureBatch({ ...base, featureTasks: [150, 71, 72, 73] })).toEqual({
       due: false,
       feature: 'data',
       reason: 'feature "data" still needs #72, #73 on staging',
     });
     expect(featureBatch({ ...base, journeyMarked: true })).toEqual({
-      due: false,
+      due: true,
       feature: 'data',
-      reason: 'feature "data"\'s journey test is still marked as expected to fail',
+      reason:
+        'every task of feature "data" is on staging (#150, #71). Warning: its journey test still looks marked or switched off, and the merge gate holds the batch until CI shows the journey ran and passed',
     });
   });
 

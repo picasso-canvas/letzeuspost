@@ -2,7 +2,9 @@ import { parsePatternList } from '../lib/paths.ts';
 import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
+import { featureOf } from '../lib/features.ts';
 import { wantsComments, type OpenIssue } from '../lib/follow-ups.ts';
+import { parseJourneyReport } from '../lib/journey-proof.ts';
 import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
 import { bodyHash, doneWhenBoxes } from './evaluate.ts';
@@ -26,6 +28,11 @@ export interface CollectDeps {
   listReviewedShas?: (pr: number) => string[];
   /** The gate's merge log (`merges.jsonl`); a batch is checked against it. Missing: nothing counts as gated. */
   readMergeLog?: () => StagingLogEntry[];
+  /**
+   * An Actions run's journey reports (#156), as file name → text: `vitest.json` from `journeys-vitest`, and
+   * `playwright.json` from `journeys-playwright` when the end-to-end step ran. Null when there's no Vitest report.
+   */
+  readJourneyReport?: (runId: number) => Record<string, string> | null;
   /** A Claude Code transcript by session id, or null. */
   readTranscript?: (sessionId: string) => string | null;
   /** Where bundles live (`~/.letzeuspost`). */
@@ -347,9 +354,72 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       `repos/${repo}/commits/${sha}/check-runs`,
       '--paginate',
       '--jq',
-      '.check_runs[] | {name, status, conclusion, app: .app.slug}',
+      '.check_runs[] | {name, status, conclusion, app: .app.slug, url: .details_url}',
     ]),
   );
+  // A batch that completes a feature is held until the services run on its head shows the journey passed (§19, #156).
+  // A part of a feature (another of its build tasks still open) isn't: its journey is still marked, by design. The gate
+  // names the open tasks that made it a part (Argus F3, Cerberus F2 on #171).
+  let journey: Facts['journey'] = null;
+  let journeyPart: Facts['journeyPart'] = null;
+  if (isBatch) {
+    const features = [
+      ...new Set(
+        closingIssues
+          .filter((i) => i.inRepo)
+          .map((i) => featureOf(i.labels))
+          .filter((x) => x !== null),
+      ),
+    ];
+    if (features.length > 1)
+      throw new Error(
+        `the batch closes tasks of two features (${features.join(', ')}): §19 batches one feature at a time`,
+      );
+    const feature = features[0];
+    if (feature !== undefined) {
+      const open = (
+        JSON.parse(
+          gh([
+            'issue',
+            'list',
+            '-R',
+            repo,
+            '--label',
+            `feature:${feature}`,
+            '--state',
+            'open',
+            '--limit',
+            '1000',
+            '--json',
+            'number,labels',
+          ]),
+        ) as { number: number; labels: { name: string }[] }[]
+      )
+        // Only a build task makes the feature unfinished: a stray issue with the label doesn't (Argus F3 on #171).
+        .filter((i) => i.labels.some((l) => l.name === 'build-task'))
+        .map((i) => i.number);
+      // This repository's issues only: another's #73 isn't this feature's task (Argus F4 on #171).
+      const closes = new Set(closingIssues.filter((i) => i.inRepo).map((i) => i.number));
+      const rest = open.filter((n) => !closes.has(n));
+      if (rest.length > 0) journeyPart = { feature, open: rest };
+      else {
+        const services = checkRuns.find((r) => r.name === 'services' && r.app === 'github-actions');
+        const runId = /\/actions\/runs\/(\d+)\//.exec(services?.url ?? '')?.[1];
+        const files =
+          runId === undefined ? null : (deps.readJourneyReport?.(Number(runId)) ?? null);
+        const parsed = files === null ? null : parseJourneyReport(files);
+        // The head commit's journey files: one no runner reported holds the batch (Argus F1 in round 2 on #171).
+        const journeyFiles = deps
+          .git(['ls-tree', '-r', '--name-only', sha, '--', 'tests/journeys/'])
+          .split('\n')
+          .filter((line) => line !== '');
+        journey =
+          typeof parsed === 'string'
+            ? { feature, entries: null, files: journeyFiles, unreadable: parsed }
+            : { feature, entries: parsed, files: journeyFiles };
+      }
+    }
+  }
   const statuses = jsonLines<{ context: string; state: string }>(
     gh([
       'api',
@@ -385,6 +455,8 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     ...handoverFacts(pr, sha, base, deps),
     labels: view.labels.map((label) => label.name),
     checkRuns,
+    journey,
+    journeyPart,
     statuses,
     reviews: reviewsFor(pr, sha, base, deps),
     sensitivePatterns: sensitiveList === null ? null : parsePatternList(sensitiveList),

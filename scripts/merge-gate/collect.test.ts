@@ -307,6 +307,162 @@ describe("collectFacts: what Athena's hand-over is checked against (#138)", () =
   });
 });
 
+describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
+  const RUN_URL = 'https://github.com/picasso-canvas/letzeuspost/actions/runs/4242/job/99';
+  const batchGh = (over: Record<string, string> = {}) =>
+    fakeGh({
+      'pr view': JSON.stringify({
+        state: 'OPEN',
+        isDraft: false,
+        baseRefName: 'main',
+        headRefName: 'staging',
+        isCrossRepository: false,
+        headRefOid: SHA,
+        title: 'Batch',
+        mergeable: 'MERGEABLE',
+        body: 'Closes #72',
+        labels: [{ name: 'sensitive' }],
+        closingIssuesReferences: [
+          { number: 72, url: 'https://github.com/picasso-canvas/letzeuspost/issues/72' },
+          { number: 148, url: 'https://github.com/picasso-canvas/letzeuspost/issues/148' },
+        ],
+      }),
+      'issue view 72 ': JSON.stringify({
+        labels: [{ name: 'build-task' }, { name: 'feature:data' }],
+        body: '**Done when**\n- [ ] a',
+      }),
+      'issue view 148 ': JSON.stringify({
+        labels: [{ name: 'build-task' }, { name: 'follow-up' }],
+        body: '**Done when**\n- [ ] a',
+      }),
+      // The open-issue list and the PR's comments are #154's; the feature's own list is the one asked here.
+      'issue list': '[]',
+      'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify([
+        { number: 72, labels: [{ name: 'build-task' }] },
+      ]),
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'check-runs': `${JSON.stringify({ name: 'services', status: 'completed', conclusion: 'success', app: 'github-actions', url: RUN_URL })}\n`,
+      ...over,
+    });
+  const batchDeps = (gh: CollectDeps['gh'], over: Partial<CollectDeps> = {}) =>
+    deps({
+      gh,
+      git: (args) =>
+        args[0] === 'log'
+          ? ''
+          : args[0] === 'ls-tree'
+            ? 'tests/journeys/data.int.test.ts\ntests/journeys/sign-in.spec.ts\n'
+            : fakeGit()(args),
+      ...over,
+    });
+  const report = { 'vitest.json': JSON.stringify([]) };
+
+  it("reads the journey report of the services run on the batch's head when the batch completes a feature", () => {
+    const calls: string[] = [];
+    const runs: number[] = [];
+    const gh = batchGh();
+    const f = collectFacts(
+      7,
+      batchDeps(
+        (args) => {
+          calls.push(args.join(' '));
+          return gh(args);
+        },
+        { readJourneyReport: (run) => (runs.push(run), report) },
+      ),
+    );
+    expect(runs).toEqual([4242]);
+    expect(f.journey).toEqual({
+      feature: 'data',
+      entries: [],
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
+    expect(calls).toContain(
+      'issue list -R picasso-canvas/letzeuspost --label feature:data --state open --limit 1000 --json number,labels',
+    );
+    // The head commit's journey files, so one no runner reported is caught (Argus F1 in round 2 on #171).
+  });
+
+  it('has no report to read without a services run or its artifact, and says why one is unreadable', () => {
+    const none = collectFacts(
+      7,
+      batchDeps(batchGh({ 'check-runs': '' }), { readJourneyReport: () => report }),
+    );
+    expect(none.journey).toEqual({
+      feature: 'data',
+      entries: null,
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
+    const gone = collectFacts(7, batchDeps(batchGh(), { readJourneyReport: () => null }));
+    expect(gone.journey).toEqual({
+      feature: 'data',
+      entries: null,
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
+    const bad = collectFacts(
+      7,
+      batchDeps(batchGh(), { readJourneyReport: () => ({ 'vitest.json': 'nope' }) }),
+    );
+    expect(bad.journey).toEqual({
+      feature: 'data',
+      entries: null,
+      unreadable: "vitest.json isn't JSON",
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
+  });
+
+  it("doesn't hold a part of a feature (a task of it is still open elsewhere), a batch with no feature, or a PR into staging", () => {
+    const read = () => {
+      throw new Error('not read');
+    };
+    const part = collectFacts(
+      7,
+      batchDeps(
+        batchGh({
+          'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify([
+            { number: 72, labels: [{ name: 'build-task' }] },
+            { number: 73, labels: [{ name: 'build-task' }] },
+          ]),
+        }),
+        {
+          readJourneyReport: read,
+        },
+      ),
+    );
+    expect(part.journey).toBeNull();
+    const noFeature = collectFacts(
+      7,
+      batchDeps(
+        batchGh({
+          'issue view 72 ': JSON.stringify({ labels: [{ name: 'build-task' }], body: 'x' }),
+        }),
+        {
+          readJourneyReport: read,
+        },
+      ),
+    );
+    expect(noFeature.journey).toBeNull();
+    expect(collectFacts(7, deps({ readJourneyReport: read })).journey).toBeNull();
+  });
+
+  it('refuses to guess when a batch closes tasks of two features', () => {
+    expect(() =>
+      collectFacts(
+        7,
+        batchDeps(
+          batchGh({
+            'issue view 148 ': JSON.stringify({
+              labels: [{ name: 'build-task' }, { name: 'feature:sign-in' }],
+              body: 'x',
+            }),
+          }),
+          { readJourneyReport: () => report },
+        ),
+      ),
+    ).toThrow('closes tasks of two features (data, sign-in)');
+  });
+});
+
 describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
   const batchView = JSON.stringify({
     state: 'OPEN',
@@ -385,5 +541,79 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     expect(other.openIssues).toEqual([]);
     expect(other.prComments).toEqual([]);
     expect(calls.some((c) => c.startsWith('issue list'))).toBe(false);
+  });
+});
+
+describe('collectFacts: what makes a part of a feature (Argus F3-F4, Cerberus F2 on #171)', () => {
+  const view = (refs: { number: number; url: string }[]) =>
+    JSON.stringify({
+      state: 'OPEN',
+      isDraft: false,
+      baseRefName: 'main',
+      headRefName: 'staging',
+      isCrossRepository: false,
+      headRefOid: SHA,
+      title: 'Batch',
+      mergeable: 'MERGEABLE',
+      body: 'Closes #72',
+      labels: [{ name: 'sensitive' }],
+      closingIssuesReferences: refs,
+    });
+  const own = { number: 72, url: 'https://github.com/picasso-canvas/letzeuspost/issues/72' };
+  const gh = (featureList: unknown[], refs = [own]) =>
+    fakeGh({
+      'pr view': view(refs),
+      'issue view 72 ': JSON.stringify({
+        labels: [{ name: 'build-task' }, { name: 'feature:data' }],
+        body: 'x',
+      }),
+      'issue list': '[]',
+      'issue list -R picasso-canvas/letzeuspost --label feature:data': JSON.stringify(featureList),
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'check-runs': `${JSON.stringify({ name: 'services', status: 'completed', conclusion: 'success', app: 'github-actions', url: 'https://github.com/picasso-canvas/letzeuspost/actions/runs/4242/job/99' })}\n`,
+    });
+  const run = (g: CollectDeps['gh']) =>
+    collectFacts(
+      7,
+      deps({
+        gh: g,
+        git: (args) =>
+          args[0] === 'log'
+            ? ''
+            : args[0] === 'ls-tree'
+              ? 'tests/journeys/data.int.test.ts\ntests/journeys/sign-in.spec.ts\n'
+              : fakeGit()(args),
+        readJourneyReport: () => ({ 'vitest.json': '[]' }),
+      }),
+    );
+  const task = (number: number) => ({
+    number,
+    labels: [{ name: 'build-task' }, { name: 'feature:data' }],
+  });
+
+  it('counts only open build tasks: a stray issue with the label still leaves the batch held', () => {
+    const f = run(gh([task(72), { number: 90, labels: [{ name: 'feature:data' }] }]));
+    expect(f.journey).toEqual({
+      feature: 'data',
+      entries: [],
+      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+    });
+    expect(f.journeyPart).toBeNull();
+  });
+
+  it('says which open tasks make a batch a part, so the gate can show why it is not held', () => {
+    const f = run(gh([task(72), task(73)]));
+    expect(f.journey).toBeNull();
+    expect(f.journeyPart).toEqual({ feature: 'data', open: [73] });
+  });
+
+  it("doesn't take another repository's issue for one of this feature's tasks", () => {
+    const f = run(
+      gh(
+        [task(72), task(73)],
+        [own, { number: 73, url: 'https://github.com/someone/else/issues/73' }],
+      ),
+    );
+    expect(f.journeyPart).toEqual({ feature: 'data', open: [73] });
   });
 });

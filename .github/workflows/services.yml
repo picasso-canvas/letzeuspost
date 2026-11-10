@@ -36,7 +36,8 @@ jobs:
       # Can this PR affect the checks below (#160)? Only when every file it changes is on this list does the job skip
       # them and pass in seconds; any other file, an empty diff or any doubt runs them all. Lists, not guesses: a file
       # that could affect this job never goes on its list. `scripts/` is on it because no integration or tenancy test
-      # imports from it; a test that ever does takes `scripts/` off this list (Cerberus F1 on #168).
+      # imports from it; a test that ever does takes `scripts/` off this list (Cerberus F1 on #168). The journey reporters
+      # and the module they use run in this job, so they aren't on it (#156).
       - name: Scope (can this PR affect the services checks?)
         id: scope
         env:
@@ -50,7 +51,7 @@ jobs:
               run=false
               for f in "${files[@]}"; do
                 case "$f" in
-                  *.int.test.* | *.int.spec.* | DESIGN.md) run=true ;;
+                  *.int.test.* | *.int.spec.* | DESIGN.md | scripts/ci/* | scripts/lib/journey-proof.*) run=true ;;
                   docs/* | .claude/* | scripts/* | tests/gallery/* | .github/workflows/ci.yml | .github/workflows/design.yml | .github/workflows/risk-gate.yml | .github/*.txt) ;;
                   *.md)
                     # Markdown at the root only (docs/ is listed above); one deeper may be a package's input.
@@ -166,9 +167,25 @@ jobs:
 
       # `pnpm check:services`, in two steps: its Vitest half here, and its Playwright half for the app below. The
       # gallery's Playwright project runs in the `design` job instead (#70).
+      # The journey reporters (#156) write each journey test's result: the merge gate holds a feature's batch until the
+      # run on its head shows the journey ran and passed. Each runner gets its own folder, uploaded right after its step,
+      # so no later step's code can write the other's report (Argus F2, Cerberus F1 on #171).
       - name: Integration tests and the tenancy suite
         if: steps.scope.outputs.run == 'true'
-        run: LZP_SERVICES=1 pnpm exec vitest run
+        run: |
+          set -euo pipefail
+          export LZP_JOURNEY_DIR="$RUNNER_TEMP/journeys-vitest"
+          mkdir -p "$LZP_JOURNEY_DIR"
+          LZP_SERVICES=1 pnpm exec vitest run --reporter=default --reporter=./scripts/ci/journey-reporter.ts
+
+      - name: Upload the Vitest journey report
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: journeys-vitest
+          path: ${{ runner.temp }}/journeys-vitest
+          if-no-files-found: warn
+          retention-days: 30
 
       # From the first journey (#78) on: the app at 1440 px, light and dark (playwright.config.ts starts the built app
       # and the worker). The step starts once tests/e2e/ exists, since builders can't change this file.
@@ -179,7 +196,10 @@ jobs:
           set -euo pipefail
           pnpm exec playwright install --with-deps chromium
           pnpm --filter @lzp/web build
-          pnpm exec playwright test --project app-light --project app-dark
+          rm -rf "$RUNNER_TEMP/journeys-playwright"
+          mkdir "$RUNNER_TEMP/journeys-playwright"
+          LZP_JOURNEY_DIR="$RUNNER_TEMP/journeys-playwright" pnpm exec playwright test --project app-light --project app-dark \
+            --reporter=github,./scripts/ci/journey-reporter-playwright.ts
 
       # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
       # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
@@ -190,6 +210,17 @@ jobs:
           name: e2e-screenshots
           path: tests/visual/output
           retention-days: 14
+
+      # Rendered from the PR's code, like the screenshots: the gate reads both reports as data and checks their shape
+      # (#156). Only when the end-to-end step ran, from the folder it started empty.
+      - name: Upload the Playwright journey report
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.e2e.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: journeys-playwright
+          path: ${{ runner.temp }}/journeys-playwright
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Service logs
         if: ${{ failure() }}
