@@ -58,11 +58,28 @@ function likePostgresIds(inner: DBAdapterInstance): DBAdapterInstance {
   };
 }
 
+/** The adapter, recording the name of every operation Better Auth asks of it, in order. */
+function recording(inner: DBAdapterInstance, operations: string[]): DBAdapterInstance {
+  return (options) =>
+    new Proxy(inner(options), {
+      get(target, key, receiver) {
+        const value: unknown = Reflect.get(target, key, receiver);
+        if (typeof value !== 'function' || typeof key !== 'string') return value;
+        return (...args: unknown[]): unknown => {
+          operations.push(key);
+          return Reflect.apply(value as (...given: unknown[]) => unknown, target, args);
+        };
+      },
+    });
+}
+
 interface Setup {
   signIn: SignIn;
   store: Record<string, Record<string, unknown>[]>;
   queued: SignInEmail[];
   limiter: ReturnType<typeof countingLimiter>;
+  /** The database operations since the account was made. */
+  operations: string[];
   userId: string;
 }
 
@@ -77,8 +94,9 @@ async function setup(
   };
   const queued: SignInEmail[] = [];
   const limiter = countingLimiter();
+  const operations: string[] = [];
   const signIn = createSignIn({
-    database: likePostgresIds(memoryAdapter(store)),
+    database: likePostgresIds(recording(memoryAdapter(store), operations)),
     secret: authKey,
     appUrl,
     environment: options.environment ?? 'development',
@@ -93,7 +111,19 @@ async function setup(
     { email: known, name: 'Nadia', emailVerified: options.emailVerified ?? true },
     { method: 'magic-link' },
   );
-  return { signIn, store, queued, limiter, userId: user.id };
+  operations.length = 0;
+  return { signIn, store, queued, limiter, operations, userId: user.id };
+}
+
+/** The work handed to run after the answer, as Next's `after()` would be (decision 5), until it is run. */
+const pending: (() => Promise<void>)[] = [];
+const afterAnswer = (task: () => Promise<void>) => {
+  pending.push(task);
+};
+
+/** Runs the work handed over so far, as Next does once the answer is sent. */
+async function runAfterAnswer(): Promise<void> {
+  for (let task = pending.shift(); task !== undefined; task = pending.shift()) await task();
 }
 
 /**
@@ -102,14 +132,23 @@ async function setup(
  */
 const connecting = { 'x-forwarded-for': '192.0.2.1' };
 
-function askForLink(signIn: SignIn, email: string, headers: Record<string, string> = connecting) {
+/** Asks for a link and gets the answer; what runs after it is left pending. */
+function ask(signIn: SignIn, email: string, headers: Record<string, string> = connecting) {
   return signIn.handler(
     new Request(`${appUrl}/api/auth/sign-in/magic-link`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: appUrl, ...headers },
       body: JSON.stringify({ email, callbackURL: '/app' }),
     }),
+    afterAnswer,
   );
+}
+
+/** Asks for a link, then lets what runs after the answer run. */
+async function askForLink(signIn: SignIn, email: string, headers?: Record<string, string>) {
+  const response = await ask(signIn, email, headers);
+  await runAfterAnswer();
+  return response;
 }
 
 /** The bucket of the IP each request counted in: the first of its two buckets. */
@@ -117,7 +156,7 @@ const ipBuckets = (limiter: Setup['limiter']) =>
   limiter.calls.filter((_, i) => i % 2 === 0).map((call) => call.bucket);
 
 function open(signIn: SignIn, url: string) {
-  return signIn.handler(new Request(url, { headers: { origin: appUrl } }));
+  return signIn.handler(new Request(url, { headers: { origin: appUrl } }), afterAnswer);
 }
 
 /** The session cookie a response sets, if any. */
@@ -134,6 +173,7 @@ function lastLink(queued: SignInEmail[]): string {
 let s: Setup;
 
 beforeEach(async () => {
+  pending.length = 0;
   s = await setup();
 });
 
@@ -317,6 +357,7 @@ describe('sessions (§13, §15)', () => {
         method: 'POST',
         headers: { cookie, origin: appUrl },
       }),
+      afterAnswer,
     );
     expect(out.status).toBe(200);
     expect(await sessionOf(s.signIn, cookie)).toBeNull();
@@ -467,6 +508,7 @@ describe('what the route handler serves', () => {
             headers: { 'content-type': 'application/json', origin: appUrl },
             ...(method === 'POST' ? { body: '{}' } : {}),
           }),
+          afterAnswer,
         );
         expect(response.status, `${method} ${path}`).toBe(404);
       }
@@ -479,7 +521,7 @@ describe('what the route handler serves', () => {
       new Request(`${appUrl}/api/auth/get-session/`, { method: 'GET' }),
       new Request(`${appUrl}/get-session`, { method: 'GET' }),
     ]) {
-      expect((await s.signIn.handler(request)).status, request.url).toBe(404);
+      expect((await s.signIn.handler(request, afterAnswer)).status, request.url).toBe(404);
     }
   });
 
@@ -532,9 +574,56 @@ describe('the logs (§13: no emails in logs)', () => {
     await open(s.signIn, lastLink(s.queued));
     for (let i = 0; i < 6; i += 1) await askForLink(s.signIn, unknown);
     await askForLink(s.signIn, 'not an address');
-    expect((await askForLink(failing, known)).status).toBe(500);
+    // Its email couldn't be queued: after the answer, so the answer is the usual one, and the failure is logged.
+    expect((await askForLink(failing, known)).status).toBe(200);
 
+    expect(written.join('\n')).toMatch(
+      /auth\.error: a sign-in link failed after the answer: Error/,
+    );
     expect(written.join('\n')).not.toMatch(/nadia|stranger|golpo|@[\w-]+\.example/i);
+  });
+});
+
+describe('the answer (decision 5: nothing tells a known address by its timing)', () => {
+  it('comes before the known address’s link and email, which are made after it', async () => {
+    const response = await ask(s.signIn, known);
+    expect(await response.json()).toEqual({ status: true });
+    expect(s.store['verification']).toEqual([]);
+    expect(s.queued).toEqual([]);
+    expect(pending).toHaveLength(1);
+
+    await runAfterAnswer();
+    expect(s.store['verification']).toHaveLength(1);
+    expect(s.queued.map((email) => email.to)).toEqual([known]);
+  });
+
+  it('comes after the same work for a known and an unknown address: their limits, and no read of accounts', async () => {
+    const before = async (email: string) => {
+      const fresh = await setup();
+      const response = await ask(fresh.signIn, email);
+      const seen = {
+        status: response.status,
+        body: await response.text(),
+        database: [...fresh.operations],
+        limits: fresh.limiter.calls.length,
+        later: pending.length,
+      };
+      await runAfterAnswer();
+      return { seen, links: fresh.store['verification']?.length, emails: fresh.queued.length };
+    };
+    const forKnown = await before(known);
+    const forUnknown = await before(unknown);
+    expect(forUnknown.seen).toEqual(forKnown.seen);
+    expect(forKnown.seen).toMatchObject({ status: 200, database: [], limits: 2, later: 1 });
+    // After the answer, only the known address gets a link and an email.
+    expect([forKnown.links, forKnown.emails]).toEqual([1, 1]);
+    expect([forUnknown.links, forUnknown.emails]).toEqual([0, 0]);
+  });
+
+  it('refuses a body that is no address with the endpoint’s own error, and hands nothing over', async () => {
+    const response = await ask(s.signIn, 'not an address');
+    expect(response.status).toBe(400);
+    expect(pending).toEqual([]);
   });
 });
 
