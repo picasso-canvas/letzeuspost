@@ -38,6 +38,12 @@ export const emailMessage = pgTable(
     providerId: text('provider_id'),
     /** Why it failed, in plain words, never with the address or the content. */
     failure: text('failure'),
+    /**
+     * The pg-boss job whose run moved it to `sending` (#203). pg-boss retries a job under the same id, and only once
+     * its run has ended, so a run of that job that finds the row still `sending` knows the claim is a dead run's.
+     * Cleared when the row goes back to `queued`. Added in 0004; null on rows claimed before it.
+     */
+    claimedByJob: uuid('claimed_by_job'),
     createdAt: time('created_at').notNull().defaultNow(),
     updatedAt: time('updated_at').notNull().defaultNow(),
     sentAt: time('sent_at'),
