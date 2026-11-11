@@ -22,6 +22,7 @@ import { requiredReviewers, stagingReviewers, tierOf } from './merge-gate/evalua
 import { safeName } from './lib/safe-name.ts';
 import { gatedIntoStaging, taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
+import { collectScreenshots, MAX_ARTIFACT_BYTES } from './review-screenshots.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 import { parseVerdict } from './merge-gate/verdict.ts';
@@ -31,6 +32,8 @@ import type { Reviewer } from './merge-gate/types.ts';
 type Asker = Exclude<Reviewer, 'redteam'>;
 
 const REVIEW_TIMEOUT_MS = 30 * 60 * 1000;
+/** Each gh call that fetches CI's screenshots, the download included (#212). */
+const SCREENSHOT_TIMEOUT_MS = 5 * 60 * 1000;
 /** The only environment a reviewer gets: enough to run Claude Code, nothing that could carry secrets or steer it. */
 const ENV_ALLOW = [
   'PATH',
@@ -197,6 +200,8 @@ export interface BundleDeps {
   git: (args: string[]) => string;
   blob: (sha: string) => Buffer;
   now: () => number;
+  /** CI's screenshots on the head commit into a folder; returns screenshots.txt (#212). */
+  screenshots: (sha: string, into: string) => string;
 }
 
 export interface Bundle {
@@ -326,6 +331,11 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
     ].join('\n');
   }
   writeFileSync(join(bundle, 'ci.txt'), checks);
+  // The screens the PR renders, so Iris can see them (#212).
+  writeFileSync(
+    join(bundle, 'screenshots.txt'),
+    deps.screenshots(sha, join(bundle, 'screenshots')),
+  );
   const reviewComments = gh([
     'api',
     `repos/${REPO}/pulls/${String(pr)}/comments`,
@@ -711,6 +721,26 @@ async function main(argv: string[]): Promise<number> {
     blob: (object) =>
       execFileSync('git', ['cat-file', 'blob', object], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }),
     now: () => Date.now(),
+    // A time limit on each call, and the zip comes back as bytes, at most the artifact limit, never unpacked on disk:
+    // the PR's code decides what its artifacts hold (Cerberus F1 on #213).
+    screenshots: (sha, into) =>
+      collectScreenshots(sha, into, {
+        gh: (args) =>
+          execFileSync('gh', args, {
+            cwd: ROOT,
+            encoding: 'utf8',
+            maxBuffer: 64 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: SCREENSHOT_TIMEOUT_MS,
+          }),
+        fetchZip: (artifactId) =>
+          execFileSync('gh', ['api', `repos/${REPO}/actions/artifacts/${String(artifactId)}/zip`], {
+            cwd: ROOT,
+            maxBuffer: MAX_ARTIFACT_BYTES + 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            timeout: SCREENSHOT_TIMEOUT_MS,
+          }),
+      }),
   });
   const sensitiveList = show('.github/sensitive-paths.txt');
   const reviewers = planReviewers(

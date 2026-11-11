@@ -26,33 +26,40 @@ const email: OutboxEmail = {
   data: { name: secrets.name },
 };
 
+/** The steps after the send, each of which writes the row. */
+type Bookkeeping = 'sent' | 'release' | 'fail';
+
+/** As pg reports a connection the database dropped mid-query. */
+const dropped = () => Promise.reject(new Error('Connection terminated unexpectedly'));
+
 /** An outbox in memory that records each step. */
 function fakeOutbox(found: { email: OutboxEmail } | { skip: OutboxSkip } = { email }) {
   const steps: string[] = [];
+  let claimWins = true;
+  let sentRecorded = true;
+  let drop: Bookkeeping | undefined;
   const outbox: EmailOutbox = {
-    load: (id) => {
-      steps.push(`load ${id}`);
+    load: (id, job) => {
+      steps.push(`load ${id} for ${job}`);
       return Promise.resolve(found);
     },
-    claim: (id) => {
-      steps.push(`claim ${id}`);
+    claim: (id, job) => {
+      steps.push(`claim ${id} by ${job}`);
       return Promise.resolve(claimWins);
     },
     sent: (id, providerId) => {
       steps.push(`sent ${id} ${providerId}`);
-      return Promise.resolve(sentRecorded);
+      return drop === 'sent' ? dropped() : Promise.resolve(sentRecorded);
     },
     release: (id) => {
       steps.push(`release ${id}`);
-      return Promise.resolve();
+      return drop === 'release' ? dropped() : Promise.resolve();
     },
     fail: (id, reason) => {
       steps.push(`fail ${id}: ${reason}`);
-      return Promise.resolve();
+      return drop === 'fail' ? dropped() : Promise.resolve();
     },
   };
-  let claimWins = true;
-  let sentRecorded = true;
   return {
     steps,
     outbox,
@@ -61,6 +68,10 @@ function fakeOutbox(found: { email: OutboxEmail } | { skip: OutboxSkip } = { ema
     },
     recordNothing: () => {
       sentRecorded = false;
+    },
+    /** The database drops while `step` writes the row. */
+    dropDuring: (step: Bookkeeping) => {
+      drop = step;
     },
   };
 }
@@ -83,9 +94,12 @@ const render = vi.fn(() =>
   Promise.resolve({ subject: secrets.subject, html: secrets.html, text: secrets.text }),
 );
 
+/** pg-boss's id for the job; its retries keep it. */
+const jobId = randomUUIDv7();
+
 function context(lastAttempt = false): JobContext<'email'> {
   return {
-    jobId: randomUUIDv7(),
+    jobId,
     payload: { workspaceId, emailMessageId },
     db: {} as Scoped,
     retryCount: lastAttempt ? 3 : 0,
@@ -157,8 +171,8 @@ describe('the email job', () => {
       },
     ]);
     expect(steps).toEqual([
-      `load ${emailMessageId}`,
-      `claim ${emailMessageId}`,
+      `load ${emailMessageId} for ${jobId}`,
+      `claim ${emailMessageId} by ${jobId}`,
       `sent ${emailMessageId} <p-1>`,
     ]);
     expect(written).toContain(emailMessageId); // the log names the row by its id
@@ -171,7 +185,7 @@ describe('the email job', () => {
       const { sent, transport } = fakeTransport(() => Promise.resolve({ providerId: '<p>' }));
       await job(outbox, transport)(context());
       expect(sent).toEqual([]);
-      expect(steps).toEqual([`load ${emailMessageId}`]);
+      expect(steps).toEqual([`load ${emailMessageId} for ${jobId}`]);
     },
   );
 
@@ -181,7 +195,10 @@ describe('the email job', () => {
     const { sent, transport } = fakeTransport(() => Promise.resolve({ providerId: '<p>' }));
     await job(outbox, transport)(context());
     expect(sent).toEqual([]);
-    expect(steps).toEqual([`load ${emailMessageId}`, `claim ${emailMessageId}`]);
+    expect(steps).toEqual([
+      `load ${emailMessageId} for ${jobId}`,
+      `claim ${emailMessageId} by ${jobId}`,
+    ]);
   });
 
   it('fails a row whose template or data is refused, for good, before claiming it', async () => {
@@ -191,7 +208,7 @@ describe('the email job', () => {
     await job(outbox, transport, refuse)(context());
     expect(sent).toEqual([]);
     expect(steps).toEqual([
-      `load ${emailMessageId}`,
+      `load ${emailMessageId} for ${jobId}`,
       `fail ${emailMessageId}: its template or data was refused`,
     ]);
   });
@@ -217,8 +234,8 @@ describe('the email job', () => {
     );
     await expect(job(outbox, transport)(context())).rejects.toThrow('ESOCKET');
     expect(steps).toEqual([
-      `load ${emailMessageId}`,
-      `claim ${emailMessageId}`,
+      `load ${emailMessageId} for ${jobId}`,
+      `claim ${emailMessageId} by ${jobId}`,
       `fail ${emailMessageId}: the send broke off (ESOCKET): it may have gone out, so it is not sent again`,
     ]);
   });
@@ -232,6 +249,28 @@ describe('the email job', () => {
     expect(written).toContain('"event":"email.unrecorded"');
     expect(written).not.toContain('"event":"email.sent"');
   });
+
+  // Argus F1 on #197: the row is left `sending`, claimed by this job. The run fails, so pg-boss retries the job (same
+  // id), and the retry's load finds its own claim and marks the row interrupted (email-outbox.ts; the int tests).
+  it.each([
+    ['sent', () => Promise.resolve({ providerId: '<p-3>' })],
+    ['release', () => Promise.reject(new NotSentError('smtp-451'))],
+    ['fail', () => Promise.reject(new SendOutcomeUnknownError('ESOCKET'))],
+  ] as const)(
+    'fails the run, for pg-boss to retry, when the database drops during %s()',
+    async (step, send) => {
+      const { steps, outbox, dropDuring } = fakeOutbox();
+      dropDuring(step);
+      const { sent, transport } = fakeTransport(send);
+      await expect(job(outbox, transport)(context())).rejects.toThrow();
+      expect(sent).toHaveLength(1);
+      expect(steps.slice(0, 2)).toEqual([
+        `load ${emailMessageId} for ${jobId}`,
+        `claim ${emailMessageId} by ${jobId}`,
+      ]);
+      expect(steps.at(-1)).toMatch(new RegExp(`^${step} ${emailMessageId}`));
+    },
+  );
 
   it('never repeats a thrown error’s own words, which may hold the address', async () => {
     const { outbox } = fakeOutbox();

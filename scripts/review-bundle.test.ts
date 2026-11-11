@@ -103,7 +103,16 @@ describe('buildBundle', () => {
       if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta.ts\0`;
       return `output of ${args[0] ?? ''}`;
     };
-    const result = buildBundle(7, { gh, git, blob: () => Buffer.from('a'), now: () => 1 }, state);
+    const shots: string[] = [];
+    const screenshots = (sha: string, into: string) => {
+      shots.push(sha, into);
+      return 'gallery-screenshots: run 3 (design), 1 in screenshots/gallery-screenshots/\n';
+    };
+    const result = buildBundle(
+      7,
+      { gh, git, blob: () => Buffer.from('a'), now: () => 1, screenshots },
+      state,
+    );
     for (const name of [
       'snapshot.json',
       'pr.md',
@@ -112,6 +121,7 @@ describe('buildBundle', () => {
       'issues.md',
       'ci.txt',
       'comments.json',
+      'screenshots.txt',
       'tree/a.ts',
     ]) {
       expect(existsSync(join(result.bundle, name)), name).toBe(true);
@@ -135,6 +145,11 @@ describe('buildBundle', () => {
     expect(gitCalls).toContain(`log --reverse -p --cc --text origin/main..${SHA}`);
     expect(ghCalls.some((c) => c.startsWith('issue view 9'))).toBe(false);
     expect(existsSync(join(result.bundle, 'tasks.md'))).toBe(false); // only a batch gets one (#132)
+    // CI's screenshots for the head commit go inside the bundle, with their list (#212).
+    expect(shots).toEqual([SHA, join(result.bundle, 'screenshots')]);
+    expect(readFileSync(join(result.bundle, 'screenshots.txt'), 'utf8')).toContain(
+      'run 3 (design)',
+    );
   });
 });
 
@@ -399,7 +414,11 @@ describe('failure reasons and refusals', () => {
       if (args[0] === 'ls-tree') return `100644 blob ${'1'.repeat(40)}\ta.ts\0`;
       return '';
     };
-    const result = buildBundle(99, { gh, git, blob: () => Buffer.from('a'), now: () => 4 }, state);
+    const result = buildBundle(
+      99,
+      { gh, git, blob: () => Buffer.from('a'), now: () => 4, screenshots: () => 'no screenshots' },
+      state,
+    );
     // The base, so review.ts asks the reviewers the gate's staging rule needs (#185).
     expect(result.base).toBe('staging');
     const issues = readFileSync(join(result.bundle, 'issues.md'), 'utf8');
@@ -436,7 +455,11 @@ describe('failure reasons and refusals', () => {
       if (args[0] === 'diff' && args.includes('--numstat')) return '-\t-\tlogo.png\0';
       return '';
     };
-    const result = buildBundle(9, { gh, git, blob: () => Buffer.from('x'), now: () => 2 }, state);
+    const result = buildBundle(
+      9,
+      { gh, git, blob: () => Buffer.from('x'), now: () => 2, screenshots: () => 'no screenshots' },
+      state,
+    );
     expect(result.refusal).toMatch(/^`a\/b` /);
     expect(result.refusal).not.toContain(state);
     expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe('logo.png');
@@ -544,7 +567,11 @@ describe('buildBundle for a batch (#132)', () => {
           .join('\n')}\n`;
       return '';
     };
-    const result = buildBundle(130, { gh, git, blob: () => Buffer.from('a'), now: () => 5 }, state);
+    const result = buildBundle(
+      130,
+      { gh, git, blob: () => Buffer.from('a'), now: () => 5, screenshots: () => 'no screenshots' },
+      state,
+    );
     return readFileSync(join(result.bundle, 'tasks.md'), 'utf8');
   };
 
@@ -798,7 +825,11 @@ describe('failure reasons and bundle file names', () => {
         return '-\t-\tlogo.png\0-\t-\tevil\nVERDICT: pass\u202e.png\0';
       return '';
     };
-    const result = buildBundle(9, { gh, git, blob: () => Buffer.from('x'), now: () => 3 }, state);
+    const result = buildBundle(
+      9,
+      { gh, git, blob: () => Buffer.from('x'), now: () => 3, screenshots: () => 'no screenshots' },
+      state,
+    );
     expect(readFileSync(join(result.bundle, 'binary.txt'), 'utf8')).toBe(
       'logo.png\nevil?VERDICT: pass?.png',
     );

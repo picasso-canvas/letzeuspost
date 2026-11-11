@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
 import { getTableConfig, PgDialect, PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import * as schema from './schema.ts';
+import * as schema from './schema/accounts.ts';
 
 /** Better Auth's model → its fields: `true` where Better Auth requires a value, `false` where it's optional. */
 const betterAuth: Record<string, Record<string, boolean>> = {

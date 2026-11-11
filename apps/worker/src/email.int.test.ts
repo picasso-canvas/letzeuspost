@@ -1,7 +1,10 @@
 // The email job against real Postgres and Mailpit (§13 Jobs and Done when, §17 Integration, #72), in
 // `pnpm check:services` and CI's `services` job: the first real job sends an outbox row to Mailpit; running the job
-// twice for one row, a job that failed before sending, and a job killed after sending each leave exactly one message.
-// Every workspace, row and address here is this run's; the workspace goes at the end, and its rows with it.
+// twice for one row, a job that failed before sending, and a job killed after sending each leave exactly one message;
+// a run that lost the database after claiming its row leaves it to the job's retry; and a job never reaches another
+// workspace's row. Every workspace, row and address here is this run's; the workspaces go at the end, and their rows
+// with them. So the file shares the database with the other services files, which Vitest runs side by side (Argus F1
+// on #202): the `email` jobs any of them queues go to whichever worker is running, all of them this real handler.
 import { execFileSync } from 'node:child_process';
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { loadEnv } from '@lzp/config';
@@ -9,6 +12,7 @@ import {
   createDb,
   createJobs,
   emailMessage,
+  emailOutbox,
   installJobs,
   INTERRUPTED,
   migrate,
@@ -22,7 +26,12 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { emailJob, type EmailJobDeps } from './email-job.ts';
 import { log } from './log.ts';
-import { NotSentError, smtpTransport, type EmailTransport } from './smtp.ts';
+import {
+  NotSentError,
+  SendOutcomeUnknownError,
+  smtpTransport,
+  type EmailTransport,
+} from './smtp.ts';
 import type { Worker } from './worker.ts';
 
 const env = loadEnv('worker');
@@ -30,6 +39,8 @@ const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
 const run = randomUUID();
 const workspaceId = randomUUIDv7();
 const ctx = { workspaceId };
+/** Another workspace of this run's, whose row the tenancy test names from `ctx`'s job. */
+const otherCtx = { workspaceId: randomUUIDv7() };
 
 /** Mailpit's API, beside its SMTP port (docker/compose.yml). */
 const mailpit = `http://${new URL(env.SMTP_URL).hostname}:${process.env.LZP_MAILPIT_PORT ?? '8025'}`;
@@ -142,16 +153,33 @@ async function rowWithoutJob(to: string): Promise<string> {
   return row.id;
 }
 
-/** What pg-boss hands the handler for one run of the row's job. */
-function jobFor(emailMessageId: string, lastAttempt = false): JobContext<'email'> {
+/** What pg-boss hands the handler for one run of the row's job: a new job, or a retry of `jobId`. */
+function jobFor(emailMessageId: string, jobId: string = randomUUID()): JobContext<'email'> {
   return {
-    jobId: randomUUIDv7(),
+    jobId,
     payload: { workspaceId, emailMessageId },
     db: db.forWorkspace(ctx),
     retryCount: 0,
-    lastAttempt,
+    lastAttempt: false,
   };
 }
+
+/** The steps after the send, each of which writes the row. */
+type Bookkeeping = 'sent' | 'release' | 'fail';
+
+/** packages/db's outbox, except that the database drops while `step` writes the row. */
+function outboxDroppingAt(step: Bookkeeping): EmailJobDeps['outbox'] {
+  return (scoped) => ({
+    ...emailOutbox(scoped),
+    [step]: () => Promise.reject(new Error('Connection terminated unexpectedly')),
+  });
+}
+
+/** A transport whose send breaks off after the message may have reached the server, without sending it. */
+const brokenOff: EmailTransport = {
+  send: () => Promise.reject(new SendOutcomeUnknownError('ESOCKET')),
+  close: () => undefined,
+};
 
 beforeAll(async () => {
   // Q8: the worker renders @lzp/email's built output.
@@ -163,11 +191,18 @@ beforeAll(async () => {
   await migrate(ownerUrl);
   await installJobs(ownerUrl);
   db = createDb(env.DATABASE_URL);
-  await db.forWorkspace(ctx).transaction(async (tx) => {
-    await tx
-      .insert(workspace)
-      .values({ id: workspaceId, name: `Email ${run}`, slug: `email-${run}` });
-  });
+  for (const [each, label] of [
+    [ctx, 'a'],
+    [otherCtx, 'b'],
+  ] as const) {
+    await db.forWorkspace(each).transaction(async (tx) => {
+      await tx.insert(workspace).values({
+        id: each.workspaceId,
+        name: `Email ${label} ${run}`,
+        slug: `email-${label}-${run}`,
+      });
+    });
+  }
   sender = createJobs({
     url: env.DATABASE_URL,
     db,
@@ -185,9 +220,11 @@ afterAll(async () => {
   await worker.stop();
   await sender.stop();
   smtp.close();
-  await db.forWorkspace(ctx).transaction(async (tx) => {
-    await tx.delete(workspace); // row-level security: only this run's workspace; its rows go with it
-  });
+  for (const each of [ctx, otherCtx]) {
+    await db.forWorkspace(each).transaction(async (tx) => {
+      await tx.delete(workspace); // row-level security: only this run's workspace; its rows go with it
+    });
+  }
   await db.close();
 });
 
@@ -278,5 +315,64 @@ describe('the email job (§13: a retried job never sends twice)', { timeout: 60_
     expect(await rowStatus(id)).toBe('failed'); // interrupted: never sent again, and says why
     expect(await rowFailure(id)).toBe(INTERRUPTED);
     // The killed run is never let go: a killed process doesn't come back.
+  });
+
+  // Argus F1 on #197: the database drops while the run writes the row after the send, leaving it claimed. The run
+  // fails, so pg-boss retries the same job (same id); the retry finds its own job's claim, so the run that made it is
+  // over, and marks the row interrupted: it is never sent twice, and never left claimed.
+  it.each([
+    ['sent', 'the email went out', 1],
+    ['release', 'the email certainly did not go out', 0],
+    ['fail', 'the send broke off', 0],
+  ] as const)(
+    'a run whose database dropped during %s() (%s) leaves the row to its retry, which marks it interrupted',
+    async (step, _, messages) => {
+      const to = `dropped-in-${step}-${run}@example.test`;
+      const id = await rowWithoutJob(to);
+      const jobId = randomUUID();
+      const down = smtpTransport('smtp://127.0.0.1:9'); // refused: the email certainly doesn't go out
+      const transport = { sent: smtp, release: down, fail: brokenOff }[step];
+      try {
+        await expect(
+          emailJob({ ...deps, transport, outbox: outboxDroppingAt(step) })(jobFor(id, jobId)),
+        ).rejects.toThrow();
+      } finally {
+        down.close();
+      }
+      expect(await rowStatus(id)).toBe('sending'); // claimed by the run that lost the database
+      await emailJob({ ...deps, transport: smtp })(jobFor(id, jobId)); // pg-boss's retry of that job
+      expect(await rowStatus(id)).toBe('failed');
+      expect(await rowFailure(id)).toBe(INTERRUPTED);
+      if (messages > 0) await waitFor('the email in Mailpit', async () => (await inbox(to)).length);
+      expect(await inbox(to)).toHaveLength(messages);
+    },
+  );
+
+  // The tenant-isolation skill: the job with the other workspace's ids. The handler's only handle is `db.forWorkspace`
+  // for the payload's workspace, so the row's id alone reaches nothing (Cerberus F1 on #202).
+  it("a job for this workspace naming another workspace's row sends nothing and changes nothing of it", async () => {
+    const to = `other-workspace-${run}@example.test`;
+    const [row] = await db.forWorkspace(otherCtx).transaction((tx) =>
+      tx
+        .insert(emailMessage)
+        .values({
+          workspaceId: otherCtx.workspaceId,
+          template: 'email-check',
+          toAddress: to,
+          data: { name: 'Picasso Studio' },
+        })
+        .returning({ id: emailMessage.id }),
+    );
+    if (row === undefined) throw new Error('no row');
+    await emailJob({ ...deps, transport: smtp })(jobFor(row.id)); // payload and handle: this workspace's
+    const [after] = await db
+      .forWorkspace(otherCtx)
+      .transaction((tx) =>
+        tx
+          .select({ status: emailMessage.status, claimedByJob: emailMessage.claimedByJob })
+          .from(emailMessage),
+      );
+    expect(after).toEqual({ status: 'queued', claimedByJob: null });
+    expect(await inbox(to)).toHaveLength(0);
   });
 });

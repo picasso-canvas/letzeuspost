@@ -2,11 +2,11 @@
 // job finds the row's status and never sends twice. The job's payload carries only the row's id (§13 Jobs); the
 // address, the template and its data stay here, under row-level security, out of the queue and out of the logs.
 //
-// Written by hand in ../../migrations/0003_email_message.sql (§13 A4), like the tables in ../schema.ts. Change both
+// Written by hand in ../../migrations/0003_email_message.sql (§13 A4), like the tables in ./accounts.ts. Change both
 // together.
 import { sql } from 'drizzle-orm';
 import { check, jsonb, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { workspace } from '../schema.ts';
+import { workspace } from './accounts.ts';
 
 /**
  * queued: waiting for its job. sending: a run has started sending it. sent: the provider took it (`provider_id`).
@@ -38,6 +38,12 @@ export const emailMessage = pgTable(
     providerId: text('provider_id'),
     /** Why it failed, in plain words, never with the address or the content. */
     failure: text('failure'),
+    /**
+     * The pg-boss job whose run moved it to `sending` (#203). pg-boss retries a job under the same id, and only once
+     * its run has ended, so a run of that job that finds the row still `sending` knows the claim is a dead run's.
+     * Cleared when the row goes back to `queued`. Added in 0004; null on rows claimed before it.
+     */
+    claimedByJob: uuid('claimed_by_job'),
     createdAt: time('created_at').notNull().defaultNow(),
     updatedAt: time('updated_at').notNull().defaultNow(),
     sentAt: time('sent_at'),
