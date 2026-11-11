@@ -3,7 +3,7 @@
 // is a person's, so the job has no workspace: its payload is the row's id alone.
 import { randomUUIDv7 } from 'node:crypto';
 import type { EmailOutbox, JobContext, OutboxEmail, OutboxSkip } from '@lzp/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { accountEmailJob } from './account-email-job.ts';
 import { log } from './log.ts';
 import { NotSentError, type OutgoingEmail } from './smtp.ts';
@@ -89,6 +89,17 @@ function setup(send: (message: OutgoingEmail) => Promise<{ providerId: string }>
   return { handler, steps, sent };
 }
 
+/** The log's lines, kept out of the test run's output. */
+let lines: string[] = [];
+
+beforeEach(() => {
+  lines = [];
+  vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+    lines.push(String(chunk));
+    return true;
+  });
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -122,11 +133,6 @@ describe('the account-email job', () => {
   });
 
   it('logs the row by id and never the address or the link', async () => {
-    const lines: string[] = [];
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
-      lines.push(String(chunk));
-      return true;
-    });
     const { handler } = setup(() => Promise.resolve({ providerId: '<p1>' }));
     await handler(context());
     const written = lines.join('');
