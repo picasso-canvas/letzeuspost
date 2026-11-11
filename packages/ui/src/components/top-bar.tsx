@@ -19,6 +19,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@lzp/ui/components/dropdown-menu';
 import { Skeleton } from '@lzp/ui/components/skeleton';
@@ -55,20 +57,14 @@ interface Workspace {
   id: string;
   name: string;
   role: string;
-  /** The workspace's logo; without one, its initials are drawn. */
-  logo?: string;
   /**
-   * The colour of the initials' mark: workspace data the caller passes, like a brand's own colours (not an interface
-   * token). `text` must keep 4.5:1 on `background`. Without it the mark is drawn in the muted tokens.
+   * The workspace's logo (§15), a URL. A workspace has no colour of its own (Zeus, #75, 2026-11-11): without a logo,
+   * or until it has loaded, its initials are drawn on the muted tokens.
    */
-  mark?: { background: string; text: string };
+  logo?: string;
 }
 
-interface WorkspaceRow {
-  id: string;
-  name: string;
-  logo: string | undefined;
-  mark: Workspace['mark'];
+interface WorkspaceRow extends Workspace {
   /** The role, then the caller's word for "current" on the current workspace: "Admin · current". */
   detail: string;
   current: boolean;
@@ -81,28 +77,24 @@ function workspaceRows(
   currentLabel: string,
 ): WorkspaceRow[] {
   let marked = false;
-  return workspaces.map(({ id, name, role, logo, mark }) => {
-    const current = !marked && id === currentId;
+  return workspaces.map((workspace) => {
+    const current = !marked && workspace.id === currentId;
     marked ||= current;
-    return { id, name, logo, mark, current, detail: current ? `${role} · ${currentLabel}` : role };
+    const detail = current ? `${workspace.role} · ${currentLabel}` : workspace.role;
+    return { ...workspace, current, detail };
   });
 }
 
 /**
- * A workspace's mark, as the mockup's `.ws-btn` draws it: its logo, or its initials in the workspace's own colours
- * while there is no logo or it hasn't loaded. Decorative: the name is beside it, so a screen reader skips it.
+ * A workspace's mark, as the mockup's `.ws-btn` draws it: its logo, or its initials on the muted token surface while
+ * there is no logo or it hasn't loaded (Zeus, #75, 2026-11-11). Decorative: the name is beside it, so the logo's `alt`
+ * is empty and a screen reader skips the mark.
  */
-function WorkspaceMark({ name, logo, mark }: Pick<WorkspaceRow, 'name' | 'logo' | 'mark'>) {
+function WorkspaceMark({ name, logo }: Pick<Workspace, 'name' | 'logo'>) {
   return (
     <Avatar aria-hidden="true" className="after:border-0">
       {logo !== undefined && <AvatarImage src={logo} alt="" />}
-      <AvatarFallback
-        style={
-          mark === undefined ? undefined : { backgroundColor: mark.background, color: mark.text }
-        }
-      >
-        {initialsOf(name)}
-      </AvatarFallback>
+      <AvatarFallback>{initialsOf(name)}</AvatarFallback>
     </Avatar>
   );
 }
@@ -136,8 +128,8 @@ interface WorkspaceSwitcherProps {
  *
  * The button is named by the text it shows (the workspace's name; the mark is decorative), and has no `aria-label` of
  * its own: a label that doesn't start with the visible text fails WCAG 2.5.3 (axe `label-content-name-mismatch`, which
- * failed the first version). `aria-haspopup` and `aria-expanded` say it opens a menu. The rows are `menuitem`s with
- * `aria-current`, not `menuitemradio`: the gallery's keyboard step waits for a focused `[role="menuitem"]`.
+ * failed the first version). `aria-haspopup` and `aria-expanded` say it opens a menu. The rows are `menuitemradio`s
+ * with `aria-checked` on the current one, as the mockup's `openWs` has them; choosing one closes the menu.
  */
 function WorkspaceSwitcher({
   workspaces,
@@ -165,7 +157,7 @@ function WorkspaceSwitcher({
       >
         {current !== undefined && (
           <>
-            <WorkspaceMark name={current.name} logo={current.logo} mark={current.mark} />
+            <WorkspaceMark name={current.name} logo={current.logo} />
             <span className="truncate font-(weight:--font-weight-h3)">{current.name}</span>
           </>
         )}
@@ -195,15 +187,19 @@ function WorkspaceSwitcher({
           </DropdownMenuGroup>
         ) : (
           <>
-            <DropdownMenuGroup>
+            {/* The mockup's `menuitemradio` rows: Base UI gives each its role and `aria-checked`. */}
+            <DropdownMenuRadioGroup
+              value={current?.id ?? null}
+              onValueChange={(id: unknown) => {
+                if (typeof id === 'string' && id !== current?.id) onSelect?.(id);
+              }}
+            >
               {rows.map((row) => (
-                <DropdownMenuItem
+                <DropdownMenuRadioItem
                   key={row.id}
-                  aria-current={row.current ? 'true' : undefined}
-                  className="h-auto items-start gap-2.5 py-2"
-                  onClick={() => {
-                    if (!row.current) onSelect?.(row.id);
-                  }}
+                  value={row.id}
+                  closeOnClick
+                  className="h-auto items-start gap-2.5 py-2 pr-2 [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden"
                 >
                   {row.current ? (
                     <CheckIcon className="mt-0.5" aria-hidden="true" />
@@ -214,9 +210,9 @@ function WorkspaceSwitcher({
                     <span className="truncate">{row.name}</span>
                     <span className="text-meta text-muted-foreground">{row.detail}</span>
                   </span>
-                </DropdownMenuItem>
+                </DropdownMenuRadioItem>
               ))}
-            </DropdownMenuGroup>
+            </DropdownMenuRadioGroup>
             {/* A plain div, not a paragraph: a menu may only own items, groups and generic wrappers (axe aria-required-children). */}
             {note !== undefined && (
               <div className="px-2 pt-1.5 pb-1 text-meta text-faint">{note}</div>

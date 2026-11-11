@@ -208,7 +208,9 @@ interface GroupProps {
 
 /** The elements of one component type in a tree of React elements (the open menu is drawn in a portal, in a browser). */
 function elementsOfType<P>(node: ReactNode, type: unknown): ReactElement<P>[] {
-  if (Array.isArray(node)) return node.flatMap((child) => elementsOfType<P>(child, type));
+  if (Array.isArray(node)) {
+    return (node as ReactNode[]).flatMap((child) => elementsOfType<P>(child, type));
+  }
   if (!isValidElement<{ children?: ReactNode }>(node)) return [];
   const own = node.type === type ? [node as unknown as ReactElement<P>] : [];
   return [...own, ...elementsOfType<P>(node.props.children, type)];

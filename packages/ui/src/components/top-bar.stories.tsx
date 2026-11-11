@@ -11,6 +11,7 @@ import {
   type Workspace,
   type WorkspaceSwitcherProps,
 } from '@lzp/ui/components/top-bar';
+import kiteLogo from '../gallery/logo-kite.svg';
 import { Stage } from '../gallery/stage';
 
 // §04's top bar with §15's workspace switcher (the v1 mockup's `.top` and `openWs`): the workspace's name and a button
@@ -28,26 +29,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// A workspace's mark is drawn in its own colours, which are workspace data (like a brand's); the text on each keeps 4.5:1.
+// A workspace has no colour of its own (Zeus, #75, 2026-11-11): one has a logo (a small local SVG, no network), the
+// others show their initials on the muted tokens.
 const workspaces: Workspace[] = [
-  {
-    id: 'northwind',
-    name: 'Northwind Social',
-    role: 'Admin',
-    mark: { background: '#23395B', text: '#FFFFFF' }, // the mockup's own: 11.6:1
-  },
-  {
-    id: 'kite',
-    name: 'Kite & Co',
-    role: 'Editor',
-    mark: { background: '#7A3E1D', text: '#FFFFFF' }, // 8.3:1
-  },
-  {
-    id: 'tidewater',
-    name: 'Tidewater Creative',
-    role: 'Viewer',
-    mark: { background: '#0F6B6B', text: '#FFFFFF' }, // 6.3:1
-  },
+  { id: 'northwind', name: 'Northwind Social', role: 'Admin' },
+  { id: 'kite', name: 'Kite & Co', role: 'Editor', logo: kiteLogo },
+  { id: 'tidewater', name: 'Tidewater Creative', role: 'Viewer' },
 ];
 
 /** The words the app takes from apps/web/messages/en.json; the components write none. */
@@ -116,6 +103,11 @@ const northwind = (
 /** Default: the current workspace on the button, the person's avatar at the end. */
 export const Default: Story = {
   render: () => <Bar switcher={(container) => northwind(container)} />,
+};
+
+/** A workspace with a logo shows it where the others show their initials. */
+export const Logo: Story = {
+  render: () => <Bar switcher={(container) => northwind(container, { currentId: 'kite' })} />,
 };
 
 export const TriggerHover: Story = {
