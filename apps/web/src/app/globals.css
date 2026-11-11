@@ -1,0 +1,6 @@
+/*
+ * The app's one stylesheet: packages/ui's (Tailwind, the tokens, light and dark, Inter). Tailwind reads the class names
+ * in this app on its own; the line below adds the ones in packages/ui's components.
+ */
+@import '../../../../packages/ui/src/styles/globals.css';
+@source '../../../../packages/ui/src';
