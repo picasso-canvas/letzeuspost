@@ -16,32 +16,45 @@ import { Skeleton } from '@lzp/ui/components/skeleton';
 // remember, so no cookie (§16).
 const SIDEBAR_WIDTH = '228px'; // DESIGN.md › Layout: a 228 px sidebar
 
+/**
+ * The frame: the sidebar beside the content. It sits in a container named `sidebar`, whose width the narrow row is
+ * measured on (the `sidebar-narrow` variant, components.css): below 900 px the frame stacks, the sidebar above the page.
+ * In the app the container is as wide as the window; in the gallery it is the box the story draws it in.
+ */
 function SidebarProvider({ className, style, children, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="sidebar-wrapper"
-      style={
-        {
-          '--sidebar-width': SIDEBAR_WIDTH,
-          ...style,
-        } as React.CSSProperties
-      }
-      className={cn('group/sidebar-wrapper flex min-h-svh w-full', className)}
-      {...props}
-    >
-      {children}
+    <div data-slot="sidebar-frame" className="@container/sidebar w-full">
+      <div
+        data-slot="sidebar-wrapper"
+        style={
+          {
+            '--sidebar-width': SIDEBAR_WIDTH,
+            ...style,
+          } as React.CSSProperties
+        }
+        className={cn(
+          'group/sidebar-wrapper flex min-h-svh w-full sidebar-narrow:flex-col',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </div>
     </div>
   );
 }
 
-/** The mockup's `.side`: the surface tint, a hairline on its right, always open. */
+/**
+ * The mockup's `.side`: the surface tint, a hairline on its right, always open. Below 900 px it is the mockup's row of
+ * links along the top (`@media (max-width: 900px)`): it scrolls sideways, and its hairline is underneath.
+ */
 function Sidebar({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="sidebar"
       data-sidebar="sidebar"
       className={cn(
-        'flex w-(--sidebar-width) shrink-0 flex-col border-r bg-secondary text-secondary-foreground',
+        'flex w-(--sidebar-width) shrink-0 flex-col border-r bg-secondary text-secondary-foreground sidebar-narrow:w-full sidebar-narrow:flex-row sidebar-narrow:items-center sidebar-narrow:gap-0.5 sidebar-narrow:overflow-x-auto sidebar-narrow:border-r-0 sidebar-narrow:border-b sidebar-narrow:p-2',
         className,
       )}
       {...props}
@@ -77,7 +90,10 @@ function SidebarHeader({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="sidebar-header"
       data-sidebar="header"
-      className={cn('flex flex-col gap-2 p-2', className)}
+      className={cn(
+        'flex flex-col gap-2 p-2 sidebar-narrow:shrink-0 sidebar-narrow:py-1',
+        className,
+      )}
       {...props}
     />
   );
@@ -110,7 +126,10 @@ function SidebarContent({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="sidebar-content"
       data-sidebar="content"
-      className={cn('no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto', className)}
+      className={cn(
+        'no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto sidebar-narrow:flex-none sidebar-narrow:flex-row sidebar-narrow:items-center sidebar-narrow:gap-0.5 sidebar-narrow:overflow-visible',
+        className,
+      )}
       {...props}
     />
   );
@@ -121,7 +140,10 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="sidebar-group"
       data-sidebar="group"
-      className={cn('relative flex w-full min-w-0 flex-col p-2', className)}
+      className={cn(
+        'relative flex w-full min-w-0 flex-col p-2 sidebar-narrow:w-auto sidebar-narrow:flex-row sidebar-narrow:p-0',
+        className,
+      )}
       {...props}
     />
   );
@@ -137,7 +159,7 @@ function SidebarGroupLabel({
     props: mergeProps<'div'>(
       {
         className: cn(
-          'flex h-8 shrink-0 items-center rounded-md px-2 text-eyebrow font-(weight:--font-weight-eyebrow) tracking-eyebrow text-faint uppercase outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring [&>svg]:size-4 [&>svg]:shrink-0',
+          'flex h-8 shrink-0 items-center rounded-md px-2 text-eyebrow sidebar-narrow:hidden font-(weight:--font-weight-eyebrow) tracking-eyebrow text-faint uppercase outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring [&>svg]:size-4 [&>svg]:shrink-0',
           className,
         ),
       },
@@ -180,7 +202,7 @@ function SidebarGroupContent({ className, ...props }: React.ComponentProps<'div'
     <div
       data-slot="sidebar-group-content"
       data-sidebar="group-content"
-      className={cn('w-full text-sm', className)}
+      className={cn('w-full text-sm sidebar-narrow:w-auto', className)}
       {...props}
     />
   );
@@ -191,7 +213,10 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<'ul'>) {
     <ul
       data-slot="sidebar-menu"
       data-sidebar="menu"
-      className={cn('flex w-full min-w-0 flex-col gap-1', className)}
+      className={cn(
+        'flex w-full min-w-0 flex-col gap-1 sidebar-narrow:w-auto sidebar-narrow:flex-row sidebar-narrow:gap-0.5',
+        className,
+      )}
       {...props}
     />
   );
@@ -202,14 +227,17 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
     <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
-      className={cn('group/menu-item relative', className)}
+      className={cn(
+        'group/menu-item relative sidebar-narrow:flex sidebar-narrow:shrink-0 sidebar-narrow:items-center',
+        className,
+      )}
       {...props}
     />
   );
 }
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm font-normal text-muted-foreground outline-hidden group-has-data-[sidebar=menu-action]/menu-item:pr-8 hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring active:bg-card active:text-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-card data-open:hover:text-foreground data-active:bg-card data-active:text-foreground data-active:shadow-sidebar-current [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate',
+  'peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm font-normal text-muted-foreground outline-hidden group-has-data-[sidebar=menu-action]/menu-item:pr-8 hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring active:bg-card active:text-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-card data-open:hover:text-foreground data-active:bg-card data-active:text-foreground data-active:shadow-sidebar-current sidebar-narrow:w-auto sidebar-narrow:whitespace-nowrap sidebar-narrow:data-active:shadow-sidebar-current-narrow [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate',
   {
     variants: {
       variant: {
@@ -295,7 +323,7 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
       data-slot="sidebar-menu-badge"
       data-sidebar="menu-badge"
       className={cn(
-        'pointer-events-none absolute right-1 flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-meta text-faint tabular-nums select-none peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1',
+        'pointer-events-none absolute right-1 flex h-5 sidebar-narrow:static sidebar-narrow:mr-1 min-w-5 items-center justify-center rounded-md px-1 text-meta text-faint tabular-nums select-none peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 peer-data-[size=sm]/menu-button:top-1',
         className,
       )}
       {...props}

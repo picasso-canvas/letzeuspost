@@ -24,7 +24,7 @@ import ironline from '../gallery/mark-ironline.svg';
 // pinned brands under their eyebrow, each with its own mark, then Settings; 228 px wide (DESIGN.md) and always open
 // (Zeus, #205, 2026-11-11). Shown with Inbox as the current page, an item hovered and focused, loading, and with no
 // pinned brands. The group and item actions (`SidebarGroupAction`, `SidebarMenuAction`) stay in the component for
-// later screens; the mockup's nav has none. The logo, the usage meter and the narrow-screen row of links come with #75.
+// later screens; the mockup's nav has none. The logo and the usage meter come with their features.
 const meta = {
   title: 'Components/Sidebar',
   component: Sidebar,
@@ -40,31 +40,45 @@ const pinned = [
   { name: 'Brightwell Dental', mark: brightwell },
 ];
 
-function Frame({ children }: { children: ReactNode }) {
+/**
+ * The frame in a box of the story's width: the sidebar's narrow row is measured on the box (its container), not on the
+ * window, so a box under 900 px shows it. The wide stories' box is over 900 px.
+ */
+function Frame({
+  children,
+  width = 'w-240',
+  height = 'h-120',
+}: {
+  children: ReactNode;
+  width?: string;
+  height?: string;
+}) {
   return (
-    <SidebarProvider className="h-120 min-h-0 w-200">
-      <Sidebar>
-        <SidebarHeader>
-          <span className="truncate px-2 text-h2 font-(weight:--font-weight-h2) tracking-h2">
-            LetZeusPost
-          </span>
-        </SidebarHeader>
-        <SidebarContent>
-          {children}
-          <SidebarGroup>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton>
-                  <SettingsIcon aria-hidden="true" />
-                  <span>Settings</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroup>
-        </SidebarContent>
-      </Sidebar>
-      <SidebarInset />
-    </SidebarProvider>
+    <div className={width}>
+      <SidebarProvider className={`${height} min-h-0`}>
+        <Sidebar>
+          <SidebarHeader>
+            <span className="truncate px-2 text-h2 font-(weight:--font-weight-h2) tracking-h2">
+              LetZeusPost
+            </span>
+          </SidebarHeader>
+          <SidebarContent>
+            {children}
+            <SidebarGroup>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton>
+                    <SettingsIcon aria-hidden="true" />
+                    <span>Settings</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroup>
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset />
+      </SidebarProvider>
+    </div>
   );
 }
 
@@ -104,7 +118,7 @@ function Pages({ inboxCurrent = true }: { inboxCurrent?: boolean }) {
 
 function PinnedBrands({ brands }: { brands: typeof pinned }) {
   return (
-    <SidebarGroup>
+    <SidebarGroup className="sidebar-narrow:hidden">
       <SidebarGroupLabel>Pinned brands</SidebarGroupLabel>
       <SidebarGroupContent>
         {brands.length === 0 ? (
@@ -161,7 +175,7 @@ export const Loading: Story = {
   render: () => (
     <Frame>
       <Pages />
-      <SidebarGroup aria-busy="true">
+      <SidebarGroup aria-busy="true" className="sidebar-narrow:hidden">
         <SidebarGroupLabel>Pinned brands</SidebarGroupLabel>
         <SidebarMenu>
           {['70%', '55%', '80%'].map((width) => (
@@ -181,6 +195,20 @@ export const NoPinnedBrands: Story = {
     <Frame>
       <Pages />
       <PinnedBrands brands={[]} />
+    </Frame>
+  ),
+};
+
+/**
+ * Below 900 px (the mockup's `@media (max-width: 900px)`): the sidebar is a row of links along the top that scrolls
+ * sideways, the current page marked by its card and a 2 px bar under it; the group labels and the pinned brands drop
+ * out. The frame is drawn in a 384 px box, because the row is measured on the frame, not on the window.
+ */
+export const NarrowRow: Story = {
+  render: () => (
+    <Frame width="w-96" height="h-48">
+      <Pages />
+      <PinnedBrands brands={pinned} />
     </Frame>
   ),
 };

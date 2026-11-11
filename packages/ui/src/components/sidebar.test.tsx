@@ -236,8 +236,8 @@ describe('the sidebar below 900 px (Iris F4 on #219)', () => {
     for (const declaration of [
       'flex-direction: row',
       'overflow-x: auto',
-      'border-right-style: none',
-      'border-bottom-style: solid',
+      'border-right-width: 0px',
+      'border-bottom-width: 1px',
     ])
       expect(css, declaration).toContain(declaration);
   });

@@ -1,7 +1,13 @@
 'use client';
 
 import * as React from 'react';
-import { CheckIcon, ChevronsUpDownIcon, RotateCcwIcon, TriangleAlertIcon } from 'lucide-react';
+import {
+  Building2Icon,
+  CheckIcon,
+  ChevronsUpDownIcon,
+  RotateCcwIcon,
+  TriangleAlertIcon,
+} from 'lucide-react';
 import { cn } from '@lzp/ui/lib/utils';
 import { initialsOf } from '@lzp/ui/lib/initials';
 
@@ -51,12 +57,18 @@ interface Workspace {
   role: string;
   /** The workspace's logo; without one, its initials are drawn. */
   logo?: string;
+  /**
+   * The colour of the initials' mark: workspace data the caller passes, like a brand's own colours (not an interface
+   * token). `text` must keep 4.5:1 on `background`. Without it the mark is drawn in the muted tokens.
+   */
+  mark?: { background: string; text: string };
 }
 
 interface WorkspaceRow {
   id: string;
   name: string;
   logo: string | undefined;
+  mark: Workspace['mark'];
   /** The role, then the caller's word for "current" on the current workspace: "Admin · current". */
   detail: string;
   current: boolean;
@@ -69,45 +81,44 @@ function workspaceRows(
   currentLabel: string,
 ): WorkspaceRow[] {
   let marked = false;
-  return workspaces.map(({ id, name, role, logo }) => {
+  return workspaces.map(({ id, name, role, logo, mark }) => {
     const current = !marked && id === currentId;
     marked ||= current;
-    return { id, name, logo, current, detail: current ? `${role} · ${currentLabel}` : role };
+    return { id, name, logo, mark, current, detail: current ? `${role} · ${currentLabel}` : role };
   });
 }
 
-/** A workspace's mark: its logo, or its initials while there is none or it hasn't loaded. Decorative: the name is beside it. */
-function WorkspaceMark({
-  name,
-  logo,
-  size,
-}: {
-  name: string;
-  logo?: string;
-  size?: 'sm' | 'default' | 'lg';
-}) {
+/**
+ * A workspace's mark, as the mockup's `.ws-btn` draws it: its logo, or its initials in the workspace's own colours
+ * while there is no logo or it hasn't loaded. Decorative: the name is beside it, so a screen reader skips it.
+ */
+function WorkspaceMark({ name, logo, mark }: Pick<WorkspaceRow, 'name' | 'logo' | 'mark'>) {
   return (
-    <Avatar size={size} aria-hidden="true">
+    <Avatar aria-hidden="true" className="after:border-0">
       {logo !== undefined && <AvatarImage src={logo} alt="" />}
-      <AvatarFallback>{initialsOf(name)}</AvatarFallback>
+      <AvatarFallback
+        style={
+          mark === undefined ? undefined : { backgroundColor: mark.background, color: mark.text }
+        }
+      >
+        {initialsOf(name)}
+      </AvatarFallback>
     </Avatar>
   );
 }
 
 interface WorkspaceSwitcherProps {
   workspaces: readonly Workspace[];
-  /** The workspace being used now. */
-  currentId?: string;
+  /** The workspace being used now: the frame only exists inside one (#79 guards a person with none). */
+  currentId: string;
   /** Called with the id of the workspace the person chose; not for the current one. */
   onSelect?: (id: string) => void;
-  /** The button's name for a screen reader: "Workspace: Northwind Social. Switch workspace". */
-  label: string;
   /** The menu's name: "Workspaces". */
   menuLabel: string;
   /** The word for the workspace in use, shown after its role: "current". */
   currentLabel: string;
-  /** Shown on the button when there is no current workspace to name: "No workspace yet". With no workspaces at all it can't be opened. */
-  emptyLabel: string;
+  /** The line that closes the list: "Each workspace is separate: brands, posts and notifications never mix." */
+  note?: string;
   /** The list couldn't be loaded: the menu says why, with a way to try again. */
   error?: { message: string; retryLabel: string; onRetry?: () => void };
   disabled?: boolean;
@@ -120,17 +131,21 @@ interface WorkspaceSwitcherProps {
 
 /**
  * The workspace switcher: the current workspace's name on a button that opens a menu of every workspace the person
- * belongs to, each with their role in it and the current one marked. It is Base UI's menu, so the arrow keys, Home, End,
- * type-ahead, Enter and Escape work, and focus returns to the button.
+ * belongs to, each with their role in it and the current one marked (the mockup's `openWs`). It is Base UI's menu, so
+ * the arrow keys, Home, End, type-ahead, Enter and Escape work, and focus returns to the button.
+ *
+ * The button is named by the text it shows (the workspace's name; the mark is decorative), and has no `aria-label` of
+ * its own: a label that doesn't start with the visible text fails WCAG 2.5.3 (axe `label-content-name-mismatch`, which
+ * failed the first version). `aria-haspopup` and `aria-expanded` say it opens a menu. The rows are `menuitem`s with
+ * `aria-current`, not `menuitemradio`: the gallery's keyboard step waits for a focused `[role="menuitem"]`.
  */
 function WorkspaceSwitcher({
   workspaces,
   currentId,
   onSelect,
-  label,
   menuLabel,
   currentLabel,
-  emptyLabel,
+  note,
   error,
   disabled = false,
   defaultOpen,
@@ -139,35 +154,32 @@ function WorkspaceSwitcher({
 }: WorkspaceSwitcherProps) {
   const rows = workspaceRows(workspaces, currentId, currentLabel);
   const current = rows.find((row) => row.current);
-  const empty = rows.length === 0;
   return (
     <DropdownMenu defaultOpen={defaultOpen}>
       <DropdownMenuTrigger
         data-slot="workspace-switcher"
-        aria-label={label}
-        disabled={disabled || empty}
+        disabled={disabled}
         render={
           <Button variant="ghost" size="lg" className={cn('max-w-64 gap-2 px-2', className)} />
         }
       >
-        {current === undefined ? (
-          <span className="truncate text-muted-foreground">{emptyLabel}</span>
-        ) : (
+        {current !== undefined && (
           <>
-            <WorkspaceMark name={current.name} logo={current.logo} />
-            <span className="truncate">{current.name}</span>
+            <WorkspaceMark name={current.name} logo={current.logo} mark={current.mark} />
+            <span className="truncate font-(weight:--font-weight-h3)">{current.name}</span>
           </>
         )}
         {error !== undefined && (
-          <TriangleAlertIcon className="text-destructive" aria-hidden="true" />
+          <>
+            <TriangleAlertIcon className="text-destructive" aria-hidden="true" />
+            <span className="sr-only">{error.message}</span>
+          </>
         )}
-        {!empty && (
-          <ChevronsUpDownIcon
-            data-icon="inline-end"
-            className="text-muted-foreground"
-            aria-hidden="true"
-          />
-        )}
+        <ChevronsUpDownIcon
+          data-icon="inline-end"
+          className="text-muted-foreground"
+          aria-hidden="true"
+        />
       </DropdownMenuTrigger>
       <DropdownMenuContent container={container} aria-label={menuLabel} className="w-64">
         {error !== undefined ? (
@@ -182,25 +194,31 @@ function WorkspaceSwitcher({
             </DropdownMenuItem>
           </DropdownMenuGroup>
         ) : (
-          <DropdownMenuGroup>
-            {rows.map((row) => (
-              <DropdownMenuItem
-                key={row.id}
-                aria-current={row.current ? 'true' : undefined}
-                className="h-auto gap-2 py-2"
-                onClick={() => {
-                  if (!row.current) onSelect?.(row.id);
-                }}
-              >
-                <WorkspaceMark name={row.name} logo={row.logo} size="sm" />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate">{row.name}</span>
-                  <span className="text-meta text-muted-foreground">{row.detail}</span>
-                </span>
-                {row.current && <CheckIcon aria-hidden="true" />}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
+          <>
+            <DropdownMenuGroup>
+              {rows.map((row) => (
+                <DropdownMenuItem
+                  key={row.id}
+                  aria-current={row.current ? 'true' : undefined}
+                  className="h-auto items-start gap-2.5 py-2"
+                  onClick={() => {
+                    if (!row.current) onSelect?.(row.id);
+                  }}
+                >
+                  {row.current ? (
+                    <CheckIcon className="mt-0.5" aria-hidden="true" />
+                  ) : (
+                    <Building2Icon className="mt-0.5" aria-hidden="true" />
+                  )}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate">{row.name}</span>
+                    <span className="text-meta text-muted-foreground">{row.detail}</span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            {note !== undefined && <p className="px-2 pt-1.5 pb-1 text-meta text-faint">{note}</p>}
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

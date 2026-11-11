@@ -11,11 +11,13 @@ import {
 } from '@lzp/ui/components/top-bar';
 import { Stage } from '../gallery/stage';
 
-// §04's top bar with §15's workspace switcher (the v1 mockup's `.top`): the workspace's name and a button that lists
-// every workspace the person belongs to with their role in each, the current one marked. Closed, hovered, focused, open,
-// opened by the keyboard (the `keyboard-open` tag presses ArrowDown on the focused button), disabled, with no workspace,
-// loading, with a name too long for the button, and with the list failed to load. Open menus render into a Stage inside
-// the canvas, so the tests see them. Search, + Create and the bell are not here: they arrive with their features.
+// §04's top bar with §15's workspace switcher (the v1 mockup's `.top` and `openWs`): the workspace's name and a button
+// that lists every workspace the person belongs to with their role in each, the current one marked. Closed, hovered,
+// focused, open, opened by the keyboard (the `keyboard-open` tag presses ArrowDown on the focused button), disabled,
+// loading, with a name too long for the button, and with the list failed to load. There is no empty switcher: the frame
+// only exists inside a workspace (Athena, #75, 2026-11-11; #79's guard handles someone with none). Open menus render
+// into a Stage inside the canvas, so the tests see them. Search, + Create and the bell are not here: they arrive with
+// their features.
 const meta = {
   title: 'Components/Top bar',
   component: TopBar,
@@ -24,20 +26,43 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// A workspace's mark is drawn in its own colours, which are workspace data (like a brand's); the text on each keeps 4.5:1.
 const workspaces: Workspace[] = [
-  { id: 'northwind', name: 'Northwind Social', role: 'Admin' },
-  { id: 'kite', name: 'Kite & Co', role: 'Editor' },
-  { id: 'tidewater', name: 'Tidewater Creative', role: 'Viewer' },
+  {
+    id: 'northwind',
+    name: 'Northwind Social',
+    role: 'Admin',
+    mark: { background: '#23395B', text: '#FFFFFF' }, // the mockup's own: 11.6:1
+  },
+  {
+    id: 'kite',
+    name: 'Kite & Co',
+    role: 'Editor',
+    mark: { background: '#7A3E1D', text: '#FFFFFF' }, // 8.3:1
+  },
+  {
+    id: 'tidewater',
+    name: 'Tidewater Creative',
+    role: 'Viewer',
+    mark: { background: '#0F6B6B', text: '#FFFFFF' }, // 6.3:1
+  },
 ];
 
 /** The words the app takes from apps/web/messages/en.json; the components write none. */
 const words = {
-  menuLabel: 'Workspaces',
-  currentLabel: 'current',
-  emptyLabel: 'No workspace yet',
+  menuLabel: 'Workspaces', // en.json: frame.switcher.menuLabel
+  currentLabel: 'current', // en.json: frame.switcher.current
+  note: 'Each workspace is separate: brands, posts and notifications never mix.', // en.json: frame.switcher.note
 };
 
-const switcherLabel = (name: string): string => `Workspace: ${name}. Switch workspace`;
+/** en.json: frame.switcher.loadError */
+const loadError = 'Couldn’t load your workspaces. Check your connection and try again.';
+/** en.json: frame.switcher.retry */
+const retryLabel = 'Try again';
+/** en.json: frame.switcher.loading */
+const loadingLabel = 'Loading workspaces…';
+/** en.json: frame.account.label (the avatar's name: the person and their role) */
+const accountLabel = 'Nadia Karim (Admin)';
 
 function Bar({
   height = 'h-64',
@@ -53,7 +78,7 @@ function Bar({
         <TopBar>
           {switcher(container)}
           <TopBarEnd>
-            <Avatar role="img" aria-label="Nadia Karim (Admin)">
+            <Avatar role="img" aria-label={accountLabel}>
               <AvatarFallback>NK</AvatarFallback>
             </Avatar>
           </TopBarEnd>
@@ -66,7 +91,6 @@ function Bar({
 const northwind = (container: HTMLElement, props: Partial<WorkspaceSwitcherProps> = {}) => (
   <WorkspaceSwitcher
     {...words}
-    label={switcherLabel('Northwind Social')}
     workspaces={workspaces}
     currentId="northwind"
     container={container}
@@ -105,39 +129,16 @@ export const Disabled: Story = {
   render: () => <Bar switcher={(container) => northwind(container, { disabled: true })} />,
 };
 
-/** Empty: the person has left their last workspace; the button says so and can't be opened. */
-export const Empty: Story = {
-  render: () => (
-    <Bar
-      switcher={(container) =>
-        northwind(container, {
-          workspaces: [],
-          currentId: undefined,
-          label: words.emptyLabel,
-        })
-      }
-    />
-  ),
-};
-
 /** Loading: the shape of the switcher, shimmering, while the list is on its way. */
 export const Loading: Story = {
-  render: () => <Bar switcher={() => <WorkspaceSwitcherSkeleton label="Loading workspaces…" />} />,
+  render: () => <Bar switcher={() => <WorkspaceSwitcherSkeleton label={loadingLabel} />} />,
 };
 
 /** Error: the list couldn't be loaded. The current workspace stays on the button, with a warning beside it. */
 export const ErrorState: Story = {
   render: () => (
     <Bar
-      switcher={(container) =>
-        northwind(container, {
-          label: `${switcherLabel('Northwind Social')} The list of workspaces didn’t load.`,
-          error: {
-            message: 'Couldn’t load your workspaces. Check your connection and try again.',
-            retryLabel: 'Try again',
-          },
-        })
-      }
+      switcher={(container) => northwind(container, { error: { message: loadError, retryLabel } })}
     />
   ),
 };
@@ -148,13 +149,7 @@ export const ErrorOpen: Story = {
     <Bar
       height="h-56"
       switcher={(container) =>
-        northwind(container, {
-          defaultOpen: true,
-          error: {
-            message: 'Couldn’t load your workspaces. Check your connection and try again.',
-            retryLabel: 'Try again',
-          },
-        })
+        northwind(container, { defaultOpen: true, error: { message: loadError, retryLabel } })
       }
     />
   ),
@@ -169,8 +164,7 @@ export const LongName: Story = {
         switcher={(container) =>
           northwind(container, {
             defaultOpen: true,
-            label: switcherLabel(long),
-            workspaces: [{ id: 'northwind', name: long, role: 'Admin' }, ...workspaces.slice(1)],
+            workspaces: [{ ...workspaces[0], name: long } as Workspace, ...workspaces.slice(1)],
           })
         }
       />
