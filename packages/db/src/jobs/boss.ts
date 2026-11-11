@@ -1,8 +1,8 @@
 // pg-boss on the same Postgres (§13 Jobs, #72). Its tables live in their own `pgboss` schema, which the owner role
 // installs (`installJobs`, beside the migrations) and the app role only uses (`createJobs`): the app role can't create
-// a schema or change pg-boss's tables, nor a queue's retry bounds (`appGrants`), so a job can't change the queue's
-// structure or policy either. pg-boss stays inside this package, like the database client; the worker gets `send` and
-// `work`.
+// a schema or change pg-boss's tables, nor a queue's policy or the commands pg-boss runs (`appGrants`), so a job can't
+// change the queue's structure or policy either. pg-boss stays inside this package, like the database client; the
+// worker gets `send` and `work`.
 //
 // A handler gets the payload and `db.forWorkspace` for the payload's workspace, the only database handle it has, so
 // every row it reads or writes is that workspace's (row-level security, the tenant-isolation skill).
@@ -189,8 +189,20 @@ const VERSION_BOOKKEEPING = [
  * that makes two installs at once take turns (Postgres refuses two GRANTs racing on one object).
  *
  * Rows of the job tables, never the schema or a table's structure, which stay the owner's. On `queue` and `version`
- * only what a running pg-boss writes (Cerberus F1 on #197): a queue's retry bounds, expiry and dead letter, the list
- * of queues and pg-boss's version are the owner's, so the app role can't lift a retry limit or stretch an expiry.
+ * only what a running pg-boss writes (Cerberus F1 on #197): a queue's policy (its retry bounds, expiry and dead
+ * letter), the list of queues and pg-boss's version are the owner's, so the app role can't change the bounds the
+ * queue gives each job it takes. A queued job carries its own copy of them (`retry_limit`, `expire_seconds` on its
+ * row), and those stay writable by the role that sends jobs, like the rest of the job's row (Cerberus F2 on #203).
+ *
+ * Nothing at all on `bam`, `schedule` and `subscription` (Cerberus F1 on #203). pg-boss 12.38 runs `bam`'s commands
+ * as SQL in an instance started with `migrate` on (index.js: `if (this.#config.migrate) await this.#bam.start()`),
+ * which only `installJobs`, as the owner, is; so a row the app role planted there would run as the owner. The app
+ * role's instance (`createJobs`: `migrate`, `schedule` off) never writes the three (plans.js): `bam` is written by
+ * pg-boss's migrations (`job_table_run_async`), the `bam` runner and `deleteQueue()`; `schedule` by `schedule()`,
+ * `unschedule()` and the cron pass (timekeeper.js, started only `if (this.#config.schedule)`); `subscription` by
+ * `subscribe()` and `unsubscribe()`. createJobs calls none of them. It still reads them (its start-up check reads
+ * `bam`: `getIncompleteBamCommands`).
+ *
  * Every write is taken back first, so an install brings an older database's grants down to these.
  *
  * The job tables are cross-workspace by design: one queue serves every workspace, so they carry no row-level security,
@@ -207,7 +219,8 @@ export function appGrants(): string {
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ${s} TO lzp_app;
     REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ${s}.queue, ${s}.version FROM lzp_app;
     GRANT UPDATE (${QUEUE_BOOKKEEPING.join(', ')}) ON ${s}.queue TO lzp_app;
-    GRANT UPDATE (${VERSION_BOOKKEEPING.join(', ')}) ON ${s}.version TO lzp_app;`;
+    GRANT UPDATE (${VERSION_BOOKKEEPING.join(', ')}) ON ${s}.version TO lzp_app;
+    REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ${s}.bam, ${s}.schedule, ${s}.subscription FROM lzp_app;`;
 }
 
 /**
