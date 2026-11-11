@@ -9,12 +9,14 @@
 // - The request writes no email itself: `queueSignInEmail` puts a row in the account emails' outbox and queues the
 //   `account-email` job (./server.ts), which the worker sends.
 // - Requests are limited per address and per IP, known addresses or not, at config/sign-in.ts's limits (Q9), in
-//   Postgres (`hitRateLimit`).
+//   Postgres (`hitRateLimit`). The IP is cf-connecting-ip in staging and production, the connecting address in
+//   development and CI; a request without one is refused (decision 4).
 // - Sessions last 30 days and renew while in use (§15): Better Auth extends a session a day or more old by 30 days
 //   from its use. They live in the session table, and the cookie holds only the session's token: HttpOnly,
 //   SameSite=Lax, and Secure wherever the app is HTTPS (staging and production: config/env.ts's `servedOverHttps`).
 // - The handler serves only SERVED_ENDPOINTS; every other Better Auth route answers 404.
 import { createHmac } from 'node:crypto';
+import { isIP } from 'node:net';
 import { servedOverHttps, signInLimits } from '@lzp/config';
 import { betterAuth, type BetterAuthOptions, type DBAdapterInstance } from 'better-auth';
 import { APIError, createAuthMiddleware, getIP } from 'better-auth/api';
@@ -80,11 +82,28 @@ const tooMany = () =>
     message: 'Too many sign-in links were asked for. Try again in an hour.',
   });
 
+const noClientIp = () =>
+  new APIError('BAD_REQUEST', {
+    code: 'CLIENT_IP_UNKNOWN',
+    message: 'This request could not be checked. Try again.',
+  });
+
 function options(deps: SignInDeps) {
   /** A bucket's name: its kind and a keyed hash of its value, so the table never holds an address or an IP. */
   const bucket = (kind: 'address' | 'ip', value: string) =>
     `sign-in:${kind}:${createHmac('sha256', deps.secret).update(value).digest('hex')}`;
   const { perAddress, perIp, windowSeconds } = signInLimits;
+  // Decision 4 (Athena, 2026-11-11): Cloudflare is in front exactly where the app is HTTPS only, staging and
+  // production (§14), and it alone sets cf-connecting-ip there. In development and CI, Next's server puts the
+  // connecting address in x-forwarded-for, when the request brought none of its own.
+  const ipHeader = servedOverHttps(deps.environment) ? 'cf-connecting-ip' : 'x-forwarded-for';
+  /**
+   * The client's address, if `ipHeader` holds exactly one; otherwise null, never a stand-in: Better Auth's own
+   * fallback (127.0.0.1 in development and tests) would put every such request in one bucket. Better Auth gives it in
+   * its normal form, an IPv6 address cut to its /64, so one network can't change its bucket by changing its address.
+   */
+  const clientIp = (headers: Headers, authOptions: BetterAuthOptions): string | null =>
+    isIP(headers.get(ipHeader)?.trim() ?? '') === 0 ? null : getIP(headers, authOptions);
 
   return {
     appName: 'LetZeusPost',
@@ -109,6 +128,7 @@ function options(deps: SignInDeps) {
     // (a driver's, say, quoting an address) would be printed whole.
     onAPIError: { throw: true },
     advanced: {
+      ipAddress: { ipAddressHeaders: [ipHeader] },
       useSecureCookies: servedOverHttps(deps.environment),
       defaultCookieAttributes: { httpOnly: true, sameSite: 'lax' },
       // #71's ids are `uuid` columns that Postgres fills with `uuidv7()`. 'uuid' leaves them to it, and makes the ids
@@ -127,12 +147,12 @@ function options(deps: SignInDeps) {
         // Not text: the endpoint refuses it, before any link is made.
         if (typeof given !== 'string') return undefined;
         const address = given.trim().toLowerCase();
-        const ip = getIP(ctx.request ?? ctx.headers ?? new Headers(), ctx.context.options);
-        // Every request counts, known address or not, so a refusal says nothing about who has an account. One IP
-        // that can't be told (no trustworthy header) shares the `unknown` bucket.
-        if (!(await deps.hitRateLimit(bucket('ip', ip ?? 'unknown'), perIp, windowSeconds))) {
-          throw tooMany();
-        }
+        const headers = ctx.request?.headers ?? ctx.headers;
+        const ip = headers === undefined ? null : clientIp(headers, ctx.context.options);
+        // Without an address there is no bucket to count it in, and sharing one would let anyone fill it for all.
+        if (ip === null) throw noClientIp();
+        // Every request counts, known address or not, so a refusal says nothing about who has an account.
+        if (!(await deps.hitRateLimit(bucket('ip', ip), perIp, windowSeconds))) throw tooMany();
         if (!(await deps.hitRateLimit(bucket('address', address), perAddress, windowSeconds))) {
           throw tooMany();
         }

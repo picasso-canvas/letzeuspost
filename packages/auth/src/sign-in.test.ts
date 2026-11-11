@@ -290,7 +290,7 @@ describe('sessions (§13, §15)', () => {
 
   it('set an HttpOnly, Secure, SameSite=Lax cookie in production mode', async () => {
     const production = await setup({ environment: 'production' });
-    await askForLink(production.signIn, known);
+    await askForLink(production.signIn, known, { 'cf-connecting-ip': '198.51.100.7' });
     const response = await open(production.signIn, lastLink(production.queued));
     const cookies = response.headers.getSetCookie();
     expect(cookies.length).toBeGreaterThan(0);
@@ -422,7 +422,8 @@ describe('the client IP (decision 4: Cloudflare is in front in staging and produ
   );
 
   it('refuses a request whose address it can’t tell, in development too: no shared bucket', async () => {
-    for (const headers of [{}, { 'x-forwarded-for': '192.0.2.1, 192.0.2.2' }]) {
+    const unclear: Record<string, string>[] = [{}, { 'x-forwarded-for': '192.0.2.1, 192.0.2.2' }];
+    for (const headers of unclear) {
       const local = await setup({ environment: 'development' });
       expect((await askForLink(local.signIn, known, headers)).status).toBe(400);
       expect(local.limiter.calls).toEqual([]);
