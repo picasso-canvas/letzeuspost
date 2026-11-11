@@ -173,10 +173,37 @@ describe('the role-switch check', () => {
     expect(roleSwitchesIn(file, text)).not.toEqual([]);
   });
 
+  // Indented code blocks too (Argus F2 on #202): four spaces or a tab, after a blank line, in a list or a quote too.
+  it.each([
+    ['four spaces', `Run:\n\n    psql -c "${w('SET', 'ROLE', 'lzp_auth')}"\n`],
+    ['a tab', `Run:\n\n\tpsql -c "${w('SET', 'ROLE', 'lzp_auth')}"\n`],
+    ['in a quote', `> Run:\n>\n>     ${w('RESET', 'ROLE')};\n`],
+    ['after another code line', `Run:\n\n    psql "$URL"\n    ${w('SET', 'ROLE', 'lzp_auth')};\n`],
+  ])('finds a role switch in an indented Markdown code block: %s', (_, text) => {
+    expect(roleSwitchesIn('docs/ops/restore.md', text)).not.toEqual([]);
+  });
+
   it('reads Markdown only in its code blocks, where a command can be copied and run', () => {
     const prose = `lzp_app takes lzp_auth only by ${w('SET', 'ROLE')}, which the auth handle does.\n`;
     expect(roleSwitchesIn('docs/plan/13-architecture.md', prose)).toEqual([]);
     expect(roleSwitchesIn('docker/postgres/roles.sh', `# ${prose}`)).not.toEqual([]);
+  });
+
+  // A NUL byte doesn't make a file binary (Cerberus F3 on #202): Postgres and psql never read one, but a file of text
+  // with one in it would otherwise be skipped whole, and the switch beside it with it.
+  it.each([
+    ['a NUL byte in SQL', Buffer.from(`select 1;\0\n${w('SET', 'ROLE', 'lzp_auth')};\n`)],
+    ['UTF-16 text', Buffer.from(`${w('SET', 'ROLE', 'lzp_auth')};\n`, 'utf16le')],
+  ])('reads a file of text holding NUL bytes: %s', (_, bytes) => {
+    const text = textOf(bytes);
+    expect(text).not.toBeNull();
+    expect(roleSwitches(text ?? '')).not.toEqual([]);
+  });
+
+  it('skips a binary, which is no valid UTF-8 even without its NUL bytes', () => {
+    const png = readFileSync(`${ROOT}docs/design/logos/letzeuspost/mark.png`);
+    expect(textOf(png)).toBeNull();
+    expect(textOf(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]))).toBeNull();
   });
 
   it('reads every text file: code, SQL, shell, YAML, JSON and Markdown, the auth handle among them', () => {
