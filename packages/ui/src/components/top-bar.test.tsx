@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { DropdownMenuItem } from '@lzp/ui/components/dropdown-menu';
 import {
   TopBar,
   TopBarEnd,
@@ -125,6 +127,62 @@ describe('the workspace switcher, closed', () => {
       const found = wordsIn(html(props)).filter((w) => !allowed.has(w) && w !== 'ERR');
       expect(found, JSON.stringify(props)).toEqual([]);
     }
+  });
+});
+
+interface ItemProps {
+  onClick?: () => void;
+  'aria-current'?: string;
+  children?: ReactNode;
+}
+
+/** The menu items the switcher builds, read from its element tree (the open menu is drawn in a portal, in a browser). */
+function itemsOf(node: ReactNode): ReactElement<ItemProps>[] {
+  if (Array.isArray(node)) return node.flatMap(itemsOf);
+  if (!isValidElement<{ children?: ReactNode }>(node)) return [];
+  const own = node.type === DropdownMenuItem ? [node as ReactElement<ItemProps>] : [];
+  return [...own, ...itemsOf(node.props.children)];
+}
+
+describe('choosing a workspace', () => {
+  // A menu item's `onClick` runs for a click, and for Enter and Space on the focused item: that is one path for the
+  // mouse and the keyboard. The arrow keys, Home, End and Escape are the menu's own (Base UI).
+  const chosen = vi.fn();
+  const items = itemsOf(
+    WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1', onSelect: chosen }),
+  );
+
+  it('has one item for each workspace, in order, the current one marked as such', () => {
+    expect(items).toHaveLength(workspaces.length);
+    expect(items.map((item) => item.props['aria-current'])).toEqual(['true', undefined, undefined]);
+  });
+
+  it('switches to the workspace chosen, whoever chooses it and however', () => {
+    items[1]?.props.onClick?.();
+    items[2]?.props.onClick?.();
+    expect(chosen.mock.calls).toEqual([['w2'], ['w3']]);
+  });
+
+  it('does nothing when the current workspace is chosen again', () => {
+    chosen.mockClear();
+    items[0]?.props.onClick?.();
+    expect(chosen).not.toHaveBeenCalled();
+  });
+
+  it('tries again when the list failed to load and the person asks', () => {
+    const onRetry = vi.fn();
+    const [retry, ...rest] = itemsOf(
+      WorkspaceSwitcher({
+        ...words,
+        workspaces,
+        currentId: 'w1',
+        error: { message: 'ERR', retryLabel: 'RETRY', onRetry },
+      }),
+    );
+    // Instead of the workspaces, the way out: nothing else to choose.
+    expect(rest).toEqual([]);
+    retry?.props.onClick?.();
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 });
 
