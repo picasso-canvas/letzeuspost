@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import { useState, type ReactNode } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Avatar, AvatarFallback } from '@lzp/ui/components/avatar';
 import {
@@ -88,15 +90,28 @@ function Bar({
   );
 }
 
-const northwind = (container: HTMLElement, props: Partial<WorkspaceSwitcherProps> = {}) => (
-  <WorkspaceSwitcher
-    {...words}
-    workspaces={workspaces}
-    currentId="northwind"
-    container={container}
-    {...props}
-  />
-);
+/** The switcher as an app holds it: what is chosen becomes the current workspace, so the story shows the choice. */
+function Switcher({
+  container,
+  ...props
+}: Partial<Omit<WorkspaceSwitcherProps, 'container'>> & { container: HTMLElement }) {
+  const [currentId, setCurrentId] = useState('northwind');
+  return (
+    <WorkspaceSwitcher
+      {...words}
+      workspaces={workspaces}
+      currentId={currentId}
+      onSelect={setCurrentId}
+      container={container}
+      {...props}
+    />
+  );
+}
+
+const northwind = (
+  container: HTMLElement,
+  props: Partial<Omit<WorkspaceSwitcherProps, 'container'>> = {},
+) => <Switcher container={container} {...props} />;
 
 /** Default: the current workspace on the button, the person's avatar at the end. */
 export const Default: Story = {
