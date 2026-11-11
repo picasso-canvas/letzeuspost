@@ -96,12 +96,8 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -174,12 +170,8 @@
           "name": "invitation_workspace_id_workspace_id_fk",
           "tableFrom": "invitation",
           "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -187,12 +179,8 @@
           "name": "invitation_inviter_id_user_id_fk",
           "tableFrom": "invitation",
           "tableTo": "user",
-          "columnsFrom": [
-            "inviter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["inviter_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -204,9 +192,7 @@
           "name": "workspace_scope",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "workspace_id = current_setting('app.workspace_id')::uuid",
           "withCheck": "workspace_id = current_setting('app.workspace_id')::uuid"
         }
@@ -270,12 +256,8 @@
           "name": "member_workspace_id_workspace_id_fk",
           "tableFrom": "member",
           "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -283,12 +265,8 @@
           "name": "member_user_id_user_id_fk",
           "tableFrom": "member",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -298,10 +276,7 @@
         "member_workspace_id_user_id_unique": {
           "name": "member_workspace_id_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "user_id"
-          ]
+          "columns": ["workspace_id", "user_id"]
         }
       },
       "policies": {
@@ -309,9 +284,7 @@
           "name": "workspace_scope",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "workspace_id = current_setting('app.workspace_id')::uuid",
           "withCheck": "workspace_id = current_setting('app.workspace_id')::uuid"
         },
@@ -319,9 +292,7 @@
           "name": "user_scope",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "user_id = current_setting('app.user_id')::uuid"
         }
       },
@@ -401,12 +372,8 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -416,9 +383,7 @@
         "session_token_unique": {
           "name": "session_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -490,9 +455,7 @@
         "user_email_unique": {
           "name": "user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {
@@ -500,9 +463,7 @@
           "name": "auth_handle",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "lzp_auth"
-          ],
+          "to": ["lzp_auth"],
           "using": "true",
           "withCheck": "true"
         },
@@ -510,9 +471,7 @@
           "name": "member_scope",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "lzp_app"
-          ],
+          "to": ["lzp_app"],
           "using": "id = current_setting('app.user_id')::uuid or id in (select user_id from member where workspace_id = current_setting('app.workspace_id')::uuid)"
         }
       },
@@ -639,9 +598,7 @@
         "workspace_slug_unique": {
           "name": "workspace_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {
@@ -649,9 +606,7 @@
           "name": "workspace_scope",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "id = current_setting('app.workspace_id')::uuid",
           "withCheck": "id = current_setting('app.workspace_id')::uuid"
         },
@@ -659,9 +614,7 @@
           "name": "user_scope",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "id in (select workspace_id from member where user_id = current_setting('app.user_id')::uuid)"
         }
       },
@@ -762,12 +715,8 @@
           "name": "email_message_workspace_id_workspace_id_fk",
           "tableFrom": "email_message",
           "tableTo": "workspace",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -779,9 +728,7 @@
           "name": "workspace_scope",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "public"
-          ],
+          "to": ["public"],
           "using": "workspace_id = current_setting('app.workspace_id')::uuid",
           "withCheck": "workspace_id = current_setting('app.workspace_id')::uuid"
         }
@@ -882,12 +829,8 @@
           "name": "account_email_user_id_user_id_fk",
           "tableFrom": "account_email",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

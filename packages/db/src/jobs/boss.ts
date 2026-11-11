@@ -117,9 +117,9 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
             await handler({
               jobId: job.id,
               payload,
-              db: (workspaceId === null
-                ? null
-                : db.forWorkspace({ workspaceId })) as JobContext<typeof queue>['db'],
+              db: (workspaceId === null ? null : db.forWorkspace({ workspaceId })) as JobContext<
+                typeof queue
+              >['db'],
               retryCount: job.retryCount,
               lastAttempt: job.retryCount >= job.retryLimit,
             });
