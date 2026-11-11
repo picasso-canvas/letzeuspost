@@ -493,7 +493,9 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
       },
     );
     const text = collectScreenshots(SHA, out, gh.deps);
-    const dropped = text.split('\n').filter((line) => line.startsWith('    '));
+    const dropped = text
+      .split('\n')
+      .filter((line) => line.startsWith('    ') && !line.startsWith('    and '));
     expect(dropped).toHaveLength(MAX_DROPPED_SHOWN);
     expect(Math.max(...dropped.map((line) => line.length))).toBeLessThan(260);
     expect(text).toContain(
