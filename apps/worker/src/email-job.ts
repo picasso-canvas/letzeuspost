@@ -1,10 +1,12 @@
 // The `email` job (§13 Jobs, #72): sends one outbox row. Its payload is the row's id; the address, the template and
 // its data are read from the row, in the job's workspace. Safe to run twice (packages/db's email-outbox.ts):
 //   1. load the row: only a queued row goes on (sent, failed, gone, interrupted, or being sent by another run: left
-//      alone);
+//      alone; one this job's earlier run claimed is marked interrupted, since that run is over);
 //   2. render it (Q8: @lzp/email's built output, in this process); a template or data it refuses fails the row;
-//   3. claim it (queued → sending, one conditional update: a second run finds it taken);
-//   4. send it; then mark it sent, or put it back if it certainly didn't go out, or fail it if it may have.
+//   3. claim it for this job (queued → sending, one conditional update: a second run finds it taken);
+//   4. send it; then mark it sent, or put it back if it certainly didn't go out, or fail it if it may have. If the
+//      database drops during that last write, the run fails and pg-boss retries the job, whose step 1 finds its own
+//      claim (Argus F1 on #197).
 // The log names the row by id and the outcome by code: never the address, the subject or the content.
 import { emailOutbox, type EmailOutbox, type JobHandler, type Scoped } from '@lzp/db';
 import type { EmailContext, RenderedEmail } from '@lzp/email';
@@ -50,7 +52,7 @@ export function emailJob(deps: EmailJobDeps): JobHandler<'email'> {
       deps.log(event, { jobId, emailMessageId: id, ...fields });
     };
 
-    const found = await outbox.load(id);
+    const found = await outbox.load(id, jobId);
     if ('skip' in found) {
       said('email.skipped', { reason: found.skip });
       return;
@@ -67,7 +69,7 @@ export function emailJob(deps: EmailJobDeps): JobHandler<'email'> {
       return;
     }
 
-    if (!(await outbox.claim(id))) {
+    if (!(await outbox.claim(id, jobId))) {
       said('email.skipped', { reason: 'claimed' });
       return;
     }

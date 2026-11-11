@@ -14,7 +14,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type pg from 'pg';
 import { checkedId, NOBODY, openPool, scoped, type Orm, type Scoped } from './db.ts';
-import * as schema from './schema.ts';
+import * as schema from './schema/accounts.ts';
 
 export { schema };
 export type { Scoped, Tx } from './db.ts';

@@ -1,6 +1,6 @@
 // The base layout every email uses (§23 Onboarding emails): short, plain, with one button. The plain-text version is
-// made from the same render (render.ts), so the two never say different things. Colours are DESIGN.md's tokens, written
-// out: email clients don't read the app's CSS.
+// made from the same render (`renderTemplate` in index.ts), so the two never say different things. Colours are
+// DESIGN.md's tokens, written out: email clients don't read the app's CSS.
 import {
   Body,
   Button,

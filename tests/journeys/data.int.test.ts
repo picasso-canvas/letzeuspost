@@ -9,7 +9,9 @@
 // assertion.
 //
 // Runs only in `pnpm check:services` and CI's `services` job (the `.int.test.ts` name; Postgres, the file store and
-// Mailpit come from docker/compose.yml). The settings are config/env.ts's.
+// Mailpit come from docker/compose.yml). The settings are config/env.ts's. It shares the database with the other
+// services files, run side by side: every workspace, person and row here is this run's (`run`), and so is the `export`
+// queue (step 3).
 import { execFileSync } from 'node:child_process';
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -239,7 +241,9 @@ describe('the Data feature: two workspaces stay apart through every layer', () =
 
         // The queue, as the app role (#72). The worker's `email` job comes from `startWorker` below; a job a test
         // registers like any other goes on the `export` queue, which no handler of the worker's takes yet (the queues
-        // are fixed). The handler gets `db` scoped to the payload's workspace.
+        // are fixed). The handler gets `db` scoped to the payload's workspace. Among the services files, which Vitest
+        // runs side by side, `export` is this file's alone (Argus F1 on #202): a handler that skips another file's job
+        // still completes it, so packages/db's jobs.int.test.ts keeps its own to `fetch`, `ai` and `render`.
         const jobs = createJobs({
           url: env.DATABASE_URL,
           db,
