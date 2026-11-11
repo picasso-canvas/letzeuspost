@@ -1,7 +1,8 @@
 // Only the auth handle switches the database role (#176, Cerberus F2's nit on #184). Workspace code runs as lzp_app;
 // lzp_app may take lzp_auth, which holds the auth tables, only by switching to it, and only packages/db/src/auth.ts
 // does that, on its own pool. This check reads every text file in the repo, comments too: code, SQL, shell, YAML, JSON,
-// and Markdown's code blocks (Argus F1 on #189), and refuses a role switch anywhere else but in the few known lines
+// and Markdown's code blocks (Argus F1 on #189), fenced or indented (Argus F2 on #202), in files holding NUL bytes too
+// (Cerberus F3 on #202), and refuses a role switch anywhere else but in the few known lines
 // below. It runs in `pnpm check`. The cases below put the SQL words together at run time, because the check reads this
 // file as well.
 //
@@ -42,17 +43,38 @@ const MARKDOWN = /\.(?:md|mdx|markdown)$/i;
 /** A fence that opens or closes a Markdown code block, inside a list or a quote too: ``` or ~~~, 3 or more. */
 const FENCE = /^[\s>]*(`{3,}|~{3,})/;
 
+/** The quote markers at a line's start, each with the one space that may follow it. */
+const QUOTE = /^(?:\s{0,3}>\s?)*/;
+
+/** A line of an indented code block, once its quote markers are off: four spaces or a tab (Argus F2 on #202). */
+const INDENTED = /^(?: {4}|\t)/;
+
 /**
- * A Markdown text's fenced code blocks, one after another. A block ends at a fence of the same kind at least as long,
- * or at the file's end. The prose around them is left out: it may name the commands it explains.
+ * A Markdown text's code blocks, one after another: fenced ones, and indented ones (a line indented four spaces or a
+ * tab after a blank line or another such line, in a quote too). A fenced block ends at a fence of the same kind at
+ * least as long, or at the file's end. The prose around them is left out: it may name the commands it explains. An
+ * indented paragraph inside a list item is read as code too: reading too much is the safe side.
  */
 function codeBlocks(markdown: string): string {
   const code: string[] = [];
   let open: string | null = null;
+  let afterBlank = true; // a file may start with an indented block
+  let inIndented = false;
   for (const line of markdown.split('\n')) {
     const fence = FENCE.exec(line)?.[1];
     if (open === null) {
-      if (fence !== undefined) open = fence;
+      const body = line.replace(QUOTE, '');
+      const blank = body.trim() === '';
+      if (fence !== undefined) {
+        open = fence;
+        inIndented = false;
+      } else if (!blank && INDENTED.test(body) && (afterBlank || inIndented)) {
+        code.push(body);
+        inIndented = true;
+      } else if (!blank) {
+        inIndented = false; // a blank line doesn't end an indented block; prose does
+      }
+      afterBlank = blank;
     } else if (
       fence !== undefined &&
       fence[0] === open[0] &&
@@ -103,12 +125,26 @@ function withoutKnown(file: string, text: string): string {
     .join('\n');
 }
 
-/** A file's text, or null for a binary (it has a NUL byte, as git tells them apart) or what isn't a file. */
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+
+/**
+ * The text in a file's bytes, or null for a binary. A NUL byte alone doesn't make a binary (Cerberus F3 on #202): it
+ * would let a switch hide in a file beside one. A file is text when its bytes, NULs left out, are valid UTF-8, as text
+ * in UTF-8 or ASCII-range UTF-16 is; an image's bytes aren't.
+ */
+function textOf(bytes: Uint8Array): string | null {
+  try {
+    return UTF8.decode(bytes.filter((byte) => byte !== 0));
+  } catch {
+    return null;
+  }
+}
+
+/** A file's text, or null for a binary or what isn't a file. */
 function readText(file: string): string | null {
   const path = `${ROOT}${file}`;
   if (!existsSync(path) || !statSync(path).isFile()) return null;
-  const bytes = readFileSync(path);
-  return bytes.includes(0) ? null : bytes.toString('utf8');
+  return textOf(readFileSync(path));
 }
 
 /** Every text file in the repo, tracked or new (not ignored), from the repo root. */
