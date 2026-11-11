@@ -64,11 +64,10 @@ async function setup(options: { secureCookies?: boolean } = {}): Promise<Setup> 
     },
   });
   const context = await signIn.auth.$context;
-  const user = await context.internalAdapter.createUser({
-    email: known,
-    name: 'Nadia',
-    emailVerified: true,
-  });
+  const user = await context.internalAdapter.createUser(
+    { email: known, name: 'Nadia', emailVerified: true },
+    { method: 'magic-link' },
+  );
   return { signIn, store, queued, limiter, userId: user.id };
 }
 
@@ -409,7 +408,10 @@ describe('the logs (§13: no emails in logs)', () => {
       queueSignInEmail: ({ to }) => Promise.reject(new Error(`could not queue the email to ${to}`)),
     });
     const context = await failing.auth.$context;
-    await context.internalAdapter.createUser({ email: known, name: 'Nadia', emailVerified: true });
+    await context.internalAdapter.createUser(
+      { email: known, name: 'Nadia', emailVerified: true },
+      { method: 'magic-link' },
+    );
 
     await askForLink(s.signIn, known);
     await askForLink(s.signIn, unknown);
