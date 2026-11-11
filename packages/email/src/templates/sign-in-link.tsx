@@ -37,7 +37,7 @@ export const signInLink: Template<SignInLinkData> = {
         heading="Sign in to LetZeusPost"
         paragraphs={[
           'Use the button below to sign in. The link works once, for 10 minutes.',
-          "If you didn't ask to sign in, you can ignore this email. Nobody can sign in without this link.",
+          'If you didn’t ask to sign in, you can ignore this email. Nobody can sign in without this link.',
         ]}
         button={{ label: 'Sign in', href: url }}
       />
