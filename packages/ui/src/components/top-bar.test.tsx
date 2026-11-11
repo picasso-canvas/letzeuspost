@@ -259,6 +259,31 @@ describe('choosing a workspace', () => {
     }
   });
 
+  /** The class names of the span that holds a workspace's name, in a menu row. */
+  const nameClassesInRow = (row: ReactElement<ItemProps> | undefined, name: string): string[] =>
+    elementsIn(row?.props.children)
+      .filter((el) => el.type === 'span' && el.props.children === name)
+      .flatMap((el) => String((el.props as { className?: string }).className).split(' '));
+
+  it('wraps a long name in its row instead of cutting it, at the same type and spacing (Iris F1 on #221)', () => {
+    for (const [index, workspace] of workspaces.entries()) {
+      const classes = nameClassesInRow(items[index], workspace.name);
+      expect(classes, workspace.name).toContain('wrap-break-word');
+      expect(
+        classes.filter((c) => /^(truncate|line-clamp-|text-ellipsis|whitespace-nowrap)/.test(c)),
+      ).toEqual([]);
+      // Wrapping is all that changes: no size, weight or spacing of its own on the name.
+      expect(
+        classes.filter((c) => /^(text-|font-|leading-|tracking-|p[xytblr]?-|m[xytblr]?-)/.test(c)),
+      ).toEqual([]);
+    }
+  });
+
+  it('keeps the ellipsis on the button, where one line is all there is room for', () => {
+    const name = /<span[^>]*class="([^"]*)"[^>]*>Northwind Social<\/span>/.exec(html())?.[1] ?? '';
+    expect(name.split(' ')).toContain('truncate');
+  });
+
   it('closes the list with the caller’s note, and leaves it out of a list that failed to load', () => {
     const notes = (props: object) =>
       elementsIn(WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1', ...props })).filter(
@@ -347,5 +372,45 @@ describe('top-bar.tsx', () => {
     const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1] ?? '');
     expect(imports.filter((from) => /icon|svg/i.test(from) && from !== 'lucide-react')).toEqual([]);
     expect(source).toContain("from 'lucide-react'");
+  });
+});
+
+describe('the words the top bar’s stories name', () => {
+  // The stories write each of their words in a `// en.json: <key>` comment; the app takes them from en.json, so each
+  // key must be there, with the stories' wording (Iris F2 on #221).
+  const messages: unknown = JSON.parse(
+    readFileSync(new URL('../../../../apps/web/messages/en.json', import.meta.url), 'utf8'),
+  );
+  const at = (key: string): unknown =>
+    key
+      .split('.')
+      .reduce<unknown>(
+        (node, part) => (node as Record<string, unknown> | undefined)?.[part],
+        messages,
+      );
+
+  it.each([
+    ['frame.switcher.menuLabel', 'Workspaces'],
+    ['frame.switcher.current', 'current'],
+    [
+      'frame.switcher.note',
+      'Each workspace is separate: brands, posts and notifications never mix.',
+    ],
+    [
+      'frame.switcher.loadError',
+      'Couldn’t load your workspaces. Check your connection and try again.',
+    ],
+    ['frame.switcher.retry', 'Try again'],
+    ['frame.switcher.loading', 'Loading workspaces…'],
+    ['frame.account.label', 'Nadia Karim (Admin)'],
+  ])('has %s in en.json, as the stories word it', (key, wording) => {
+    expect(at(key)).toBe(wording);
+  });
+
+  it('has every key the stories name', () => {
+    const stories = readFileSync(new URL('top-bar.stories.tsx', import.meta.url), 'utf8');
+    const named = [...stories.matchAll(/en\.json: (frame\.[\w.]+)/g)].map((m) => m[1] ?? '');
+    expect(named).toHaveLength(7);
+    for (const key of named) expect(typeof at(key), key).toBe('string');
   });
 });
