@@ -89,9 +89,18 @@ describe('the workspace switcher, closed', () => {
     expect(markup).not.toContain('Kite');
   });
 
-  it('shows the initials when the workspace has no logo, and the logo when it has one', () => {
+  it('shows the initials when the workspace has no logo, and until its logo has loaded', () => {
+    // Base UI draws the image only once the browser has it, so a server render (and a logo that fails) shows the initials.
     expect(html()).toContain('>NS<');
-    expect(html({ workspaces: [{ ...workspaces[0]!, logo: '/logo.svg' }] })).toContain('/logo.svg');
+    const withLogo = html({ workspaces: [{ ...workspaces[0]!, logo: '/logo.svg' }] });
+    expect(withLogo).toContain('>NS<');
+    expect(withLogo).not.toContain('<img');
+  });
+
+  it('hides the mark from a screen reader: the name is beside it', () => {
+    expect(html()).toMatch(
+      /<span[^>]*aria-hidden="true"[^>]*data-slot="avatar"|data-slot="avatar"[^>]*aria-hidden="true"/,
+    );
   });
 
   it('can be disabled, as a native button, so no key or click opens it', () => {
@@ -159,8 +168,11 @@ describe('top-bar.tsx', () => {
   const source = readFileSync(new URL('top-bar.tsx', import.meta.url), 'utf8');
 
   it('writes no interface text: no words between tags, none in a label, title or alt', () => {
-    expect(source).not.toMatch(/>\s*[A-Za-z][^<>{}]*</);
-    expect(source).not.toMatch(/\b(?:aria-label|title|alt|placeholder)="/);
+    // Comments aside, a `>` that closes a tag (not an arrow or a generic) followed by letters and a `<`.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toMatch(/(?<![=-])>\s*[A-Za-z][^<>{}=;()]*</);
+    // (An empty `alt=""` marks a picture as decoration; it is no text.)
+    expect(source).not.toMatch(/\b(?:aria-label|title|alt|placeholder)="[^"]/);
   });
 
   it('draws its icons from Lucide, and no other set', () => {
