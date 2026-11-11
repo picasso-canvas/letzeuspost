@@ -14,8 +14,10 @@ import {
   JobPayloadError,
   queueNames,
   queues,
+  workspaceOf,
   type Payload,
   type QueueName,
+  type WorkspaceQueue,
 } from './queues.ts';
 
 /** §13: the job queue keeps its own tables in a separate schema. */
@@ -25,8 +27,11 @@ export const JOBS_SCHEMA = 'pgboss';
 export interface JobContext<Q extends QueueName> {
   readonly jobId: string;
   readonly payload: Payload<Q>;
-  /** `db.forWorkspace` for the payload's workspace. */
-  readonly db: Scoped;
+  /**
+   * `db.forWorkspace` for the payload's workspace. An account queue's job (`account-email`) runs in no workspace and
+   * gets none: its handler reaches its row through packages/auth.
+   */
+  readonly db: Q extends WorkspaceQueue ? Scoped : null;
   /** How many times this job has been retried before this run (0 on the first run). */
   readonly retryCount: number;
   /** True on the last run the retry limit allows: a failure now is final. */
@@ -86,9 +91,11 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
     stop: () => boss.stop({ graceful: true, timeout: 30_000 }),
     send: async (queue, payload, options = {}) => {
       const data = checkPayload(queue, payload);
+      const workspaceId = workspaceOf(data);
       const id = await boss.send(queue, data, {
-        // Each job belongs to its workspace's group; the ai queue's worker runs at most 4 of a group at once.
-        group: { id: data.workspaceId },
+        // Each job belongs to its workspace's group; the ai queue's worker runs at most 4 of a group at once. An
+        // account queue's job belongs to no workspace, so to no group.
+        ...(workspaceId === null ? {} : { group: { id: workspaceId } }),
         ...(options.tx === undefined ? {} : { db: fromDrizzle(options.tx, sql) }),
       });
       if (id === null) throw new Error(`${queue} job was not queued`);
@@ -106,10 +113,13 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
         async (batch) => {
           for (const job of batch) {
             const payload = payloadOf(queue, job);
+            const workspaceId = workspaceOf(payload);
             await handler({
               jobId: job.id,
               payload,
-              db: db.forWorkspace({ workspaceId: payload.workspaceId }),
+              db: (workspaceId === null
+                ? null
+                : db.forWorkspace({ workspaceId })) as JobContext<typeof queue>['db'],
               retryCount: job.retryCount,
               lastAttempt: job.retryCount >= job.retryLimit,
             });
@@ -124,7 +134,7 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
  * The payload of a job pg-boss handed over, checked before the handler sees it (Cerberus F1 on #202). The job's row
  * sits in tables that hold every workspace's jobs, so its workspace isn't taken on trust:
  * - the payload must hold exactly the queue's ids (`checkPayload`), the workspace's among them;
- * - the job's group must be that workspace, as `send` writes it. A job whose group differs wasn't queued by `send`
+ * - the job's group must be that workspace, as `send` writes it (none for an account queue's, which has no workspace). A job whose group differs wasn't queued by `send`
  *   (or was changed since), and would count against another workspace's concurrency limit (`ai`: 4 per workspace).
  * Neither proves who wrote the row: lzp_app can write any job (the grants below). What keeps another workspace's data
  * out is the handler's database handle, `db.forWorkspace` for this workspace under row-level security: a forged job
@@ -135,7 +145,8 @@ export function payloadOf<Q extends QueueName>(
   job: { readonly data: unknown; readonly groupId?: string | null },
 ): Payload<Q> {
   const payload = checkPayload(queue, job.data);
-  if (job.groupId !== payload.workspaceId) {
+  // An account queue's payload has no workspace, and its job no group (`send`).
+  if ((job.groupId ?? null) !== workspaceOf(payload)) {
     throw new JobPayloadError(`${queue} job refused: its group is not its payload's workspace`);
   }
   return payload;

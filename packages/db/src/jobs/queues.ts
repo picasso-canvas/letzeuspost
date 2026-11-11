@@ -1,5 +1,6 @@
 // The job queues (§13 Jobs, the jobs skill, #72). Every payload holds ids only, never content: the workspace's, which
-// the job runs in (`db.forWorkspace`), and the ids of what it works on. The handler loads everything else from the
+// the job runs in (`db.forWorkspace`), and the ids of what it works on. The one exception is `account-email` (#77),
+// whose row belongs to a person and carries no workspace. The handler loads everything else from the
 // database, so a retried job reads the current rows, and no post text or address ever sits in the queue's tables.
 // The handlers live in apps/worker (Q7); the ai, render, fetch and export handlers come with their features, which
 // may add ids to their payloads here, never content.
@@ -57,10 +58,20 @@ export const queues = {
     queue: retry,
     work: {},
   },
+  /**
+   * One `account_email` row (#77, Athena's decision 3): a sign-in link. It belongs to a person, not a workspace, so
+   * its payload has no workspace and its job no group; only packages/auth reaches the row, through the auth handle.
+   * Retries bounded like the email job's.
+   */
+  'account-email': {
+    payload: z.strictObject({ accountEmailId: id }),
+    queue: retry,
+    work: {},
+  },
 } as const satisfies Record<
   string,
   {
-    payload: z.ZodType<{ workspaceId: string }>;
+    payload: z.ZodType<object>;
     queue: typeof retry;
     work: { localGroupConcurrency?: number; localConcurrency?: number };
   }
@@ -69,7 +80,26 @@ export const queues = {
 export type QueueName = keyof typeof queues;
 export type Payload<Q extends QueueName> = z.infer<(typeof queues)[Q]['payload']>;
 
+/** The queues whose jobs run in a workspace: their payload carries it, and their handler gets `db.forWorkspace`. */
+export type WorkspaceQueue = {
+  [Q in QueueName]: Payload<Q> extends { workspaceId: string } ? Q : never;
+}[QueueName];
+
 export const queueNames = Object.keys(queues) as readonly QueueName[];
+
+/** The queues that serve no workspace: only `account-email`. */
+const accountQueues: readonly Exclude<QueueName, WorkspaceQueue>[] = ['account-email'];
+
+export const workspaceQueueNames = queueNames.filter(
+  (name): name is WorkspaceQueue => !(accountQueues as readonly QueueName[]).includes(name),
+);
+
+/** The workspace a payload runs in, or null for an account queue's. */
+export function workspaceOf(payload: object): string | null {
+  return 'workspaceId' in payload && typeof payload.workspaceId === 'string'
+    ? payload.workspaceId
+    : null;
+}
 
 /** A payload a queue refuses. Its message names the fields at fault, never their values. */
 export class JobPayloadError extends Error {

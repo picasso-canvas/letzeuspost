@@ -11,13 +11,24 @@
 //   policy lets it read that person's own memberships and their workspaces, for the workspace switcher and the
 //   session's active workspace, and the person themself. Nothing else, and it writes nothing there: writes go through
 //   `db.forWorkspace(ctx)`.
+// - Sign-in's own tables (#77), lzp_auth's alone: the account emails' outbox (`queueAccountEmail`,
+//   `accountEmailOutbox`) and the rate-limit log (`hitRateLimit`).
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type pg from 'pg';
 import { checkedId, NOBODY, openPool, scoped, type Orm, type Scoped } from './db.ts';
 import * as schema from './schema/accounts.ts';
+import { rateLimitHit } from './schema/auth-only.ts';
 
 export { schema };
-export type { Scoped, Tx } from './db.ts';
+export { accountEmail, rateLimitHit } from './schema/auth-only.ts';
+export {
+  accountEmailOutbox,
+  NOT_QUEUED,
+  queueAccountEmail,
+  type NewAccountEmail,
+} from './jobs/account-email-outbox.ts';
+export type { Orm, Scoped, Tx } from './db.ts';
 
 /** The signed-in person a call acts for, from the verified session. */
 export interface UserCtx {
@@ -27,7 +38,41 @@ export interface UserCtx {
 export interface AuthDb {
   readonly db: Orm;
   forUser: (ctx: UserCtx) => Scoped;
+  /**
+   * Counts a request in `bucket` if it holds fewer than `limit` requests from the last `windowSeconds`, and says
+   * whether it did: false means refused (§13's rate limits, in Postgres).
+   */
+  hitRateLimit: (bucket: string, limit: number, windowSeconds: number) => Promise<boolean>;
   close: () => Promise<void>;
+}
+
+/** Advisory locks keyed (RATE_LIMIT_LOCK, hashtext(bucket)): two-key locks never meet the migrations' one-key ones. */
+const RATE_LIMIT_LOCK = 77;
+
+/**
+ * A sliding window over `rate_limit_hit`. The bucket's lock makes two requests at once take turns, so neither sees the
+ * other's count before it is written; the bucket's rows older than the window go in the same transaction. Times are
+ * the database's, the one clock every request shares.
+ */
+export function hitRateLimit(
+  orm: Orm,
+  bucket: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<boolean> {
+  return orm.transaction(async (tx) => {
+    const since = sql`now() - make_interval(secs => ${windowSeconds})`;
+    await tx.execute(sql`select pg_advisory_xact_lock(${RATE_LIMIT_LOCK}, hashtext(${bucket}))`);
+    await tx.execute(
+      sql`delete from ${rateLimitHit} where ${rateLimitHit.bucket} = ${bucket} and ${rateLimitHit.createdAt} <= ${since}`,
+    );
+    const { rows } = await tx.execute<{ hits: number }>(
+      sql`select count(*)::int as hits from ${rateLimitHit} where ${rateLimitHit.bucket} = ${bucket}`,
+    );
+    if ((rows[0]?.hits ?? 0) >= limit) return false;
+    await tx.insert(rateLimitHit).values({ bucket });
+    return true;
+  });
 }
 
 /** The role that holds Better Auth's tables (docker/postgres/roles.sh, the migrations). */
@@ -74,8 +119,10 @@ export function createAuthDb(url: string): AuthDb {
   const authHandle = authPool(url);
   const userPool = openPool(url);
   const forUserOrm = drizzle({ client: userPool, schema });
+  const db = drizzle({ client: authHandle, schema });
   return {
-    db: drizzle({ client: authHandle, schema }),
+    db,
+    hitRateLimit: (bucket, limit, windowSeconds) => hitRateLimit(db, bucket, limit, windowSeconds),
     forUser: (ctx) =>
       scoped(forUserOrm, { workspaceId: NOBODY, userId: checkedId('user', ctx.userId) }),
     close: async () => {
