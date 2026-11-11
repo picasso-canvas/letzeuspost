@@ -11,6 +11,7 @@ import * as sidebar from '@lzp/ui/components/sidebar.stories';
 import * as skeleton from '@lzp/ui/components/skeleton.stories';
 import * as toast from '@lzp/ui/components/toast.stories';
 import * as tooltip from '@lzp/ui/components/tooltip.stories';
+import * as topBar from '@lzp/ui/components/top-bar.stories';
 
 // §21: every component is in the gallery in every state that applies to it (default, hover, focus, disabled, empty,
 // loading, error). The gallery tests act on the `hover` and `focus` tags, so a state with the wrong tag would be drawn
@@ -93,6 +94,14 @@ describe('the dropdown menu stories', () => {
   });
 });
 
+describe('the top bar stories', () => {
+  const stories = storiesOf(topBar);
+
+  it('open the switcher by the keyboard, after tabbing to its button', () => {
+    expect(stories.KeyboardOpen?.tags).toEqual(['focus', 'keyboard-open']);
+  });
+});
+
 describe.each([
   { name: 'avatar', module: avatar, states: ['Photo', 'Initials', 'Group'], hover: [], focus: [] },
   { name: 'skeleton', module: skeleton, states: ['PostCard', 'ListRow'], hover: [], focus: [] },
@@ -125,6 +134,24 @@ describe.each([
     states: ['Expanded', 'Loading', 'NoPinnedBrands'],
     hover: ['ItemHover'],
     focus: ['ItemFocus'],
+  },
+  // The top bar and its workspace switcher (#75): closed, hovered, focused, open, opened by the keyboard, disabled, with
+  // no workspace, loading, and with the list failed to load (closed, and open to show why).
+  {
+    name: 'top bar',
+    module: topBar,
+    states: [
+      'Default',
+      'Open',
+      'Disabled',
+      'Empty',
+      'Loading',
+      'ErrorState',
+      'ErrorOpen',
+      'LongName',
+    ],
+    hover: ['TriggerHover'],
+    focus: ['TriggerFocus', 'KeyboardOpen'],
   },
 ])('the $name stories', ({ module, states, hover, focus }) => {
   const stories = storiesOf(module);
