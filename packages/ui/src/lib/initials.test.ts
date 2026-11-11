@@ -15,10 +15,23 @@ describe('initialsOf', () => {
     expect(initialsOf('(Golpo) Café')).toBe('GC');
   });
 
-  it('takes whole Bangla letters, vowel signs included, not half of one', () => {
-    // "বাংলা" opens with one cluster: ব, the sign আ and the anusvara.
-    expect(initialsOf('বাংলা পোস্ট')).toBe('বাংপো');
+  // Zeus, 2026-11-11 (#223): a Bangla name's initials are the first letter of its first word, and only that.
+  it('gives a Bangla name just the first letter of its first word, joining words and all', () => {
+    expect(initialsOf('ঢাকা ও সিলেট')).toBe('ঢা');
     expect(initialsOf('কাজ')).toBe('কা');
+    expect(initialsOf('  & ঢাকা ও সিলেট ')).toBe('ঢা');
+  });
+
+  it('never cuts a combined Bangla letter: the vowel sign and the anusvara stay with the consonant', () => {
+    // "বাংলা" opens with one cluster: ব, the sign আ and the anusvara.
+    expect(initialsOf('বাংলা পোস্ট')).toBe('বাং');
+    // "ক্ষ" is two consonants joined by a hasanta: one letter.
+    expect(initialsOf('ক্ষেত্র পোস্ট')).toBe('ক্ষে');
+  });
+
+  it('gives a name that mixes Bangla and English the Bangla rule', () => {
+    expect(initialsOf('ঢাকা Studio')).toBe('ঢা');
+    expect(initialsOf('Dhaka ঢাকা')).toBe('D');
   });
 
   it('keeps digits, and gives nothing for a name with no letters at all', () => {

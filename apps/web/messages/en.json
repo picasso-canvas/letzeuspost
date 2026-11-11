@@ -3,6 +3,19 @@
     "name": "LetZeusPost",
     "description": "On-brand social posts for agencies, in English and Bangla."
   },
+  "frame": {
+    "switcher": {
+      "menuLabel": "Workspaces",
+      "current": "current",
+      "note": "Each workspace is separate: brands, posts and notifications never mix.",
+      "loadError": "Couldn’t load your workspaces. Check your connection and try again.",
+      "retry": "Try again",
+      "loading": "Loading workspaces…"
+    },
+    "account": {
+      "label": "{name} ({role})"
+    }
+  },
   "home": {
     "eyebrow": "LetZeusPost",
     "heading": "Welcome to LetZeusPost",
