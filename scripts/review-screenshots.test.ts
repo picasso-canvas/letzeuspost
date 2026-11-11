@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32, deflateRawSync } from 'node:zlib';
@@ -6,6 +6,9 @@ import { describe, expect, it } from 'vitest';
 import {
   collectScreenshots,
   MAX_ARTIFACT_BYTES,
+  MAX_DROPPED_SHOWN,
+  MAX_ENTRIES_LOOKED_AT,
+  MAX_INFLATED_BYTES,
   MAX_PIXELS_SIDE,
   MAX_SCREENSHOT_BYTES,
   MAX_SCREENSHOTS,
@@ -40,6 +43,8 @@ interface Entry {
   link?: boolean;
   /** Write a wrong CRC. */
   badCrc?: boolean;
+  /** No local record of its own: the directory entry points at entry N's (a zip that reuses one stream). */
+  pointTo?: number;
 }
 
 /** A zip as GitHub serves an artifact: local headers, then the central directory, then its end record. */
@@ -47,7 +52,9 @@ function zip(entries: Entry[]): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
+  const offsets: number[] = [];
   for (const e of entries) {
+    offsets.push(offset);
     const data = e.data ?? Buffer.alloc(0);
     const body = e.stored === true ? data : deflateRawSync(data);
     const name = Buffer.from(e.name, 'utf8');
@@ -61,7 +68,7 @@ function zip(entries: Entry[]): Buffer {
     local.writeUInt32LE(body.length, 18);
     local.writeUInt32LE(size, 22);
     local.writeUInt16LE(name.length, 26);
-    locals.push(local, name, body);
+    if (e.pointTo === undefined) locals.push(local, name, body);
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(0x0314, 4); // made by Unix
@@ -72,9 +79,9 @@ function zip(entries: Entry[]): Buffer {
     central.writeUInt32LE(size, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE(((e.link === true ? 0o120777 : 0o100644) << 16) >>> 0, 38);
-    central.writeUInt32LE(offset, 42);
+    central.writeUInt32LE(e.pointTo === undefined ? offset : (offsets[e.pointTo] ?? 0), 42);
     centrals.push(central, name);
-    offset += 30 + name.length + body.length;
+    if (e.pointTo === undefined) offset += 30 + name.length + body.length;
   }
   const directory = Buffer.concat(centrals);
   const end = Buffer.alloc(22);
@@ -409,5 +416,129 @@ describe('readZip', () => {
     const broken = Buffer.from(good);
     broken.writeUInt32LE(0xffffffff, good.length - 22 + 16);
     expect(() => readZip(broken)).toThrow(/ZIP64/);
+  });
+});
+
+// Round 3 on #213: Cerberus F1-F3 and Argus F1-F3.
+describe('collectScreenshots: what a hostile artifact can cost', () => {
+  it('refuses a zip whose directory entries share one local record, and writes nothing from it', () => {
+    const out = into();
+    const gh = fakeGitHub(
+      { 40: { artifacts: ['gallery-screenshots'] } },
+      {
+        400: zip([
+          { name: 'a.png', data: PNG },
+          ...Array.from({ length: 50 }, (_, i) => ({ name: `b${String(i)}.png`, pointTo: 0 })),
+        ]),
+      },
+    );
+    const text = collectScreenshots(SHA, out, gh.deps);
+    expect(text).toMatch(
+      /gallery-screenshots: run 40 \(run40\)'s zip can't be read safely \(.*overlap.*\): nothing taken\./,
+    );
+    expect(readdirSync(out)).not.toContain('gallery-screenshots');
+  });
+
+  it('stops inflating an artifact once its budget is spent, dropped entries included', () => {
+    const out = into();
+    // Entries that each inflate to the 5 MB limit and then fail their checksum: none is kept, all of them cost.
+    const big = Buffer.concat([PNG, Buffer.alloc(MAX_SCREENSHOT_BYTES - PNG.length)]);
+    const count = Math.ceil(MAX_INFLATED_BYTES / MAX_SCREENSHOT_BYTES) + 5;
+    const gh = fakeGitHub(
+      { 41: { artifacts: ['gallery-screenshots'] } },
+      {
+        410: zip(
+          Array.from({ length: count }, (_, i) => ({
+            name: `z${String(i).padStart(4, '0')}.png`,
+            data: big,
+            badCrc: true,
+          })),
+        ),
+      },
+    );
+    const text = collectScreenshots(SHA, out, gh.deps);
+    expect(text).toContain(`stopped: ${String(MAX_INFLATED_BYTES / (1024 * 1024))} MB inflated`);
+    expect(readdirSync(join(out, 'gallery-screenshots'))).toEqual([]);
+  });
+
+  it(`looks at no more than ${String(MAX_ENTRIES_LOOKED_AT)} candidate entries`, () => {
+    const out = into();
+    const gh = fakeGitHub(
+      { 42: { artifacts: ['gallery-screenshots'] } },
+      {
+        420: zip(
+          Array.from({ length: MAX_ENTRIES_LOOKED_AT + 3 }, (_, i) => ({
+            name: `c${String(i).padStart(4, '0')}.png`,
+            data: PNG,
+            badCrc: true,
+          })),
+        ),
+      },
+    );
+    const text = collectScreenshots(SHA, out, gh.deps);
+    expect(text).toContain(`stopped: ${String(MAX_ENTRIES_LOOKED_AT)} entries looked at`);
+  });
+
+  it(`lists at most ${String(MAX_DROPPED_SHOWN)} dropped entries, each name cut short, then how many more`, () => {
+    const out = into();
+    const gh = fakeGitHub(
+      { 43: { artifacts: ['e2e-screenshots'] } },
+      {
+        430: zip(
+          Array.from({ length: MAX_DROPPED_SHOWN + 70 }, (_, i) => ({
+            name: `${'x'.repeat(1000)}${String(i)}.txt`,
+            data: Buffer.from('x'),
+          })),
+        ),
+      },
+    );
+    const text = collectScreenshots(SHA, out, gh.deps);
+    const dropped = text.split('\n').filter((line) => line.startsWith('    '));
+    expect(dropped).toHaveLength(MAX_DROPPED_SHOWN);
+    expect(Math.max(...dropped.map((line) => line.length))).toBeLessThan(260);
+    expect(text).toContain(
+      `  dropped ${String(MAX_DROPPED_SHOWN + 70)}, the first ${String(MAX_DROPPED_SHOWN)}:`,
+    );
+    expect(text).toContain('    and 70 more');
+  });
+
+  it('writes nothing outside its folder, whatever the entry names say', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'lzp-shots-parent-'));
+    const out = join(parent, 'bundle', 'screenshots');
+    mkdirSync(out, { recursive: true });
+    const gh = fakeGitHub(
+      { 44: { artifacts: ['e2e-screenshots'] } },
+      {
+        440: zip([
+          { name: '../../evil.png', data: PNG },
+          { name: '/abs/x.png', data: PNG },
+          { name: 'a\\..\\y.png', data: PNG },
+        ]),
+      },
+    );
+    const text = collectScreenshots(SHA, out, gh.deps);
+    expect(readdirSync(parent)).toEqual(['bundle']);
+    expect(readdirSync(join(parent, 'bundle'))).toEqual(['screenshots']);
+    expect(existsSync(join(out, 'e2e-screenshots', 'evil.png'))).toBe(true);
+    expect(readdirSync(join(out, 'e2e-screenshots')).sort()).toEqual(['evil.png', 'x.png']);
+    expect(text).toContain('not a plainly named .png');
+  });
+
+  it('drops an entry whose stream does not inflate, and still lists the files kept around it', () => {
+    const out = into();
+    const good = zip([
+      { name: 'a.png', data: PNG },
+      { name: 'b.png', data: Buffer.from('will be broken') },
+      { name: 'c.png', data: PNG },
+    ]);
+    // Corrupt b.png's deflate stream in place (its local record starts after a.png's).
+    const bAt = good.indexOf(Buffer.from('b.png')) + 'b.png'.length;
+    const broken = Buffer.from(good);
+    broken.fill(0xff, bAt, bAt + 4);
+    const gh = fakeGitHub({ 45: { artifacts: ['gallery-screenshots'] } }, { 450: broken });
+    const text = collectScreenshots(SHA, out, gh.deps);
+    expect(readdirSync(join(out, 'gallery-screenshots')).sort()).toEqual(['a.png', 'c.png']);
+    expect(text).toContain('b.png: does not inflate');
+    expect(text).toContain('2 in screenshots/gallery-screenshots/');
   });
 });
