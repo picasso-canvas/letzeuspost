@@ -153,3 +153,13 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     `transition-inset-width`, `transition-margin-opacity`, `transition-size-padding`). `use-mobile.ts`, which only
     the phone sheet used, is deleted. `Sidebar` is the mockup's `.side`: the surface tint with a hairline on its
     right. `Sheet` and `Tooltip` stay as general components.
+29. **A loading sidebar you can see (Iris F1 on #206):** the skeleton's `bg-muted` is the sidebar's own `secondary`
+    (`#F1F0EC` light, `#22201C` dark), so its loading rows vanished. In `SidebarMenuSkeleton` the shapes are
+    `bg-border-strong`, like the mockup's placeholders on the tint; `sidebar.test.tsx` reads both themes' tokens and
+    checks the skeleton differs from the sidebar by at least 1.3:1 (`border` alone is about 1.15:1).
+30. **Whole initials in an avatar group (Iris F2 on #206):** `AvatarGroup`'s `-space-x-2` overlap, with each avatar's
+    2 px ring, covered the right edge of the initials before it; it is `-space-x-1`, and the type keeps its size.
+31. **The mockup's nav in the gallery (Iris F3 on #206):** the sidebar stories follow `.nav`: Inbox, Calendar and
+    Brands, the pinned brands under a "Pinned brands" eyebrow with each brand's mark (the mockup's sample marks, in
+    `src/gallery/mark-*.svg`), then Settings. `SidebarGroupAction` and `SidebarMenuAction` stay in the component as
+    options for later screens; the stories don't use them, as the mockup's nav has no "+" or "…".

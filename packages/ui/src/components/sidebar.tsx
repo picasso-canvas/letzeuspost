@@ -303,6 +303,10 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
   );
 }
 
+/**
+ * A menu row on its way. The skeleton's own `muted` is the sidebar's `secondary`, so here its shapes are `border-strong`,
+ * like the mockup's placeholders on the tint (Iris F1 on #206).
+ */
 function SidebarMenuSkeleton({
   className,
   showIcon = false,
@@ -320,9 +324,14 @@ function SidebarMenuSkeleton({
       className={cn('flex h-8 items-center gap-2 rounded-md px-2', className)}
       {...props}
     >
-      {showIcon && <Skeleton className="size-4 rounded-md" data-sidebar="menu-skeleton-icon" />}
+      {showIcon && (
+        <Skeleton
+          className="size-4 rounded-md bg-border-strong"
+          data-sidebar="menu-skeleton-icon"
+        />
+      )}
       <Skeleton
-        className="h-4 max-w-(--skeleton-width) flex-1"
+        className="h-4 max-w-(--skeleton-width) flex-1 bg-border-strong"
         data-sidebar="menu-skeleton-text"
         style={
           {
