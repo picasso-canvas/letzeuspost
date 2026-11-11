@@ -86,7 +86,11 @@ The GitHub Action (`action.yml`, `claudecode/**`, `scripts/**`) was not copied.
    anchors with the high/medium test (SEVERITY GUIDELINES, in our words, "cross-tenant" → "cross-workspace") and
    "name the principal, input, boundary and result; the smallest fix at the last trusted decision point" (REQUIRED
    OUTPUT FORMAT). Added **WHERE TO LOOK NEXT**: the map from each area to `security-audit`'s companion files and
-   `security-best-practices`' Next.js and React references, read on demand.
+   `security-best-practices`' Next.js and React references, read on demand. Its header says that the companions'
+   terms (`needs_validation`, "not a finding", "A flag is not a finding", "a missing best practice is not a finding")
+   give way to this prompt and to Cerberus: such a risk is a finding Cerberus blocks on (round 2 of #237: Argus F3,
+   Cerberus F3). The output format's boundary-and-result rule keeps a finding that can't yet name them, with its
+   confidence (Argus F2).
 
 ## Review notes
 

@@ -79,7 +79,10 @@ Additional notes:
 - Even if something is only exploitable from the local network, it can still be a HIGH severity issue
 
 WHERE TO LOOK NEXT (LetZeusPost): the reference files to Read for the areas the change touches, before Phase 3. Each
-is a vendored checklist of attack classes for that area; read the file, not the `SKILL.md` beside it.
+is a vendored checklist of attack classes for that area; read the file, not the `SKILL.md` beside it. Their terms
+give way to this prompt and to Cerberus: `needs_validation`, "not a finding", "A flag is not a finding" and "a
+missing best practice is not a finding" never drop a risk the files can't rule out, or a control the plan or Cerberus
+requires; such a risk is a finding Cerberus blocks on, with its confidence and what would settle it.
 - Workspace data, caches, signed links, deletion: `.claude/skills/security-audit/DATA-ISOLATION-AND-LIFECYCLE.md`
 - Prompts, model calls, tool use, model output: `.claude/skills/security-audit/AI-AND-LLM.md`
 - Sign-in, sessions, cookies, tokens, CSRF, headers, SSRF: `.claude/skills/security-audit/WEB-PROTOCOL-AND-AUTH.md`
@@ -89,7 +92,8 @@ is a vendored checklist of attack classes for that area; read the file, not the 
 - An area not listed: `.claude/skills/security-audit/ATTACK-CLASSES.md` (the index) and the companion it names
 - Next.js server code (routes, server actions, middleware):
   `.claude/skills/security-best-practices/references/javascript-typescript-nextjs-web-server-security.md`;
-  React components: `…/references/javascript-typescript-react-web-frontend-security.md`
+  React components:
+  `.claude/skills/security-best-practices/references/javascript-typescript-react-web-frontend-security.md`
 
 ANALYSIS METHODOLOGY:
 
@@ -115,8 +119,9 @@ REQUIRED OUTPUT FORMAT:
 
 You MUST output your findings in markdown. The markdown output should contain the file, line number, severity, category (e.g. `sql_injection` or `xss`), description, exploit scenario, and fix recommendation. The exploit scenario names the
 lower-trust principal, the input or action it controls, the boundary crossed and the concrete result (who or what is
-affected, and how); a finding that can't name a boundary and a result is a note, not a vulnerability. The fix is the
-narrowest source change that enforces the missing invariant at the last trusted decision point, with its test.
+affected, and how); a finding that can't yet name the boundary and the result stays a finding, with its confidence
+and what would settle it. The fix is the narrowest source change that enforces the missing invariant at the last
+trusted decision point, with its test.
 
 For example:
 
