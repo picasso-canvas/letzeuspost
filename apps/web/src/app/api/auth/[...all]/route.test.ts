@@ -19,6 +19,12 @@ describe('/api/auth/[...all]', () => {
     expect(source).not.toMatch(/use cache|revalidate|force-static/);
   });
 
+  it("hands the work after the answer to Next's after() (decision 5)", () => {
+    const source = readFileSync(new URL('./route.ts', import.meta.url), 'utf8');
+    expect(source).toMatch(/import \{ after \} from 'next\/server';/);
+    expect(source).toContain('authServer().handler(request, after)');
+  });
+
   it('sits where packages/auth makes its links point', () => {
     expect(decodeURIComponent(new URL('./route.ts', import.meta.url).pathname)).toContain(
       `/app${AUTH_BASE_PATH}/[...all]/route.ts`,
