@@ -163,3 +163,26 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     Brands, the pinned brands under a "Pinned brands" eyebrow with each brand's mark (the mockup's sample marks, in
     `src/gallery/mark-*.svg`), then Settings. `SidebarGroupAction` and `SidebarMenuAction` stay in the component as
     options for later screens; the stories don't use them, as the mockup's nav has no "+" or "…".
+32. **Nav items at the body weight (Zeus, #75, 2026-11-11; replaces the active item's label weight in change 23):**
+    every sidebar nav item, `SidebarMenuButton` and `SidebarMenuSubButton`, sets `font-normal` (400), the current page
+    included. The current page is marked by its card and 2 px bar alone (`data-active:bg-card`,
+    `data-active:shadow-sidebar-current`); the `data-active:font-(weight:--font-weight-label)` class is gone.
+    `sidebar.test.tsx` resolves the weights the item's classes can set from the compiled CSS.
+33. **A shimmering skeleton (§05, #75; replaces the pulse in change 19):** `animate-pulse` and
+    `motion-reduce:animate-none` → `skeleton-shimmer` (`styles/components.css`): a band over the shape, moved with
+    `transform` only, which stands still and is not drawn under reduced motion. `skeleton.test.tsx` checks the keyframes
+    and the reduced-motion rule from the compiled CSS.
+34. **The mockup's shimmer values (Iris F5 on #219; Athena's decision 1 on #75, 2026-11-11):** `skeleton-shimmer`'s
+    band is the mockup's `.shimmer::after`: a 100° gradient, transparent to 30%, white at 35% at 50%, transparent from
+    70%, a 1.6 s loop; it replaces change 33's 90° band of the text colour at 8%. The white is a raw colour in
+    `components.css`, the one the `globals.test.ts` guard allows (that exact stop). In dark the same white band is a light
+    wash across the dark muted surface, as in the mockup.
+35. **The narrow row (Iris F4 on #219; the mockup's `@media (max-width: 900px)` for `.side` and `.nav`):**
+    `SidebarProvider` is now a container named `sidebar` (`@container/sidebar`) around its wrapper, and
+    `styles/components.css` defines the `sidebar-narrow` variant (`@container sidebar (max-width: 900px)`) and
+    `shadow-sidebar-current-narrow` (the 2 px bar under the current link). Below 900 px the wrapper stacks, `Sidebar`
+    is a row that scrolls sideways with its hairline underneath, the menus are rows, links stay on one line
+    (`whitespace-nowrap`), the badge is inline, group labels are hidden, and a caller hides a group with
+    `sidebar-narrow:hidden` (the mockup's `.brandnav`). It is measured on the frame, not the window, so the gallery's
+    `NarrowRow` story draws it in a 384 px box; in the app the frame is as wide as the window. `sidebar.test.tsx` reads the
+    compiled CSS.

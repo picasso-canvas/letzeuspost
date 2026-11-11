@@ -103,11 +103,11 @@ describe('globals.css', () => {
     expect(css).toMatch(
       /\.toast-transition\s*\{[^}]*@media \(prefers-reduced-motion: reduce\)\s*\{\s*transition:\s*none/,
     );
-    // Comments aside (they cite issues like #205), no raw colour.
-    const rules = readFileSync(new URL('components.css', import.meta.url), 'utf8').replace(
-      /\/\*[\s\S]*?\*\//g,
-      '',
-    );
+    // Comments aside (they cite issues like #205), no raw colour, but for the one the skeleton's shimmer takes from the
+    // mockup's `.shimmer` (Athena's decision 1 on #75, 2026-11-11): its white band, at 35%, exactly. Any other fails.
+    const rules = readFileSync(new URL('components.css', import.meta.url), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace('rgb(255 255 255 / 35%) 50%', '');
     expect(rules).not.toMatch(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch)\(/i);
   });
 

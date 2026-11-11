@@ -49,7 +49,7 @@ export async function openStory(page: Page, id: string, theme: Theme): Promise<v
 /**
  * Puts the story in the state its tag names: `hover` is a real pointer, `focus` a real Tab key press, and
  * `keyboard-open` then presses ArrowDown on the focused trigger, so a menu opens the way a keyboard user opens it, its
- * first item focused (#205).
+ * first item focused (#205): an item that is a `menuitem`, or a `menuitemradio` as the top bar's workspace rows are.
  */
 export async function applyState(page: Page, tags: string[]): Promise<void> {
   if (tags.includes('hover')) {
@@ -65,7 +65,9 @@ export async function applyState(page: Page, tags: string[]): Promise<void> {
   }
   if (tags.includes('keyboard-open')) {
     await page.keyboard.press('ArrowDown');
-    await page.locator('[role="menuitem"]:focus-visible').waitFor();
+    await page
+      .locator('[role="menuitem"]:focus-visible, [role="menuitemradio"]:focus-visible')
+      .waitFor();
   }
 }
 
