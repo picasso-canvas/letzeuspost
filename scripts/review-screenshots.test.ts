@@ -12,7 +12,9 @@ import {
   MAX_PIXELS_SIDE,
   MAX_SCREENSHOT_BYTES,
   MAX_SCREENSHOTS,
+  inflateBudget,
   readZip,
+  STEP_TIME_LIMIT_MS,
 } from './review-screenshots.ts';
 
 const SHA = 'd'.repeat(40);
@@ -463,8 +465,11 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     expect(readdirSync(join(out, 'gallery-screenshots'))).toEqual([]);
   });
 
-  it('uses the real 1 GB budget when none is given', () => {
-    expect(MAX_INFLATED_BYTES).toBe(1024 * 1024 * 1024);
+  // Argus F3 and Cerberus F1 on #220: the budget a caller gives can only lower the real one.
+  it('takes the real 1 GB budget by default, and never a bigger one', () => {
+    expect(inflateBudget(undefined)).toBe(1024 * 1024 * 1024);
+    expect(inflateBudget(2 * MAX_INFLATED_BYTES)).toBe(MAX_INFLATED_BYTES);
+    expect(inflateBudget(20 * 1024 * 1024)).toBe(20 * 1024 * 1024);
   });
 
   it(`looks at no more than ${String(MAX_ENTRIES_LOOKED_AT)} candidate entries`, () => {
@@ -589,5 +594,56 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     expect(text).toContain(
       "e2e-screenshots: not fetched: the screenshot step's 10-minute limit ran out.",
     );
+  });
+
+  // Argus F1 on #220: once both artifacts are found, listing stops without looking at the clock, so a slow listing
+  // ends as "not fetched" for each artifact (the step is past its limit), never as a failed listing.
+  it('stops listing once both artifacts are found, even past the time limit', () => {
+    const out = into();
+    let clock = 0;
+    const github = fakeGitHub(
+      {
+        49: { artifacts: ['gallery-screenshots'] },
+        50: { artifacts: ['e2e-screenshots'] },
+        51: { artifacts: ['gallery-screenshots'] },
+      },
+      {},
+    );
+    const gh = (args: string[]) => {
+      const answer = github.deps.gh(args);
+      if (args.join(' ').includes('actions/runs/50/artifacts')) clock += STEP_TIME_LIMIT_MS + 1;
+      return answer;
+    };
+    const text = collectScreenshots(SHA, out, { ...github.deps, gh, now: () => clock });
+    expect(text).not.toContain("Couldn't list");
+    expect(text).toContain(
+      "gallery-screenshots: not fetched: the screenshot step's 10-minute limit ran out.",
+    );
+    expect(text).toContain(
+      "e2e-screenshots: not fetched: the screenshot step's 10-minute limit ran out.",
+    );
+    expect(github.calls.some((c) => c.includes('actions/runs/49/artifacts'))).toBe(false);
+  });
+
+  // Argus F2 on #220: the limit running out while listing.
+  it('stops listing at the time limit, says so, and fetches nothing', () => {
+    const out = into();
+    let clock = 0;
+    const github = fakeGitHub(
+      { 54: { artifacts: ['gallery-screenshots'] }, 55: { artifacts: ['e2e-screenshots'] } },
+      {
+        540: zip([{ name: 'card.png', data: PNG }]),
+        550: zip([{ name: 'home.png', data: PNG }]),
+      },
+    );
+    const gh = (args: string[]) => {
+      clock += 11 * 60 * 1000; // each listing call takes 11 minutes
+      return github.deps.gh(args);
+    };
+    const text = collectScreenshots(SHA, out, { ...github.deps, gh, now: () => clock });
+    expect(text).toBe(
+      `Couldn't list CI's runs or artifacts on ${SHA} (the step's 10-minute limit ran out): no screenshots in this bundle.\n`,
+    );
+    expect(github.fetched).toEqual([]);
   });
 });
