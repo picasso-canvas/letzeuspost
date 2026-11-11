@@ -31,6 +31,14 @@ describe('the sign-in-link email', () => {
     }
   });
 
+  it('writes its apostrophes curly (’), in both versions', async () => {
+    const email = await renderTemplate('sign-in-link', { url }, { appUrl });
+    expect(email.text).toContain('If you didn’t ask to sign in');
+    expect(email.html).toContain('didn’t');
+    for (const version of [email.html, email.text])
+      expect(version).not.toMatch(/didn(?:'|&#x27;)t/);
+  });
+
   it.each([
     ['no link', {}],
     ['a link that is not text', { url: 42 }],
