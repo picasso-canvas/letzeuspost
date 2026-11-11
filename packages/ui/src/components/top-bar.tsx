@@ -26,7 +26,7 @@ import {
 import { Skeleton } from '@lzp/ui/components/skeleton';
 
 /** `bn` for a name written in Bangla, so it gets its font, its shaping and the right voice (Zeus, 2026-11-11). */
-function langOf(name: string): 'bn' | undefined {
+export function langOf(name: string): 'bn' | undefined {
   return /\p{Script=Bengali}/u.test(name) ? 'bn' : undefined;
 }
 
