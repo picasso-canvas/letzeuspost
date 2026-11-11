@@ -12,7 +12,9 @@ const id = z.uuidv7();
  * pg-boss's backoff the waits are about 30-60 s, 1-2 min and 2-4 min: a job that keeps failing stops after 4 tries,
  * within the 15 minutes after which §14's monitoring calls a job stuck. A run still going after `expireInSeconds`
  * (pg-boss's default, 15 minutes, written out because the email outbox relies on it) is failed and retried, which is
- * also how pg-boss notices a run whose process was killed.
+ * also how pg-boss notices a run whose process was killed. So a killed run's job runs again only after a wait: the
+ * rest of its 15 minutes from the run's start (until pg-boss's next monitor pass finds it expired), then its retry
+ * delay, 30 s or more (Argus F4 on #197). A run that fails instead of dying is retried after the delay alone.
  */
 const retry = {
   retryLimit: 3,
