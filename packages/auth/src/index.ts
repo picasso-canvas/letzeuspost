@@ -16,5 +16,7 @@ export {
   SESSION_DAYS,
   SIGN_IN_LINK_MINUTES,
   SIGN_IN_TEMPLATE,
+  signInBucket,
+  type AfterAnswer,
 } from './sign-in.ts';
 export type { NewWorkspace, WorkspaceOfMember } from './workspaces.ts';

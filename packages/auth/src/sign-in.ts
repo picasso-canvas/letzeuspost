@@ -5,7 +5,9 @@
 // - A link works once and for 10 minutes (A5); its token is stored hashed, and an unknown address never gets an
 //   account (sign-up is off).
 // - Only existing accounts get an email. An unknown address gets the same answer as a known one, and nothing is
-//   written for it: no link, no email (Q9).
+//   written for it: no link, no email (Q9). The answer comes first, after the same work for both (their limits): the
+//   known address's link, its outbox row and job are made once it is sent, in the work the handler hands to
+//   `afterAnswer`, Next's `after()` (decision 5).
 // - The request writes no email itself: `queueSignInEmail` puts a row in the account emails' outbox and queues the
 //   `account-email` job (./server.ts), which the worker sends.
 // - Requests are limited per address and per IP, known addresses or not, at config/sign-in.ts's limits (Q9), in
@@ -15,6 +17,7 @@
 //   from its use. They live in the session table, and the cookie holds only the session's token: HttpOnly,
 //   SameSite=Lax, and Secure wherever the app is HTTPS (staging and production: config/env.ts's `servedOverHttps`).
 // - The handler serves only SERVED_ENDPOINTS; every other Better Auth route answers 404.
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHmac } from 'node:crypto';
 import { isIP } from 'node:net';
 import { servedOverHttps, signInLimits } from '@lzp/config';
@@ -88,10 +91,38 @@ const noClientIp = () =>
     message: 'This request could not be checked. Try again.',
   });
 
-function options(deps: SignInDeps) {
-  /** A bucket's name: its kind and a keyed hash of its value, so the table never holds an address or an IP. */
-  const bucket = (kind: 'address' | 'ip', value: string) =>
-    `sign-in:${kind}:${createHmac('sha256', deps.secret).update(value).digest('hex')}`;
+/** What a request for a link asks for, once the endpoint's own schema has checked it. */
+interface LinkRequest {
+  readonly email: string;
+  readonly callbackURL?: string | undefined;
+  readonly newUserCallbackURL?: string | undefined;
+  readonly errorCallbackURL?: string | undefined;
+}
+
+/** The link endpoint, as the hook uses it: Better Auth's own, once it exists (`createSignIn`). */
+interface Links {
+  /** The request, if the endpoint's schema takes it; null if the endpoint would refuse it. */
+  check: (body: unknown) => Promise<LinkRequest | null>;
+  /** Makes the link and queues its email if `request.email` has an account; for anyone else, nothing. */
+  make: (request: LinkRequest) => Promise<void>;
+}
+
+/** Hands work over to run once the answer is sent: Next's `after()`, which the route passes (decision 5). */
+export type AfterAnswer = (task: () => Promise<void>) => void;
+
+/** The `afterAnswer` of the request being handled, for the hook. */
+const answering = new AsyncLocalStorage<AfterAnswer>();
+
+/**
+ * The rate-limit bucket a sign-in request counts in, for an address (trimmed, lowercase) or an IP: its kind and a hash
+ * of its value keyed with AUTH_SECRET, so the table never holds an address or an IP.
+ */
+export function signInBucket(secret: string, kind: 'address' | 'ip', value: string): string {
+  return `sign-in:${kind}:${createHmac('sha256', secret).update(value).digest('hex')}`;
+}
+
+function options(deps: SignInDeps, links: Links) {
+  const bucket = (kind: 'address' | 'ip', value: string) => signInBucket(deps.secret, kind, value);
   const { perAddress, perIp, windowSeconds } = signInLimits;
   // Decision 4 (Athena, 2026-11-11): Cloudflare is in front exactly where the app is HTTPS only, staging and
   // production (§14), and it alone sets cf-connecting-ip there. In development and CI, Next's server puts the
@@ -139,6 +170,9 @@ function options(deps: SignInDeps) {
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== '/sign-in/magic-link') return undefined;
+        // packages/auth's own call after the answer (`links.make`), the only one with no request: its request was
+        // checked and counted here already.
+        if (ctx.request === undefined) return undefined;
         const body: unknown = ctx.body;
         const given =
           typeof body === 'object' && body !== null
@@ -156,11 +190,19 @@ function options(deps: SignInDeps) {
         if (!(await deps.hitRateLimit(bucket('address', address), perAddress, windowSeconds))) {
           throw tooMany();
         }
-        // Q9: an address with no account gets the endpoint's own answer, and no link is made for it. Only an
-        // address that matches an account (so a valid one) goes on to the endpoint.
-        const found = await ctx.context.internalAdapter.findUserByEmail(address);
-        if (found === null) return ctx.json({ status: true });
-        return undefined;
+        // A body the endpoint refuses goes on to it, which answers with its own error before any link is made.
+        const asked = await links.check(body);
+        if (asked === null) return undefined;
+        // Q9 and decision 5: every address gets the endpoint's answer now, before anything is read of accounts. Who
+        // has one, their link and its email are found and made after it (`links.make`).
+        const afterAnswer = answering.getStore();
+        if (afterAnswer === undefined) throw new Error('sign-in: no way to work after the answer');
+        afterAnswer(() =>
+          links.make({ ...asked, email: address }).catch((error: unknown) => {
+            log('error', `a sign-in link failed after the answer: ${kindOf(error) || 'unknown'}`);
+          }),
+        );
+        return ctx.json({ status: true });
       }),
     },
     plugins: [
@@ -170,7 +212,7 @@ function options(deps: SignInDeps) {
         storeToken: 'hashed',
         sendMagicLink: async ({ email, url }, ctx) => {
           const found = await ctx?.context.internalAdapter.findUserByEmail(email);
-          // Removed since the hook found them: no email.
+          // Removed since `links.make` found them: no email.
           if (found === null || found === undefined) return;
           await deps.queueSignInEmail({ userId: found.user.id, to: found.user.email, url });
         },
@@ -191,20 +233,37 @@ function kindOf(error: unknown): string {
 }
 
 export function createSignIn(deps: SignInDeps) {
-  const auth = betterAuth(options(deps));
+  const links: Links = {
+    check: () => Promise.reject(new Error('sign-in: not ready')),
+    make: () => Promise.reject(new Error('sign-in: not ready')),
+  };
+  const auth = betterAuth(options(deps, links));
+  const schema = auth.api.signInMagicLink.options.body['~standard'];
+  links.check = async (body) => {
+    const result = await schema.validate(body);
+    return result.issues === undefined ? result.value : null;
+  };
+  links.make = async (request) => {
+    const context = await auth.$context;
+    if ((await context.internalAdapter.findUserByEmail(request.email)) === null) return;
+    await auth.api.signInMagicLink({ body: request, headers: new Headers() });
+  };
   const served = new Set<string>(SERVED_ENDPOINTS);
   return {
     /** The Better Auth instance, for packages/auth alone: the web app gets `handler`. */
     auth,
-    /** The route handler: SERVED_ENDPOINTS only. */
-    handler: async (request: Request): Promise<Response> => {
+    /**
+     * The route handler: SERVED_ENDPOINTS only. `afterAnswer` runs what must wait for the answer: the route passes
+     * Next's `after()`.
+     */
+    handler: async (request: Request, afterAnswer: AfterAnswer): Promise<Response> => {
       const { pathname } = new URL(request.url);
       const path = pathname.startsWith(`${AUTH_BASE_PATH}/`)
         ? pathname.slice(AUTH_BASE_PATH.length)
         : null;
       if (path === null || !served.has(`${request.method} ${path}`)) return notFound();
       try {
-        return await auth.handler(request);
+        return await answering.run(afterAnswer, () => auth.handler(request));
       } catch (error) {
         log('error', `${request.method} ${path} failed: ${kindOf(error) || 'unknown'}`);
         return new Response(null, { status: 500 });

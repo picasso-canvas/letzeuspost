@@ -12,13 +12,14 @@ import { createDb, installJobs, member, migrate, workspace, type Db } from '@lzp
 import { createAuthDb, schema, type AuthDb } from '@lzp/db/auth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAuthServer, type AuthServer } from './server.ts';
+import { signInBucket } from './sign-in.ts';
 
 const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
 const { DATABASE_URL: databaseUrl } = loadEnv('worker');
 const appUrl = 'http://localhost:3000';
 
 const run = randomUUID();
-const startedAt = new Date().toISOString();
+const secret = `integration-only-${run}`;
 const suffix = `-${run}@sign-in.invalid`;
 const known = `nadia${suffix}`;
 const other = `other${suffix}`;
@@ -45,14 +46,41 @@ async function outbox(to: string) {
   );
 }
 
-function askForLink(email: string, ip: string) {
+/** The rate-limit buckets this run counted in, so the end removes those alone (Argus F8). */
+const buckets = new Set<string>();
+
+/** What the route hands Next's `after()`, run here once the test has the answer (decision 5). */
+const pending: (() => Promise<void>)[] = [];
+const afterAnswer = (task: () => Promise<void>) => {
+  pending.push(task);
+};
+
+async function runAfterAnswer(): Promise<void> {
+  for (let task = pending.shift(); task !== undefined; task = pending.shift()) await task();
+}
+
+/** Asks for a link and gets the answer; what runs after it is left pending. */
+function ask(email: string, ip: string) {
+  buckets.add(signInBucket(secret, 'ip', ip));
+  buckets.add(signInBucket(secret, 'address', email.trim().toLowerCase()));
   return server.handler(
     new Request(`${appUrl}/api/auth/sign-in/magic-link`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: appUrl, 'x-forwarded-for': ip },
       body: JSON.stringify({ email, callbackURL: '/app' }),
     }),
+    afterAnswer,
   );
+}
+
+async function askForLink(email: string, ip: string) {
+  const response = await ask(email, ip);
+  await runAfterAnswer();
+  return response;
+}
+
+function open(url: string) {
+  return server.handler(new Request(url), afterAnswer);
 }
 
 function sessionCookie(response: Response): string | undefined {
@@ -65,7 +93,7 @@ function sessionCookie(response: Response): string | undefined {
 async function signIn(ip: string): Promise<string> {
   await askForLink(known, ip);
   const url = (await outbox(known)).at(-1)?.data.url ?? '';
-  const cookie = sessionCookie(await server.handler(new Request(url)));
+  const cookie = sessionCookie(await open(url));
   if (cookie === undefined) throw new Error('not signed in');
   return cookie;
 }
@@ -86,7 +114,7 @@ beforeAll(async () => {
   ids.other = people[1]?.id ?? '';
   server = createAuthServer({
     DATABASE_URL: databaseUrl,
-    AUTH_SECRET: `integration-only-${run}`,
+    AUTH_SECRET: secret,
     APP_URL: appUrl,
     LZP_ENV: 'ci',
   });
@@ -109,18 +137,24 @@ afterAll(async () => {
   }
   // Their sessions and account emails go with them, by the cascade.
   await authDb.db.execute(`delete from "user" where email like ${literal(`%${suffix}`)}`);
-  await authDb.db.execute(
-    `delete from rate_limit_hit where bucket like 'sign-in:%' and created_at >= ${literal(startedAt)}`,
-  );
+  // This run's buckets alone: their names hash its addresses and IPs with its own AUTH_SECRET.
+  if (buckets.size > 0) {
+    await authDb.db.execute(
+      `delete from rate_limit_hit where bucket in (${[...buckets].map(literal).join(', ')})`,
+    );
+  }
   await authDb.close();
   await db.close();
 });
 
 describe('email-link sign-in on Postgres', () => {
-  it('writes one outbox row for a known address, and the link’s token in no other table', async () => {
-    const response = await askForLink(known, '192.0.2.10');
+  it('answers, then writes one outbox row for a known address, and the link’s token in no other table', async () => {
+    const response = await ask(known, '192.0.2.10');
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: true });
+    // Decision 5: nothing is written for the address before the answer.
+    expect(await outbox(known)).toEqual([]);
+    await runAfterAnswer();
     const [row, ...more] = await outbox(known);
     expect(more).toEqual([]);
     expect(row?.template).toBe('sign-in-link');
@@ -139,7 +173,7 @@ describe('email-link sign-in on Postgres', () => {
   it('signs in once, into a 30-day session stored in Postgres, and refuses the link the second time', async () => {
     await askForLink(known, '192.0.2.11');
     const url = (await outbox(known)).at(-1)?.data.url ?? '';
-    const cookie = sessionCookie(await server.handler(new Request(url)));
+    const cookie = sessionCookie(await open(url));
     expect(cookie).toBeDefined();
     const session = await server.getSession(new Headers({ cookie: cookie ?? '' }));
     expect(session?.user.id).toBe(ids.known);
@@ -153,7 +187,7 @@ describe('email-link sign-in on Postgres', () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
 
-    const again = await server.handler(new Request(url));
+    const again = await open(url);
     expect(again.headers.get('location')).toContain('error=INVALID_TOKEN');
     expect(sessionCookie(again)).toBeUndefined();
   });
@@ -176,11 +210,11 @@ describe('email-link sign-in on Postgres', () => {
       expect((await askForLink(address, '192.0.2.13')).status).toBe(200);
     }
     expect((await askForLink(address, '192.0.2.13')).status).toBe(429);
-    const buckets = await rows<{ bucket: string }>(
-      `select bucket from rate_limit_hit where bucket like 'sign-in:%' and created_at >= ${literal(startedAt)}`,
+    const counted = await rows<{ bucket: string }>(
+      `select bucket from rate_limit_hit where bucket in (${[...buckets].map(literal).join(', ')})`,
     );
-    expect(buckets.length).toBeGreaterThan(0);
-    expect(buckets.map((row) => row.bucket).join(' ')).not.toMatch(/@|192\.0\.2|limited/);
+    expect(counted.length).toBeGreaterThan(0);
+    expect(counted.map((row) => row.bucket).join(' ')).not.toMatch(/@|192\.0\.2|limited/);
   });
 });
 
