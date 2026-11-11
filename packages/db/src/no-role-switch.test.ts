@@ -1,9 +1,10 @@
 // Only the auth handle switches the database role (#176, Cerberus F2's nit on #184). Workspace code runs as lzp_app;
 // lzp_app may take lzp_auth, which holds the auth tables, only by switching to it, and only packages/db/src/auth.ts
 // does that, on its own pool. This check reads every text file in the repo, comments too: code, SQL, shell, YAML, JSON,
-// and Markdown's code blocks (Argus F1 on #189), fenced or indented (Argus F2 on #202), in files holding NUL bytes too
-// (Cerberus F3 on #202), and refuses a role switch anywhere else but in the few known lines below. It runs in
-// `pnpm check`. The cases below put the SQL words together at run time, because the check reads this file as well.
+// and Markdown's code blocks (Argus F1 on #189), fenced or indented (Argus F2 on #202), in files holding NUL bytes
+// (Cerberus F3 on #202) or bytes that aren't UTF-8 (Argus F1 on #203) too, and refuses a role switch anywhere else
+// but in the few known lines below. It runs in `pnpm check`. The cases below put the SQL words together at run time,
+// because the check reads this file as well.
 //
 // Its limit (Argus F6 and Cerberus F4 on #189): it reads text, so it sees only a switch written out in a file. A
 // switch put together at run time gets past it, as these cases show: SQL built from pieces, a role name read from
@@ -125,13 +126,16 @@ function withoutKnown(file: string, text: string): string {
 }
 
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
+const LENIENT_UTF8 = new TextDecoder('utf-8');
 
 /**
- * The text in a file's bytes, or null for a binary. A NUL byte alone doesn't make a binary (Cerberus F3 on #202): it
- * would let a switch hide in a file beside one. A file is text when its bytes, NULs left out, are valid UTF-8, as text
- * in UTF-8 or ASCII-range UTF-16 is; an image's bytes aren't.
+ * The text in a file's bytes, or null for a binary. A file without a NUL byte is text, decoded leniently: a byte that
+ * isn't UTF-8 (Latin-1, CP1252, which psql runs as they are) becomes U+FFFD and leaves the ASCII around it to be read
+ * (Argus F1 on #203). A NUL byte alone doesn't make a binary either (Cerberus F3 on #202): a file holding one is text
+ * when its bytes, NULs left out, are valid UTF-8, as text in UTF-8 or ASCII-range UTF-16 is; an image's bytes aren't.
  */
 function textOf(bytes: Uint8Array): string | null {
+  if (!bytes.includes(0)) return LENIENT_UTF8.decode(bytes);
   try {
     return UTF8.decode(bytes.filter((byte) => byte !== 0));
   } catch {
