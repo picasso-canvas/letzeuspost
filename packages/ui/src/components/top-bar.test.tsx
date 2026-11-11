@@ -426,9 +426,24 @@ describe('the words the top bar’s stories name', () => {
     ],
     ['frame.switcher.retry', 'Try again'],
     ['frame.switcher.loading', 'Loading workspaces…'],
-    ['frame.account.label', 'Nadia Karim (Admin)'],
+    ['frame.account.label', '{name} ({role})'],
   ])('has %s in en.json, as the stories word it', (key, wording) => {
     expect(at(key)).toBe(wording);
+  });
+
+  // The avatar's name is a message with placeholders, so each person's avatar names them and their role, not one
+  // fixed person (Iris F2 on #226). The stories show it filled in for an example person.
+  it('fills the avatar’s name with the person and their role', () => {
+    const fill = (template: unknown, values: Record<string, string>): string =>
+      String(template).replace(/\{(\w+)\}/g, (_, name: string) => values[name] ?? `{${name}}`);
+    expect(fill(at('frame.account.label'), { name: 'Nadia Karim', role: 'Admin' })).toBe(
+      'Nadia Karim (Admin)',
+    );
+    expect(fill(at('frame.account.label'), { name: 'ঢাকা Studio', role: 'Viewer' })).toBe(
+      'ঢাকা Studio (Viewer)',
+    );
+    const stories = readFileSync(new URL('top-bar.stories.tsx', import.meta.url), 'utf8');
+    expect(stories).toContain("const accountLabel = 'Nadia Karim (Admin)';");
   });
 
   it('has every key the stories name', () => {
