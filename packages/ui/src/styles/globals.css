@@ -13,6 +13,9 @@
 @import '../tokens/base.css';
 @import '../tokens/dark.css';
 
+/* The components' own mechanics, as named utilities (#205). */
+@import './components.css';
+
 /* shadcn's `dark:` utilities follow the class, like the token overrides in dark.css. */
 @custom-variant dark (&:is(.dark *));
 

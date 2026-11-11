@@ -29,6 +29,13 @@
       "when": 1794329422301,
       "tag": "0003_email_message",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794368468387,
+      "tag": "0004_email_claimed_by_job",
+      "breakpoints": true
     }
   ]
 }

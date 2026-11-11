@@ -1,8 +1,17 @@
 import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import * as avatar from '@lzp/ui/components/avatar.stories';
 import * as button from '@lzp/ui/components/button.stories';
+import * as dropdownMenu from '@lzp/ui/components/dropdown-menu.stories';
+import * as empty from '@lzp/ui/components/empty.stories';
 import * as input from '@lzp/ui/components/input.stories';
+import * as sheet from '@lzp/ui/components/sheet.stories';
+import * as sidebar from '@lzp/ui/components/sidebar.stories';
+import * as skeleton from '@lzp/ui/components/skeleton.stories';
+import * as toast from '@lzp/ui/components/toast.stories';
+import * as tooltip from '@lzp/ui/components/tooltip.stories';
+import * as topBar from '@lzp/ui/components/top-bar.stories';
 
 // §21: every component is in the gallery in every state that applies to it (default, hover, focus, disabled, empty,
 // loading, error). The gallery tests act on the `hover` and `focus` tags, so a state with the wrong tag would be drawn
@@ -75,5 +84,95 @@ describe('the input stories', () => {
       expect(html(name), name).not.toContain('placeholder="Golpo Café"');
     }
     expect(html('Filled')).toContain('value="Golpo Café"');
+  });
+});
+
+// The app frame's components (#205): the states each one has, and the tags that draw the pointer and key states.
+describe('the dropdown menu stories', () => {
+  it('open one menu by the keyboard, after tabbing to its trigger', () => {
+    expect(storiesOf(dropdownMenu).KeyboardOpen?.tags).toEqual(['focus', 'keyboard-open']);
+  });
+});
+
+describe('the top bar stories', () => {
+  const stories = storiesOf(topBar);
+
+  it('open the switcher by the keyboard, after tabbing to its button', () => {
+    expect(stories.KeyboardOpen?.tags).toEqual(['focus', 'keyboard-open']);
+  });
+
+  it('have no empty switcher: the frame only exists inside a workspace (Athena, #75, 2026-11-11)', () => {
+    expect(stories).not.toHaveProperty('Empty');
+  });
+});
+
+describe.each([
+  { name: 'avatar', module: avatar, states: ['Photo', 'Initials', 'Group'], hover: [], focus: [] },
+  { name: 'skeleton', module: skeleton, states: ['PostCard', 'ListRow'], hover: [], focus: [] },
+  {
+    name: 'empty',
+    module: empty,
+    states: ['NoPostsYet', 'ErrorState'],
+    hover: ['ActionHover'],
+    focus: ['ActionFocus'],
+  },
+  {
+    name: 'dropdown menu',
+    module: dropdownMenu,
+    states: ['Closed', 'Open', 'CheckboxAndRadio'],
+    hover: ['TriggerHover'],
+    focus: ['TriggerFocus', 'KeyboardOpen'],
+  },
+  { name: 'tooltip', module: tooltip, states: ['Open'], hover: [], focus: ['TriggerFocus'] },
+  { name: 'sheet', module: sheet, states: ['Closed', 'Open'], hover: [], focus: [] },
+  {
+    name: 'toast',
+    module: toast,
+    states: ['Success', 'Info', 'ErrorState', 'Loading'],
+    hover: [],
+    focus: [],
+  },
+  {
+    name: 'sidebar',
+    module: sidebar,
+    states: ['Expanded', 'Loading', 'NoPinnedBrands', 'NarrowRow'],
+    hover: ['ItemHover'],
+    focus: ['ItemFocus'],
+  },
+  // The top bar and its workspace switcher (#75): closed, hovered, focused, open, opened by the keyboard, disabled,
+  // loading, and with the list failed to load (closed, and open to show why).
+  {
+    name: 'top bar',
+    module: topBar,
+    states: [
+      'Default',
+      'Logo',
+      'Open',
+      'Disabled',
+      'Loading',
+      'ErrorState',
+      'ErrorOpen',
+      'LongName',
+    ],
+    hover: ['TriggerHover'],
+    focus: ['TriggerFocus', 'KeyboardOpen'],
+  },
+])('the $name stories', ({ module, states, hover, focus }) => {
+  const stories = storiesOf(module);
+
+  it('show each state that applies', () => {
+    for (const name of states) expect(stories, name).toHaveProperty(name);
+  });
+
+  it('tag only the hovered and focused states, with the tags the gallery tests know', () => {
+    const tagged = (tag: string) =>
+      Object.entries(stories)
+        .filter(([, story]) => (story.tags ?? []).includes(tag))
+        .map(([name]) => name);
+    expect(tagged('hover')).toEqual(hover);
+    expect(tagged('focus')).toEqual(focus);
+    for (const [name, story] of Object.entries(stories))
+      for (const tag of story.tags ?? [])
+        expect(['hover', 'focus', 'keyboard-open'], name).toContain(tag);
   });
 });

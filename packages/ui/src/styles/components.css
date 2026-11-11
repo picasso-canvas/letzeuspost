@@ -1,0 +1,146 @@
+/*
+ * Component mechanics that the shadcn registry writes as arbitrary values (#205), as named utilities instead, so the
+ * components keep to `lzp/tokens-only` (§21). They hold only calc() over the components' own runtime variables
+ * (Base UI's toast) and colour tokens: no raw colour, size or radius of their own (but for the skeleton's shimmer, which
+ * takes the mockup's white band). Anything that moves stops under reduced motion (§05). SOURCES.md lists which registry
+ * class each one replaces.
+ */
+
+/* The toast stack (toast.tsx): Base UI sets --toast-index, --toast-offset-y, the heights and the swipe movement. */
+@utility z-toast {
+  z-index: calc(1000 - var(--toast-index));
+}
+
+@utility toast-vars {
+  --gap: 0.75rem;
+  --peek: 0.75rem;
+  --height: var(--toast-frontmost-height, var(--toast-height));
+  --offset-y: calc(
+    var(--toast-offset-y) * -1 + calc(var(--toast-index) * var(--gap) * -1) +
+      var(--toast-swipe-movement-y)
+  );
+  --scale: calc(max(0, 1 - (var(--toast-index) * 0.1)));
+  --shrink: calc(1 - var(--scale));
+}
+
+@utility toast-stack {
+  transform: translateX(var(--toast-swipe-movement-x))
+    translateY(
+      calc(
+        var(--toast-swipe-movement-y) - (var(--toast-index) * var(--peek)) -
+          (var(--shrink) * var(--height))
+      )
+    )
+    scale(var(--scale));
+}
+
+@utility toast-transition {
+  transition-property: transform, opacity, height;
+  transition-timing-function: var(--default-transition-timing-function);
+  transition-duration: var(--default-transition-duration);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+@utility h-toast-gap {
+  height: calc(var(--gap) + 1px);
+}
+
+@utility toast-expanded {
+  transform: translateX(var(--toast-swipe-movement-x)) translateY(var(--offset-y));
+}
+
+@utility toast-out {
+  transform: translateY(150%);
+}
+
+@utility toast-swipe-down {
+  transform: translateY(calc(var(--toast-swipe-movement-y) + 150%));
+}
+
+@utility toast-swipe-up {
+  transform: translateY(calc(var(--toast-swipe-movement-y) - 150%));
+}
+
+@utility toast-swipe-left {
+  transform: translateX(calc(var(--toast-swipe-movement-x) - 150%)) translateY(var(--offset-y));
+}
+
+@utility toast-swipe-right {
+  transform: translateX(calc(var(--toast-swipe-movement-x) + 150%)) translateY(var(--offset-y));
+}
+
+/* The tooltip's arrow (tooltip.tsx): half its size up, and 2 px more to meet the bubble's edge. */
+@utility tooltip-arrow-offset {
+  --tw-translate-y: calc(-50% - 2px);
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}
+
+/*
+ * The skeleton's shimmer (skeleton.tsx): the approved mockup's `.shimmer::after` (docs/design/mockups/v1/index.html), as
+ * Athena decided on #75 (2026-11-11): a 100° band, transparent to 30%, white at 35% at 50%, transparent from 70%,
+ * sweeping across in a 1.6 s loop. DESIGN.md's motion rule: "a shimmer on generating cards, and nothing moves under
+ * reduced motion", so the band stands still (and hidden) there. The white is the mockup's own, the one raw colour in this
+ * file: the band is a light wash over the muted surface in both themes. It moves with `transform` only.
+ */
+@utility skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgb(255 255 255 / 35%) 50%,
+      transparent 70%
+    );
+    animation: skeleton-shimmer 1.6s infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
+@keyframes skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* The sidebar (sidebar.tsx). */
+/* The menu button's outline variant: a 1 px ring in the border colour, the strong border on hover. */
+@utility shadow-sidebar-outline {
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+@utility shadow-sidebar-outline-strong {
+  box-shadow: 0 0 0 1px var(--color-border-strong);
+}
+
+/* The current page in the sidebar: the mockup's 2 px ink bar on its left edge (`.nav[aria-current]`). */
+@utility shadow-sidebar-current {
+  box-shadow: inset 2px 0 0 var(--color-foreground);
+}
+
+/*
+ * The narrow frame: the mockup's `@media (max-width: 900px)` for `.side` and `.nav`, measured on the frame itself (the
+ * container the SidebarProvider names `sidebar`) instead of the window, so the gallery can show it in a box. In the app
+ * the frame is as wide as the window, so the two are the same. Below 900 px the sidebar is a scrolling row of links.
+ */
+@custom-variant sidebar-narrow {
+  @container sidebar (max-width: 900px) {
+    @slot;
+  }
+}
+
+/* In the narrow row the current page's bar is under the link, not beside it (`.nav[aria-current]` in the mockup). */
+@utility shadow-sidebar-current-narrow {
+  box-shadow: inset 0 -2px 0 var(--color-foreground);
+}

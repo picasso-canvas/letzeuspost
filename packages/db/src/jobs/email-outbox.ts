@@ -7,12 +7,18 @@
 //                        └──fail──▶ failed
 //
 // A row is sent only from `queued`, and the claim that moves it to `sending` is one conditional update, so two runs
-// of one job can't both send it. A row found in `sending` is another run's:
-// - while it is younger than the email job's expiry, that run may still be sending it, so it is left alone;
-// - once older, its run was killed (pg-boss retries a killed job only after it expires, and a retry waits at least
-//   30 s more): it may have gone out, so it is never sent again, and is marked failed as interrupted.
+// of one job can't both send it. The claim names its pg-boss job (`claimed_by_job`). A row found in `sending`:
+// - claimed by this same job: pg-boss runs a job again only once its earlier run has failed or expired, so that run
+//   is over, having lost the database after claiming the row (in `sent`, `release` or `fail`), or been killed. It may
+//   have gone out, so it is never sent again, and is marked failed as interrupted (Argus F1 on #197);
+// - claimed by another job, and younger than the email job's expiry: that run may still be sending it, so it is left
+//   alone;
+// - older than that: its run was killed (pg-boss retries a killed job only after it expires, and a retry waits at
+//   least 30 s more), so it too is marked failed as interrupted.
 // A run that outlived its job and did send it still records the send (`sent` moves an interrupted row too), so the
 // row says what happened. A send whose outcome is unknown fails the row at once (apps/worker's email job).
+// What this doesn't resolve: a row whose job's last run lost the database after claiming it. No retry comes, so the
+// row stays `sending`; a scheduled sweep for such rows is #210.
 import { and, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
@@ -43,18 +49,18 @@ export const SENDING_STALE_AFTER_SECONDS = queues.email.queue.expireInSeconds;
 
 export interface EmailOutbox {
   /**
-   * The row if it is waiting to be sent; otherwise why not. A `sending` row older than the job's expiry is marked
-   * failed as interrupted here; a younger one is left to the run sending it.
+   * The row if it is waiting to be sent; otherwise why not. A `sending` row that `jobId` claimed, or that is older
+   * than the job's expiry, is marked failed as interrupted here; another job's younger one is left to its run.
    */
-  load: (id: string) => Promise<{ email: OutboxEmail } | { skip: OutboxSkip }>;
-  /** queued → sending. False when another run took it first. */
-  claim: (id: string) => Promise<boolean>;
+  load: (id: string, jobId: string) => Promise<{ email: OutboxEmail } | { skip: OutboxSkip }>;
+  /** queued → sending, for the pg-boss job `jobId`. False when another run took it first. */
+  claim: (id: string, jobId: string) => Promise<boolean>;
   /**
    * sending → sent, with the provider's message id; an interrupted row too, since its run did send it after all.
    * False when the row was neither (gone, or failed for another reason).
    */
   sent: (id: string, providerId: string) => Promise<boolean>;
-  /** sending → queued: it certainly didn't go out, so a retry may send it. */
+  /** sending → queued, no longer claimed: it certainly didn't go out, so a retry may send it. */
   release: (id: string) => Promise<void>;
   /** → failed, with a plain reason that never holds the address or the content. */
   fail: (id: string, reason: string) => Promise<void>;
@@ -80,7 +86,7 @@ export function emailOutbox(db: Scoped): EmailOutbox {
   };
 
   return {
-    load: async (id) => {
+    load: async (id, jobId) => {
       const [row] = await db.transaction((tx) =>
         tx
           .select({
@@ -96,12 +102,14 @@ export function emailOutbox(db: Scoped): EmailOutbox {
       );
       if (row === undefined) return { skip: 'missing' };
       if (row.status === 'sending') {
-        // Stale is checked in the update itself, so a row another run has just claimed again is never caught.
+        // Whose claim and how old are checked in the update itself, so a row another run has just claimed again is
+        // never caught.
         const stale = lt(
           emailMessage.updatedAt,
           sql`now() - make_interval(secs => ${SENDING_STALE_AFTER_SECONDS})`,
         );
-        const interrupted = await move(id, sql`(${sending} and ${stale})`, {
+        const ours = eq(emailMessage.claimedByJob, jobId);
+        const interrupted = await move(id, sql`(${sending} and (${ours} or ${stale}))`, {
           status: 'failed',
           failure: INTERRUPTED,
         });
@@ -118,7 +126,8 @@ export function emailOutbox(db: Scoped): EmailOutbox {
         },
       };
     },
-    claim: (id) => move(id, eq(emailMessage.status, 'queued'), { status: 'sending' }),
+    claim: (id, jobId) =>
+      move(id, eq(emailMessage.status, 'queued'), { status: 'sending', claimedByJob: jobId }),
     sent: (id, providerId) =>
       move(
         id,
@@ -126,7 +135,7 @@ export function emailOutbox(db: Scoped): EmailOutbox {
         { status: 'sent', providerId, sentAt: now, failure: null },
       ),
     release: async (id) => {
-      await move(id, sending, { status: 'queued' });
+      await move(id, sending, { status: 'queued', claimedByJob: null });
     },
     fail: async (id, reason) => {
       await move(id, inArray(emailMessage.status, ['queued', 'sending']), {

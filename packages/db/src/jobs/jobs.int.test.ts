@@ -1,14 +1,22 @@
 // pg-boss on the same Postgres (§13 Jobs, #72), against real Postgres in `pnpm check:services` and CI's `services`
 // job: the owner role installs the `pgboss` schema and the app role only uses it; payloads hold ids only; a job runs
 // in its own workspace; the ai queue runs at most 4 of a workspace's jobs at once; retries stop at the limit; and the
-// email outbox's steps. Every row and job here is this run's, so the file can share the database with other files;
-// each handler ignores jobs from other runs. The `email` queue is the worker's (apps/worker/src/email.int.test.ts).
+// email outbox's steps.
+//
+// Vitest runs the services files side by side on one database (Argus F1 on #202), so nothing here touches another
+// file's rows or jobs: every workspace and row is this run's, made and removed here. pg-boss's tables are shared,
+// though, and a handler that skips another file's job still completes it, so the other file would wait for it in
+// vain. So each queue a test handler works on belongs to one file: `fetch`, `ai` and `render` to this one, `export` to
+// tests/journeys/data.int.test.ts. `email` is the worker's real handler (apps/worker/src/email.int.test.ts and the
+// journey run it), which does the same with a job whichever file's worker takes it. A handler here still skips jobs
+// of another run of this file.
 import { execFileSync } from 'node:child_process';
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from '@lzp/config';
 import { sql } from 'drizzle-orm';
 import pg from 'pg';
+import { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db.ts';
 import { migrate } from '../migrate.ts';
@@ -88,6 +96,17 @@ async function providerIdOf(id: string): Promise<string | null> {
   const row = rows[0];
   if (row === undefined) throw new Error('no row');
   return row.providerId;
+}
+
+/** The pg-boss job whose run claimed the row, if any. */
+async function claimedBy(id: string): Promise<string | null> {
+  const { rows } = await owner.query<{ job: string | null }>(
+    'select claimed_by_job as job from email_message where id = $1',
+    [id],
+  );
+  const row = rows[0];
+  if (row === undefined) throw new Error('no row');
+  return row.job;
 }
 
 /** The owner of the `pgboss` schema and of each of its tables. */
@@ -186,6 +205,79 @@ describe('pg-boss in the pgboss schema (§13)', () => {
     }
   });
 
+  // Cerberus F1 on #197: the queue's policy and pg-boss's version are the owner's; lzp_app only stamps its passes.
+  it("refuses the app role any change to a queue's retry bounds, to the queue list or to pg-boss's version", async () => {
+    const app = new pg.Client({ connectionString: appUrl });
+    await app.connect();
+    try {
+      for (const statement of [
+        `update ${JOBS_SCHEMA}.queue set retry_limit = 100 where name = 'email'`,
+        `update ${JOBS_SCHEMA}.queue set expire_seconds = 1 where name = 'email'`,
+        `update ${JOBS_SCHEMA}.queue set dead_letter = null where name = 'email'`,
+        `insert into ${JOBS_SCHEMA}.queue (name) values ('intruder')`,
+        `delete from ${JOBS_SCHEMA}.queue where name = 'email'`,
+        `update ${JOBS_SCHEMA}.version set version = version`,
+        `delete from ${JOBS_SCHEMA}.version`,
+      ]) {
+        expect(await refusalCode(app.query(statement)), statement).toBe('42501');
+      }
+      // What a running instance writes there: its pass stamps and the queue's counts.
+      await app.query(
+        `update ${JOBS_SCHEMA}.queue set monitor_claim_on = monitor_claim_on where name = 'email'`,
+      );
+      await app.query(`update ${JOBS_SCHEMA}.version set cron_on = cron_on`);
+    } finally {
+      await app.end();
+    }
+  });
+
+  // Cerberus F1 on #203: bam's commands run as SQL in an owner-role instance (installJobs); schedule rows make jobs;
+  // subscription rows fan a published event out to queues. lzp_app's own instance writes none of them.
+  it('refuses the app role any write to bam, schedule or subscription', async () => {
+    const app = new pg.Client({ connectionString: appUrl });
+    await app.connect();
+    try {
+      for (const statement of [
+        `insert into ${JOBS_SCHEMA}.bam (name, version, status, table_name, command)
+           values ('intruder', 1, 'pending', 'job_common', 'select 1')`,
+        `update ${JOBS_SCHEMA}.bam set command = 'select 1'`,
+        `delete from ${JOBS_SCHEMA}.bam`,
+        `insert into ${JOBS_SCHEMA}.schedule (name, key, cron, timezone) values ('email', '', '* * * * *', 'UTC')`,
+        `update ${JOBS_SCHEMA}.schedule set data = null`,
+        `delete from ${JOBS_SCHEMA}.schedule`,
+        `insert into ${JOBS_SCHEMA}.subscription (event, name) values ('intruder', 'email')`,
+        `delete from ${JOBS_SCHEMA}.subscription`,
+      ]) {
+        expect(await refusalCode(app.query(statement)), statement).toBe('42501');
+      }
+    } finally {
+      await app.end();
+    }
+  });
+
+  it("lets the app role run pg-boss's maintenance pass (expiry, retries, counts) with no permission refused", async () => {
+    const boss = new PgBoss({
+      connectionString: appUrl,
+      schema: JOBS_SCHEMA,
+      migrate: false,
+      reindex: false,
+      schedule: false,
+      supervise: false,
+    });
+    const refused: string[] = [];
+    const note = (error: unknown) => {
+      if ((error as { code?: unknown }).code === '42501') refused.push((error as Error).message);
+    };
+    boss.on('error', note);
+    await boss.start();
+    try {
+      await boss.supervise().catch(note);
+    } finally {
+      await boss.stop({ graceful: false });
+    }
+    expect(refused).toEqual([]);
+  }, 60_000);
+
   it('declares the five queues, each with its bounded retries, backoff and expiry', async () => {
     const { rows } = await owner.query<{
       name: string;
@@ -207,15 +299,15 @@ describe('pg-boss in the pgboss schema (§13)', () => {
     const count = async () =>
       (
         await owner.query<{ n: number }>(
-          `select count(*)::int as n from ${JOBS_SCHEMA}.job where name = 'export' and data->>'workspaceId' = $1`,
+          `select count(*)::int as n from ${JOBS_SCHEMA}.job where name = 'fetch' and data->>'workspaceId' = $1`,
           [ids.a],
         )
       ).rows[0]?.n;
     const before = await count();
     await expect(
-      jobs.send('export', {
+      jobs.send('fetch', {
         workspaceId: ids.a,
-        exportId: randomUUIDv7(),
+        brandId: randomUUIDv7(),
         caption: 'আমাদের নতুন মেনু',
       } as never),
     ).rejects.toThrow(JobPayloadError);
@@ -226,9 +318,10 @@ describe('pg-boss in the pgboss schema (§13)', () => {
 describe('a job runs in its own workspace (§13, the tenant-isolation skill)', () => {
   const seen = new Map<string, { rows: { id: string; workspaceId: string }[]; byId: string[] }>();
 
+  // The `fetch` queue: this file's own (see the top), so no other file's handler takes these jobs.
   beforeAll(async () => {
-    await jobs.work('export', async ({ payload, db: scoped }) => {
-      if (!expectedExports.has(payload.exportId)) return; // another run's job
+    await jobs.work('fetch', async ({ payload, db: scoped }) => {
+      if (!expectedFetches.has(payload.brandId)) return; // another run of this file
       const result = await scoped.transaction(async (tx) => ({
         // No filter at all: row-level security alone decides what comes back.
         rows: await tx
@@ -237,15 +330,15 @@ describe('a job runs in its own workspace (§13, the tenant-isolation skill)', (
         // The other workspace's row, asked for by its id.
         byId: (
           await tx.execute<{ id: string }>(
-            sql`select id from email_message where id = ${expectedExports.get(payload.exportId) ?? ''}`,
+            sql`select id from email_message where id = ${expectedFetches.get(payload.brandId) ?? ''}`,
           )
         ).rows.map((row) => row.id),
       }));
-      seen.set(payload.exportId, result);
+      seen.set(payload.brandId, result);
     });
   });
 
-  const expectedExports = new Map<string, string>(); // export id → the other workspace's row
+  const expectedFetches = new Map<string, string>(); // brand id → the other workspace's row
 
   it.each([
     ['A', 'a', 'rowA', 'rowB'],
@@ -253,10 +346,10 @@ describe('a job runs in its own workspace (§13, the tenant-isolation skill)', (
   ] as const)(
     "a job for %s sees only its own workspace's rows, even asked for the other's by id",
     async (_, workspace, own, other) => {
-      const exportId = randomUUIDv7();
-      expectedExports.set(exportId, ids[other]);
-      await jobs.send('export', { workspaceId: ids[workspace], exportId });
-      const result = await waitFor('the export job', () => seen.get(exportId));
+      const brandId = randomUUIDv7();
+      expectedFetches.set(brandId, ids[other]);
+      await jobs.send('fetch', { workspaceId: ids[workspace], brandId });
+      const result = await waitFor('the fetch job', () => seen.get(brandId));
       expect(result.rows).toEqual([{ id: ids[own], workspaceId: ids[workspace] }]);
       expect(result.byId).toEqual([]);
     },
@@ -363,10 +456,15 @@ describe('retries are bounded, with backoff (§13)', () => {
 });
 
 describe('the email outbox (§13 Data model)', () => {
+  // Each run of a job is named by its pg-boss job id, which a retry keeps (`first`, then `first` again); another job
+  // for the same row has its own id (`other`).
+  const runs = () => ({ first: randomUUID(), other: randomUUID() });
+
   it('sends a row only from queued: a second claim and a sent row are refused', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `claim-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.load(id)).toEqual({
+    expect(await outbox.load(id, first)).toEqual({
       email: {
         id,
         template: 'email-check',
@@ -375,58 +473,78 @@ describe('the email outbox (§13 Data model)', () => {
         data: { name: 'Picasso Studio' },
       },
     });
-    const claims = await Promise.all([outbox.claim(id), outbox.claim(id)]);
+    const claims = await Promise.all([outbox.claim(id, first), outbox.claim(id, other)]);
     expect(claims.sort()).toEqual([false, true]); // two runs at once: one claim wins
     await outbox.sent(id, '<provider-id@example.test>');
-    expect(await outbox.load(id)).toEqual({ skip: 'sent' });
-    expect(await outbox.claim(id)).toBe(false);
+    expect(await outbox.load(id, first)).toEqual({ skip: 'sent' });
+    expect(await outbox.claim(id, first)).toBe(false);
   });
 
-  it('puts a row that certainly did not go out back in the queue', async () => {
+  it('records which job claimed a row, and forgets it when the row goes back in the queue', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `release-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true);
+    expect(await outbox.claim(id, first)).toBe(true);
+    expect(await claimedBy(id)).toBe(first);
     await outbox.release(id);
-    expect((await statusOf(id)).status).toBe('queued');
-    expect(await outbox.claim(id)).toBe(true);
+    expect(await statusOf(id)).toEqual({ status: 'queued', failure: null });
+    expect(await claimedBy(id)).toBeNull();
+    expect(await outbox.claim(id, other)).toBe(true);
+    expect(await claimedBy(id)).toBe(other);
   });
 
-  it('leaves a row another run is still sending to that run, which then records it sent', async () => {
+  it('leaves a row another job is still sending to that job, which then records it sent', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `mid-send-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true); // the first run, now sending
-    expect(await outbox.load(id)).toEqual({ skip: 'sending' }); // a second run, at the same time
+    expect(await outbox.claim(id, first)).toBe(true); // the first job's run, now sending
+    expect(await outbox.load(id, other)).toEqual({ skip: 'sending' }); // another job's run, at the same time
     expect(await statusOf(id)).toEqual({ status: 'sending', failure: null });
     expect(await outbox.sent(id, '<first-run@example.test>')).toBe(true); // the first run finishes
     expect(await statusOf(id)).toEqual({ status: 'sent', failure: null });
     expect(await providerIdOf(id)).toBe('<first-run@example.test>');
   });
 
-  it("counts a sending row as interrupted only once it is older than the job's expiry", async () => {
+  // Argus F1 on #197: a run that claimed the row and then lost the database (in sent(), release() or fail()) leaves it
+  // `sending`. pg-boss retries that job only after the run has failed, so the retry knows the claim is a dead run's.
+  it('marks a row its own job claimed interrupted when that job runs again, however recent the claim', async () => {
+    const { first } = runs();
+    const id = await insertRow(ids.a, `own-claim-${run}@example.test`);
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
+    expect(await outbox.claim(id, first)).toBe(true); // the run whose database dropped after this
+    expect(await outbox.load(id, first)).toEqual({ skip: 'interrupted' }); // its retry, seconds later
+    expect(await statusOf(id)).toEqual({ status: 'failed', failure: INTERRUPTED });
+    expect(await outbox.claim(id, first)).toBe(false);
+  });
+
+  it("counts another job's sending row as interrupted only once it is older than the job's expiry", async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `not-yet-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true);
+    expect(await outbox.claim(id, first)).toBe(true);
     await age(id, SENDING_STALE_AFTER_SECONDS - 60); // its job could still be running
-    expect(await outbox.load(id)).toEqual({ skip: 'sending' });
+    expect(await outbox.load(id, other)).toEqual({ skip: 'sending' });
     expect((await statusOf(id)).status).toBe('sending');
   });
 
   it('never sends an interrupted row again, and says why', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `interrupted-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true); // the run that was killed here
+    expect(await outbox.claim(id, first)).toBe(true); // the run that was killed here
     await age(id, SENDING_STALE_AFTER_SECONDS + 1); // pg-boss retries a killed job only after it expires
-    expect(await outbox.load(id)).toEqual({ skip: 'interrupted' });
+    expect(await outbox.load(id, other)).toEqual({ skip: 'interrupted' });
     expect(await statusOf(id)).toEqual({ status: 'failed', failure: INTERRUPTED });
-    expect(await outbox.claim(id)).toBe(false);
+    expect(await outbox.claim(id, other)).toBe(false);
   });
 
   it('records the send of a run that outlived its job, though the row was marked interrupted', async () => {
+    const { first } = runs();
     const id = await insertRow(ids.a, `outlived-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true); // a slow run, still sending
+    expect(await outbox.claim(id, first)).toBe(true); // a slow run, still sending
     await age(id, SENDING_STALE_AFTER_SECONDS + 1);
-    expect(await outbox.load(id)).toEqual({ skip: 'interrupted' }); // its job's retry
+    expect(await outbox.load(id, first)).toEqual({ skip: 'interrupted' }); // its job's retry
     expect(await outbox.sent(id, '<slow-run@example.test>')).toBe(true); // the slow run's send went out
     expect(await statusOf(id)).toEqual({ status: 'sent', failure: null });
     expect(await providerIdOf(id)).toBe('<slow-run@example.test>');
@@ -445,12 +563,14 @@ describe('the email outbox (§13 Data model)', () => {
   });
 
   it("finds nothing of another workspace's, and changes nothing of it", async () => {
+    const { first } = runs();
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.load(ids.rowB)).toEqual({ skip: 'missing' });
-    expect(await outbox.claim(ids.rowB)).toBe(false);
+    expect(await outbox.load(ids.rowB, first)).toEqual({ skip: 'missing' });
+    expect(await outbox.claim(ids.rowB, first)).toBe(false);
     await outbox.fail(ids.rowB, 'should not land');
     expect(await outbox.sent(ids.rowB, '<should-not-land@example.test>')).toBe(false);
     expect(await statusOf(ids.rowB)).toEqual({ status: 'queued', failure: null });
     expect(await providerIdOf(ids.rowB)).toBeNull();
+    expect(await claimedBy(ids.rowB)).toBeNull();
   });
 });
