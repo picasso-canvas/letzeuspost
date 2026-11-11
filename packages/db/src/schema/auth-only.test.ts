@@ -1,6 +1,6 @@
 // The two tables sign-in adds (#77), checked without a database: the account emails' outbox (Athena's decision 3,
 // 2026-11-11) and the rate-limit log (§13 The app's API). Neither holds workspace data, and only lzp_auth, the auth
-// handle's role, reaches them. auth-only.int.test.ts in packages/auth checks the grants against Postgres.
+// handle's role, reaches them. ../jobs/account-email.int.test.ts checks the grants against Postgres.
 import { readdirSync, readFileSync } from 'node:fs';
 import { getTableColumns, getTableName } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
