@@ -148,6 +148,10 @@ describe('email-link sign-in on Postgres', () => {
     });
     const days = ((stored?.expiresAt.getTime() ?? 0) - Date.now()) / 86_400_000;
     expect(Math.round(days)).toBe(30);
+    // Postgres made its id (§13: UUIDv7).
+    expect(stored?.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
 
     const again = await server.handler(new Request(url));
     expect(again.headers.get('location')).toContain('error=INVALID_TOKEN');

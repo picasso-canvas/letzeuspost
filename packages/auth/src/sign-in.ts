@@ -13,7 +13,7 @@
 //   from its use. They live in the session table, and the cookie holds only the session's token: HttpOnly,
 //   SameSite=Lax, and Secure wherever the app is HTTPS (staging and production, config/env.ts).
 // - The handler serves only SERVED_ENDPOINTS; every other Better Auth route answers 404.
-import { createHmac, randomUUIDv7 } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { betterAuth, type BetterAuthOptions, type DBAdapterInstance } from 'better-auth';
 import { APIError, createAuthMiddleware, getIP } from 'better-auth/api';
 import { magicLink } from 'better-auth/plugins/magic-link';
@@ -111,7 +111,10 @@ function options(deps: SignInDeps) {
     advanced: {
       useSecureCookies: deps.secureCookies,
       defaultCookieAttributes: { httpOnly: true, sameSite: 'lax' },
-      database: { generateId: () => randomUUIDv7() },
+      // #71's ids are `uuid` columns that Postgres fills with `uuidv7()`. 'uuid' leaves them to it, and makes the ids
+      // Better Auth sets itself UUIDs too: with any other choice, the lock row it writes while verifying an address is
+      // given a base64url id, which Postgres refuses (CI's `services` failures on 4a5ddd0).
+      database: { generateId: 'uuid' },
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {

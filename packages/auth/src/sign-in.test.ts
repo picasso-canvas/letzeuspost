@@ -462,13 +462,13 @@ describe('the logs (§13: no emails in logs)', () => {
 });
 
 describe('ids', () => {
-  it('are UUIDv7s the app makes (§13)', async () => {
+  // On Postgres the database makes them, with `uuidv7()` (server.int.test.ts checks a session's); the memory adapter
+  // has no such default, so Better Auth makes them here.
+  it('are UUIDs, as #71’s uuid columns take', async () => {
     await askForLink(s.signIn, known);
     await open(s.signIn, lastLink(s.queued));
     const ids = [s.userId, ...(s.store['session'] ?? []).map((row) => String(row['id']))];
     expect(ids).toHaveLength(2);
-    for (const id of ids) {
-      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    }
+    for (const id of ids) expect(id).toMatch(UUID);
   });
 });
