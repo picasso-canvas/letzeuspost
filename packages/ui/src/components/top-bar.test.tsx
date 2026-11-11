@@ -15,6 +15,7 @@ import {
   WorkspaceSwitcher,
   WorkspaceSwitcherSkeleton,
   workspaceRows,
+  langOf,
 } from '@lzp/ui/components/top-bar';
 
 // §04's top bar and §15's workspace switcher: "a switcher in the top bar lists the workspaces a person belongs to, with
@@ -100,6 +101,17 @@ describe('Bangla names (#228)', () => {
     });
     expect(bangla).toMatch(/<span[^>]*lang="bn"[^>]*>ঢাকা ও সিলেট<\/span>/);
     expect(html()).not.toContain('lang=');
+  });
+
+  // Argus F6 on PR #230: the open menu renders in a portal, which server rendering doesn't draw, so the rows are pinned
+  // here: langOf is right, and every row's name uses it, as the button's does.
+  it('marks each menu row\'s Bangla name lang="bn" too', () => {
+    expect(langOf('ঢাকা ও সিলেট')).toBe('bn');
+    expect(langOf('Dhaka ঢাকা')).toBe('bn');
+    expect(langOf('Northwind Social')).toBeUndefined();
+    const source = readFileSync(new URL('top-bar.tsx', import.meta.url), 'utf8');
+    expect(source).toMatch(/lang=\{langOf\(row\.name\)\}/);
+    expect(source).toMatch(/lang=\{langOf\(current\.name\)\}/);
   });
 });
 
