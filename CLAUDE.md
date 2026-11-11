@@ -80,8 +80,13 @@ skills, agents, plugins or MCP servers. Never read or commit secrets: `.env` fil
 
 ## Compact instructions
 
-Sessions compact at 200K tokens (Zeus, 2026-11-11: `.claude/settings.json` sets the window and disables the 1M
+Sessions compact at 200K tokens (Zeus, 2026-11-11, #235: `.claude/settings.json` sets the window and disables the 1M
 context; the interactive sessions were the cost). Keep in the summary: the task in hand, its issue number and branch;
-every open PR and where it is in the merge gate; every `needs-zeus` question not yet answered; the freeze-switch state;
-decisions Zeus made in the session with their date. Drop file contents, tool output and screenshots: re-read them from
-disk when needed. `/clear` at every task boundary; read mockups and `diff.patch` files only inside the reviewer agents.
+every open PR and where it is in the merge gate; every `needs-zeus` question not yet answered. A decision Zeus made
+survives compaction only as a pointer to its posted record (his own comment, or Athena's dated "Zeus decided (…, in
+chat)" comment on the issue or PR, §19 #116): post it before acting on it; a decision the summary alone remembers is
+not one. The freeze switch: re-read `~/.letzeuspost/paused` after a compaction, never trust the summary's value. Drop
+file contents, tool output and screenshots: re-read them from disk when needed. A reviewer (Argus, Cerberus, Iris)
+that compacts mid-review keeps the list of files and findings not yet checked, re-reads every file its verdict rests
+on, and never counts what the summary says was checked as checked. `/clear` at every task boundary; read mockups and
+`diff.patch` files only inside the reviewer agents.
