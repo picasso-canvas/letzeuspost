@@ -90,6 +90,17 @@ async function providerIdOf(id: string): Promise<string | null> {
   return row.providerId;
 }
 
+/** The pg-boss job whose run claimed the row, if any. */
+async function claimedBy(id: string): Promise<string | null> {
+  const { rows } = await owner.query<{ job: string | null }>(
+    'select claimed_by_job as job from email_message where id = $1',
+    [id],
+  );
+  const row = rows[0];
+  if (row === undefined) throw new Error('no row');
+  return row.job;
+}
+
 /** The owner of the `pgboss` schema and of each of its tables. */
 async function jobsOwners(): Promise<{ schema: string[]; tables: string[] }> {
   const schema = await owner.query<{ owner: string }>(
@@ -363,10 +374,15 @@ describe('retries are bounded, with backoff (§13)', () => {
 });
 
 describe('the email outbox (§13 Data model)', () => {
+  // Each run of a job is named by its pg-boss job id, which a retry keeps (`first`, then `first` again); another job
+  // for the same row has its own id (`other`).
+  const runs = () => ({ first: randomUUID(), other: randomUUID() });
+
   it('sends a row only from queued: a second claim and a sent row are refused', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `claim-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.load(id)).toEqual({
+    expect(await outbox.load(id, first)).toEqual({
       email: {
         id,
         template: 'email-check',
@@ -375,58 +391,78 @@ describe('the email outbox (§13 Data model)', () => {
         data: { name: 'Picasso Studio' },
       },
     });
-    const claims = await Promise.all([outbox.claim(id), outbox.claim(id)]);
+    const claims = await Promise.all([outbox.claim(id, first), outbox.claim(id, other)]);
     expect(claims.sort()).toEqual([false, true]); // two runs at once: one claim wins
     await outbox.sent(id, '<provider-id@example.test>');
-    expect(await outbox.load(id)).toEqual({ skip: 'sent' });
-    expect(await outbox.claim(id)).toBe(false);
+    expect(await outbox.load(id, first)).toEqual({ skip: 'sent' });
+    expect(await outbox.claim(id, first)).toBe(false);
   });
 
-  it('puts a row that certainly did not go out back in the queue', async () => {
+  it('records which job claimed a row, and forgets it when the row goes back in the queue', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `release-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true);
+    expect(await outbox.claim(id, first)).toBe(true);
+    expect(await claimedBy(id)).toBe(first);
     await outbox.release(id);
-    expect((await statusOf(id)).status).toBe('queued');
-    expect(await outbox.claim(id)).toBe(true);
+    expect(await statusOf(id)).toEqual({ status: 'queued', failure: null });
+    expect(await claimedBy(id)).toBeNull();
+    expect(await outbox.claim(id, other)).toBe(true);
+    expect(await claimedBy(id)).toBe(other);
   });
 
-  it('leaves a row another run is still sending to that run, which then records it sent', async () => {
+  it('leaves a row another job is still sending to that job, which then records it sent', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `mid-send-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true); // the first run, now sending
-    expect(await outbox.load(id)).toEqual({ skip: 'sending' }); // a second run, at the same time
+    expect(await outbox.claim(id, first)).toBe(true); // the first job's run, now sending
+    expect(await outbox.load(id, other)).toEqual({ skip: 'sending' }); // another job's run, at the same time
     expect(await statusOf(id)).toEqual({ status: 'sending', failure: null });
     expect(await outbox.sent(id, '<first-run@example.test>')).toBe(true); // the first run finishes
     expect(await statusOf(id)).toEqual({ status: 'sent', failure: null });
     expect(await providerIdOf(id)).toBe('<first-run@example.test>');
   });
 
-  it("counts a sending row as interrupted only once it is older than the job's expiry", async () => {
+  // Argus F1 on #197: a run that claimed the row and then lost the database (in sent(), release() or fail()) leaves it
+  // `sending`. pg-boss retries that job only after the run has failed, so the retry knows the claim is a dead run's.
+  it('marks a row its own job claimed interrupted when that job runs again, however recent the claim', async () => {
+    const { first } = runs();
+    const id = await insertRow(ids.a, `own-claim-${run}@example.test`);
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
+    expect(await outbox.claim(id, first)).toBe(true); // the run whose database dropped after this
+    expect(await outbox.load(id, first)).toEqual({ skip: 'interrupted' }); // its retry, seconds later
+    expect(await statusOf(id)).toEqual({ status: 'failed', failure: INTERRUPTED });
+    expect(await outbox.claim(id, first)).toBe(false);
+  });
+
+  it("counts another job's sending row as interrupted only once it is older than the job's expiry", async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `not-yet-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true);
+    expect(await outbox.claim(id, first)).toBe(true);
     await age(id, SENDING_STALE_AFTER_SECONDS - 60); // its job could still be running
-    expect(await outbox.load(id)).toEqual({ skip: 'sending' });
+    expect(await outbox.load(id, other)).toEqual({ skip: 'sending' });
     expect((await statusOf(id)).status).toBe('sending');
   });
 
   it('never sends an interrupted row again, and says why', async () => {
+    const { first, other } = runs();
     const id = await insertRow(ids.a, `interrupted-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true); // the run that was killed here
+    expect(await outbox.claim(id, first)).toBe(true); // the run that was killed here
     await age(id, SENDING_STALE_AFTER_SECONDS + 1); // pg-boss retries a killed job only after it expires
-    expect(await outbox.load(id)).toEqual({ skip: 'interrupted' });
+    expect(await outbox.load(id, other)).toEqual({ skip: 'interrupted' });
     expect(await statusOf(id)).toEqual({ status: 'failed', failure: INTERRUPTED });
-    expect(await outbox.claim(id)).toBe(false);
+    expect(await outbox.claim(id, other)).toBe(false);
   });
 
   it('records the send of a run that outlived its job, though the row was marked interrupted', async () => {
+    const { first } = runs();
     const id = await insertRow(ids.a, `outlived-${run}@example.test`);
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.claim(id)).toBe(true); // a slow run, still sending
+    expect(await outbox.claim(id, first)).toBe(true); // a slow run, still sending
     await age(id, SENDING_STALE_AFTER_SECONDS + 1);
-    expect(await outbox.load(id)).toEqual({ skip: 'interrupted' }); // its job's retry
+    expect(await outbox.load(id, first)).toEqual({ skip: 'interrupted' }); // its job's retry
     expect(await outbox.sent(id, '<slow-run@example.test>')).toBe(true); // the slow run's send went out
     expect(await statusOf(id)).toEqual({ status: 'sent', failure: null });
     expect(await providerIdOf(id)).toBe('<slow-run@example.test>');
@@ -445,12 +481,14 @@ describe('the email outbox (§13 Data model)', () => {
   });
 
   it("finds nothing of another workspace's, and changes nothing of it", async () => {
+    const { first } = runs();
     const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.a }));
-    expect(await outbox.load(ids.rowB)).toEqual({ skip: 'missing' });
-    expect(await outbox.claim(ids.rowB)).toBe(false);
+    expect(await outbox.load(ids.rowB, first)).toEqual({ skip: 'missing' });
+    expect(await outbox.claim(ids.rowB, first)).toBe(false);
     await outbox.fail(ids.rowB, 'should not land');
     expect(await outbox.sent(ids.rowB, '<should-not-land@example.test>')).toBe(false);
     expect(await statusOf(ids.rowB)).toEqual({ status: 'queued', failure: null });
     expect(await providerIdOf(ids.rowB)).toBeNull();
+    expect(await claimedBy(ids.rowB)).toBeNull();
   });
 });
