@@ -77,3 +77,11 @@ skills, agents, plugins or MCP servers. Never read or commit secrets: `.env` fil
 5. AI-generated images are labelled synthetic.
 6. Bangla is written natively, not translated from English.
 7. Nothing reaches the client before the QC check passes.
+
+## Compact instructions
+
+Sessions compact at 200K tokens (Zeus, 2026-11-11: `.claude/settings.json` sets the window and disables the 1M
+context; the interactive sessions were the cost). Keep in the summary: the task in hand, its issue number and branch;
+every open PR and where it is in the merge gate; every `needs-zeus` question not yet answered; the freeze-switch state;
+decisions Zeus made in the session with their date. Drop file contents, tool output and screenshots: re-read them from
+disk when needed. `/clear` at every task boundary; read mockups and `diff.patch` files only inside the reviewer agents.
