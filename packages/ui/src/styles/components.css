@@ -1,7 +1,7 @@
 /*
  * Component mechanics that the shadcn registry writes as arbitrary values (#205), as named utilities instead, so the
  * components keep to `lzp/tokens-only` (§21). They hold only calc() over the components' own runtime variables
- * (Base UI's toast and the sidebar's widths): no colour, size or radius of their own. Anything that moves stops under
+ * (Base UI's toast) and colour tokens: no raw colour, size or radius of their own. Anything that moves stops under
  * reduced motion (§05). SOURCES.md lists which registry class each one replaces.
  */
 
@@ -77,47 +77,7 @@
   translate: var(--tw-translate-x) var(--tw-translate-y);
 }
 
-/* The sidebar (sidebar.tsx): --sidebar-width and --sidebar-width-icon come from SidebarProvider. */
-@utility w-sidebar-icon-gap {
-  width: calc(var(--sidebar-width-icon) + --spacing(4));
-}
-
-@utility w-sidebar-icon-gap-border {
-  width: calc(var(--sidebar-width-icon) + --spacing(4) + 2px);
-}
-
-@utility left-sidebar-hidden {
-  left: calc(var(--sidebar-width) * -1);
-}
-
-@utility right-sidebar-hidden {
-  right: calc(var(--sidebar-width) * -1);
-}
-
-@utility transition-width {
-  transition-property: width;
-  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-  transition-duration: var(--tw-duration, var(--default-transition-duration));
-}
-
-@utility transition-inset-width {
-  transition-property: left, right, width;
-  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-  transition-duration: var(--tw-duration, var(--default-transition-duration));
-}
-
-@utility transition-margin-opacity {
-  transition-property: margin, opacity;
-  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-  transition-duration: var(--tw-duration, var(--default-transition-duration));
-}
-
-@utility transition-size-padding {
-  transition-property: width, height, padding;
-  transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-  transition-duration: var(--tw-duration, var(--default-transition-duration));
-}
-
+/* The sidebar (sidebar.tsx). */
 /* The menu button's outline variant: a 1 px ring in the border colour, the strong border on hover. */
 @utility shadow-sidebar-outline {
   box-shadow: 0 0 0 1px var(--color-border);

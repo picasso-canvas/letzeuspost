@@ -1,9 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SidebarProvider, useSidebar } from '@lzp/ui/components/sidebar';
+import * as sidebar from '@lzp/ui/components/sidebar';
 
-// §16: essential cookies only. The registry's sidebar wrote a `sidebar_state` cookie on every toggle; ours writes
-// none and reports open and closed through `onOpenChange`, so the app chooses how to remember it (#205).
+// The v1 mockup's frame (Zeus, #205, 2026-11-11): a 228 px sidebar, always open. The registry's sidebar collapsed
+// (an icon rail, off-canvas, a phone sheet) and wrote a `sidebar_state` cookie on every toggle; ours has nothing to
+// open or close and writes no cookie (§16: essential cookies only).
+const { Sidebar, SidebarContent, SidebarProvider } = sidebar;
 
 /** A document whose cookie jar records every write. */
 function stubDocument(): string[] {
@@ -19,44 +21,34 @@ function stubDocument(): string[] {
   return writes;
 }
 
-/** Renders a provider and hands back its context, to call its setters as the trigger and the rail do. */
-function sidebarContext(props: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
-  let context: ReturnType<typeof useSidebar> | undefined;
-  function Capture() {
-    context = useSidebar();
-    return null;
-  }
+const html = (): string =>
   renderToStaticMarkup(
-    <SidebarProvider {...props}>
-      <Capture />
+    <SidebarProvider>
+      <Sidebar>
+        <SidebarContent />
+      </Sidebar>
     </SidebarProvider>,
   );
-  if (context === undefined) throw new Error('no sidebar context');
-  return context;
-}
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe('the sidebar', () => {
-  it('sets no cookie when it opens, closes or toggles', () => {
-    const writes = stubDocument();
-    const before = document.cookie;
-    const sidebar = sidebarContext();
-    sidebar.toggleSidebar();
-    sidebar.setOpen(false);
-    sidebar.setOpen(true);
-    expect(writes).toEqual([]);
-    expect(document.cookie).toBe(before);
+  it('is 228 px wide and always open, with no collapsed or phone mode', () => {
+    const markup = html();
+    expect(markup).toContain('--sidebar-width:228px');
+    expect(markup).not.toMatch(/data-state=|data-collapsible=|data-mobile=/);
   });
 
-  it('reports open and closed through onOpenChange, for the app to remember', () => {
-    stubDocument();
-    const onOpenChange = vi.fn();
-    const sidebar = sidebarContext({ open: true, onOpenChange });
-    sidebar.toggleSidebar();
-    sidebar.setOpen(true);
-    expect(onOpenChange.mock.calls).toEqual([[false], [true]]);
+  it('has no way to open or close it, and no state to remember', () => {
+    for (const gone of ['SidebarTrigger', 'SidebarRail', 'useSidebar'])
+      expect(Object.keys(sidebar), gone).not.toContain(gone);
+  });
+
+  it('sets no cookie', () => {
+    const writes = stubDocument();
+    html();
+    expect(writes).toEqual([]);
   });
 });

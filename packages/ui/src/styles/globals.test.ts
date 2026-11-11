@@ -72,7 +72,7 @@ describe('globals.css', () => {
   it('builds every named utility components.css declares, so a typo in one fails here (#205)', async () => {
     const declared = readFileSync(new URL('components.css', import.meta.url), 'utf8');
     const names = [...declared.matchAll(/@utility\s+([\w-]+)/g)].map((m) => m[1] ?? '');
-    expect(names.length).toBeGreaterThan(20);
+    expect(names.length).toBeGreaterThan(10);
     const css = await build(names);
     for (const name of names)
       expect(css, name).toMatch(new RegExp(`\\.${name}\\s*\\{[^}]*[a-z-]+:`));
@@ -85,18 +85,15 @@ describe('globals.css', () => {
       'toast-transition',
       'data-expanded:toast-expanded',
       'tooltip-arrow-offset',
-      'w-sidebar-icon-gap',
-      'group-data-[collapsible=offcanvas]:left-sidebar-hidden',
-      'transition-width',
       'shadow-sidebar-outline',
+      'data-active:shadow-sidebar-current',
     ]);
     expect(css).toMatch(/\.z-toast\s*\{[^}]*z-index:\s*calc\(1000 - var\(--toast-index\)\)/);
     expect(css).toMatch(/\.toast-stack\s*\{[^}]*transform:/);
-    expect(css).toMatch(/\.w-sidebar-icon-gap\s*\{[^}]*width:\s*calc\(var\(--sidebar-width-icon\)/);
-    expect(css).toMatch(
-      /left-sidebar-hidden[^{]*\{[^}]*left:\s*calc\(var\(--sidebar-width\) \* -1\)/,
-    );
     expect(css).toMatch(/\.shadow-sidebar-outline\s*\{[^}]*var\(--color-border\)/);
+    expect(css).toMatch(
+      /shadow-sidebar-current[^{]*\{[^}]*inset 2px 0 0 var\(--color-foreground\)/,
+    );
     // The toast moves for DESIGN.md's default time on the default curve (Iris F2 on #206), and nothing moves under
     // reduced motion (§05).
     expect(css).toMatch(

@@ -122,7 +122,7 @@ describe.each([
   {
     name: 'sidebar',
     module: sidebar,
-    states: ['Expanded', 'Collapsed', 'Loading', 'NoPinnedBrands'],
+    states: ['Expanded', 'Loading', 'NoPinnedBrands'],
     hover: ['ItemHover'],
     focus: ['ItemFocus'],
   },

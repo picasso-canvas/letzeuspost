@@ -1,3 +1,7 @@
+'use client';
+
+import { mergeProps } from '@base-ui/react/merge-props';
+import { useRender } from '@base-ui/react/use-render';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@lzp/ui/lib/utils';
 
@@ -54,14 +58,24 @@ function EmptyMedia({
   );
 }
 
-function EmptyTitle({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div
-      data-slot="empty-title"
-      className={cn('text-h2 font-(weight:--font-weight-h2) tracking-h2', className)}
-      {...props}
-    />
-  );
+/**
+ * A real heading, so screen-reader users can jump to it: `h2` by default, with the `h2` type token. A page that needs
+ * another level passes `render`, e.g. `render={<h3 />}` (Iris F2 on #206).
+ */
+function EmptyTitle({
+  className,
+  render,
+  ...props
+}: useRender.ComponentProps<'h2'> & React.ComponentProps<'h2'>) {
+  return useRender({
+    defaultTagName: 'h2',
+    props: mergeProps<'h2'>(
+      { className: cn('text-h2 font-(weight:--font-weight-h2) tracking-h2', className) },
+      props,
+    ),
+    render,
+    state: { slot: 'empty-title' },
+  });
 }
 
 function EmptyDescription({ className, ...props }: React.ComponentProps<'p'>) {
