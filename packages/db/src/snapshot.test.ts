@@ -3,7 +3,7 @@
 // table. The migrations themselves are written by hand (§13 A4); the snapshots are drizzle-kit's, so the next diff
 // starts from what the database really has.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { generateDrizzleJson, generateMigration, type DrizzleSnapshotJSON } from 'drizzle-kit/api';
+import * as kit from 'drizzle-kit/api';
 import { is } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
@@ -15,11 +15,20 @@ interface Journal {
   entries: { idx: number; tag: string }[];
 }
 
+/** A snapshot, as drizzle-kit writes it to meta/ and as its diff takes it. */
+interface Snapshot {
+  id: string;
+  prevId: string;
+}
+
+// drizzle-kit's own declarations name types the linter can't resolve, so its two calls are typed here.
+const snapshotOfSchema = kit.generateDrizzleJson as (imports: Record<string, unknown>) => Snapshot;
+const diff = kit.generateMigration as (prev: Snapshot, cur: Snapshot) => Promise<string[]>;
+
 const journal = JSON.parse(readFileSync(new URL('_journal.json', meta), 'utf8')) as Journal;
 const snapshotFile = (idx: number) =>
   new URL(`${String(idx).padStart(4, '0')}_snapshot.json`, meta);
-const snapshot = (idx: number) =>
-  JSON.parse(readFileSync(snapshotFile(idx), 'utf8')) as DrizzleSnapshotJSON;
+const snapshot = (idx: number) => JSON.parse(readFileSync(snapshotFile(idx), 'utf8')) as Snapshot;
 
 /** The tables a module exports. */
 const tablesOf = (module: Record<string, unknown>) =>
@@ -30,7 +39,7 @@ describe("drizzle-kit's snapshots", () => {
     let prevId = '00000000-0000-0000-0000-000000000000';
     for (const { idx, tag } of journal.entries) {
       expect(existsSync(snapshotFile(idx)), `${tag}'s snapshot`).toBe(true);
-      const { id, prevId: previous } = snapshot(idx) as { id: string; prevId: string };
+      const { id, prevId: previous } = snapshot(idx);
       expect(previous, `${tag}'s snapshot follows the one before`).toBe(prevId);
       prevId = id;
     }
@@ -39,8 +48,7 @@ describe("drizzle-kit's snapshots", () => {
   it('leave drizzle-kit nothing to generate: the last one is the schema as it is', async () => {
     const last = journal.entries.at(-1);
     if (last === undefined) throw new Error('no migrations');
-    const current = generateDrizzleJson(schema as Record<string, unknown>);
-    expect(await generateMigration(snapshot(last.idx), current)).toEqual([]);
+    expect(await diff(snapshot(last.idx), snapshotOfSchema(schema))).toEqual([]);
   });
 });
 
@@ -51,7 +59,7 @@ describe('src/schema.ts, which db:generate reads', () => {
       (file) => file.endsWith('.ts') && !file.endsWith('.test.ts'),
     );
     expect(files).toContain('email-message.ts');
-    const exported = tablesOf(schema as Record<string, unknown>);
+    const exported = tablesOf(schema);
     for (const file of files) {
       const module = (await import(new URL(file, folder).href)) as Record<string, unknown>;
       for (const table of tablesOf(module)) expect(exported, file).toContain(table);

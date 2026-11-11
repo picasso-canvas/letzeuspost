@@ -2,11 +2,11 @@
 // job finds the row's status and never sends twice. The job's payload carries only the row's id (§13 Jobs); the
 // address, the template and its data stay here, under row-level security, out of the queue and out of the logs.
 //
-// Written by hand in ../../migrations/0003_email_message.sql (§13 A4), like the tables in ../schema.ts. Change both
+// Written by hand in ../../migrations/0003_email_message.sql (§13 A4), like the tables in ./accounts.ts. Change both
 // together.
 import { sql } from 'drizzle-orm';
 import { check, jsonb, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { workspace } from '../schema.ts';
+import { workspace } from './accounts.ts';
 
 /**
  * queued: waiting for its job. sending: a run has started sending it. sent: the provider took it (`provider_id`).

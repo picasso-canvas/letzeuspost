@@ -7,7 +7,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { z } from 'zod';
-import * as schema from './schema.ts';
+import * as schema from './schema/accounts.ts';
 
 export type Orm = NodePgDatabase<typeof schema>;
 
