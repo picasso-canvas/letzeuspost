@@ -7,6 +7,7 @@ import { memoryAdapter } from 'better-auth/adapters/memory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createSignIn,
+  kindOf,
   SERVED_ENDPOINTS,
   SESSION_DAYS,
   SIGN_IN_LINK_MINUTES,
@@ -132,12 +133,13 @@ async function runAfterAnswer(): Promise<void> {
  */
 const connecting = { 'x-forwarded-for': '192.0.2.1' };
 
-/** Asks for a link and gets the answer; what runs after it is left pending. */
+/** Asks for a link and gets the answer; what runs after it is left pending. A header given as '' is left out. */
 function ask(signIn: SignIn, email: string, headers: Record<string, string> = connecting) {
+  const sent = { 'content-type': 'application/json', origin: appUrl, ...headers };
   return signIn.handler(
     new Request(`${appUrl}/api/auth/sign-in/magic-link`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: appUrl, ...headers },
+      headers: Object.entries(sent).filter(([, value]) => value !== ''),
       body: JSON.stringify({ email, callbackURL: '/app' }),
     }),
     afterAnswer,
@@ -472,6 +474,60 @@ describe('the client IP (decision 4: Cloudflare is in front in staging and produ
   });
 });
 
+describe('a request from another site (Better Auth’s form-CSRF check, before any limit is counted)', () => {
+  const foreign = 'https://evil.example';
+
+  it.each([
+    [
+      'a cross-site form post (a navigation)',
+      {
+        'sec-fetch-site': 'cross-site',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+        origin: foreign,
+      },
+    ],
+    [
+      'a cross-site fetch',
+      { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'cors', origin: foreign },
+    ],
+    ['a foreign Origin, with no Fetch Metadata', { origin: foreign }],
+    ['a foreign Referer, with no Origin', { origin: '', referer: `${foreign}/page` }],
+    ['a foreign Origin with a cookie', { origin: foreign, cookie: 'theme=dark' }],
+  ])('refuses %s with 403, counts nothing and hands nothing over', async (_, headers) => {
+    const response = await askForLink(s.signIn, known, { ...connecting, ...headers });
+    expect(response.status).toBe(403);
+    expect(s.limiter.calls).toEqual([]);
+    expect(s.queued).toEqual([]);
+    expect(s.store['verification']).toEqual([]);
+  });
+
+  it('refuses it in production too, behind Cloudflare', async () => {
+    const production = await setup({ environment: 'production' });
+    const response = await askForLink(production.signIn, known, {
+      'cf-connecting-ip': '198.51.100.7',
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'navigate',
+      origin: foreign,
+    });
+    expect(response.status).toBe(403);
+    expect(production.limiter.calls).toEqual([]);
+  });
+
+  it.each([
+    [
+      'a same-origin fetch',
+      { 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', origin: appUrl },
+    ],
+    ['a request with no browser headers (the app’s own code)', { origin: '' }],
+  ])('lets %s through both limits as before', async (_, headers) => {
+    const response = await askForLink(s.signIn, known, { ...connecting, ...headers });
+    expect(response.status).toBe(200);
+    expect(s.limiter.calls).toHaveLength(2);
+    expect(s.queued.map((email) => email.to)).toEqual([known]);
+  });
+});
+
 describe('what the route handler serves', () => {
   const endpointPaths = () =>
     Object.values(s.signIn.auth.api as Record<string, { path?: string }>)
@@ -574,6 +630,12 @@ describe('the logs (§13: no emails in logs)', () => {
     await open(s.signIn, lastLink(s.queued));
     for (let i = 0; i < 6; i += 1) await askForLink(s.signIn, unknown);
     await askForLink(s.signIn, 'not an address');
+    // Refused as cross-site; Better Auth logs the Referer it refused, here with an address in it, URL-encoded.
+    await askForLink(s.signIn, known, {
+      ...connecting,
+      origin: '',
+      referer: 'https://evil.example/?to=nadia%40golpo-cafe.example',
+    });
     // Its email couldn't be queued: after the answer, so the answer is the usual one, and the failure is logged.
     expect((await askForLink(failing, known)).status).toBe(200);
 
@@ -581,6 +643,22 @@ describe('the logs (§13: no emails in logs)', () => {
       /auth\.error: a sign-in link failed after the answer: Error/,
     );
     expect(written.join('\n')).not.toMatch(/nadia|stranger|golpo|@[\w-]+\.example/i);
+  });
+});
+
+describe('kindOf: an error as packages/auth logs it', () => {
+  it('is its name and a driver’s code, never its message', () => {
+    const failed = Object.assign(new Error(`could not reach ${known}`), { code: 'ECONNREFUSED' });
+    expect(kindOf(failed)).toBe('Error ECONNREFUSED');
+    expect(kindOf(new TypeError(`bad ${known}`))).toBe('TypeError');
+  });
+
+  it('leaves out a name or code that could carry text, and says "unknown" when nothing is left', () => {
+    expect(kindOf({ name: `to ${known}`, code: 42 })).toBe('unknown');
+    expect(kindOf({ name: 'Error', code: 'x'.repeat(41) })).toBe('Error');
+    expect(kindOf({})).toBe('unknown');
+    expect(kindOf(`failed for ${known}`)).toBe('unknown');
+    expect(kindOf(null)).toBe('unknown');
   });
 });
 
