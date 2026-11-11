@@ -132,7 +132,8 @@ interface WorkspaceSwitcherProps {
  * with `aria-checked` on the current one, as the mockup's `openWs` has them; choosing one closes the menu.
  *
  * A name too long for the button is cut with an ellipsis there (one line is all the bar has room for), but it wraps in
- * its row in the open menu, so two workspaces whose names start alike can still be told apart (Iris F1 on the App shell batch).
+ * its row in the open menu, so two workspaces whose names start alike can still be told apart (Iris F1 on the App
+ * shell batch).
  */
 function WorkspaceSwitcher({
   workspaces,

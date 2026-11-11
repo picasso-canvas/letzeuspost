@@ -50,7 +50,7 @@ const loadError = 'Couldn’t load your workspaces. Check your connection and tr
 const retryLabel = 'Try again';
 /** en.json: frame.switcher.loading */
 const loadingLabel = 'Loading workspaces…';
-/** en.json: frame.account.label (the avatar's name: the person and their role) */
+/** en.json: frame.account.label, `{name} ({role})` (the avatar's name), filled in for Nadia Karim and her role. */
 const accountLabel = 'Nadia Karim (Admin)';
 
 function Bar({

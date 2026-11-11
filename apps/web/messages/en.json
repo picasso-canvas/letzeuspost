@@ -13,7 +13,7 @@
       "loading": "Loading workspaces…"
     },
     "account": {
-      "label": "Nadia Karim (Admin)"
+      "label": "{name} ({role})"
     }
   },
   "home": {
