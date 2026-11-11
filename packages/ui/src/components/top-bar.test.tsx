@@ -202,7 +202,7 @@ describe('choosing a workspace', () => {
   it('closes the list with the caller’s note, and leaves it out of a list that failed to load', () => {
     const notes = (props: object) =>
       elementsIn(WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1', ...props })).filter(
-        (el) => el.type === 'p' && el.props.children === words.note,
+        (el) => el.type === 'div' && el.props.children === words.note,
       );
     expect(notes({})).toHaveLength(1);
     expect(notes({ error: { message: 'ERR', retryLabel: 'RETRY' } })).toHaveLength(0);

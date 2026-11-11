@@ -217,7 +217,10 @@ function WorkspaceSwitcher({
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>
-            {note !== undefined && <p className="px-2 pt-1.5 pb-1 text-meta text-faint">{note}</p>}
+            {/* A plain div, not a paragraph: a menu may only own items, groups and generic wrappers (axe aria-required-children). */}
+            {note !== undefined && (
+              <div className="px-2 pt-1.5 pb-1 text-meta text-faint">{note}</div>
+            )}
           </>
         )}
       </DropdownMenuContent>
