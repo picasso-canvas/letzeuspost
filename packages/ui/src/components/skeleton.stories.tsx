@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Skeleton } from '@lzp/ui/components/skeleton';
 
-// Loading (§04: "Loading: skeletons"): the shapes of what is coming, pulsing, and standing still under reduced
+// Loading (§04: "Loading: skeletons"): the shapes of what is coming, shimmering, and standing still under reduced
 // motion. A skeleton is the loading state itself; the other states don't apply.
 const meta = {
   title: 'Components/Skeleton',

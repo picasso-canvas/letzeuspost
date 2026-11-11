@@ -77,6 +77,40 @@
   translate: var(--tw-translate-x) var(--tw-translate-y);
 }
 
+/*
+ * The skeleton's shimmer (skeleton.tsx, §05: "a shimmer on generating cards"): a soft band of the text colour at 8%
+ * sweeps across, so it shows lighter or darker as the surface needs, in both themes. It moves with `transform` only,
+ * and stops under reduced motion, where the skeleton is a still shape.
+ */
+@utility skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--color-foreground) 8%, transparent),
+      transparent
+    );
+    animation: skeleton-shimmer 1.6s ease-in-out infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
+@keyframes skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 /* The sidebar (sidebar.tsx). */
 /* The menu button's outline variant: a 1 px ring in the border colour, the strong border on hover. */
 @utility shadow-sidebar-outline {
