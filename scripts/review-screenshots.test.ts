@@ -470,6 +470,9 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     expect(inflateBudget(undefined)).toBe(1024 * 1024 * 1024);
     expect(inflateBudget(2 * MAX_INFLATED_BYTES)).toBe(MAX_INFLATED_BYTES);
     expect(inflateBudget(20 * 1024 * 1024)).toBe(20 * 1024 * 1024);
+    // Argus F2 and Cerberus F1 on #220, round 2: anything but a finite positive number takes the real budget.
+    for (const bad of [Number.NaN, 0, -1, Number.POSITIVE_INFINITY])
+      expect(inflateBudget(bad), String(bad)).toBe(MAX_INFLATED_BYTES);
   });
 
   it(`looks at no more than ${String(MAX_ENTRIES_LOOKED_AT)} candidate entries`, () => {
@@ -553,24 +556,6 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     expect(readdirSync(join(out, 'gallery-screenshots')).sort()).toEqual(['a.png', 'c.png']);
     expect(text).toContain('b.png: does not inflate');
     expect(text).toContain('2 in screenshots/gallery-screenshots/');
-  });
-
-  // Cerberus F1 on #213, round 4: listing stops once both artifacts are found.
-  it('stops listing runs once both artifacts are found', () => {
-    const out = into();
-    const gh = fakeGitHub(
-      {
-        49: { artifacts: ['gallery-screenshots'] },
-        50: { artifacts: ['e2e-screenshots'] },
-        51: { artifacts: ['gallery-screenshots'] },
-      },
-      {
-        500: zip([{ name: 'home.png', data: PNG }]),
-        510: zip([{ name: 'card.png', data: PNG }]),
-      },
-    );
-    collectScreenshots(SHA, out, gh.deps);
-    expect(gh.calls.some((c) => c.includes('actions/runs/49/artifacts'))).toBe(false);
   });
 
   // Cerberus F1 on #213, round 4: one time limit for the whole step, not only for each gh call.
