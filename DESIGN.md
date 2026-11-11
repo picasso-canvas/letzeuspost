@@ -318,7 +318,7 @@ into CSS variables in `packages/ui/src/tokens/` that switch under `.dark`. What 
 
 ## Typography
 
-Inter is the only interface font (self-hosted), with the mockup's system sans stack behind it in case it doesn't load.
+Inter is the interface font (self-hosted), with the mockup's system sans stack behind it in case it doesn't load. Inter has no Bengali letters, so Bangla text in the interface uses Hind Siliguri (self-hosted, OFL), right after Inter in the stack and for the Bengali range only, in the same sizes. Its faces have fixed weights (400, 500, 600, 700), so the scale's 550 and 650 show as 600 and 700, a little heavier than Inter beside them. Text in Bangla is marked `lang="bn"`, and the font covers all Bengali letters (Zeus, 2026-11-11; recorded on #223 and #228).
 14 px base, 13 px meta, both at 1.5 line height; field labels 12.5 px at 550 in the muted colour (`label`), button
 text 14 px at 550 (`button`); headings 22 / 16 / 14 px at 650–600 weight
 with slight negative tracking; eyebrows 11 px, 600, uppercase, wide tracking; tabular numbers in meters, counters and
