@@ -1,4 +1,5 @@
-export { loadEnv } from './env.ts';
+export { loadEnv, servedOverHttps } from './env.ts';
+export { signInLimits } from './sign-in.ts';
 export type { Env, ProcessName } from './env.ts';
 export { models, prices } from './models.ts';
 export type { AiTask } from './models.ts';

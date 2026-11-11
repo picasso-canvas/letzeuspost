@@ -31,11 +31,6 @@ export const BETTER_AUTH_TABLES = {
   verification: schema.verification,
 };
 
-/** Where the app is HTTPS only, so its cookies are Secure (config/env.ts, §14): everywhere but the Mac and CI. */
-export function secureCookiesIn(environment: Env<'web'>['LZP_ENV']): boolean {
-  return environment !== 'development' && environment !== 'ci';
-}
-
 /** The settings packages/auth reads: the web process's (config/env.ts). */
 export type AuthServerEnv = Pick<
   Env<'web'>,
@@ -88,7 +83,7 @@ export function createAuthServer(env: AuthServerEnv) {
     database: drizzleAdapter(authDb.db, { provider: 'pg', schema: BETTER_AUTH_TABLES }),
     secret: env.AUTH_SECRET,
     appUrl: env.APP_URL,
-    secureCookies: secureCookiesIn(env.LZP_ENV),
+    environment: env.LZP_ENV,
     hitRateLimit: authDb.hitRateLimit,
     queueSignInEmail: async ({ userId, to, url }) => {
       await queueAccountEmail(authDb.db, queue, {

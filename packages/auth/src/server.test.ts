@@ -1,9 +1,9 @@
 // How packages/auth wires Better Auth to the database (#77, decision (a) of 2026-11-10), checked without one:
-// Better Auth's adapter is given its own four tables and nothing else, and cookies are Secure wherever the app is
-// HTTPS. server.int.test.ts runs the whole thing on Postgres.
+// Better Auth's adapter is given its own four tables and nothing else (where cookies are Secure is config/env.ts's
+// rule, tested in sign-in.test.ts). server.int.test.ts runs the whole thing on Postgres.
 import { schema } from '@lzp/db/auth';
 import { describe, expect, it } from 'vitest';
-import { BETTER_AUTH_TABLES, secureCookiesIn } from './server.ts';
+import { BETTER_AUTH_TABLES } from './server.ts';
 import { createWorkspace } from './workspaces.ts';
 
 describe("Better Auth's adapter", () => {
@@ -14,15 +14,6 @@ describe("Better Auth's adapter", () => {
       account: schema.account,
       verification: schema.verification,
     });
-  });
-});
-
-describe('cookies', () => {
-  it('are Secure in staging and production, the HTTPS-only places (§14), and not on the Mac or in CI', () => {
-    expect(secureCookiesIn('production')).toBe(true);
-    expect(secureCookiesIn('staging')).toBe(true);
-    expect(secureCookiesIn('development')).toBe(false);
-    expect(secureCookiesIn('ci')).toBe(false);
   });
 });
 

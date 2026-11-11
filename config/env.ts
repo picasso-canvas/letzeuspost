@@ -35,6 +35,14 @@ const ENVIRONMENTS = ['development', 'ci', 'staging', 'production'] as const;
 /** Only Zeus's Mac and CI run without TLS; staging and production are HTTPS only (§14). */
 const PLAIN_HTTP_IN: readonly string[] = ['development', 'ci'];
 
+/**
+ * Whether the app is served over HTTPS only where it runs (LZP_ENV): everywhere but development and ci. Its addresses
+ * must be https:// there, and its cookies Secure (packages/auth). Anything unknown counts as HTTPS.
+ */
+export function servedOverHttps(environment: string): boolean {
+  return !PLAIN_HTTP_IN.includes(environment);
+}
+
 /** The addresses sign-in links, review links and files travel through: https:// outside PLAIN_HTTP_IN. */
 const HTTPS_ONLY = ['APP_URL', 'STORAGE_ENDPOINT'] as const;
 
@@ -198,7 +206,7 @@ export function loadEnv<P extends ProcessName>(
   // Checked only once LZP_ENV is valid: a missing or unknown one already stops the process, and the message then names
   // only it. A malformed address is already named above, so it isn't named twice.
   const where = env.LZP_ENV;
-  if (where !== undefined && !PLAIN_HTTP_IN.includes(where)) {
+  if (where !== undefined && servedOverHttps(where)) {
     for (const name of HTTPS_ONLY) {
       const address = env[name];
       if (address !== undefined && URL.parse(address)?.protocol !== 'https:') {

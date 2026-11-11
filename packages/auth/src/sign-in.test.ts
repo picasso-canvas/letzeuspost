@@ -1,6 +1,7 @@
 // Email-link sign-in (#77, §13 Sign-in and sessions, A5, Q9, §15), through the route handler the web app mounts, on
 // Better Auth's memory adapter: the same Better Auth, plugin and hooks as production, without Postgres.
 // server.int.test.ts runs the flow again on Postgres, through the auth handle.
+import { signInLimits } from '@lzp/config';
 import type { DBAdapterInstance } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,7 +9,6 @@ import {
   createSignIn,
   SERVED_ENDPOINTS,
   SESSION_DAYS,
-  SIGN_IN_LIMITS,
   SIGN_IN_LINK_MINUTES,
   type SignIn,
   type SignInEmail,
@@ -67,7 +67,7 @@ interface Setup {
 }
 
 async function setup(
-  options: { secureCookies?: boolean; emailVerified?: boolean } = {},
+  options: { environment?: string; emailVerified?: boolean } = {},
 ): Promise<Setup> {
   const store: Record<string, Record<string, unknown>[]> = {
     user: [],
@@ -81,7 +81,7 @@ async function setup(
     database: likePostgresIds(memoryAdapter(store)),
     secret: authKey,
     appUrl,
-    secureCookies: options.secureCookies ?? false,
+    environment: options.environment ?? 'development',
     hitRateLimit: limiter.hit,
     queueSignInEmail: (email) => {
       queued.push(email);
@@ -279,7 +279,7 @@ describe('sessions (§13, §15)', () => {
   });
 
   it('set an HttpOnly, Secure, SameSite=Lax cookie in production mode', async () => {
-    const production = await setup({ secureCookies: true });
+    const production = await setup({ environment: 'production' });
     await askForLink(production.signIn, known);
     const response = await open(production.signIn, lastLink(production.queued));
     const cookies = response.headers.getSetCookie();
@@ -314,8 +314,12 @@ describe('sessions (§13, §15)', () => {
 });
 
 describe('rate limits (§13, Q9: 5 per address and 20 per IP, per hour)', () => {
-  it('sets the limits Q9 decided', () => {
-    expect(SIGN_IN_LIMITS).toEqual({ perAddress: 5, perIp: 20, windowSeconds: 3600 });
+  it('counts at the limits config/sign-in.ts sets (Q9: config values)', async () => {
+    await askForLink(s.signIn, known);
+    expect(s.limiter.calls.map(({ limit, windowSeconds }) => ({ limit, windowSeconds }))).toEqual([
+      { limit: signInLimits.perIp, windowSeconds: signInLimits.windowSeconds },
+      { limit: signInLimits.perAddress, windowSeconds: signInLimits.windowSeconds },
+    ]);
   });
 
   it('counts every request by IP and by address, known or not, and never keeps a plain address', async () => {
@@ -439,7 +443,7 @@ describe('the logs (§13: no emails in logs)', () => {
       database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
       secret: authKey,
       appUrl,
-      secureCookies: false,
+      environment: 'development',
       hitRateLimit: () => Promise.resolve(true),
       queueSignInEmail: ({ to }) => Promise.reject(new Error(`could not queue the email to ${to}`)),
     });

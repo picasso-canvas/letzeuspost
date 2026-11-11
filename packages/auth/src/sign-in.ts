@@ -8,12 +8,14 @@
 //   written for it: no link, no email (Q9).
 // - The request writes no email itself: `queueSignInEmail` puts a row in the account emails' outbox and queues the
 //   `account-email` job (./server.ts), which the worker sends.
-// - Requests are limited per address and per IP, known addresses or not (Q9), in Postgres (`hitRateLimit`).
+// - Requests are limited per address and per IP, known addresses or not, at config/sign-in.ts's limits (Q9), in
+//   Postgres (`hitRateLimit`).
 // - Sessions last 30 days and renew while in use (§15): Better Auth extends a session a day or more old by 30 days
 //   from its use. They live in the session table, and the cookie holds only the session's token: HttpOnly,
-//   SameSite=Lax, and Secure wherever the app is HTTPS (staging and production, config/env.ts).
+//   SameSite=Lax, and Secure wherever the app is HTTPS (staging and production: config/env.ts's `servedOverHttps`).
 // - The handler serves only SERVED_ENDPOINTS; every other Better Auth route answers 404.
 import { createHmac } from 'node:crypto';
+import { servedOverHttps, signInLimits } from '@lzp/config';
 import { betterAuth, type BetterAuthOptions, type DBAdapterInstance } from 'better-auth';
 import { APIError, createAuthMiddleware, getIP } from 'better-auth/api';
 import { magicLink } from 'better-auth/plugins/magic-link';
@@ -22,8 +24,6 @@ import { magicLink } from 'better-auth/plugins/magic-link';
 export const SIGN_IN_LINK_MINUTES = 10;
 /** §15: sessions last 30 days and renew while in use. */
 export const SESSION_DAYS = 30;
-/** Q9 (Zeus and Athena, 2026-11-07): 5 emails per address and 20 per IP, per hour. */
-export const SIGN_IN_LIMITS = { perAddress: 5, perIp: 20, windowSeconds: 3600 } as const;
 /** The @lzp/email template of the sign-in email. */
 export const SIGN_IN_TEMPLATE = 'sign-in-link';
 
@@ -58,8 +58,8 @@ export interface SignInDeps {
   readonly secret: string;
   /** APP_URL. */
   readonly appUrl: string;
-  /** True wherever the app is served over HTTPS (staging and production). */
-  readonly secureCookies: boolean;
+  /** LZP_ENV: where the app runs. Its cookies are Secure wherever it is HTTPS only (config/env.ts). */
+  readonly environment: string;
   /** @lzp/db/auth's hitRateLimit: counts the request in the bucket, or says false when the bucket is full. */
   readonly hitRateLimit: (bucket: string, limit: number, windowSeconds: number) => Promise<boolean>;
   /** Writes the outbox row and queues its job. */
@@ -84,7 +84,7 @@ function options(deps: SignInDeps) {
   /** A bucket's name: its kind and a keyed hash of its value, so the table never holds an address or an IP. */
   const bucket = (kind: 'address' | 'ip', value: string) =>
     `sign-in:${kind}:${createHmac('sha256', deps.secret).update(value).digest('hex')}`;
-  const { perAddress, perIp, windowSeconds } = SIGN_IN_LIMITS;
+  const { perAddress, perIp, windowSeconds } = signInLimits;
 
   return {
     appName: 'LetZeusPost',
@@ -109,7 +109,7 @@ function options(deps: SignInDeps) {
     // (a driver's, say, quoting an address) would be printed whole.
     onAPIError: { throw: true },
     advanced: {
-      useSecureCookies: deps.secureCookies,
+      useSecureCookies: servedOverHttps(deps.environment),
       defaultCookieAttributes: { httpOnly: true, sameSite: 'lax' },
       // #71's ids are `uuid` columns that Postgres fills with `uuidv7()`. 'uuid' leaves them to it, and makes the ids
       // Better Auth sets itself UUIDs too: with any other choice, the lock row it writes while verifying an address is
