@@ -6,11 +6,15 @@ import { contentSecurityPolicy, newNonce } from './security/csp.ts';
 
 const POLICY = 'content-security-policy';
 
+// Staging and production are HTTPS only (§14). Decided from LZP_ENV, which the app checked at startup
+// (instrumentation.ts), not from the request: behind Caddy the app sees plain http.
+const HTTPS_ENVIRONMENTS: readonly string[] = ['staging', 'production'];
+
 export function proxy(request: NextRequest): NextResponse {
   const nonce = newNonce();
   const policy = contentSecurityPolicy(nonce, {
     development: process.env.NODE_ENV === 'development',
-    https: request.nextUrl.protocol === 'https:',
+    https: HTTPS_ENVIRONMENTS.includes(process.env.LZP_ENV ?? ''),
   });
 
   // Next.js reads the nonce from the policy on the request and stamps its own scripts with it. `x-nonce` is for our

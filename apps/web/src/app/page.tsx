@@ -14,7 +14,7 @@ export default function Home() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center p-6">
       <section className="flex flex-col gap-4 rounded-lg border bg-card p-6 text-card-foreground">
-        <p className="text-eyebrow font-(weight:--font-weight-eyebrow) text-muted-foreground uppercase">
+        <p className="text-eyebrow font-(weight:--font-weight-eyebrow) tracking-eyebrow text-faint uppercase">
           {home.eyebrow}
         </p>
         <h1 className="text-h1 font-(weight:--font-weight-h1) text-balance">{home.heading}</h1>
