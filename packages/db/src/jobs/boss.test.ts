@@ -72,6 +72,29 @@ describe("the app role's rights in pg-boss's schema", () => {
     }
   });
 
+  // Cerberus F1 on #203: bam holds SQL that an owner-role instance runs; schedule and subscription make jobs and fan
+  // them out. lzp_app's instance (migrate and schedule off, no subscribe) writes none of them.
+  it('takes back every write on bam, schedule and subscription, and gives none back', () => {
+    const revoke = statements.findIndex(
+      (statement) =>
+        statement ===
+        `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ${JOBS_SCHEMA}.bam, ${JOBS_SCHEMA}.schedule, ${JOBS_SCHEMA}.subscription FROM lzp_app`,
+    );
+    const allTables = statements.findIndex((statement) => statement.includes('ON ALL TABLES'));
+    expect(revoke).toBeGreaterThan(allTables);
+    for (const table of ['bam', 'schedule', 'subscription']) {
+      expect(
+        statements.filter(
+          (statement, index) =>
+            index > revoke &&
+            statement.startsWith('GRANT') &&
+            statement.includes(` ON ${JOBS_SCHEMA}.${table} `),
+        ),
+        table,
+      ).toEqual([]);
+    }
+  });
+
   it("leaves pg-boss's version to the owner role, and lets a running instance stamp its passes", () => {
     expect(updatableColumns('version').sort()).toEqual(
       ['bam_on', 'cron_on', 'flow_on', 'monitor_backoff_on', 'reindex_on'].sort(),

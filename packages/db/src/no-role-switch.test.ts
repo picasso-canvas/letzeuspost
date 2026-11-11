@@ -235,6 +235,16 @@ describe('the role-switch check', () => {
     expect(roleSwitches(text ?? '')).not.toEqual([]);
   });
 
+  // Nor does a byte that isn't UTF-8 (Argus F1 on #203): psql runs a Latin-1 or CP1252 file as it is.
+  it.each([
+    ['Latin-1 SQL', Buffer.from(`-- caf\xe9\n${w('SET', 'ROLE', 'lzp_auth')};\n`, 'latin1')],
+    ['CP1252 shell', Buffer.from(`# \x93quoted\x94\npsql -c "${w('RESET', 'ROLE')}"\n`, 'latin1')],
+  ])('reads a file of text that is not UTF-8: %s', (_, bytes) => {
+    const text = textOf(bytes);
+    expect(text).not.toBeNull();
+    expect(roleSwitches(text ?? '')).not.toEqual([]);
+  });
+
   it('skips a binary, which is no valid UTF-8 even without its NUL bytes', () => {
     const png = readFileSync(`${ROOT}docs/design/logos/letzeuspost/mark.png`);
     expect(textOf(png)).toBeNull();

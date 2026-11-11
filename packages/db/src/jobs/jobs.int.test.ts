@@ -231,6 +231,30 @@ describe('pg-boss in the pgboss schema (§13)', () => {
     }
   });
 
+  // Cerberus F1 on #203: bam's commands run as SQL in an owner-role instance (installJobs); schedule rows make jobs;
+  // subscription rows fan a published event out to queues. lzp_app's own instance writes none of them.
+  it('refuses the app role any write to bam, schedule or subscription', async () => {
+    const app = new pg.Client({ connectionString: appUrl });
+    await app.connect();
+    try {
+      for (const statement of [
+        `insert into ${JOBS_SCHEMA}.bam (name, version, status, table_name, command)
+           values ('intruder', 1, 'pending', 'job_common', 'select 1')`,
+        `update ${JOBS_SCHEMA}.bam set command = 'select 1'`,
+        `delete from ${JOBS_SCHEMA}.bam`,
+        `insert into ${JOBS_SCHEMA}.schedule (name, key, cron, timezone) values ('email', '', '* * * * *', 'UTC')`,
+        `update ${JOBS_SCHEMA}.schedule set data = null`,
+        `delete from ${JOBS_SCHEMA}.schedule`,
+        `insert into ${JOBS_SCHEMA}.subscription (event, name) values ('intruder', 'email')`,
+        `delete from ${JOBS_SCHEMA}.subscription`,
+      ]) {
+        expect(await refusalCode(app.query(statement)), statement).toBe('42501');
+      }
+    } finally {
+      await app.end();
+    }
+  });
+
   it("lets the app role run pg-boss's maintenance pass (expiry, retries, counts) with no permission refused", async () => {
     const boss = new PgBoss({
       connectionString: appUrl,
