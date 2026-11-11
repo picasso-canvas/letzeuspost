@@ -163,3 +163,12 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     Brands, the pinned brands under a "Pinned brands" eyebrow with each brand's mark (the mockup's sample marks, in
     `src/gallery/mark-*.svg`), then Settings. `SidebarGroupAction` and `SidebarMenuAction` stay in the component as
     options for later screens; the stories don't use them, as the mockup's nav has no "+" or "…".
+32. **Nav items at the body weight (Zeus, #75, 2026-11-11; replaces the active item's label weight in change 23):**
+    every sidebar nav item, `SidebarMenuButton` and `SidebarMenuSubButton`, sets `font-normal` (400), the current page
+    included. The current page is marked by its card and 2 px bar alone (`data-active:bg-card`,
+    `data-active:shadow-sidebar-current`); the `data-active:font-(weight:--font-weight-label)` class is gone.
+    `sidebar.test.tsx` resolves the weights the item's classes can set from the compiled CSS.
+33. **A shimmering skeleton (§05, #75; replaces the pulse in change 19):** `animate-pulse` and
+    `motion-reduce:animate-none` → `skeleton-shimmer` (`styles/components.css`): a band over the shape, moved with
+    `transform` only, which stands still and is not drawn under reduced motion. `skeleton.test.tsx` checks the keyframes
+    and the reduced-motion rule from the compiled CSS.
