@@ -56,17 +56,35 @@ describe('globals.css', () => {
     expect(css).toMatch(/--font-sans:\s*'?"?Inter/);
   });
 
-  it('self-hosts Inter: a font-face named Inter from files that exist, nothing from the web', () => {
+  it('self-hosts its fonts: Inter, and Hind Siliguri for Bangla, from files that exist, nothing from the web', () => {
     const faces = [...source.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1] ?? '');
     expect(faces.length).toBeGreaterThan(0);
     for (const face of faces) {
-      expect(face).toMatch(/font-family:\s*['"]Inter['"]/);
+      expect(face).toMatch(/font-family:\s*['"](?:Inter|Hind Siliguri)['"]/);
       const url = /url\(['"]?([^'")]+)['"]?\)/.exec(face)?.[1];
       expect(url, face).toBeDefined();
       expect(url).not.toMatch(/^(?:https?:)?\/\//);
       expect(existsSync(new URL(url ?? '', new URL('globals.css', import.meta.url)))).toBe(true);
     }
     expect(source).not.toMatch(/https?:\/\//);
+  });
+
+  // Zeus, 2026-11-11 (#228): Hind Siliguri carries Bangla only, in the weights the type scale reaches (400 to 700).
+  it('gives Hind Siliguri the Bengali range only, in weights 400, 500, 600 and 700', () => {
+    const hind = [...source.matchAll(/@font-face\s*\{([^}]*)\}/g)]
+      .map((m) => m[1] ?? '')
+      .filter((face) => /font-family:\s*['"]Hind Siliguri['"]/.test(face));
+    expect(hind.map((face) => /font-weight:\s*(\d+)/.exec(face)?.[1]).sort()).toEqual([
+      '400',
+      '500',
+      '600',
+      '700',
+    ]);
+    for (const face of hind) {
+      const range = /unicode-range:\s*([^;]+);/.exec(face)?.[1] ?? '';
+      expect(range).toMatch(/U\+0980-09FF/i);
+      expect(range).not.toMatch(/U\+0000|U\+0020-007F|U\+00/i);
+    }
   });
 
   it('builds every named utility components.css declares, so a typo in one fails here (#205)', async () => {
@@ -113,6 +131,6 @@ describe('globals.css', () => {
 
   it('uses no other interface font', () => {
     const families = [...source.matchAll(/font-family:\s*([^;]+);/g)].map((m) => m[1] ?? '');
-    for (const family of families) expect(family).toMatch(/Inter|var\(--font-sans\)/);
+    for (const family of families) expect(family).toMatch(/Inter|Hind Siliguri|var\(--font-sans\)/);
   });
 });

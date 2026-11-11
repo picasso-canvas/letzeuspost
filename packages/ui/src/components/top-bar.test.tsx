@@ -91,6 +91,18 @@ function wordsIn(markup: string): string[] {
   return [...text, ...attributes].map((t) => t.replaceAll('&amp;', '&'));
 }
 
+describe('Bangla names (#228)', () => {
+  // Zeus, 2026-11-11: Bangla text is marked lang="bn", for its font, its shaping and screen readers.
+  it('marks a Bangla workspace name lang="bn", and an English one not at all', () => {
+    const bangla = html({
+      workspaces: [{ ...northwind, id: 'b1', name: 'ঢাকা ও সিলেট' }],
+      currentId: 'b1',
+    });
+    expect(bangla).toMatch(/<span[^>]*lang="bn"[^>]*>ঢাকা ও সিলেট<\/span>/);
+    expect(html()).not.toContain('lang=');
+  });
+});
+
 describe('the workspace switcher, closed', () => {
   it('is a button you can Tab to and press, showing the current workspace', () => {
     const markup = html();
