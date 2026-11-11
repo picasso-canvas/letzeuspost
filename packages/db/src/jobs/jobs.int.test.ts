@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { loadEnv } from '@lzp/config';
 import { sql } from 'drizzle-orm';
 import pg from 'pg';
+import { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db.ts';
 import { migrate } from '../migrate.ts';
@@ -196,6 +197,55 @@ describe('pg-boss in the pgboss schema (§13)', () => {
       await app.end();
     }
   });
+
+  // Cerberus F1 on #197: the queue's policy and pg-boss's version are the owner's; lzp_app only stamps its passes.
+  it("refuses the app role any change to a queue's retry bounds, to the queue list or to pg-boss's version", async () => {
+    const app = new pg.Client({ connectionString: appUrl });
+    await app.connect();
+    try {
+      for (const statement of [
+        `update ${JOBS_SCHEMA}.queue set retry_limit = 100 where name = 'email'`,
+        `update ${JOBS_SCHEMA}.queue set expire_seconds = 1 where name = 'email'`,
+        `update ${JOBS_SCHEMA}.queue set dead_letter = null where name = 'email'`,
+        `insert into ${JOBS_SCHEMA}.queue (name) values ('intruder')`,
+        `delete from ${JOBS_SCHEMA}.queue where name = 'email'`,
+        `update ${JOBS_SCHEMA}.version set version = version`,
+        `delete from ${JOBS_SCHEMA}.version`,
+      ]) {
+        expect(await refusalCode(app.query(statement)), statement).toBe('42501');
+      }
+      // What a running instance writes there: its pass stamps and the queue's counts.
+      await app.query(
+        `update ${JOBS_SCHEMA}.queue set monitor_claim_on = monitor_claim_on where name = 'email'`,
+      );
+      await app.query(`update ${JOBS_SCHEMA}.version set cron_on = cron_on`);
+    } finally {
+      await app.end();
+    }
+  });
+
+  it("lets the app role run pg-boss's maintenance pass (expiry, retries, counts) with no permission refused", async () => {
+    const boss = new PgBoss({
+      connectionString: appUrl,
+      schema: JOBS_SCHEMA,
+      migrate: false,
+      reindex: false,
+      schedule: false,
+      supervise: false,
+    });
+    const refused: string[] = [];
+    const note = (error: unknown) => {
+      if ((error as { code?: unknown }).code === '42501') refused.push((error as Error).message);
+    };
+    boss.on('error', note);
+    await boss.start();
+    try {
+      await boss.supervise().catch(note);
+    } finally {
+      await boss.stop({ graceful: false });
+    }
+    expect(refused).toEqual([]);
+  }, 60_000);
 
   it('declares the five queues, each with its bounded retries, backoff and expiry', async () => {
     const { rows } = await owner.query<{
