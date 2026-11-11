@@ -123,7 +123,7 @@ describe('the frame under the app’s content security policy (#222)', () => {
       const rule =
         /\.max-w-(\d+)\\\/(\d+)\s*\{[^}]*max-width:\s*calc\(\s*\d+\s*\/\s*\d+\s*\*\s*100%\s*\)/;
       const m = rule.exec(await buildCss(classes));
-      return m ? `${(Number(m[1]) * 100) / Number(m[2])}%` : undefined;
+      return m ? `${String((Number(m[1]) * 100) / Number(m[2]))}%` : undefined;
     };
     expect(await barWidth(<SidebarMenuSkeleton width="sm" />)).toBe('55%');
     expect(await barWidth(<SidebarMenuSkeleton width="md" />)).toBe('70%');
