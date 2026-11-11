@@ -384,7 +384,7 @@ describe('the long-name stories', () => {
       .map((m) => m[1] ?? '')
       .filter((name) => /\p{Script=Bengali}/u.test(name));
     expect(bangla).not.toEqual([]);
-    expect(list).toMatch(/id: 'dhaka-digital', name: '[^']*\p{Script=Bengali}/u);
+    expect(list).toMatch(/id: 'dhaka-digital',\s*name: '[^']*\p{Script=Bengali}/u);
     expect(stories).toMatch(/export const LongName: Story/);
     expect(stories).toMatch(/export const LongNameBangla: Story[\s\S]*?currentId: 'dhaka-digital'/);
   });

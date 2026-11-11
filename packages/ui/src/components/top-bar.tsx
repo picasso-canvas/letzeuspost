@@ -130,6 +130,9 @@ interface WorkspaceSwitcherProps {
  * its own: a label that doesn't start with the visible text fails WCAG 2.5.3 (axe `label-content-name-mismatch`, which
  * failed the first version). `aria-haspopup` and `aria-expanded` say it opens a menu. The rows are `menuitemradio`s
  * with `aria-checked` on the current one, as the mockup's `openWs` has them; choosing one closes the menu.
+ *
+ * A name too long for the button is cut with an ellipsis there (one line is all the bar has room for), but it wraps in
+ * its row in the open menu, so two workspaces whose names start alike can still be told apart (Iris F1 on the App shell batch).
  */
 function WorkspaceSwitcher({
   workspaces,
@@ -207,7 +210,7 @@ function WorkspaceSwitcher({
                     <Building2Icon className="mt-0.5" aria-hidden="true" />
                   )}
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate">{row.name}</span>
+                    <span className="wrap-break-word">{row.name}</span>
                     <span className="text-meta text-muted-foreground">{row.detail}</span>
                   </span>
                 </DropdownMenuRadioItem>
