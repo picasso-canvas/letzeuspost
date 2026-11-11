@@ -119,7 +119,9 @@ describe('the frame under the app’s content security policy (#222)', () => {
     const barWidth = async (el: ReactElement): Promise<string | undefined> => {
       const tag = /<[^>]*data-sidebar="menu-skeleton-text"[^>]*>/.exec(renderToStaticMarkup(el));
       const classes = /class="([^"]*)"/.exec(tag?.[0] ?? '')?.[1]?.split(' ') ?? [];
-      return /max-width:\s*([\d.]+%)/.exec(await buildCss(classes))?.[1];
+      // The utility's own rule (`.max-w-\[55\%\] { max-width: 55% }`), not preflight's `max-width: 100%` on media.
+      const rule = /\.max-w-\\\[\d+\\%\\\]\s*\{[^}]*max-width:\s*([\d.]+%)/;
+      return rule.exec(await buildCss(classes))?.[1];
     };
     expect(await barWidth(<SidebarMenuSkeleton width="sm" />)).toBe('55%');
     expect(await barWidth(<SidebarMenuSkeleton width="md" />)).toBe('70%');
