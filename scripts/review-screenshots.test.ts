@@ -419,7 +419,7 @@ describe('readZip', () => {
   });
 });
 
-// Round 3 on #213: Cerberus F1-F3 and Argus F1-F3.
+// Round 4 on #213 (round 3's Cerberus F1-F3 and Argus F1-F4).
 describe('collectScreenshots: what a hostile artifact can cost', () => {
   it('refuses a zip whose directory entries share one local record, and writes nothing from it', () => {
     const out = into();
@@ -441,9 +441,11 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
 
   it('stops inflating an artifact once its budget is spent, dropped entries included', () => {
     const out = into();
-    // Entries that each inflate to the 5 MB limit and then fail their checksum: none is kept, all of them cost.
+    // Entries that each inflate to the 5 MB limit and then fail their checksum: none is kept, all of them cost. A
+    // 20 MB budget instead of the real 1 GB keeps the test quick on a busy machine (#216); the rule is the same.
+    const budget = 20 * 1024 * 1024;
     const big = Buffer.concat([PNG, Buffer.alloc(MAX_SCREENSHOT_BYTES - PNG.length)]);
-    const count = Math.ceil(MAX_INFLATED_BYTES / MAX_SCREENSHOT_BYTES) + 5;
+    const count = Math.ceil(budget / MAX_SCREENSHOT_BYTES) + 5;
     const gh = fakeGitHub(
       { 41: { artifacts: ['gallery-screenshots'] } },
       {
@@ -456,9 +458,13 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
         ),
       },
     );
-    const text = collectScreenshots(SHA, out, gh.deps);
-    expect(text).toContain(`stopped: ${String(MAX_INFLATED_BYTES / (1024 * 1024))} MB inflated`);
+    const text = collectScreenshots(SHA, out, { ...gh.deps, limits: { inflatedBytes: budget } });
+    expect(text).toContain('stopped: 20 MB inflated, so 6 more entries');
     expect(readdirSync(join(out, 'gallery-screenshots'))).toEqual([]);
+  });
+
+  it('uses the real 1 GB budget when none is given', () => {
+    expect(MAX_INFLATED_BYTES).toBe(1024 * 1024 * 1024);
   });
 
   it(`looks at no more than ${String(MAX_ENTRIES_LOOKED_AT)} candidate entries`, () => {
@@ -542,5 +548,46 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     expect(readdirSync(join(out, 'gallery-screenshots')).sort()).toEqual(['a.png', 'c.png']);
     expect(text).toContain('b.png: does not inflate');
     expect(text).toContain('2 in screenshots/gallery-screenshots/');
+  });
+
+  // Cerberus F1 on #213, round 4: listing stops once both artifacts are found.
+  it('stops listing runs once both artifacts are found', () => {
+    const out = into();
+    const gh = fakeGitHub(
+      {
+        49: { artifacts: ['gallery-screenshots'] },
+        50: { artifacts: ['e2e-screenshots'] },
+        51: { artifacts: ['gallery-screenshots'] },
+      },
+      {
+        500: zip([{ name: 'home.png', data: PNG }]),
+        510: zip([{ name: 'card.png', data: PNG }]),
+      },
+    );
+    collectScreenshots(SHA, out, gh.deps);
+    expect(gh.calls.some((c) => c.includes('actions/runs/49/artifacts'))).toBe(false);
+  });
+
+  // Cerberus F1 on #213, round 4: one time limit for the whole step, not only for each gh call.
+  it('stops the whole step at its time limit, and says so', () => {
+    const out = into();
+    let clock = 0;
+    const gh = fakeGitHub(
+      { 52: { artifacts: ['gallery-screenshots'] }, 53: { artifacts: ['e2e-screenshots'] } },
+      { 520: zip([{ name: 'card.png', data: PNG }]), 530: zip([{ name: 'home.png', data: PNG }]) },
+    );
+    const fetchZip = (id: number) => {
+      clock += 11 * 60 * 1000; // each download takes 11 minutes
+      return gh.deps.fetchZip(id);
+    };
+    const text = collectScreenshots(SHA, out, {
+      ...gh.deps,
+      fetchZip,
+      now: () => clock,
+    });
+    expect(gh.fetched).toEqual([520]); // the gallery's comes first
+    expect(text).toContain(
+      "e2e-screenshots: not fetched: the screenshot step's 10-minute limit ran out.",
+    );
   });
 });
