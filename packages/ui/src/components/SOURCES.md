@@ -95,7 +95,8 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     `text-muted-foreground` at rest and `bg-card text-foreground` on hover (`accent` is the sidebar's own colour, so
     a hover in it didn't show); the current page is the card with the mockup's 2 px ink bar on its left
     (`shadow-sidebar-current`); counts are `text-faint`; group labels are the eyebrow (`text-eyebrow`, uppercase,
-    faint). The `sidebar-border` classes → `border`. Its width is DESIGN.md's 228 px (`SIDEBAR_WIDTH`), not 16 rem.
+    faint). The `sidebar-border` classes → `border`. Its width is DESIGN.md's 228 px, not 16 rem: the `w-sidebar` utility (`styles/components.css`), not the registry's
+    inline `--sidebar-width` style (see change 38).
 16. **Focus** (as change 5): the toast's `ring-[3px] ring-ring/50` and the sidebar's `ring-sidebar-ring` /
     `focus-visible:ring-2` → the solid 2 px outline with a 2 px gap in the `ring` token. The dropdown's items
     (plain, checkbox, radio, submenu trigger) showed keyboard focus only as the `accent` fill, about 1.1:1 on the
@@ -139,7 +140,7 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     renders them into a box in its canvas (`src/gallery/stage.tsx`), so the screenshot, focus and motion tests see
     them.
 26. **Screenshots are the same every run:** `SidebarMenuSkeleton`'s text bar had a random width (50–90%); it takes a
-    `width` prop (70% by default).
+    `width` prop (70% by default), as the classes `max-w-11/20`, `max-w-7/10` and `max-w-4/5` (change 38).
 27. **No cookie (§16: essential cookies only; Athena's decision on #205, 2026-11-11):** the registry's
     `SidebarProvider` wrote a `sidebar_state` cookie on every open and close. With change 28 there is nothing to open
     or close, so no state and no cookie; `sidebar.test.tsx` checks that rendering it writes none.
@@ -186,3 +187,7 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     `sidebar-narrow:hidden` (the mockup's `.brandnav`). It is measured on the frame, not the window, so the gallery's
     `NarrowRow` story draws it in a 384 px box; in the app the frame is as wide as the window. `sidebar.test.tsx` reads the
     compiled CSS.
+36. **No `style` attribute in the frame's HTML (Argus F1 on #221; #222):** the app's policy is `style-src 'self'
+    'nonce-…'`, so a `style` attribute written in server HTML is blocked. `SidebarProvider` no longer writes
+    `--sidebar-width` inline; `Sidebar` takes `w-sidebar` (`styles/components.css`, 228 px), and the skeleton's
+    widths are the fraction classes of change 26. `sidebar.test.tsx` renders the frame and fails on any `style=`.

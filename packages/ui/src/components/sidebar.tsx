@@ -14,24 +14,19 @@ import { Skeleton } from '@lzp/ui/components/skeleton';
 // registry's collapsing (icon rail, off-canvas, the trigger, the rail and ⌘B) and its phone sheet are gone; below
 // 900 px the app shows a scrolling row of links instead (#75). With nothing to open or close, there is no state to
 // remember, so no cookie (§16).
-const SIDEBAR_WIDTH = '228px'; // DESIGN.md › Layout: a 228 px sidebar
+// Nothing here writes a `style` attribute: the app's policy is `style-src 'self' 'nonce-…'`, with no `'unsafe-inline'`, so
+// a browser blocks one written in the server HTML (#222). The width is the named utility `w-sidebar` (components.css).
 
 /**
  * The frame: the sidebar beside the content. It sits in a container named `sidebar`, whose width the narrow row is
  * measured on (the `sidebar-narrow` variant, components.css): below 900 px the frame stacks, the sidebar above the page.
  * In the app the container is as wide as the window; in the gallery it is the box the story draws it in.
  */
-function SidebarProvider({ className, style, children, ...props }: React.ComponentProps<'div'>) {
+function SidebarProvider({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
     <div data-slot="sidebar-frame" className="@container/sidebar w-full">
       <div
         data-slot="sidebar-wrapper"
-        style={
-          {
-            '--sidebar-width': SIDEBAR_WIDTH,
-            ...style,
-          } as React.CSSProperties
-        }
         className={cn(
           'group/sidebar-wrapper flex min-h-svh w-full sidebar-narrow:flex-col',
           className,
@@ -54,7 +49,7 @@ function Sidebar({ className, children, ...props }: React.ComponentProps<'div'>)
       data-slot="sidebar"
       data-sidebar="sidebar"
       className={cn(
-        'flex w-(--sidebar-width) shrink-0 flex-col border-r bg-secondary text-secondary-foreground sidebar-narrow:w-full sidebar-narrow:flex-row sidebar-narrow:items-center sidebar-narrow:gap-0.5 sidebar-narrow:overflow-x-auto sidebar-narrow:border-r-0 sidebar-narrow:border-b sidebar-narrow:p-2',
+        'flex w-sidebar shrink-0 flex-col border-r bg-secondary text-secondary-foreground sidebar-narrow:w-full sidebar-narrow:flex-row sidebar-narrow:items-center sidebar-narrow:gap-0.5 sidebar-narrow:overflow-x-auto sidebar-narrow:border-r-0 sidebar-narrow:border-b sidebar-narrow:p-2',
         className,
       )}
       {...props}
@@ -338,12 +333,12 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
 function SidebarMenuSkeleton({
   className,
   showIcon = false,
-  width = '70%',
+  width = 'md',
   ...props
 }: React.ComponentProps<'div'> & {
   showIcon?: boolean;
-  /** The text bar's width, as a CSS length. */
-  width?: string;
+  /** The text bar's width: `sm` 55%, `md` 70% or `lg` 80% of the row. A class, never a `style` attribute (#222). */
+  width?: 'sm' | 'md' | 'lg';
 }) {
   return (
     <div
@@ -359,13 +354,13 @@ function SidebarMenuSkeleton({
         />
       )}
       <Skeleton
-        className="h-4 max-w-(--skeleton-width) flex-1 bg-border-strong"
+        className={cn(
+          'h-4 flex-1 bg-border-strong',
+          width === 'sm' && 'max-w-11/20',
+          width === 'md' && 'max-w-7/10',
+          width === 'lg' && 'max-w-4/5',
+        )}
         data-sidebar="menu-skeleton-text"
-        style={
-          {
-            '--skeleton-width': width,
-          } as React.CSSProperties
-        }
       />
     </div>
   );
