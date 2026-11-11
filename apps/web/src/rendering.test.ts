@@ -18,4 +18,10 @@ describe('rendering per request', () => {
     expect(layout).toMatch(/export const dynamic = 'force-dynamic'/);
     expect(layout).not.toMatch(/use cache|revalidate|force-static/);
   });
+
+  it('renders the health route per request, so the database is asked every time', () => {
+    const route = read('./app/api/health/route.ts');
+    expect(route).toMatch(/export const dynamic = 'force-dynamic'/);
+    expect(route).not.toMatch(/use cache|revalidate|force-static/);
+  });
 });

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { proxy } from './proxy.ts';
 
 const CSP = 'content-security-policy';
@@ -51,10 +51,36 @@ describe('proxy', () => {
     expect(response.headers.get(forwarded(CSP))).toBe(response.headers.get(CSP));
   });
 
-  it('upgrades requests only when the app itself is served over https', () => {
-    const plain = proxy(new NextRequest('http://localhost:3000/')).headers.get(CSP);
-    const secure = proxy(new NextRequest('https://app.letzeuspost.com/')).headers.get(CSP);
-    expect(plain).not.toContain('upgrade-insecure-requests');
-    expect(secure).toContain('upgrade-insecure-requests');
+  // Behind Caddy the app sees plain http, so the environment decides, not the request's protocol (§14: staging and
+  // production are HTTPS only; only a Mac and CI run without TLS).
+  describe('upgrade-insecure-requests', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.each(['staging', 'production'])('is asked for in %s, whatever the protocol', (where) => {
+      vi.stubEnv('LZP_ENV', where);
+      for (const url of ['http://localhost:3000/', 'https://app.letzeuspost.com/']) {
+        expect(proxy(new NextRequest(url)).headers.get(CSP), `${where} ${url}`).toContain(
+          'upgrade-insecure-requests',
+        );
+      }
+    });
+
+    it.each(['development', 'ci'])('is left out in %s, even over https', (where) => {
+      vi.stubEnv('LZP_ENV', where);
+      for (const url of ['http://localhost:3000/', 'https://localhost:3000/']) {
+        expect(proxy(new NextRequest(url)).headers.get(CSP), `${where} ${url}`).not.toContain(
+          'upgrade-insecure-requests',
+        );
+      }
+    });
+
+    it('is left out when LZP_ENV is not set (the app refuses to start without it anyway)', () => {
+      vi.stubEnv('LZP_ENV', '');
+      expect(proxy(new NextRequest('http://localhost:3000/')).headers.get(CSP)).not.toContain(
+        'upgrade-insecure-requests',
+      );
+    });
   });
 });
