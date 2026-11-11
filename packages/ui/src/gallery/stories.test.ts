@@ -100,6 +100,10 @@ describe('the top bar stories', () => {
   it('open the switcher by the keyboard, after tabbing to its button', () => {
     expect(stories.KeyboardOpen?.tags).toEqual(['focus', 'keyboard-open']);
   });
+
+  it('have no empty switcher: the frame only exists inside a workspace (Athena, #75, 2026-11-11)', () => {
+    expect(stories).not.toHaveProperty('Empty');
+  });
 });
 
 describe.each([
@@ -131,25 +135,16 @@ describe.each([
   {
     name: 'sidebar',
     module: sidebar,
-    states: ['Expanded', 'Loading', 'NoPinnedBrands'],
+    states: ['Expanded', 'Loading', 'NoPinnedBrands', 'NarrowRow'],
     hover: ['ItemHover'],
     focus: ['ItemFocus'],
   },
-  // The top bar and its workspace switcher (#75): closed, hovered, focused, open, opened by the keyboard, disabled, with
-  // no workspace, loading, and with the list failed to load (closed, and open to show why).
+  // The top bar and its workspace switcher (#75): closed, hovered, focused, open, opened by the keyboard, disabled,
+  // loading, and with the list failed to load (closed, and open to show why).
   {
     name: 'top bar',
     module: topBar,
-    states: [
-      'Default',
-      'Open',
-      'Disabled',
-      'Empty',
-      'Loading',
-      'ErrorState',
-      'ErrorOpen',
-      'LongName',
-    ],
+    states: ['Default', 'Open', 'Disabled', 'Loading', 'ErrorState', 'ErrorOpen', 'LongName'],
     hover: ['TriggerHover'],
     focus: ['TriggerFocus', 'KeyboardOpen'],
   },

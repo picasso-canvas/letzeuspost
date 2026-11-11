@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { Building2Icon, CheckIcon } from 'lucide-react';
+import { Avatar } from '@lzp/ui/components/avatar';
 import { DropdownMenuItem } from '@lzp/ui/components/dropdown-menu';
 import {
   TopBar,
@@ -18,10 +20,9 @@ const northwind = { id: 'w1', name: 'Northwind Social', role: 'Admin' };
 const kite = { id: 'w2', name: 'Kite & Co', role: 'Editor' };
 const workspaces = [northwind, kite, { id: 'w3', name: 'বাংলা স্টুডিও', role: 'Viewer' }];
 const words = {
-  label: 'LABEL: switch workspace',
   menuLabel: 'MENU: workspaces',
   currentLabel: 'CURRENT',
-  emptyLabel: 'EMPTY: no workspace',
+  note: 'NOTE: each workspace is separate',
 };
 
 describe('the workspace list', () => {
@@ -74,15 +75,41 @@ function wordsIn(markup: string): string[] {
 }
 
 describe('the workspace switcher, closed', () => {
-  it('is a button you can Tab to and press, named by the caller, showing the current workspace', () => {
+  it('is a button you can Tab to and press, showing the current workspace', () => {
     const markup = html();
     expect(markup).toMatch(/^<button\b/);
     expect(markup).toContain('aria-haspopup="menu"');
     expect(markup).toContain('aria-expanded="false"');
-    expect(markup).toContain(`aria-label="${words.label}"`);
     expect(markup).toContain('Northwind Social');
     // Not the others, until it is opened.
     expect(markup).not.toContain('Kite');
+  });
+
+  it('is named by the text it shows, with no label of its own to disagree with it (WCAG 2.5.3, axe label-content-name-mismatch)', () => {
+    for (const props of [
+      {},
+      { disabled: true },
+      { error: { message: 'ERR', retryLabel: 'RETRY' } },
+    ]) {
+      const button = /^<button\b[^>]*>/.exec(html(props))?.[0] ?? '';
+      expect(button, JSON.stringify(props)).not.toMatch(/aria-label(?:ledby)?=/);
+    }
+  });
+
+  it('fills the mark with the workspace’s own colour and text colour, which the caller passes (Iris F2)', () => {
+    const own = { ...northwind, mark: { background: '#23395B', text: '#FFFFFF' } };
+    const markup = html({ workspaces: [own, kite] });
+    expect(markup).toMatch(/data-slot="avatar-fallback"[^>]*style="[^"]*background-color:#23395B/);
+    expect(markup).toMatch(/data-slot="avatar-fallback"[^>]*style="[^"]*[^-]color:#FFFFFF/);
+    // Without one, the mark keeps the token colours.
+    expect(html()).not.toContain('style=');
+  });
+
+  it('sets the workspace name at weight 600 on DESIGN.md’s scale (Iris F2)', () => {
+    const name = /<span[^>]*class="([^"]*)"[^>]*>Northwind Social<\/span>/.exec(html())?.[1] ?? '';
+    expect(name.split(' ')).toContain('font-(weight:--font-weight-h3)');
+    const tokens = readFileSync(new URL('../tokens/theme.css', import.meta.url), 'utf8');
+    expect(/--font-weight-h3:\s*(\d+)/.exec(tokens)?.[1]).toBe('600');
   });
 
   it('shows the initials when the workspace has no logo, and until its logo has loaded', () => {
@@ -104,16 +131,14 @@ describe('the workspace switcher, closed', () => {
     expect(html()).not.toMatch(/^<button\b[^>]*\bdisabled=""/);
   });
 
-  it('with no workspace, says so in the caller’s words and cannot be opened', () => {
-    const markup = html({ workspaces: [], currentId: undefined });
-    expect(markup).toContain(words.emptyLabel);
-    expect(markup).toMatch(/^<button\b[^>]*\bdisabled=""/);
-  });
-
-  it('keeps the current workspace on show when the list could not be loaded', () => {
+  it('keeps the current workspace on show when the list could not be loaded, and tells a screen reader why', () => {
     const markup = html({ error: { message: 'ERR: could not load', retryLabel: 'RETRY' } });
     expect(markup).toContain('Northwind Social');
     expect(markup).toMatch(/^<button\b/);
+    // The warning icon is only drawn; the caller's message is read after the name, inside the button.
+    expect(/^<button\b[\s\S]*?<\/button>/.exec(markup)?.[0]).toMatch(
+      /class="sr-only"[^>]*>ERR: could not load</,
+    );
   });
 
   it('holds no words of its own: every word is the caller’s or a workspace’s', () => {
@@ -121,7 +146,6 @@ describe('the workspace switcher, closed', () => {
     for (const props of [
       {},
       { disabled: true },
-      { workspaces: [], currentId: undefined },
       { error: { message: 'ERR', retryLabel: 'RETRY' } },
     ]) {
       const found = wordsIn(html(props)).filter((w) => !allowed.has(w) && w !== 'ERR');
@@ -155,6 +179,33 @@ describe('choosing a workspace', () => {
   it('has one item for each workspace, in order, the current one marked as such', () => {
     expect(items).toHaveLength(workspaces.length);
     expect(items.map((item) => item.props['aria-current'])).toEqual(['true', undefined, undefined]);
+  });
+
+  /** Every element in a tree of React elements, in order. */
+  const elementsIn = (node: ReactNode): ReactElement<{ children?: ReactNode }>[] => {
+    if (Array.isArray(node)) return node.flatMap(elementsIn);
+    if (!isValidElement<{ children?: ReactNode }>(node)) return [];
+    return [node, ...elementsIn(node.props.children)];
+  };
+
+  it('draws the mockup’s rows (Iris F3): a check on the current one, a building on the others, no avatar', () => {
+    const rows = items.map((item) => elementsIn(item.props.children).map((el) => el.type));
+    expect(rows[0]?.[0]).toBe(CheckIcon);
+    expect(rows[1]?.[0]).toBe(Building2Icon);
+    expect(rows[2]?.[0]).toBe(Building2Icon);
+    for (const row of rows) {
+      expect(row).not.toContain(Avatar);
+      expect(row.filter((type) => type === CheckIcon || type === Building2Icon)).toHaveLength(1);
+    }
+  });
+
+  it('closes the list with the caller’s note, and leaves it out of a list that failed to load', () => {
+    const notes = (props: object) =>
+      elementsIn(WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1', ...props })).filter(
+        (el) => el.type === 'p' && el.props.children === words.note,
+      );
+    expect(notes({})).toHaveLength(1);
+    expect(notes({ error: { message: 'ERR', retryLabel: 'RETRY' } })).toHaveLength(0);
   });
 
   it('switches to the workspace chosen, whoever chooses it and however', () => {

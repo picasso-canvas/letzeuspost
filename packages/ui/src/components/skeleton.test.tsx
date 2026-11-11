@@ -40,6 +40,14 @@ describe('the skeleton', () => {
     expect(rule).toMatch(/animation:\s*skeleton-shimmer\s+[\d.]+s[^;]*infinite;/);
   });
 
+  it('takes the mockup’s band: 100°, transparent 30%, white at 35% at 50%, transparent 70%, a 1.6 s loop (Iris F5)', async () => {
+    // docs/design/mockups/v1/index.html, `.shimmer::after`.
+    const rule = block(await buildCss(classes), /\.skeleton-shimmer\s*\{/);
+    const band = /linear-gradient\(\s*100deg,([^;]*)\);/.exec(rule)?.[1]?.replace(/\s+/g, ' ');
+    expect(band?.trim()).toBe('transparent 30%, rgb(255 255 255 / 35%) 50%, transparent 70%');
+    expect(rule).toMatch(/animation:\s*skeleton-shimmer\s+1\.6s\s+infinite;/);
+  });
+
   it('stands still when the system asks for reduced motion', async () => {
     const rule = block(await buildCss(classes), /\.skeleton-shimmer\s*\{/);
     // The preference comes after the animation it overrides, inside the same rule.

@@ -182,3 +182,76 @@ describe('the sidebar nav items (Zeus, #75, 2026-11-11)', () => {
     expect(current.filter((c) => c.startsWith('data-active:font'))).toEqual([]);
   });
 });
+
+// §04 and the v1 mockup's `@media (max-width: 900px)` (`.side`, `.nav`; Iris F4 on #219): below 900 px the sidebar is a
+// scrolling row of links along the top, the current page marked by a 2 px bar under it. The width is the frame's own
+// (a container query on the provider, not the window's), so the gallery can show it in a narrow box.
+const everyClass = (markup: string): string[] =>
+  [...markup.matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1]?.split(' ') ?? []);
+
+/** The classes of the first element in some markup that has the given data-slot. */
+const classesOfSlot = (markup: string, slot: string): string[] =>
+  new RegExp(`<[^>]*data-slot="${slot}"[^>]*class="([^"]*)"`).exec(markup)?.[1]?.split(' ') ?? [];
+
+/** What the given classes do inside the narrow frame: the bodies of every `@container sidebar (max-width: 900px)`. */
+async function narrowRules(classes: string[]): Promise<string> {
+  const css = await buildCss(classes);
+  const opener = '@container sidebar (max-width: 900px)';
+  const bodies: string[] = [];
+  for (let at = css.indexOf(opener); at !== -1; at = css.indexOf(opener, at + 1)) {
+    let depth = 0;
+    const open = css.indexOf('{', at);
+    for (let i = open; i < css.length; i++) {
+      if (css[i] === '{') depth++;
+      if (css[i] === '}' && --depth === 0) {
+        bodies.push(css.slice(open + 1, i));
+        break;
+      }
+    }
+  }
+  return bodies.join('\n').replace(/\s+/g, ' ');
+}
+
+describe('the sidebar below 900 px (Iris F4 on #219)', () => {
+  const frame = renderToStaticMarkup(
+    <SidebarProvider>
+      <Sidebar />
+    </SidebarProvider>,
+  );
+
+  it('measures the frame, not the window: the provider is a container named sidebar', async () => {
+    const css = await buildCss(everyClass(frame));
+    expect(css).toMatch(/container-type:\s*inline-size/);
+    expect(css).toMatch(/container-name:\s*sidebar/);
+  });
+
+  it('stacks the frame, with the row of links above the page', async () => {
+    expect(await narrowRules(classesOfSlot(frame, 'sidebar-wrapper'))).toContain(
+      'flex-direction: column',
+    );
+  });
+
+  it('turns the sidebar into a row that scrolls sideways, with its line below instead of beside', async () => {
+    const css = await narrowRules(classesOfSlot(frame, 'sidebar'));
+    for (const declaration of [
+      'flex-direction: row',
+      'overflow-x: auto',
+      'border-right-style: none',
+      'border-bottom-style: solid',
+    ])
+      expect(css, declaration).toContain(declaration);
+  });
+
+  it('keeps each link on one line, and marks the current page by a 2 px bar under it', async () => {
+    const item = classesOfFirstTag(renderToStaticMarkup(<SidebarMenuButton isActive />));
+    const css = await narrowRules(item);
+    expect(css).toContain('white-space: nowrap');
+    expect(css).toContain('box-shadow: inset 0 -2px 0 var(--color-foreground)');
+  });
+
+  it('drops the group labels, and any group the caller hides in the row', async () => {
+    const label = classesOfFirstTag(renderToStaticMarkup(<sidebar.SidebarGroupLabel />));
+    expect(await narrowRules(label)).toContain('display: none');
+    expect(await narrowRules(['sidebar-narrow:hidden'])).toContain('display: none');
+  });
+});
