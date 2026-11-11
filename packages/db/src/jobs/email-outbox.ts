@@ -17,6 +17,8 @@
 //   least 30 s more), so it too is marked failed as interrupted.
 // A run that outlived its job and did send it still records the send (`sent` moves an interrupted row too), so the
 // row says what happened. A send whose outcome is unknown fails the row at once (apps/worker's email job).
+// What this doesn't resolve: a row whose job's last run lost the database after claiming it. No retry comes, so the
+// row stays `sending`; a scheduled sweep for such rows is #210.
 import { and, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
