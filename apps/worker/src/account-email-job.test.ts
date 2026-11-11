@@ -63,7 +63,7 @@ function context(lastAttempt = false): JobContext<'account-email'> {
 
 const render = vi.fn((template: string, data: unknown) =>
   Promise.resolve({
-    subject: `${template}`,
+    subject: template,
     html: JSON.stringify(data),
     text: JSON.stringify(data),
   }),
