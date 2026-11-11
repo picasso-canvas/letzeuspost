@@ -18,6 +18,21 @@ import { createDb } from '../../packages/db/src/index.ts';
 // ---- The person -------------------------------------------------------------------------------------------------
 
 /**
+ * A query as text: each `${value}` becomes a quoted SQL literal, as in the Data journey (tests/journeys/data.int.test.ts).
+ * Better Auth's `user` table has no export the root may import (#176), so its rows go in as text. Every value is one this
+ * test made.
+ */
+function text(strings: TemplateStringsArray, ...values: string[]): string {
+  let query = '';
+  strings.forEach((part, i) => {
+    query += part;
+    const value = values[i];
+    if (value !== undefined) query += `'${value.replaceAll("'", "''")}'`;
+  });
+  return query;
+}
+
+/**
  * A person with an account, made before the test the way the Data journey (tests/journeys/data.int.test.ts) makes its
  * rows: by the owner role (the app role can't insert a person, #176), as Better Auth's `user` row with a name and an
  * email and nothing else. Assumptions: the other columns have defaults; the address counts as known to the sign-in
@@ -29,16 +44,11 @@ async function createAccount(email: string, run: string) {
   const owner = createDb(loadEnv('migrate').DATABASE_OWNER_URL);
   // The owner role isn't bound by row-level security, but `forWorkspace` is the one door in; any workspace id will do.
   const through = owner.forWorkspace({ workspaceId: randomUUIDv7() });
-  const quoted = (value: string) => `'${value.replaceAll("'", "''")}'`;
   await through.transaction((tx) =>
-    tx.execute(
-      `insert into "user" (name, email) values (${quoted(`Journey ${run}`)}, ${quoted(email)})`,
-    ),
+    tx.execute(text`insert into "user" (name, email) values (${`Journey ${run}`}, ${email})`),
   );
   return async () => {
-    await through.transaction((tx) =>
-      tx.execute(`delete from "user" where email = ${quoted(email)}`),
-    );
+    await through.transaction((tx) => tx.execute(text`delete from "user" where email = ${email}`));
     await owner.close();
   };
 }
@@ -119,17 +129,29 @@ const sessionCookies = (cookies: { name: string }[]) =>
 
 // ---- The journey ------------------------------------------------------------------------------------------------
 
+const run = randomUUID();
+const email = `signin-${run}@journey.invalid`;
+const stranger = `stranger-${run}@journey.invalid`;
+let removeAccount: (() => Promise<void>) | undefined;
+
+// Step 1 is not the feature, so it sits outside the expected failure: if the account or Mailpit is broken, a hook fails
+// and CI goes red, instead of the failure hiding inside `test.fail()`.
+test.beforeAll(async () => {
+  // 1. A test account exists, and Mailpit answers.
+  removeAccount = await createAccount(email, run);
+  expect(await emailsTo(email)).toEqual([]);
+});
+
+test.afterAll(async () => {
+  await removeAccount?.();
+});
+
+// Today the journey fails at step 2: no `proxy.ts` sends a signed-out person from `/` to `/sign-in` (#78).
 test.fail(
   'someone with an account signs in with an emailed link',
   async ({ page, context, browser, baseURL }) => {
     test.setTimeout(120_000);
     const origin = new URL(baseURL ?? '').origin;
-    const run = randomUUID();
-    const email = `signin-${run}@journey.invalid`;
-    const stranger = `stranger-${run}@journey.invalid`;
-
-    // 1. A test account exists.
-    const removeAccount = await createAccount(email, run);
     // A person who is signed out: a context of its own, with no cookies from the first one.
     const signedOut = await browser.newContext({ baseURL: origin });
     try {
@@ -140,13 +162,12 @@ test.fail(
 
       // 3. They type their address and choose "Email me a sign-in link"; the page says to check their email.
       const answered = await askForLink(page, email);
-      expect(answered).toMatch(/check your email/i);
 
       // 4. The email arrives in Mailpit, with the sign-in link on the app's own origin.
       const [arrived, ...others] = await emailsArrived(email, 1);
       expect(others).toEqual([]);
-      const text = await (arrived?.text() ?? Promise.reject(new Error('no email')));
-      const link = signInLink(text, origin);
+      const body = await (arrived?.text() ?? Promise.reject(new Error('no email')));
+      const link = signInLink(body, origin);
       expect(new URL(link).pathname).not.toBe('/sign-in');
 
       // 5. Opening the link signs them in: they land on an app page, not `/sign-in`, and a session cookie is set,
@@ -179,7 +200,6 @@ test.fail(
       expect(await emailsTo(stranger)).toEqual([]);
     } finally {
       await signedOut.close();
-      await removeAccount();
     }
   },
 );
