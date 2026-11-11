@@ -35,8 +35,11 @@
     ],
     "disableBypassPermissionsMode": "disable"
   },
+  "disableClaudeAiConnectors": true,
   "env": {
-    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1"
   },
   "hooks": {
     "SessionStart": [
