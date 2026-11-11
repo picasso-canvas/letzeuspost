@@ -12,11 +12,9 @@ import {
 // §04's top bar and §15's workspace switcher: "a switcher in the top bar lists the workspaces a person belongs to, with
 // their role in each". Every word on them comes from the caller (§21: all interface text lives in
 // apps/web/messages/en.json).
-const workspaces = [
-  { id: 'w1', name: 'Northwind Social', role: 'Admin' },
-  { id: 'w2', name: 'Kite & Co', role: 'Editor' },
-  { id: 'w3', name: 'বাংলা স্টুডিও', role: 'Viewer' },
-];
+const northwind = { id: 'w1', name: 'Northwind Social', role: 'Admin' };
+const kite = { id: 'w2', name: 'Kite & Co', role: 'Editor' };
+const workspaces = [northwind, kite, { id: 'w3', name: 'বাংলা স্টুডিও', role: 'Viewer' }];
 const words = {
   label: 'LABEL: switch workspace',
   menuLabel: 'MENU: workspaces',
@@ -50,11 +48,7 @@ describe('the workspace list', () => {
   });
 
   it('keeps each workspace’s own logo, and gives none to one without', () => {
-    const rows = workspaceRows(
-      [{ ...workspaces[0]!, logo: '/logo.svg' }, workspaces[1]!],
-      'w1',
-      'x',
-    );
+    const rows = workspaceRows([{ ...northwind, logo: '/logo.svg' }, kite], 'w1', 'x');
     expect(rows.map((row) => row.logo)).toEqual(['/logo.svg', undefined]);
   });
 });
@@ -92,7 +86,7 @@ describe('the workspace switcher, closed', () => {
   it('shows the initials when the workspace has no logo, and until its logo has loaded', () => {
     // Base UI draws the image only once the browser has it, so a server render (and a logo that fails) shows the initials.
     expect(html()).toContain('>NS<');
-    const withLogo = html({ workspaces: [{ ...workspaces[0]!, logo: '/logo.svg' }] });
+    const withLogo = html({ workspaces: [{ ...northwind, logo: '/logo.svg' }] });
     expect(withLogo).toContain('>NS<');
     expect(withLogo).not.toContain('<img');
   });

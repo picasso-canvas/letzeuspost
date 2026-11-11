@@ -106,11 +106,13 @@ interface WorkspaceSwitcherProps {
   menuLabel: string;
   /** The word for the workspace in use, shown after its role: "current". */
   currentLabel: string;
-  /** Shown on the button when there are no workspaces: "No workspace yet". */
+  /** Shown on the button when there is no current workspace to name: "No workspace yet". With no workspaces at all it can't be opened. */
   emptyLabel: string;
   /** The list couldn't be loaded: the menu says why, with a way to try again. */
   error?: { message: string; retryLabel: string; onRetry?: () => void };
   disabled?: boolean;
+  /** Start with the menu open (the gallery's open state). */
+  defaultOpen?: boolean;
   /** Where the open menu is drawn, for the gallery; the page's body when left out. */
   container?: HTMLElement | null;
   className?: string;
@@ -131,6 +133,7 @@ function WorkspaceSwitcher({
   emptyLabel,
   error,
   disabled = false,
+  defaultOpen,
   container,
   className,
 }: WorkspaceSwitcherProps) {
@@ -138,7 +141,7 @@ function WorkspaceSwitcher({
   const current = rows.find((row) => row.current);
   const empty = rows.length === 0;
   return (
-    <DropdownMenu>
+    <DropdownMenu defaultOpen={defaultOpen}>
       <DropdownMenuTrigger
         data-slot="workspace-switcher"
         aria-label={label}
