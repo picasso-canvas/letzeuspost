@@ -16,7 +16,8 @@ describe('initialsOf', () => {
   });
 
   it('takes whole Bangla letters, vowel signs included, not half of one', () => {
-    expect(initialsOf('বাংলা পোস্ট')).toBe('বাপো');
+    // "বাংলা" opens with one cluster: ব, the sign আ and the anusvara.
+    expect(initialsOf('বাংলা পোস্ট')).toBe('বাংপো');
     expect(initialsOf('কাজ')).toBe('কা');
   });
 
