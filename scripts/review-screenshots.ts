@@ -55,9 +55,12 @@ export interface ScreenshotDeps {
 export const STEP_TIME_LIMIT_MS = 10 * 60 * 1000;
 const STEP_LIMIT = `${String(STEP_TIME_LIMIT_MS / 60_000)}-minute limit`;
 
-/** The inflate budget: a caller's can only lower the real one (Cerberus F1 on #220). */
+/** The inflate budget: a caller's can only lower the real one (Cerberus F1 on #220, rounds 1 and 2). */
 export function inflateBudget(given: number | undefined): number {
-  return Math.min(given ?? MAX_INFLATED_BYTES, MAX_INFLATED_BYTES);
+  // Anything but a finite positive number (NaN would switch the budget off) takes the real one.
+  return given !== undefined && Number.isFinite(given) && given > 0
+    ? Math.min(given, MAX_INFLATED_BYTES)
+    : MAX_INFLATED_BYTES;
 }
 
 class StepTimeout extends Error {}
