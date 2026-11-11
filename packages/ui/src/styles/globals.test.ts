@@ -82,7 +82,7 @@ describe('globals.css', () => {
     ]);
     for (const face of hind) {
       const range = /unicode-range:\s*([^;]+);/.exec(face)?.[1] ?? '';
-      expect(range).toMatch(/U\+0980-09FF/i);
+      expect(range).toMatch(/U\+0980-09FE/i); // the package's Bengali subset
       expect(range).not.toMatch(/U\+0000|U\+0020-007F|U\+00/i);
     }
   });
