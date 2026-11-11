@@ -21,8 +21,6 @@ import { Skeleton } from '@lzp/ui/components/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@lzp/ui/components/tooltip';
 import { PanelLeftIcon } from 'lucide-react';
 
-const SIDEBAR_COOKIE_NAME = 'sidebar_state';
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = '228px'; // DESIGN.md › Layout: a 228 px sidebar
 const SIDEBAR_WIDTH_MOBILE = '18rem';
 const SIDEBAR_WIDTH_ICON = '3rem';
@@ -66,7 +64,8 @@ function SidebarProvider({
   const [openMobile, setOpenMobile] = React.useState(false);
 
   // This is the internal state of the sidebar.
-  // We use openProp and setOpenProp for control from outside the component.
+  // We use openProp and setOpenProp for control from outside the component. The sidebar keeps no cookie (§16:
+  // essential cookies only): it reports open and closed through `onOpenChange`, and the app chooses how to remember it.
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
@@ -77,9 +76,6 @@ function SidebarProvider({
       } else {
         _setOpen(openState);
       }
-
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${String(openState)}; path=/; max-age=${String(SIDEBAR_COOKIE_MAX_AGE)}`;
     },
     [setOpenProp, open],
   );

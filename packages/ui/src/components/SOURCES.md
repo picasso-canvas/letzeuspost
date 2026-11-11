@@ -144,3 +144,7 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     them.
 26. **Screenshots are the same every run:** `SidebarMenuSkeleton`'s text bar had a random width (50–90%); it takes a
     `width` prop (70% by default).
+27. **No cookie (§16: essential cookies only; Athena's decision on #205, 2026-11-11):** the registry's
+    `SidebarProvider` wrote a `sidebar_state` cookie on every open and close. It writes none: it reports open and
+    closed through `onOpenChange` (or follows the controlled `open` prop), and the app chooses how to remember it.
+    `sidebar.test.tsx` checks that toggling leaves `document.cookie` unchanged.

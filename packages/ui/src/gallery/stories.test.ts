@@ -87,6 +87,12 @@ describe('the input stories', () => {
 });
 
 // The app frame's components (#205): the states each one has, and the tags that draw the pointer and key states.
+describe('the dropdown menu stories', () => {
+  it('open one menu by the keyboard, after tabbing to its trigger', () => {
+    expect(storiesOf(dropdownMenu).KeyboardOpen?.tags).toEqual(['focus', 'keyboard-open']);
+  });
+});
+
 describe.each([
   { name: 'avatar', module: avatar, states: ['Photo', 'Initials', 'Group'], hover: [], focus: [] },
   { name: 'skeleton', module: skeleton, states: ['PostCard', 'ListRow'], hover: [], focus: [] },
@@ -100,9 +106,9 @@ describe.each([
   {
     name: 'dropdown menu',
     module: dropdownMenu,
-    states: ['Closed'],
+    states: ['Closed', 'Open', 'CheckboxAndRadio'],
     hover: ['TriggerHover'],
-    focus: ['TriggerFocus'],
+    focus: ['TriggerFocus', 'KeyboardOpen'],
   },
   { name: 'tooltip', module: tooltip, states: ['Open'], hover: [], focus: ['TriggerFocus'] },
   { name: 'sheet', module: sheet, states: ['Closed', 'Open'], hover: [], focus: [] },
@@ -127,7 +133,7 @@ describe.each([
     for (const name of states) expect(stories, name).toHaveProperty(name);
   });
 
-  it('tag only the hovered and focused states, each with its own tag', () => {
+  it('tag only the hovered and focused states, with the tags the gallery tests know', () => {
     const tagged = (tag: string) =>
       Object.entries(stories)
         .filter(([, story]) => (story.tags ?? []).includes(tag))
@@ -135,6 +141,7 @@ describe.each([
     expect(tagged('hover')).toEqual(hover);
     expect(tagged('focus')).toEqual(focus);
     for (const [name, story] of Object.entries(stories))
-      expect((story.tags ?? []).length, name).toBeLessThanOrEqual(1);
+      for (const tag of story.tags ?? [])
+        expect(['hover', 'focus', 'keyboard-open'], name).toContain(tag);
   });
 });

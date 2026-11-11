@@ -3,19 +3,23 @@ import { ChevronDownIcon, CopyIcon, DownloadIcon, PencilIcon, Trash2Icon } from 
 import { Button } from '@lzp/ui/components/button';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@lzp/ui/components/dropdown-menu';
 import { Stage } from '../gallery/stage';
 
-// A post's actions menu: the trigger at rest, hovered and focused. The open menu (its items, the keyboard focus, checkbox
-// and radio items) waits for a gallery decision: axe flags the invisible focus guards Base UI puts around every open
-// menu (`aria-hidden-focus`), so its stories would fail CI. Empty, loading and error don't apply to a menu.
+// A post's actions menu, closed and open, in every state that applies: the trigger hovered and focused, the menu open
+// with a disabled and a destructive item, opened by the keyboard with the first item focused (the `keyboard-open` tag
+// presses ArrowDown on the focused trigger), and with checkbox and radio items. Open menus render into a Stage inside
+// the canvas, so the tests see them. Empty, loading and error don't apply to a menu.
 const meta = {
   title: 'Components/Dropdown menu',
   component: DropdownMenu,
@@ -24,12 +28,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The menu opens into the Stage when clicked in the gallery; the stories show the trigger. */
-function PostMenu() {
+function PostMenu({ defaultOpen = false }: { defaultOpen?: boolean }) {
   return (
     <Stage className="h-80 w-64">
       {(container) => (
-        <DropdownMenu>
+        <DropdownMenu defaultOpen={defaultOpen}>
           <DropdownMenuTrigger render={<Button variant="secondary" />}>
             Post actions
             <ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
@@ -76,4 +79,47 @@ export const TriggerHover: Story = {
 export const TriggerFocus: Story = {
   tags: ['focus'],
   render: () => <PostMenu />,
+};
+
+/** Open: a label, a shortcut, a disabled item (dimmed, can't be chosen) and a destructive one. */
+export const Open: Story = {
+  render: () => <PostMenu defaultOpen />,
+};
+
+/** Opened by the keyboard: the first item is focused, with the approved 2 px outline (Iris F4 on #206). */
+export const KeyboardOpen: Story = {
+  tags: ['focus', 'keyboard-open'],
+  render: () => <PostMenu />,
+};
+
+/** Checkbox and radio items: a view menu on the calendar. */
+export const CheckboxAndRadio: Story = {
+  render: () => (
+    <Stage className="h-72 w-64">
+      {(container) => (
+        <DropdownMenu defaultOpen>
+          <DropdownMenuTrigger render={<Button variant="secondary" />}>
+            View
+            <ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent container={container} className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Show</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem defaultChecked>Drafts</DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem>Exported posts</DropdownMenuCheckboxItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Language</DropdownMenuLabel>
+              <DropdownMenuRadioGroup defaultValue="both">
+                <DropdownMenuRadioItem value="both">English and Bangla</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="bn">Bangla</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </Stage>
+  ),
 };

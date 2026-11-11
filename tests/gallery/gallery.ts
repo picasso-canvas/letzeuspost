@@ -46,7 +46,11 @@ export async function openStory(page: Page, id: string, theme: Theme): Promise<v
   await page.evaluate(() => document.fonts.ready);
 }
 
-/** Puts the story in the state its tag names: `hover` is a real pointer, `focus` a real Tab key press. */
+/**
+ * Puts the story in the state its tag names: `hover` is a real pointer, `focus` a real Tab key press, and
+ * `keyboard-open` then presses ArrowDown on the focused trigger, so a menu opens the way a keyboard user opens it, its
+ * first item focused (#205).
+ */
 export async function applyState(page: Page, tags: string[]): Promise<void> {
   if (tags.includes('hover')) {
     await page.locator('#storybook-root').locator('button, input').first().hover();
@@ -58,6 +62,10 @@ export async function applyState(page: Page, tags: string[]): Promise<void> {
     await page.locator(':focus-visible').evaluate((el) => {
       if (el instanceof HTMLInputElement) el.setSelectionRange(el.value.length, el.value.length);
     });
+  }
+  if (tags.includes('keyboard-open')) {
+    await page.keyboard.press('ArrowDown');
+    await page.locator('[role="menuitem"]:focus-visible').waitFor();
   }
 }
 
