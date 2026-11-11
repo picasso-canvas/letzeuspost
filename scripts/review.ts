@@ -22,6 +22,7 @@ import { requiredReviewers, stagingReviewers, tierOf } from './merge-gate/evalua
 import { safeName } from './lib/safe-name.ts';
 import { gatedIntoStaging, taskPrs } from './batch.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
+import { collectScreenshots } from './review-screenshots.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 import { parseVerdict } from './merge-gate/verdict.ts';
@@ -197,6 +198,8 @@ export interface BundleDeps {
   git: (args: string[]) => string;
   blob: (sha: string) => Buffer;
   now: () => number;
+  /** CI's screenshots on the head commit into a folder; returns screenshots.txt (#212). */
+  screenshots: (sha: string, into: string) => string;
 }
 
 export interface Bundle {
@@ -326,6 +329,11 @@ export function buildBundle(pr: number, deps: BundleDeps, stateDir = STATE_DIR):
     ].join('\n');
   }
   writeFileSync(join(bundle, 'ci.txt'), checks);
+  // The screens the PR renders, so Iris can see them (#212).
+  writeFileSync(
+    join(bundle, 'screenshots.txt'),
+    deps.screenshots(sha, join(bundle, 'screenshots')),
+  );
   const reviewComments = gh([
     'api',
     `repos/${REPO}/pulls/${String(pr)}/comments`,
@@ -711,6 +719,7 @@ async function main(argv: string[]): Promise<number> {
     blob: (object) =>
       execFileSync('git', ['cat-file', 'blob', object], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }),
     now: () => Date.now(),
+    screenshots: (sha, into) => collectScreenshots(sha, into, (args) => run('gh', args)),
   });
   const sensitiveList = show('.github/sensitive-paths.txt');
   const reviewers = planReviewers(
