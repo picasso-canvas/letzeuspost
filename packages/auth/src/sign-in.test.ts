@@ -1,6 +1,7 @@
 // Email-link sign-in (#77, §13 Sign-in and sessions, A5, Q9, §15), through the route handler the web app mounts, on
 // Better Auth's memory adapter: the same Better Auth, plugin and hooks as production, without Postgres.
-// sign-in.int.test.ts runs the flow again on Postgres, through the auth handle.
+// server.int.test.ts runs the flow again on Postgres, through the auth handle.
+import type { DBAdapterInstance } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -35,6 +36,28 @@ function countingLimiter() {
   };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The memory adapter, except that it refuses a row whose id isn't a UUID, as Postgres's `uuid` columns do (#71's
+ * tables): the memory adapter alone takes any text, which hid CI's two `services` failures on 4a5ddd0.
+ */
+function likePostgresIds(inner: DBAdapterInstance): DBAdapterInstance {
+  return (options) => {
+    const adapter = inner(options);
+    return {
+      ...adapter,
+      create: (data) => {
+        const id: unknown = (data.data as { id?: unknown }).id;
+        if (id !== undefined && (typeof id !== 'string' || !UUID.test(id))) {
+          return Promise.reject(new Error('invalid input syntax for type uuid'));
+        }
+        return adapter.create(data);
+      },
+    };
+  };
+}
+
 interface Setup {
   signIn: SignIn;
   store: Record<string, Record<string, unknown>[]>;
@@ -43,7 +66,9 @@ interface Setup {
   userId: string;
 }
 
-async function setup(options: { secureCookies?: boolean } = {}): Promise<Setup> {
+async function setup(
+  options: { secureCookies?: boolean; emailVerified?: boolean } = {},
+): Promise<Setup> {
   const store: Record<string, Record<string, unknown>[]> = {
     user: [],
     session: [],
@@ -53,7 +78,7 @@ async function setup(options: { secureCookies?: boolean } = {}): Promise<Setup> 
   const queued: SignInEmail[] = [];
   const limiter = countingLimiter();
   const signIn = createSignIn({
-    database: memoryAdapter(store),
+    database: likePostgresIds(memoryAdapter(store)),
     secret: authKey,
     appUrl,
     secureCookies: options.secureCookies ?? false,
@@ -65,7 +90,7 @@ async function setup(options: { secureCookies?: boolean } = {}): Promise<Setup> 
   });
   const context = await signIn.auth.$context;
   const user = await context.internalAdapter.createUser(
-    { email: known, name: 'Nadia', emailVerified: true },
+    { email: known, name: 'Nadia', emailVerified: options.emailVerified ?? true },
     { method: 'magic-link' },
   );
   return { signIn, store, queued, limiter, userId: user.id };
@@ -188,6 +213,17 @@ describe('the link (A5: 10 minutes, single use)', () => {
     );
     expect(response.headers.get('location')).toContain('error=INVALID_TOKEN');
     expect(sessionCookie(response)).toBeUndefined();
+  });
+
+  // CI's `services` failures on 4a5ddd0: a person made outside Better Auth (the seeds, an invitation) starts with their
+  // address unverified, and the link is what verifies it.
+  it('signs in an account whose address is not verified yet, and marks it verified', async () => {
+    const unverified = await setup({ emailVerified: false });
+    await askForLink(unverified.signIn, known);
+    const first = await open(unverified.signIn, lastLink(unverified.queued));
+    expect(first.status).toBe(302);
+    expect(sessionCookie(first)).toBeDefined();
+    expect(unverified.store['user']?.[0]?.['emailVerified']).toBe(true);
   });
 
   it("doesn't sign up an address whose account was removed after it asked", async () => {
