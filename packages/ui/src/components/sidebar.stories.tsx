@@ -178,7 +178,7 @@ export const Loading: Story = {
       <SidebarGroup aria-busy="true" className="sidebar-narrow:hidden">
         <SidebarGroupLabel>Pinned brands</SidebarGroupLabel>
         <SidebarMenu>
-          {['70%', '55%', '80%'].map((width) => (
+          {(['md', 'sm', 'lg'] as const).map((width) => (
             <SidebarMenuItem key={width}>
               <SidebarMenuSkeleton showIcon width={width} />
             </SidebarMenuItem>

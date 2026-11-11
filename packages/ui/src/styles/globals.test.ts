@@ -86,11 +86,14 @@ describe('globals.css', () => {
       'data-expanded:toast-expanded',
       'tooltip-arrow-offset',
       'shadow-sidebar-outline',
+      'w-sidebar',
       'data-active:shadow-sidebar-current',
     ]);
     expect(css).toMatch(/\.z-toast\s*\{[^}]*z-index:\s*calc\(1000 - var\(--toast-index\)\)/);
     expect(css).toMatch(/\.toast-stack\s*\{[^}]*transform:/);
     expect(css).toMatch(/\.shadow-sidebar-outline\s*\{[^}]*var\(--color-border\)/);
+    // The sidebar's 228 px (DESIGN.md › Layout) is a class: the app's policy blocks a `style` attribute (#222).
+    expect(css).toMatch(/\.w-sidebar\s*\{[^}]*width:\s*228px/);
     expect(css).toMatch(
       /shadow-sidebar-current[^{]*\{[^}]*inset 2px 0 0 var\(--color-foreground\)/,
     );
