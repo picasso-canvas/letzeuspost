@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as sidebar from '@lzp/ui/components/sidebar';
@@ -44,10 +45,8 @@ afterEach(() => {
 });
 
 describe('the sidebar', () => {
-  it('is 228 px wide and always open, with no collapsed or phone mode', () => {
-    const markup = html();
-    expect(markup).toContain('--sidebar-width:228px');
-    expect(markup).not.toMatch(/data-state=|data-collapsible=|data-mobile=/);
+  it('is always open, with no collapsed or phone mode', () => {
+    expect(html()).not.toMatch(/data-state=|data-collapsible=|data-mobile=/);
   });
 
   it('has no way to open or close it, and no state to remember', () => {
@@ -59,6 +58,73 @@ describe('the sidebar', () => {
     const writes = stubDocument();
     html();
     expect(writes).toEqual([]);
+  });
+});
+
+// #222 (Argus F1 on #221): the app's policy is `style-src 'self' 'nonce-…'`, with no `'unsafe-inline'`, so a browser
+// blocks a `style` attribute written into the server HTML. The frame's size and look come from classes alone.
+describe('the frame under the app’s content security policy (#222)', () => {
+  const frame = (
+    <SidebarProvider>
+      <Sidebar>
+        <sidebar.SidebarHeader>
+          <sidebar.SidebarInput aria-label="Search" />
+        </sidebar.SidebarHeader>
+        <SidebarContent>
+          <sidebar.SidebarGroup>
+            <sidebar.SidebarGroupLabel>Pages</sidebar.SidebarGroupLabel>
+            <sidebar.SidebarGroupAction aria-label="Add" />
+            <sidebar.SidebarGroupContent>
+              <sidebar.SidebarMenu>
+                <sidebar.SidebarMenuItem>
+                  <SidebarMenuButton isActive>Inbox</SidebarMenuButton>
+                  <sidebar.SidebarMenuAction aria-label="More" />
+                  <sidebar.SidebarMenuBadge>9</sidebar.SidebarMenuBadge>
+                  <sidebar.SidebarMenuSub>
+                    <sidebar.SidebarMenuSubItem>
+                      <SidebarMenuSubButton isActive>Drafts</SidebarMenuSubButton>
+                    </sidebar.SidebarMenuSubItem>
+                  </sidebar.SidebarMenuSub>
+                </sidebar.SidebarMenuItem>
+                <sidebar.SidebarMenuItem>
+                  <SidebarMenuSkeleton showIcon />
+                </sidebar.SidebarMenuItem>
+                <sidebar.SidebarMenuItem>
+                  <SidebarMenuSkeleton width="lg" />
+                </sidebar.SidebarMenuItem>
+              </sidebar.SidebarMenu>
+            </sidebar.SidebarGroupContent>
+          </sidebar.SidebarGroup>
+          <sidebar.SidebarSeparator />
+        </SidebarContent>
+        <sidebar.SidebarFooter />
+      </Sidebar>
+      <sidebar.SidebarInset />
+    </SidebarProvider>
+  );
+
+  it('writes no style attribute anywhere in its server HTML, so the policy blocks nothing', () => {
+    const markup = renderToStaticMarkup(frame);
+    expect(markup).toContain('data-slot="sidebar-menu-skeleton"');
+    expect(markup).not.toMatch(/\sstyle=/i);
+  });
+
+  it('takes its 228 px width (DESIGN.md › Layout) from the named utility w-sidebar', async () => {
+    const side = classesOfSlot(renderToStaticMarkup(frame), 'sidebar');
+    expect(side).toContain('w-sidebar');
+    expect(await buildCss(side)).toMatch(/\.w-sidebar\s*\{[^}]*width:\s*228px/);
+  });
+
+  it('gives the skeleton’s text bar its width from a class: 55, 70 or 80%, 70% by default', async () => {
+    const barWidth = async (el: ReactElement): Promise<string | undefined> => {
+      const tag = /<[^>]*data-sidebar="menu-skeleton-text"[^>]*>/.exec(renderToStaticMarkup(el));
+      const classes = /class="([^"]*)"/.exec(tag?.[0] ?? '')?.[1]?.split(' ') ?? [];
+      return /max-width:\s*([\d.]+%)/.exec(await buildCss(classes))?.[1];
+    };
+    expect(await barWidth(<SidebarMenuSkeleton width="sm" />)).toBe('55%');
+    expect(await barWidth(<SidebarMenuSkeleton width="md" />)).toBe('70%');
+    expect(await barWidth(<SidebarMenuSkeleton width="lg" />)).toBe('80%');
+    expect(await barWidth(<SidebarMenuSkeleton />)).toBe('70%');
   });
 });
 
