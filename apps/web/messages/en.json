@@ -1,0 +1,18 @@
+{
+  "app": {
+    "name": "LetZeusPost",
+    "description": "On-brand social posts for agencies, in English and Bangla."
+  },
+  "home": {
+    "eyebrow": "LetZeusPost",
+    "heading": "Welcome to LetZeusPost",
+    "body": "The app is still being built. Sign-in comes next.",
+    "swatchesLabel": "Colours in this theme",
+    "swatches": {
+      "background": "Page",
+      "card": "Card",
+      "primary": "Gold fill",
+      "muted": "Muted"
+    }
+  }
+}
