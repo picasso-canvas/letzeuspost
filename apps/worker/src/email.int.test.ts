@@ -1,7 +1,10 @@
 // The email job against real Postgres and Mailpit (§13 Jobs and Done when, §17 Integration, #72), in
 // `pnpm check:services` and CI's `services` job: the first real job sends an outbox row to Mailpit; running the job
-// twice for one row, a job that failed before sending, and a job killed after sending each leave exactly one message.
-// Every workspace, row and address here is this run's; the workspace goes at the end, and its rows with it.
+// twice for one row, a job that failed before sending, and a job killed after sending each leave exactly one message;
+// a run that lost the database after claiming its row leaves it to the job's retry; and a job never reaches another
+// workspace's row. Every workspace, row and address here is this run's; the workspaces go at the end, and their rows
+// with them. So the file shares the database with the other services files, which Vitest runs side by side (Argus F1
+// on #202): the `email` jobs any of them queues go to whichever worker is running, all of them this real handler.
 import { execFileSync } from 'node:child_process';
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { loadEnv } from '@lzp/config';
@@ -36,6 +39,8 @@ const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
 const run = randomUUID();
 const workspaceId = randomUUIDv7();
 const ctx = { workspaceId };
+/** Another workspace of this run's, whose row the tenancy test names from `ctx`'s job. */
+const otherCtx = { workspaceId: randomUUIDv7() };
 
 /** Mailpit's API, beside its SMTP port (docker/compose.yml). */
 const mailpit = `http://${new URL(env.SMTP_URL).hostname}:${process.env.LZP_MAILPIT_PORT ?? '8025'}`;
@@ -186,11 +191,18 @@ beforeAll(async () => {
   await migrate(ownerUrl);
   await installJobs(ownerUrl);
   db = createDb(env.DATABASE_URL);
-  await db.forWorkspace(ctx).transaction(async (tx) => {
-    await tx
-      .insert(workspace)
-      .values({ id: workspaceId, name: `Email ${run}`, slug: `email-${run}` });
-  });
+  for (const [each, label] of [
+    [ctx, 'a'],
+    [otherCtx, 'b'],
+  ] as const) {
+    await db.forWorkspace(each).transaction(async (tx) => {
+      await tx.insert(workspace).values({
+        id: each.workspaceId,
+        name: `Email ${label} ${run}`,
+        slug: `email-${label}-${run}`,
+      });
+    });
+  }
   sender = createJobs({
     url: env.DATABASE_URL,
     db,
@@ -208,9 +220,11 @@ afterAll(async () => {
   await worker.stop();
   await sender.stop();
   smtp.close();
-  await db.forWorkspace(ctx).transaction(async (tx) => {
-    await tx.delete(workspace); // row-level security: only this run's workspace; its rows go with it
-  });
+  for (const each of [ctx, otherCtx]) {
+    await db.forWorkspace(each).transaction(async (tx) => {
+      await tx.delete(workspace); // row-level security: only this run's workspace; its rows go with it
+    });
+  }
   await db.close();
 });
 
@@ -333,4 +347,32 @@ describe('the email job (§13: a retried job never sends twice)', { timeout: 60_
       expect(await inbox(to)).toHaveLength(messages);
     },
   );
+
+  // The tenant-isolation skill: the job with the other workspace's ids. The handler's only handle is `db.forWorkspace`
+  // for the payload's workspace, so the row's id alone reaches nothing (Cerberus F1 on #202).
+  it("a job for this workspace naming another workspace's row sends nothing and changes nothing of it", async () => {
+    const to = `other-workspace-${run}@example.test`;
+    const [row] = await db.forWorkspace(otherCtx).transaction((tx) =>
+      tx
+        .insert(emailMessage)
+        .values({
+          workspaceId: otherCtx.workspaceId,
+          template: 'email-check',
+          toAddress: to,
+          data: { name: 'Picasso Studio' },
+        })
+        .returning({ id: emailMessage.id }),
+    );
+    if (row === undefined) throw new Error('no row');
+    await emailJob({ ...deps, transport: smtp })(jobFor(row.id)); // payload and handle: this workspace's
+    const [after] = await db
+      .forWorkspace(otherCtx)
+      .transaction((tx) =>
+        tx
+          .select({ status: emailMessage.status, claimedByJob: emailMessage.claimedByJob })
+          .from(emailMessage),
+      );
+    expect(after).toEqual({ status: 'queued', claimedByJob: null });
+    expect(await inbox(to)).toHaveLength(0);
+  });
 });

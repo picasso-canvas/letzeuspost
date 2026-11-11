@@ -1,8 +1,15 @@
 // pg-boss on the same Postgres (§13 Jobs, #72), against real Postgres in `pnpm check:services` and CI's `services`
 // job: the owner role installs the `pgboss` schema and the app role only uses it; payloads hold ids only; a job runs
 // in its own workspace; the ai queue runs at most 4 of a workspace's jobs at once; retries stop at the limit; and the
-// email outbox's steps. Every row and job here is this run's, so the file can share the database with other files;
-// each handler ignores jobs from other runs. The `email` queue is the worker's (apps/worker/src/email.int.test.ts).
+// email outbox's steps.
+//
+// Vitest runs the services files side by side on one database (Argus F1 on #202), so nothing here touches another
+// file's rows or jobs: every workspace and row is this run's, made and removed here. pg-boss's tables are shared,
+// though, and a handler that skips another file's job still completes it, so the other file would wait for it in
+// vain. So each queue a test handler works on belongs to one file: `fetch`, `ai` and `render` to this one, `export` to
+// tests/journeys/data.int.test.ts. `email` is the worker's real handler (apps/worker/src/email.int.test.ts and the
+// journey run it), which does the same with a job whichever file's worker takes it. A handler here still skips jobs
+// of another run of this file.
 import { execFileSync } from 'node:child_process';
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -268,15 +275,15 @@ describe('pg-boss in the pgboss schema (§13)', () => {
     const count = async () =>
       (
         await owner.query<{ n: number }>(
-          `select count(*)::int as n from ${JOBS_SCHEMA}.job where name = 'export' and data->>'workspaceId' = $1`,
+          `select count(*)::int as n from ${JOBS_SCHEMA}.job where name = 'fetch' and data->>'workspaceId' = $1`,
           [ids.a],
         )
       ).rows[0]?.n;
     const before = await count();
     await expect(
-      jobs.send('export', {
+      jobs.send('fetch', {
         workspaceId: ids.a,
-        exportId: randomUUIDv7(),
+        brandId: randomUUIDv7(),
         caption: 'আমাদের নতুন মেনু',
       } as never),
     ).rejects.toThrow(JobPayloadError);
@@ -287,9 +294,10 @@ describe('pg-boss in the pgboss schema (§13)', () => {
 describe('a job runs in its own workspace (§13, the tenant-isolation skill)', () => {
   const seen = new Map<string, { rows: { id: string; workspaceId: string }[]; byId: string[] }>();
 
+  // The `fetch` queue: this file's own (see the top), so no other file's handler takes these jobs.
   beforeAll(async () => {
-    await jobs.work('export', async ({ payload, db: scoped }) => {
-      if (!expectedExports.has(payload.exportId)) return; // another run's job
+    await jobs.work('fetch', async ({ payload, db: scoped }) => {
+      if (!expectedFetches.has(payload.brandId)) return; // another run of this file
       const result = await scoped.transaction(async (tx) => ({
         // No filter at all: row-level security alone decides what comes back.
         rows: await tx
@@ -298,15 +306,15 @@ describe('a job runs in its own workspace (§13, the tenant-isolation skill)', (
         // The other workspace's row, asked for by its id.
         byId: (
           await tx.execute<{ id: string }>(
-            sql`select id from email_message where id = ${expectedExports.get(payload.exportId) ?? ''}`,
+            sql`select id from email_message where id = ${expectedFetches.get(payload.brandId) ?? ''}`,
           )
         ).rows.map((row) => row.id),
       }));
-      seen.set(payload.exportId, result);
+      seen.set(payload.brandId, result);
     });
   });
 
-  const expectedExports = new Map<string, string>(); // export id → the other workspace's row
+  const expectedFetches = new Map<string, string>(); // brand id → the other workspace's row
 
   it.each([
     ['A', 'a', 'rowA', 'rowB'],
@@ -314,10 +322,10 @@ describe('a job runs in its own workspace (§13, the tenant-isolation skill)', (
   ] as const)(
     "a job for %s sees only its own workspace's rows, even asked for the other's by id",
     async (_, workspace, own, other) => {
-      const exportId = randomUUIDv7();
-      expectedExports.set(exportId, ids[other]);
-      await jobs.send('export', { workspaceId: ids[workspace], exportId });
-      const result = await waitFor('the export job', () => seen.get(exportId));
+      const brandId = randomUUIDv7();
+      expectedFetches.set(brandId, ids[other]);
+      await jobs.send('fetch', { workspaceId: ids[workspace], brandId });
+      const result = await waitFor('the fetch job', () => seen.get(brandId));
       expect(result.rows).toEqual([{ id: ids[own], workspaceId: ids[workspace] }]);
       expect(result.byId).toEqual([]);
     },
