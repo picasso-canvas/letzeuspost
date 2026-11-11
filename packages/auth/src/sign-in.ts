@@ -181,8 +181,7 @@ function options(deps: SignInDeps, links: Links) {
         // Not text: the endpoint refuses it, before any link is made.
         if (typeof given !== 'string') return undefined;
         const address = given.trim().toLowerCase();
-        const headers = ctx.request?.headers ?? ctx.headers;
-        const ip = headers === undefined ? null : clientIp(headers, ctx.context.options);
+        const ip = clientIp(ctx.request.headers, ctx.context.options);
         // Without an address there is no bucket to count it in, and sharing one would let anyone fill it for all.
         if (ip === null) throw noClientIp();
         // Every request counts, known address or not, so a refusal says nothing about who has an account.
