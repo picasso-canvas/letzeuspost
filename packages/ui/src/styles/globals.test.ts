@@ -69,6 +69,15 @@ describe('globals.css', () => {
     expect(source).not.toMatch(/https?:\/\//);
   });
 
+  it('builds every named utility components.css declares, so a typo in one fails here (#205)', async () => {
+    const declared = readFileSync(new URL('components.css', import.meta.url), 'utf8');
+    const names = [...declared.matchAll(/@utility\s+([\w-]+)/g)].map((m) => m[1] ?? '');
+    expect(names.length).toBeGreaterThan(20);
+    const css = await build(names);
+    for (const name of names)
+      expect(css, name).toMatch(new RegExp(`\\.${name}\\s*\\{[^}]*[a-z-]+:`));
+  });
+
   it("builds the components' named utilities from components.css, with no colour of their own (#205)", async () => {
     const css = await build([
       'z-toast',
@@ -88,7 +97,12 @@ describe('globals.css', () => {
       /left-sidebar-hidden[^{]*\{[^}]*left:\s*calc\(var\(--sidebar-width\) \* -1\)/,
     );
     expect(css).toMatch(/\.shadow-sidebar-outline\s*\{[^}]*var\(--color-border\)/);
-    // Nothing moves under reduced motion (§05).
+    // The toast moves for DESIGN.md's default time on the default curve (Iris F2 on #206), and nothing moves under
+    // reduced motion (§05).
+    expect(css).toMatch(
+      /\.toast-transition\s*\{[^}]*transition-duration:\s*var\(--default-transition-duration\)/,
+    );
+    expect(css).not.toMatch(/cubic-bezier\(0\.22/);
     expect(css).toMatch(
       /\.toast-transition\s*\{[^}]*@media \(prefers-reduced-motion: reduce\)\s*\{\s*transition:\s*none/,
     );

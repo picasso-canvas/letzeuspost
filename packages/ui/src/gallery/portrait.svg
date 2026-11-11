@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- A drawn stand-in for a member's photo, for the gallery only (#205). -->
+  <rect width="64" height="64" fill="#d9c6a5"/>
+  <circle cx="32" cy="26" r="12" fill="#6b4a2f"/>
+  <path d="M10 64c2-14 11-21 22-21s20 7 22 21z" fill="#2f5d62"/>
+</svg>

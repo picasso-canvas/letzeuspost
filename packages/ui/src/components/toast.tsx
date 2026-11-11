@@ -69,7 +69,7 @@ function ToastContent({ className, ...props }: ToastPrimitive.Content.Props) {
     <ToastPrimitive.Content
       data-slot="toast-content"
       className={cn(
-        'flex h-full items-center gap-3 overflow-hidden p-4 transition-opacity duration-250 ease-toast motion-reduce:transition-none data-behind:opacity-0 data-expanded:opacity-100',
+        'flex h-full items-center gap-3 overflow-hidden p-4 transition-opacity motion-reduce:transition-none data-behind:opacity-0 data-expanded:opacity-100',
         className,
       )}
       {...props}
@@ -81,7 +81,7 @@ function ToastTitle({ className, ...props }: ToastPrimitive.Title.Props) {
   return (
     <ToastPrimitive.Title
       data-slot="toast-title"
-      className={cn('text-sm font-medium', className)}
+      className={cn('text-sm font-(weight:--font-weight-h3)', className)}
       {...props}
     />
   );
@@ -112,16 +112,18 @@ function ToastAction({
   );
 }
 
+/** `label` is the button's accessible name, from the caller (§21: interface text lives in the app's messages). */
 function ToastClose({
   className,
   children,
+  label,
   render = <Button variant="ghost" size="icon-sm" />,
   ...props
-}: ToastPrimitive.Close.Props) {
+}: ToastPrimitive.Close.Props & { label: string }) {
   return (
     <ToastPrimitive.Close
       data-slot="toast-close"
-      aria-label="Close toast"
+      aria-label={label}
       render={render}
       className={cn(
         'relative shrink-0 text-muted-foreground after:absolute after:-inset-2 hover:text-foreground',
@@ -154,7 +156,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
   }
 
   if (type === 'loading') {
-    icon = <Loader2Icon className="animate-spin" aria-hidden="true" />;
+    icon = <Loader2Icon className="animate-spin motion-reduce:animate-none" aria-hidden="true" />;
   }
 
   if (!icon) {
@@ -171,7 +173,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
   );
 }
 
-function ToastList() {
+function ToastList({ closeLabel }: { closeLabel: string }) {
   const { toasts } = ToastPrimitive.useToastManager();
 
   return toasts.map((toastItem) => (
@@ -183,19 +185,29 @@ function ToastList() {
           <ToastDescription />
         </div>
         <ToastAction />
-        <ToastClose />
+        <ToastClose label={closeLabel} />
       </ToastContent>
     </Toast>
   ));
 }
 
-function Toaster({ children, toastManager = toast, ...props }: ToastPrimitive.Provider.Props) {
+/** `closeLabel` names each toast's close button; `container` is where the toasts render (the body by default). */
+function Toaster({
+  children,
+  toastManager = toast,
+  closeLabel,
+  container,
+  ...props
+}: ToastPrimitive.Provider.Props & { closeLabel: string } & Pick<
+    ToastPrimitive.Portal.Props,
+    'container'
+  >) {
   return (
     <ToastProvider toastManager={toastManager} {...props}>
       {children}
-      <ToastPortal>
+      <ToastPortal container={container}>
         <ToastViewport>
-          <ToastList />
+          <ToastList closeLabel={closeLabel} />
         </ToastViewport>
       </ToastPortal>
     </ToastProvider>
