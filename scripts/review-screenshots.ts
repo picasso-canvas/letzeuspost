@@ -53,6 +53,12 @@ export interface ScreenshotDeps {
 
 /** The whole step's time limit, on top of each gh call's own (Cerberus F1 on #213, round 4). */
 export const STEP_TIME_LIMIT_MS = 10 * 60 * 1000;
+const STEP_LIMIT = `${String(STEP_TIME_LIMIT_MS / 60_000)}-minute limit`;
+
+/** The inflate budget: a caller's can only lower the real one (Cerberus F1 on #220). */
+export function inflateBudget(given: number | undefined): number {
+  return Math.min(given ?? MAX_INFLATED_BYTES, MAX_INFLATED_BYTES);
+}
 
 class StepTimeout extends Error {}
 
@@ -337,7 +343,7 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
   try {
     artifacts = findArtifacts(sha, deps.gh, pastLimit);
   } catch (error) {
-    const why = error instanceof StepTimeout ? ` (the step's 10-minute limit ran out)` : '';
+    const why = error instanceof StepTimeout ? ` (the step's ${STEP_LIMIT} ran out)` : '';
     return `Couldn't list CI's runs or artifacts on ${sha}${why}: no screenshots in this bundle.\n`;
   }
   const lines: string[] = [];
@@ -356,7 +362,7 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
       continue;
     }
     if (pastLimit()) {
-      lines.push(`${name}: not fetched: the screenshot step's 10-minute limit ran out.`);
+      lines.push(`${name}: not fetched: the screenshot step's ${STEP_LIMIT} ran out.`);
       continue;
     }
     let zip: Buffer;
@@ -382,7 +388,7 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
       entries,
       out,
       MAX_SCREENSHOTS - kept,
-      deps.limits?.inflatedBytes ?? MAX_INFLATED_BYTES,
+      inflateBudget(deps.limits?.inflatedBytes),
     );
     kept += copied.kept;
     lines.push(`${name}: ${from}, ${String(copied.kept)} in screenshots/${name}/`, ...copied.lines);
