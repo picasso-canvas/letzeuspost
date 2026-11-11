@@ -81,6 +81,12 @@ The GitHub Action (`action.yml`, `claudecode/**`, `scripts/**`) was not copied.
      and that invite and review-link tokens are random secrets of at least 128 bits, stored as hashes (§13);
    - PRECEDENTS 3 (environment variables trusted): a note that variables a builder or its scripts can set, such as
      `LZP_ROLE`, are untrusted.
+15. 2026-11-11 (Zeus: Cerberus reads this prompt and the vendored content, not the other two wrappers). Folded in the
+   two parts of `security-audit/SKILL.md` worth keeping, from its "Core principles" (Cloudflare, MIT): the severity
+   anchors with the high/medium test (SEVERITY GUIDELINES, in our words, "cross-tenant" → "cross-workspace") and
+   "name the principal, input, boundary and result; the smallest fix at the last trusted decision point" (REQUIRED
+   OUTPUT FORMAT). Added **WHERE TO LOOK NEXT**: the map from each area to `security-audit`'s companion files and
+   `security-best-practices`' Next.js and React references, read on demand.
 
 ## Review notes
 
