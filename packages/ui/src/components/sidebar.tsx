@@ -326,13 +326,6 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<'div'>) 
   );
 }
 
-/** The skeleton's text bar widths, as a share of its row. Each is a class, never a `style` attribute (#222). */
-const skeletonWidths = {
-  sm: 'max-w-[55%]',
-  md: 'max-w-[70%]',
-  lg: 'max-w-[80%]',
-} as const;
-
 /**
  * A menu row on its way. The skeleton's own `muted` is the sidebar's `secondary`, so here its shapes are `border-strong`,
  * like the mockup's placeholders on the tint (Iris F1 on #206).
@@ -344,8 +337,8 @@ function SidebarMenuSkeleton({
   ...props
 }: React.ComponentProps<'div'> & {
   showIcon?: boolean;
-  /** The text bar's width: `sm` 55%, `md` 70% or `lg` 80% of the row. */
-  width?: keyof typeof skeletonWidths;
+  /** The text bar's width: `sm` 55%, `md` 70% or `lg` 80% of the row. A class, never a `style` attribute (#222). */
+  width?: 'sm' | 'md' | 'lg';
 }) {
   return (
     <div
@@ -361,7 +354,12 @@ function SidebarMenuSkeleton({
         />
       )}
       <Skeleton
-        className={cn('h-4 flex-1 bg-border-strong', skeletonWidths[width])}
+        className={cn(
+          'h-4 flex-1 bg-border-strong',
+          width === 'sm' && 'max-w-11/20',
+          width === 'md' && 'max-w-7/10',
+          width === 'lg' && 'max-w-4/5',
+        )}
         data-sidebar="menu-skeleton-text"
       />
     </div>
