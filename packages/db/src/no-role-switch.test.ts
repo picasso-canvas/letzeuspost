@@ -2,9 +2,8 @@
 // lzp_app may take lzp_auth, which holds the auth tables, only by switching to it, and only packages/db/src/auth.ts
 // does that, on its own pool. This check reads every text file in the repo, comments too: code, SQL, shell, YAML, JSON,
 // and Markdown's code blocks (Argus F1 on #189), fenced or indented (Argus F2 on #202), in files holding NUL bytes too
-// (Cerberus F3 on #202), and refuses a role switch anywhere else but in the few known lines
-// below. It runs in `pnpm check`. The cases below put the SQL words together at run time, because the check reads this
-// file as well.
+// (Cerberus F3 on #202), and refuses a role switch anywhere else but in the few known lines below. It runs in
+// `pnpm check`. The cases below put the SQL words together at run time, because the check reads this file as well.
 //
 // Its limit (Argus F6 and Cerberus F4 on #189): it reads text, so it sees only a switch written out in a file. A
 // switch put together at run time gets past it, as these cases show: SQL built from pieces, a role name read from
