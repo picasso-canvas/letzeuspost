@@ -2,14 +2,41 @@ import { randomUUIDv7 } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { Db } from '../db.ts';
 import { createJobs } from './boss.ts';
-import { checkPayload, JobPayloadError, queueNames, queues } from './queues.ts';
+import {
+  checkPayload,
+  JobPayloadError,
+  queueNames,
+  queues,
+  workspaceQueueNames,
+} from './queues.ts';
 
 const workspaceId = randomUUIDv7();
 const emailMessageId = randomUUIDv7();
 
 describe('the queues (§13 Jobs)', () => {
-  it('declares the five queues', () => {
-    expect([...queueNames].sort()).toEqual(['ai', 'email', 'export', 'fetch', 'render']);
+  it("declares §13's five queues and the account emails' queue (#77)", () => {
+    expect([...queueNames].sort()).toEqual([
+      'account-email',
+      'ai',
+      'email',
+      'export',
+      'fetch',
+      'render',
+    ]);
+  });
+
+  it('takes an account email by its id alone: it belongs to a person, not a workspace', () => {
+    const accountEmailId = randomUUIDv7();
+    expect(checkPayload('account-email', { accountEmailId })).toEqual({ accountEmailId });
+    for (const payload of [
+      { accountEmailId, workspaceId },
+      { accountEmailId, to: 'nadia@example.com' },
+      { accountEmailId, url: 'http://localhost:3000/api/auth/magic-link/verify?token=x' },
+      { accountEmailId: 'not an id' },
+      {},
+    ]) {
+      expect(() => checkPayload('account-email', payload)).toThrow(JobPayloadError);
+    }
   });
 
   it('accepts a payload of ids', () => {
@@ -45,10 +72,13 @@ describe('the queues (§13 Jobs)', () => {
     ).toThrow(/^(?![\s\S]*nadia)/);
   });
 
-  it.each(queueNames)('makes every %s payload carry its workspace and ids only', (name) => {
-    expect(() => checkPayload(name, { workspaceId, text: 'hello' })).toThrow(JobPayloadError);
-    expect(() => checkPayload(name, {})).toThrow(JobPayloadError);
-  });
+  it.each(workspaceQueueNames)(
+    'makes every %s payload carry its workspace and ids only',
+    (name) => {
+      expect(() => checkPayload(name, { workspaceId, text: 'hello' })).toThrow(JobPayloadError);
+      expect(() => checkPayload(name, {})).toThrow(JobPayloadError);
+    },
+  );
 
   it.each(queueNames)('bounds the retries of %s, with backoff', (name) => {
     const { retryLimit, retryDelay, retryBackoff, retryDelayMax } = queues[name].queue;
