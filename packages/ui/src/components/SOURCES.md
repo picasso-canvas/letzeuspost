@@ -15,6 +15,14 @@ was reformatted by the repo's Prettier.
 | `label.tsx` | `@shadcn/label` | `cn` import only (`'use client'` kept) |
 | `field.tsx` | `@shadcn/field` | yes |
 | `separator.tsx` | `@shadcn/separator` (needed by `field`) | `cn` import only |
+| `avatar.tsx` | `@shadcn/avatar` (#205) | yes |
+| `dropdown-menu.tsx` | `@shadcn/dropdown-menu` (#205) | yes |
+| `empty.tsx` | `@shadcn/empty` (#205) | yes |
+| `skeleton.tsx` | `@shadcn/skeleton` (#205) | yes |
+| `toast.tsx` | `@shadcn/toast` (#205; Base UI's toast, not `sonner`) | yes |
+| `sidebar.tsx` | `@shadcn/sidebar` (#205) | yes |
+| `sheet.tsx` | `@shadcn/sheet` (came with `sidebar`; kept as a general component) | yes |
+| `tooltip.tsx` | `@shadcn/tooltip` (came with `sidebar`; kept as a general component) | yes |
 
 ## Changes we made
 
@@ -65,3 +73,93 @@ as the registry ships them, and a test checks that every component using a React
 
 Colours, radius and fonts come from the tokens `DESIGN.md` generates (#70); the stylesheet that loads them is
 `src/styles/globals.css` (#74).
+
+## Added 2026-11-11 (#205)
+
+Added by Athena for the app frame (#75), with the same pinned CLI and style. `toast` and `sidebar` were generated into
+a scratch folder (`--path`) and only their new files copied in, so the CLI couldn't overwrite our `button`, `input`
+and `separator`. The `cn` package the CLI added to `package.json` was taken out again; nothing new is a dependency.
+
+13. **Arbitrary values, as named utilities:** the toast's stacking and swipe transforms, its CSS variables and its
+    transition, the tooltip arrow's offset and the sidebar's outline rings are registry arbitrary values with no
+    token to stand for them. Each is now a utility in `src/styles/components.css` (`z-toast`, `toast-vars`,
+    `toast-stack`, `toast-transition`, `toast-expanded`, `toast-out`, `toast-swipe-{down,up,left,right}`,
+    `h-toast-gap`, `tooltip-arrow-offset`, `shadow-sidebar-outline{,-strong}`, `shadow-sidebar-current`). The
+    sidebar's collapsing widths, offsets and transitions went with its collapsing (change 28). They hold only `calc()` over the components' own variables and colour tokens, never a
+    raw colour; `globals.test.ts` builds every one and checks.
+14. **Values with a token:** `min-w-[96px]` → `min-w-24`; the sheet's `translate-{x,y}-[±2.5rem]` → `±translate-{x,y}-10`;
+    `after:w-[2px]` → `after:w-0.5`; `after:content-['']` dropped (Tailwind 4 adds it for `after:`). The tooltip
+    arrow's `rounded-[2px]` is dropped (DESIGN.md has radii `md` and `lg` only).
+15. **The sidebar's colours are DESIGN.md's and the mockup's** (`.side`, `.nav`), not shadcn's `--sidebar-*`
+    variables, which the tokens don't have: the sidebar is `bg-secondary` (`sidebar-text`); its items are
+    `text-muted-foreground` at rest and `bg-card text-foreground` on hover (`accent` is the sidebar's own colour, so
+    a hover in it didn't show); the current page is the card with the mockup's 2 px ink bar on its left
+    (`shadow-sidebar-current`); counts are `text-faint`; group labels are the eyebrow (`text-eyebrow`, uppercase,
+    faint). The `sidebar-border` classes → `border`. Its width is DESIGN.md's 228 px (`SIDEBAR_WIDTH`), not 16 rem.
+16. **Focus** (as change 5): the toast's `ring-[3px] ring-ring/50` and the sidebar's `ring-sidebar-ring` /
+    `focus-visible:ring-2` → the solid 2 px outline with a 2 px gap in the `ring` token. The dropdown's items
+    (plain, checkbox, radio, submenu trigger) showed keyboard focus only as the `accent` fill, about 1.1:1 on the
+    popover; they get the same outline (`focus-visible:`), and keep the fill (Iris F4 on #206).
+17. **Elevation and shape (DESIGN.md):** every registry shadow → `shadow-frame`, the one soft shadow: `shadow-lg`
+    on the dropdown's submenu, the sheet and the toast; `shadow-md` on the dropdown (the sidebar's floating and inset
+    variants, which had `shadow-sm`, went in change 28). Radii are `md` and `lg` only: the toast's `rounded-2xl` →
+    `rounded-lg` (12 px, as cards); the menu items' and the tooltip key's
+    `rounded-sm` → `rounded-md`.
+18. **No gold text in light mode** (as change 6): `empty.tsx`'s link hover `text-primary` → `text-foreground`,
+    `dark:text-primary`. The sheet's overlay `bg-black/10` (a palette colour) → `bg-foreground/10`,
+    `dark:bg-background/60`, and its `backdrop-blur-xs` is dropped: the tint alone dims the page, as nothing else in
+    DESIGN.md blurs (Iris F4 on #206).
+19. **Motion (DESIGN.md: 150–200 ms, nothing under reduced motion):** the toast moved for 500 ms on its own curve,
+    and its content faded for 250 ms; `toast-transition` and the content now use the default duration (150 ms) and
+    easing, and `ease-toast` is gone. The dropdown's `duration-100` → `duration-150`. Under reduced motion every
+    animation and transition stops: `motion-reduce:animate-none` on the skeleton's pulse and the toast's spinner,
+    `motion-reduce:animate-none!` and `motion-reduce:transition-none` on the dropdown's and the tooltip's
+    open and close (the `!` beats their `data-open:` variants), `motion-reduce:transition-none` on the sheet and its
+    overlay, the toast's content and the sidebar's actions (`toast-transition` also stops itself). The gallery's
+    motion test checks each story with the preference on (Iris F3 and Argus F2 on #206).
+20. **Our button's variants** (change 12): the toast's action button `variant="outline"` → `secondary`.
+21. **Lint:** the fixes here were in `use-mobile.ts` and the sidebar's open state and cookie, all removed by change 28.
+22. **No interface text of their own** (§21: it lives in `apps/web/messages/en.json`): the registry's English names
+    are props the caller passes. `SheetContent` takes `closeLabel`, required unless `showCloseButton={false}` (was
+    "Close"); `ToastClose` takes `label` and `Toaster` `closeLabel` (was "Close toast"). Their icons are
+    `aria-hidden`. The sidebar's "Toggle Sidebar", "Sidebar" and "Displays the mobile sidebar." went with the parts
+    that said them (change 28).
+23. **Type (DESIGN.md's scale):** the empty state's and the sheet's titles → the `h2` token (`text-h2`, its weight and
+    tracking; were `text-lg tracking-tight` and `font-medium`). `EmptyTitle` is a real heading, `h2` by default, so
+    screen-reader users can jump to it (was a `div`); a page that needs another level passes `render={<h3 />}`
+    (Iris F2 on #206); the toast title → the `h3` weight; the dropdown's
+    group label → `label`; `text-xs` (12 px, not on the scale) → `text-meta` (13 px) on the tooltip, the shortcut, the
+    sidebar's small sizes and counts, and `text-label` on the small avatar; the shortcut's `tracking-widest` is gone;
+    `font-medium` on the active sidebar item → the label weight.
+24. **Targets (WCAG 2.5.8):** the sidebar's group and menu actions were 20 × 20 px on desktop, with an invisible
+    larger area only on touch widths that overlapped the menu button. They are 24 × 24 px (`size-6`) on every width,
+    centred in each button size, with no extra area.
+25. **Overlays render where the caller says:** `DropdownMenuContent` (and the submenu's), `TooltipContent`,
+    `SheetContent` and `Toaster` take `container`, passed to Base UI's portal (the body by default). The gallery
+    renders them into a box in its canvas (`src/gallery/stage.tsx`), so the screenshot, focus and motion tests see
+    them.
+26. **Screenshots are the same every run:** `SidebarMenuSkeleton`'s text bar had a random width (50–90%); it takes a
+    `width` prop (70% by default).
+27. **No cookie (§16: essential cookies only; Athena's decision on #205, 2026-11-11):** the registry's
+    `SidebarProvider` wrote a `sidebar_state` cookie on every open and close. With change 28 there is nothing to open
+    or close, so no state and no cookie; `sidebar.test.tsx` checks that rendering it writes none.
+28. **The v1 mockup's frame (Zeus, #205, 2026-11-11):** on desktop a 228 px sidebar, always open; below 900 px a
+    scrolling row of links at the top, which #75 builds. So the registry's sidebar loses what the mockup doesn't
+    have: the icon rail (`collapsible="icon"`, `SIDEBAR_WIDTH_ICON`, the menu buttons' tooltips that named items
+    there), off-canvas collapsing (`collapsible="offcanvas"`), the open state with `useSidebar`, `onOpenChange`, the
+    ⌘B shortcut, `SidebarTrigger` and `SidebarRail`, the phone sheet (the `isMobile` branch, `SIDEBAR_WIDTH_MOBILE`,
+    `mobileTitle` and `mobileDescription`), the `floating` and `inset` variants and `side="right"`, with the
+    utilities only they used (`w-sidebar-icon-gap{,-border}`, `{left,right}-sidebar-hidden`, `transition-width`,
+    `transition-inset-width`, `transition-margin-opacity`, `transition-size-padding`). `use-mobile.ts`, which only
+    the phone sheet used, is deleted. `Sidebar` is the mockup's `.side`: the surface tint with a hairline on its
+    right. `Sheet` and `Tooltip` stay as general components.
+29. **A loading sidebar you can see (Iris F1 on #206):** the skeleton's `bg-muted` is the sidebar's own `secondary`
+    (`#F1F0EC` light, `#22201C` dark), so its loading rows vanished. In `SidebarMenuSkeleton` the shapes are
+    `bg-border-strong`, like the mockup's placeholders on the tint; `sidebar.test.tsx` reads both themes' tokens and
+    checks the skeleton differs from the sidebar by at least 1.3:1 (`border` alone is about 1.15:1).
+30. **Whole initials in an avatar group (Iris F2 on #206):** `AvatarGroup`'s `-space-x-2` overlap, with each avatar's
+    2 px ring, covered the right edge of the initials before it; it is `-space-x-1`, and the type keeps its size.
+31. **The mockup's nav in the gallery (Iris F3 on #206):** the sidebar stories follow `.nav`: Inbox, Calendar and
+    Brands, the pinned brands under a "Pinned brands" eyebrow with each brand's mark (the mockup's sample marks, in
+    `src/gallery/mark-*.svg`), then Settings. `SidebarGroupAction` and `SidebarMenuAction` stay in the component as
+    options for later screens; the stories don't use them, as the mockup's nav has no "+" or "…".

@@ -69,6 +69,48 @@ describe('globals.css', () => {
     expect(source).not.toMatch(/https?:\/\//);
   });
 
+  it('builds every named utility components.css declares, so a typo in one fails here (#205)', async () => {
+    const declared = readFileSync(new URL('components.css', import.meta.url), 'utf8');
+    const names = [...declared.matchAll(/@utility\s+([\w-]+)/g)].map((m) => m[1] ?? '');
+    expect(names.length).toBeGreaterThan(10);
+    const css = await build(names);
+    for (const name of names)
+      expect(css, name).toMatch(new RegExp(`\\.${name}\\s*\\{[^}]*[a-z-]+:`));
+  });
+
+  it("builds the components' named utilities from components.css, with no colour of their own (#205)", async () => {
+    const css = await build([
+      'z-toast',
+      'toast-stack',
+      'toast-transition',
+      'data-expanded:toast-expanded',
+      'tooltip-arrow-offset',
+      'shadow-sidebar-outline',
+      'data-active:shadow-sidebar-current',
+    ]);
+    expect(css).toMatch(/\.z-toast\s*\{[^}]*z-index:\s*calc\(1000 - var\(--toast-index\)\)/);
+    expect(css).toMatch(/\.toast-stack\s*\{[^}]*transform:/);
+    expect(css).toMatch(/\.shadow-sidebar-outline\s*\{[^}]*var\(--color-border\)/);
+    expect(css).toMatch(
+      /shadow-sidebar-current[^{]*\{[^}]*inset 2px 0 0 var\(--color-foreground\)/,
+    );
+    // The toast moves for DESIGN.md's default time on the default curve (Iris F2 on #206), and nothing moves under
+    // reduced motion (§05).
+    expect(css).toMatch(
+      /\.toast-transition\s*\{[^}]*transition-duration:\s*var\(--default-transition-duration\)/,
+    );
+    expect(css).not.toMatch(/cubic-bezier\(0\.22/);
+    expect(css).toMatch(
+      /\.toast-transition\s*\{[^}]*@media \(prefers-reduced-motion: reduce\)\s*\{\s*transition:\s*none/,
+    );
+    // Comments aside (they cite issues like #205), no raw colour.
+    const rules = readFileSync(new URL('components.css', import.meta.url), 'utf8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    );
+    expect(rules).not.toMatch(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch)\(/i);
+  });
+
   it('uses no other interface font', () => {
     const families = [...source.matchAll(/font-family:\s*([^;]+);/g)].map((m) => m[1] ?? '');
     for (const family of families) expect(family).toMatch(/Inter|var\(--font-sans\)/);
