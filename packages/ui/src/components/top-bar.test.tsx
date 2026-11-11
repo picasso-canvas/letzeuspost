@@ -375,6 +375,30 @@ describe('top-bar.tsx', () => {
   });
 });
 
+describe('the long-name stories', () => {
+  const stories = readFileSync(new URL('top-bar.stories.tsx', import.meta.url), 'utf8');
+
+  it('have a Bangla workspace in the list, and one story where it is the current one (Iris F3 on #221)', () => {
+    const list = /const longNames: Workspace\[\] = \[([\s\S]*?)\n\];/.exec(stories)?.[1] ?? '';
+    const bangla = [...list.matchAll(/name: '([^']*)'/g)]
+      .map((m) => m[1] ?? '')
+      .filter((name) => /\p{Script=Bengali}/u.test(name));
+    expect(bangla).not.toEqual([]);
+    expect(list).toMatch(/id: 'dhaka-digital', name: '[^']*\p{Script=Bengali}/u);
+    expect(stories).toMatch(/export const LongName: Story/);
+    expect(stories).toMatch(/export const LongNameBangla: Story[\s\S]*?currentId: 'dhaka-digital'/);
+  });
+
+  it('have two names that start alike, so only their ends tell them apart', () => {
+    const names = [...stories.matchAll(/name: '(Northwind Social Media[^']*)'/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(names).toHaveLength(2);
+    expect(names[0]?.slice(0, 40)).toBe(names[1]?.slice(0, 40));
+    expect(names[0]).not.toBe(names[1]);
+  });
+});
+
 describe('the words the top bar’s stories name', () => {
   // The stories write each of their words in a `// en.json: <key>` comment; the app takes them from en.json, so each
   // key must be there, with the stories' wording (Iris F2 on #221).

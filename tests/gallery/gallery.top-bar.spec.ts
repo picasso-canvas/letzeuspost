@@ -64,6 +64,55 @@ for (const theme of THEMES) {
       expect(colours).toEqual([tokenColor(theme, 'muted'), tokenColor(theme, 'muted-foreground')]);
     });
 
+    for (const id of ['components-top-bar--long-name', 'components-top-bar--long-name-bangla']) {
+      test(`${id}: a long name is whole in the menu and cut with an ellipsis on the button (Iris F1, F3 on #221)`, async ({
+        page,
+      }) => {
+        await openStory(page, id, theme);
+        const rows = page.getByRole('menuitemradio');
+        await expect(rows).toHaveCount(4);
+        // Each row's name: nothing is cut (the text fits its box, height and width), whatever the script.
+        const names = rows.locator('span.wrap-break-word');
+        await expect(names).toHaveCount(4);
+        const cut = await names.evaluateAll((els) =>
+          els.map((el) => {
+            const style = getComputedStyle(el);
+            return {
+              text: el.textContent,
+              ellipsis: style.textOverflow === 'ellipsis',
+              wide: el.scrollWidth > el.clientWidth,
+              lines: Math.round(
+                el.getBoundingClientRect().height / Number.parseFloat(style.lineHeight),
+              ),
+            };
+          }),
+        );
+        for (const name of cut) {
+          expect(name.ellipsis, `${name.text} is cut`).toBe(false);
+          expect(name.wide, `${name.text} runs out of its row`).toBe(false);
+        }
+        // The long names take more than one line: they wrap, they don't shrink.
+        expect(cut[0]?.lines).toBeGreaterThan(1);
+        expect(cut[1]?.lines).toBeGreaterThan(1);
+        expect(cut[2]?.lines).toBeGreaterThan(1);
+        // The two that start alike are both whole, so their ends are there to read.
+        await expect(names.nth(0)).toHaveText(/Chattogram$/);
+        await expect(names.nth(1)).toHaveText(/Sylhet$/);
+        await expect(names.nth(2)).toHaveText(/লিমিটেড$/);
+        // The button keeps its one line and its ellipsis, and the layout around it stays.
+        const label = page.locator(`${SWITCHER} span.truncate`);
+        const button = await label.evaluate((el) => {
+          const style = getComputedStyle(el);
+          return {
+            ellipsis: style.textOverflow === 'ellipsis',
+            oneLine: style.whiteSpace === 'nowrap',
+            cut: el.scrollWidth > el.clientWidth,
+          };
+        });
+        expect(button).toEqual({ ellipsis: true, oneLine: true, cut: true });
+      });
+    }
+
     test('a workspace with a logo shows it, as decoration beside its name', async ({ page }) => {
       await openStory(page, 'components-top-bar--logo', theme);
       const logo = page.locator(`${SWITCHER} [data-slot="avatar-image"]`);
