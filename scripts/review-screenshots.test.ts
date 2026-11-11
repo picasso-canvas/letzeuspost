@@ -249,7 +249,11 @@ describe('collectScreenshots', () => {
         20: { artifacts: ['gallery-screenshots'] },
         21: { artifacts: [{ name: 'gallery-screenshots', expired: true }] },
       },
-      { '20:gallery-screenshots': (dir) => writeFileSync(join(dir, 'kept.png'), PNG) },
+      {
+        '20:gallery-screenshots': (dir) => {
+          writeFileSync(join(dir, 'kept.png'), PNG);
+        },
+      },
     );
     expect(collectScreenshots(SHA, out, gh)).toContain('gallery-screenshots: run 20 (run20)');
   });
@@ -265,7 +269,11 @@ describe('collectScreenshots', () => {
         32: { artifacts: ['gallery-screenshots'], event: 'workflow_dispatch' },
         33: { artifacts: ['e2e-screenshots'], path: '.github/workflows/design.yml' },
       },
-      { '30:gallery-screenshots': (dir) => writeFileSync(join(dir, 'kept.png'), PNG) },
+      {
+        '30:gallery-screenshots': (dir) => {
+          writeFileSync(join(dir, 'kept.png'), PNG);
+        },
+      },
       calls,
     );
     const text = collectScreenshots(SHA, out, gh);

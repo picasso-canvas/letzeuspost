@@ -32,6 +32,8 @@ import type { Reviewer } from './merge-gate/types.ts';
 type Asker = Exclude<Reviewer, 'redteam'>;
 
 const REVIEW_TIMEOUT_MS = 30 * 60 * 1000;
+/** Each gh call that fetches CI's screenshots, the download included (#212). */
+const SCREENSHOT_TIMEOUT_MS = 5 * 60 * 1000;
 /** The only environment a reviewer gets: enough to run Claude Code, nothing that could carry secrets or steer it. */
 const ENV_ALLOW = [
   'PATH',
@@ -719,7 +721,18 @@ async function main(argv: string[]): Promise<number> {
     blob: (object) =>
       execFileSync('git', ['cat-file', 'blob', object], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }),
     now: () => Date.now(),
-    screenshots: (sha, into) => collectScreenshots(sha, into, (args) => run('gh', args)),
+    // A time limit on each call, the download included: the PR's code decides how big its artifacts are (Cerberus F1 on
+    // #213); a call that runs out is said in screenshots.txt like any failed fetch.
+    screenshots: (sha, into) =>
+      collectScreenshots(sha, into, (args) =>
+        execFileSync('gh', args, {
+          cwd: ROOT,
+          encoding: 'utf8',
+          maxBuffer: 64 * 1024 * 1024,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: SCREENSHOT_TIMEOUT_MS,
+        }),
+      ),
   });
   const sensitiveList = show('.github/sensitive-paths.txt');
   const reviewers = planReviewers(
