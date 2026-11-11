@@ -2,11 +2,19 @@ import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as sidebar from '@lzp/ui/components/sidebar';
+import { buildCss } from '@lzp/ui/lib/build-css';
 
 // The v1 mockup's frame (Zeus, #205, 2026-11-11): a 228 px sidebar, always open. The registry's sidebar collapsed
 // (an icon rail, off-canvas, a phone sheet) and wrote a `sidebar_state` cookie on every toggle; ours has nothing to
 // open or close and writes no cookie (§16: essential cookies only).
-const { Sidebar, SidebarContent, SidebarMenuSkeleton, SidebarProvider } = sidebar;
+const {
+  Sidebar,
+  SidebarContent,
+  SidebarMenuButton,
+  SidebarMenuSkeleton,
+  SidebarMenuSubButton,
+  SidebarProvider,
+} = sidebar;
 
 /** A document whose cookie jar records every write. */
 function stubDocument(): string[] {
@@ -111,4 +119,66 @@ describe('the loading sidebar (Iris F1 on #206)', () => {
       }
     },
   );
+});
+
+/** A class name as the compiled CSS writes it in a selector (`\:`, `\(`), escaped once more to be matched as text. */
+const selectorPattern = (name: string): string =>
+  name.replace(/[^\w-]/g, '\\$&').replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+
+/**
+ * Every font weight the given classes can set on an element, resolved to a number: what the browser computes on the
+ * element once all of its variants (current, hover, open) apply, with `--font-weight-*` read from the theme.
+ */
+async function fontWeights(classes: string[]): Promise<number[]> {
+  const css = await buildCss(classes);
+  const theme = (name: string): number => {
+    const value = new RegExp(`--font-weight-${name}:\\s*(\\d+)`).exec(css)?.[1];
+    if (value === undefined) throw new Error(`no --font-weight-${name} in the theme`);
+    return Number(value);
+  };
+  const weights: number[] = [];
+  for (const name of classes) {
+    for (const rule of css.matchAll(
+      new RegExp(`\\.${selectorPattern(name)}[^{]*\\{([^}]*)\\}`, 'g'),
+    )) {
+      for (const [, value = ''] of (rule[1] ?? '').matchAll(/(?<![\w-])font-weight:\s*([^;]+);/g)) {
+        const named = /^var\(--font-weight-([\w-]+)\)$/.exec(value.trim())?.[1];
+        weights.push(named === undefined ? Number(value) : theme(named));
+      }
+    }
+  }
+  return weights;
+}
+
+const classesOfFirstTag = (markup: string): string[] =>
+  /class="([^"]*)"/.exec(markup)?.[1]?.split(' ') ?? [];
+
+describe('the sidebar nav items (Zeus, #75, 2026-11-11)', () => {
+  // Every item is at the body weight, 400, the current page included: it is marked only by its card and its 2 px bar.
+  const items = {
+    'an item': <SidebarMenuButton>Inbox</SidebarMenuButton>,
+    'the current item': <SidebarMenuButton isActive>Inbox</SidebarMenuButton>,
+    'a small item': <SidebarMenuButton size="sm">Inbox</SidebarMenuButton>,
+    'a large item': <SidebarMenuButton size="lg">Inbox</SidebarMenuButton>,
+    'an outlined item': <SidebarMenuButton variant="outline">Inbox</SidebarMenuButton>,
+    'a sub item': <SidebarMenuSubButton>Inbox</SidebarMenuSubButton>,
+    'the current sub item': <SidebarMenuSubButton isActive>Inbox</SidebarMenuSubButton>,
+  };
+
+  it.each(Object.entries(items))(
+    'sets %s at weight 400, whatever state it is in',
+    async (_, el) => {
+      const weights = await fontWeights(classesOfFirstTag(renderToStaticMarkup(el)));
+      // Set outright, so a heavier parent can't change it; and nothing in any variant sets another weight.
+      expect(weights.length).toBeGreaterThan(0);
+      expect(new Set(weights)).toEqual(new Set([400]));
+    },
+  );
+
+  it('marks the current page by its card and 2 px bar, and by nothing else', () => {
+    const current = classesOfFirstTag(renderToStaticMarkup(items['the current item']));
+    for (const cls of ['data-active:bg-card', 'data-active:shadow-sidebar-current'])
+      expect(current).toContain(cls);
+    expect(current.filter((c) => c.startsWith('data-active:font'))).toEqual([]);
+  });
 });
