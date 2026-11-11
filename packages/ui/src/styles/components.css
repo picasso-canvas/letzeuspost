@@ -115,6 +115,11 @@
 }
 
 /* The sidebar (sidebar.tsx). */
+/* Its width, DESIGN.md › Layout: a 228 px sidebar. A class, as a `style` attribute is blocked by the app's policy (#222). */
+@utility w-sidebar {
+  width: 228px;
+}
+
 /* The menu button's outline variant: a 1 px ring in the border colour, the strong border on hover. */
 @utility shadow-sidebar-outline {
   box-shadow: 0 0 0 1px var(--color-border);

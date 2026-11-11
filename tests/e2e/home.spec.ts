@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { tokenColor, type Theme } from '../gallery/gallery.ts';
 
 // The placeholder page of the web app (#76), in the `app-light` and `app-dark` projects (1440 px; the browser asks for
 // the project's colour scheme). It checks what a unit test can't: that the built app really draws in both themes, that
@@ -11,11 +12,10 @@ import { expect, test, type Page } from '@playwright/test';
 // and Zeus approve the first ones; then Athena commits them to tests/visual/approved/. A builder never writes that
 // folder, so until a baseline exists the screenshot is only taken (and annotated).
 
-/** The tokens the page uses, from DESIGN.md (`--color-faint`, `--tracking-eyebrow`), as the browser reports them. */
-const FAINT = { light: 'rgb(111, 106, 98)', dark: 'rgb(140, 135, 126)' } as const;
-const EYEBROW_TRACKING = '0.66px'; // 0.06em of 11px
+// The colours come from the generated tokens (`--color-faint`), as the gallery's tests read them (`tokenColor`), so no
+// colour is copied into this file.
+const EYEBROW_TRACKING = '0.66px'; // 0.06em of 11px, DESIGN.md's `--tracking-eyebrow`
 
-type Theme = keyof typeof FAINT;
 const themeOf = (projectName: string): Theme => (projectName === 'app-dark' ? 'dark' : 'light');
 
 interface Watch {
@@ -124,7 +124,7 @@ test('the eyebrow uses the faint colour and the eyebrow tracking from DESIGN.md'
       return { color: style.color, tracking: style.letterSpacing, transform: style.textTransform };
     });
   expect(eyebrow).toEqual({
-    color: FAINT[themeOf(testInfo.project.name)],
+    color: tokenColor(themeOf(testInfo.project.name), 'faint'),
     tracking: EYEBROW_TRACKING,
     transform: 'uppercase',
   });
