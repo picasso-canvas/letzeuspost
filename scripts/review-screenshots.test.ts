@@ -459,7 +459,7 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
       },
     );
     const text = collectScreenshots(SHA, out, { ...gh.deps, limits: { inflatedBytes: budget } });
-    expect(text).toContain('stopped: 20 MB inflated, so 6 more entries');
+    expect(text).toContain('stopped: 20 MB inflated, so 5 more entries');
     expect(readdirSync(join(out, 'gallery-screenshots'))).toEqual([]);
   });
 

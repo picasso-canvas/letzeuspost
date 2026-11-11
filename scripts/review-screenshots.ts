@@ -45,7 +45,16 @@ export interface ScreenshotDeps {
   gh: (args: string[]) => string;
   /** One artifact's zip, as bytes (never unpacked on disk). */
   fetchZip: (artifactId: number) => Buffer;
+  /** The clock for the step's time limit; Date.now unless a test gives another. */
+  now?: () => number;
+  /** A smaller inflate budget, for tests only; the real one is MAX_INFLATED_BYTES (#216). */
+  limits?: { inflatedBytes?: number };
 }
+
+/** The whole step's time limit, on top of each gh call's own (Cerberus F1 on #213, round 4). */
+export const STEP_TIME_LIMIT_MS = 10 * 60 * 1000;
+
+class StepTimeout extends Error {}
 
 interface Found {
   run: { id: number; name: string };
@@ -54,7 +63,11 @@ interface Found {
 }
 
 /** The newest pull_request run of each artifact's own workflow on this commit that still holds it, or none. */
-function findArtifacts(sha: string, gh: ScreenshotDeps['gh']): Map<ArtifactName, Found> {
+function findArtifacts(
+  sha: string,
+  gh: ScreenshotDeps['gh'],
+  pastLimit: () => boolean,
+): Map<ArtifactName, Found> {
   const runs = JSON.parse(
     gh([
       'api',
@@ -65,6 +78,8 @@ function findArtifacts(sha: string, gh: ScreenshotDeps['gh']): Map<ArtifactName,
   ) as { id: number; name: string; path: string; event: string }[];
   const found = new Map<ArtifactName, Found>();
   for (const run of [...runs].sort((a, b) => b.id - a.id)) {
+    if (found.size === Object.keys(SCREENSHOT_ARTIFACTS).length) break;
+    if (pastLimit()) throw new StepTimeout();
     if (run.event !== 'pull_request') continue;
     const wanted = (Object.keys(SCREENSHOT_ARTIFACTS) as ArtifactName[]).filter(
       (name) => SCREENSHOT_ARTIFACTS[name] === run.path && !found.has(name),
@@ -229,6 +244,7 @@ function copyChecked(
   entries: readonly ZipEntry[],
   out: string,
   room: number,
+  inflatedBytes: number,
 ): { lines: string[]; kept: number } {
   const files: string[] = [];
   const dropped: string[] = [];
@@ -255,8 +271,8 @@ function copyChecked(
   for (const [i, { entry, base, folder }] of candidates.entries()) {
     if (looked >= MAX_ENTRIES_LOOKED_AT)
       stopped = `${String(MAX_ENTRIES_LOOKED_AT)} entries looked at`;
-    else if (inflated >= MAX_INFLATED_BYTES)
-      stopped = `${String(MAX_INFLATED_BYTES / (1024 * 1024))} MB inflated`;
+    else if (inflated >= inflatedBytes)
+      stopped = `${String(inflatedBytes / (1024 * 1024))} MB inflated`;
     if (stopped !== null) {
       stopped = `stopped: ${stopped}, so ${String(candidates.length - i)} more entries weren't looked at`;
       break;
@@ -314,11 +330,15 @@ function copyChecked(
  * a zip that can't be read safely stops nothing: it is said in the text, so a reviewer who needs the screens blocks.
  */
 export function collectScreenshots(sha: string, into: string, deps: ScreenshotDeps): string {
+  const now = deps.now ?? Date.now;
+  const started = now();
+  const pastLimit = () => now() - started > STEP_TIME_LIMIT_MS;
   let artifacts: Map<ArtifactName, Found>;
   try {
-    artifacts = findArtifacts(sha, deps.gh);
-  } catch {
-    return `Couldn't list CI's runs or artifacts on ${sha}: no screenshots in this bundle.\n`;
+    artifacts = findArtifacts(sha, deps.gh, pastLimit);
+  } catch (error) {
+    const why = error instanceof StepTimeout ? ` (the step's 10-minute limit ran out)` : '';
+    return `Couldn't list CI's runs or artifacts on ${sha}${why}: no screenshots in this bundle.\n`;
   }
   const lines: string[] = [];
   let kept = 0;
@@ -333,6 +353,10 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
       lines.push(
         `${name}: ${from} holds ${megabytes(found.size)} MB, over the ${String(MAX_ARTIFACT_BYTES / (1024 * 1024))} MB limit: not downloaded.`,
       );
+      continue;
+    }
+    if (pastLimit()) {
+      lines.push(`${name}: not fetched: the screenshot step's 10-minute limit ran out.`);
       continue;
     }
     let zip: Buffer;
@@ -353,7 +377,13 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
     }
     const out = `${into}/${name}`;
     mkdirSync(out, { recursive: true, mode: 0o700 });
-    const copied = copyChecked(zip, entries, out, MAX_SCREENSHOTS - kept);
+    const copied = copyChecked(
+      zip,
+      entries,
+      out,
+      MAX_SCREENSHOTS - kept,
+      deps.limits?.inflatedBytes ?? MAX_INFLATED_BYTES,
+    );
     kept += copied.kept;
     lines.push(`${name}: ${from}, ${String(copied.kept)} in screenshots/${name}/`, ...copied.lines);
   }
