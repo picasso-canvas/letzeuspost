@@ -4,7 +4,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { Building2Icon, CheckIcon } from 'lucide-react';
 import { Avatar } from '@lzp/ui/components/avatar';
-import { DropdownMenuItem } from '@lzp/ui/components/dropdown-menu';
+import {
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '@lzp/ui/components/dropdown-menu';
 import {
   TopBar,
   TopBarEnd,
@@ -54,6 +58,19 @@ describe('the workspace list', () => {
     const rows = workspaceRows([{ ...northwind, logo: '/logo.svg' }, kite], 'w1', 'x');
     expect(rows.map((row) => row.logo)).toEqual(['/logo.svg', undefined]);
   });
+
+  it('gives a workspace no colour of its own: its logo or its initials, nothing else (Iris F1, round 3)', () => {
+    const [row] = workspaceRows([{ ...northwind, logo: '/logo.svg' }], 'w1', 'x');
+    expect(row).toBeDefined();
+    expect(Object.keys(row ?? {}).sort()).toEqual([
+      'current',
+      'detail',
+      'id',
+      'logo',
+      'name',
+      'role',
+    ]);
+  });
 });
 
 const html = (props: Partial<Parameters<typeof WorkspaceSwitcher>[0]> = {}): string =>
@@ -96,14 +113,37 @@ describe('the workspace switcher, closed', () => {
     }
   });
 
-  it('fills the mark with the workspace’s own colour and text colour, which the caller passes (Iris F2)', () => {
-    const own = { ...northwind, mark: { background: '#23395B', text: '#FFFFFF' } };
-    const markup = html({ workspaces: [own, kite] });
-    expect(markup).toMatch(/data-slot="avatar-fallback"[^>]*style="[^"]*background-color:#23395B/);
-    expect(markup).toMatch(/data-slot="avatar-fallback"[^>]*style="[^"]*[^-]color:#FFFFFF/);
-    // Without one, the mark keeps the token colours.
-    expect(html()).not.toContain('style=');
+  it('draws the initials on the muted token surface, with no colour of its own (Iris F1, round 3)', () => {
+    const markup = html();
+    const mark = /<span[^>]*data-slot="avatar-fallback"[^>]*>/.exec(markup)?.[0] ?? '';
+    const classes = /class="([^"]*)"/.exec(mark)?.[1]?.split(' ') ?? [];
+    expect(classes).toContain('bg-muted');
+    expect(classes).toContain('text-muted-foreground');
+    expect(markup).not.toContain('style=');
   });
+
+  it.each(['theme.css', 'dark.css'])(
+    'keeps the initials at 4.5:1 on their surface in the generated tokens (%s)',
+    (file) => {
+      const css = readFileSync(new URL(`../tokens/${file}`, import.meta.url), 'utf8');
+      const token = (name: string): string => {
+        const hex = new RegExp(`--color-${name}:\\s*#([0-9a-f]{6});`, 'i').exec(css)?.[1];
+        if (hex === undefined) throw new Error(`no --color-${name} in ${file}`);
+        return hex;
+      };
+      const luminance = (hex: string): number => {
+        const [r = 0, g = 0, b = 0] = [0, 2, 4].map((i) => {
+          const c = Number.parseInt(hex.slice(i, i + 2), 16) / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const [light, dark] = [luminance(token('muted')), luminance(token('muted-foreground'))].sort(
+        (a, b) => b - a,
+      );
+      expect(((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05)).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 
   it('sets the workspace name at weight 600 on DESIGN.md’s scale (Iris F2)', () => {
     const name = /<span[^>]*class="([^"]*)"[^>]*>Northwind Social<\/span>/.exec(html())?.[1] ?? '';
@@ -156,29 +196,47 @@ describe('the workspace switcher, closed', () => {
 
 interface ItemProps {
   onClick?: () => void;
-  'aria-current'?: string;
+  value?: string;
+  closeOnClick?: boolean;
   children?: ReactNode;
 }
 
-/** The menu items the switcher builds, read from its element tree (the open menu is drawn in a portal, in a browser). */
-function itemsOf(node: ReactNode): ReactElement<ItemProps>[] {
-  if (Array.isArray(node)) return node.flatMap(itemsOf);
-  if (!isValidElement<{ children?: ReactNode }>(node)) return [];
-  const own = node.type === DropdownMenuItem ? [node as ReactElement<ItemProps>] : [];
-  return [...own, ...itemsOf(node.props.children)];
+interface GroupProps {
+  value: string;
+  onValueChange: (id: string) => void;
 }
 
-describe('choosing a workspace', () => {
-  // A menu item's `onClick` runs for a click, and for Enter and Space on the focused item: that is one path for the
-  // mouse and the keyboard. The arrow keys, Home, End and Escape are the menu's own (Base UI).
-  const chosen = vi.fn();
-  const items = itemsOf(
-    WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1', onSelect: chosen }),
-  );
+/** The elements of one component type in a tree of React elements (the open menu is drawn in a portal, in a browser). */
+function elementsOfType<P>(node: ReactNode, type: unknown): ReactElement<P>[] {
+  if (Array.isArray(node)) return node.flatMap((child) => elementsOfType<P>(child, type));
+  if (!isValidElement<{ children?: ReactNode }>(node)) return [];
+  const own = node.type === type ? [node as unknown as ReactElement<P>] : [];
+  return [...own, ...elementsOfType<P>(node.props.children, type)];
+}
 
-  it('has one item for each workspace, in order, the current one marked as such', () => {
-    expect(items).toHaveLength(workspaces.length);
-    expect(items.map((item) => item.props['aria-current'])).toEqual(['true', undefined, undefined]);
+/** The menu's plain items: the way out of a list that failed to load. */
+const itemsOf = (node: ReactNode): ReactElement<ItemProps>[] =>
+  elementsOfType<ItemProps>(node, DropdownMenuItem);
+
+describe('choosing a workspace', () => {
+  // The rows are a radio group inside the menu (`menuitemradio` with `aria-checked`, Athena's decision on #75): its
+  // `onValueChange` runs for a click, and for Enter and Space on the focused row, so it is one path for the mouse and
+  // the keyboard. The arrow keys, Home, End and Escape are the menu's own (Base UI).
+  const chosen = vi.fn();
+  const tree = WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1', onSelect: chosen });
+  const items = elementsOfType<ItemProps>(tree, DropdownMenuRadioItem);
+  const [group] = elementsOfType<GroupProps>(tree, DropdownMenuRadioGroup);
+
+  it('has one radio row for each workspace, in order', () => {
+    expect(items.map((item) => item.props.value)).toEqual(workspaces.map((w) => w.id));
+  });
+
+  it('checks the current workspace, and only that one, by the group’s value', () => {
+    expect(group?.props.value).toBe('w1');
+  });
+
+  it('closes the menu when a row is chosen, which a radio row does not do by itself', () => {
+    expect(items.map((item) => item.props.closeOnClick)).toEqual([true, true, true]);
   });
 
   /** Every element in a tree of React elements, in order. */
@@ -209,14 +267,14 @@ describe('choosing a workspace', () => {
   });
 
   it('switches to the workspace chosen, whoever chooses it and however', () => {
-    items[1]?.props.onClick?.();
-    items[2]?.props.onClick?.();
+    group?.props.onValueChange('w2');
+    group?.props.onValueChange('w3');
     expect(chosen.mock.calls).toEqual([['w2'], ['w3']]);
   });
 
   it('does nothing when the current workspace is chosen again', () => {
     chosen.mockClear();
-    items[0]?.props.onClick?.();
+    group?.props.onValueChange('w1');
     expect(chosen).not.toHaveBeenCalled();
   });
 
@@ -276,6 +334,11 @@ describe('top-bar.tsx', () => {
     expect(code).not.toMatch(/(?<![=-])>\s*[A-Za-z][^<>{}=;()]*</);
     // (An empty `alt=""` marks a picture as decoration; it is no text.)
     expect(source).not.toMatch(/\b(?:aria-label|title|alt|placeholder)="[^"]/);
+  });
+
+  it('holds no colour of its own: no inline style and no raw colour value (Iris F1, round 3)', () => {
+    expect(source).not.toMatch(/\bstyle=/);
+    expect(source).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 
   it('draws its icons from Lucide, and no other set', () => {

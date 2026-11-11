@@ -144,7 +144,16 @@ describe.each([
   {
     name: 'top bar',
     module: topBar,
-    states: ['Default', 'Open', 'Disabled', 'Loading', 'ErrorState', 'ErrorOpen', 'LongName'],
+    states: [
+      'Default',
+      'Logo',
+      'Open',
+      'Disabled',
+      'Loading',
+      'ErrorState',
+      'ErrorOpen',
+      'LongName',
+    ],
     hover: ['TriggerHover'],
     focus: ['TriggerFocus', 'KeyboardOpen'],
   },

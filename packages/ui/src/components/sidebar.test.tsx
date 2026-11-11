@@ -254,4 +254,16 @@ describe('the sidebar below 900 px (Iris F4 on #219)', () => {
     expect(await narrowRules(label)).toContain('display: none');
     expect(await narrowRules(['sidebar-narrow:hidden'])).toContain('display: none');
   });
+
+  it('keeps a count inside its link’s card, as the mockup’s .count sits inside its link (Iris F2, round 3)', async () => {
+    // The badge is a sibling of the link, so it stays over the link's end (absolute) rather than beside it (static), and
+    // the link keeps room for it.
+    const badge = classesOfFirstTag(
+      renderToStaticMarkup(<sidebar.SidebarMenuBadge>9</sidebar.SidebarMenuBadge>),
+    );
+    expect(badge).toContain('absolute');
+    expect(await narrowRules(badge)).not.toContain('position: static');
+    const button = classesOfFirstTag(renderToStaticMarkup(<SidebarMenuButton />));
+    expect(await buildCss(button)).toMatch(/menu-badge[^{]*\{[^}]*padding-right/);
+  });
 });
