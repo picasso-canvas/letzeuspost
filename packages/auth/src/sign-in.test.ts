@@ -96,7 +96,13 @@ async function setup(
   return { signIn, store, queued, limiter, userId: user.id };
 }
 
-function askForLink(signIn: SignIn, email: string, headers: Record<string, string> = {}) {
+/**
+ * The connecting address, as Next's server gives a route handler it in development and CI: in `x-forwarded-for`, when
+ * the request brought none of its own (decision 4).
+ */
+const connecting = { 'x-forwarded-for': '192.0.2.1' };
+
+function askForLink(signIn: SignIn, email: string, headers: Record<string, string> = connecting) {
   return signIn.handler(
     new Request(`${appUrl}/api/auth/sign-in/magic-link`, {
       method: 'POST',
@@ -105,6 +111,10 @@ function askForLink(signIn: SignIn, email: string, headers: Record<string, strin
     }),
   );
 }
+
+/** The bucket of the IP each request counted in: the first of its two buckets. */
+const ipBuckets = (limiter: Setup['limiter']) =>
+  limiter.calls.filter((_, i) => i % 2 === 0).map((call) => call.bucket);
 
 function open(signIn: SignIn, url: string) {
   return signIn.handler(new Request(url, { headers: { origin: appUrl } }));
@@ -355,6 +365,68 @@ describe('rate limits (§13, Q9: 5 per address and 20 per IP, per hour)', () => 
     // Another IP is its own bucket.
     const other = await askForLink(s.signIn, known, { 'x-forwarded-for': '198.51.100.21' });
     expect(other.status).toBe(200);
+  });
+});
+
+describe('the client IP (decision 4: Cloudflare is in front in staging and production)', () => {
+  it.each(['production', 'staging'])(
+    'in %s, is cf-connecting-ip alone: a forged x-forwarded-for doesn’t change the bucket',
+    async (environment) => {
+      const deployed = await setup({ environment });
+      const from = (forwarded: string) => ({
+        'cf-connecting-ip': '198.51.100.7',
+        'x-forwarded-for': forwarded,
+      });
+      await askForLink(deployed.signIn, known, from('203.0.113.1'));
+      await askForLink(deployed.signIn, known, from('203.0.113.2'));
+      await askForLink(deployed.signIn, known, { 'cf-connecting-ip': '198.51.100.8' });
+      const [first, second, third] = ipBuckets(deployed.limiter);
+      expect(first).toBe(second);
+      expect(third).not.toBe(first);
+      expect(deployed.signIn.auth.options.advanced.ipAddress).toEqual({
+        ipAddressHeaders: ['cf-connecting-ip'],
+      });
+    },
+  );
+
+  it.each([
+    ['no cf-connecting-ip', connecting],
+    ['a cf-connecting-ip that is no address', { 'cf-connecting-ip': 'unknown' }],
+    ['a cf-connecting-ip with two addresses', { 'cf-connecting-ip': '198.51.100.7, 10.0.0.1' }],
+  ])(
+    'in production, refuses a request with %s before counting it or writing anything',
+    async (_, headers) => {
+      const production = await setup({ environment: 'production' });
+      const response = await askForLink(production.signIn, known, headers);
+      expect(response.status).toBe(400);
+      expect(production.limiter.calls).toEqual([]);
+      expect(production.queued).toEqual([]);
+      expect(production.store['verification']).toEqual([]);
+    },
+  );
+
+  it.each(['development', 'ci'])(
+    'in %s, is the connecting address, and a cf-connecting-ip counts for nothing',
+    async (environment) => {
+      const local = await setup({ environment });
+      await askForLink(local.signIn, known, { 'x-forwarded-for': '192.0.2.1' });
+      await askForLink(local.signIn, known, {
+        'x-forwarded-for': '192.0.2.1',
+        'cf-connecting-ip': '198.51.100.7',
+      });
+      await askForLink(local.signIn, known, { 'x-forwarded-for': '192.0.2.2' });
+      const [first, second, third] = ipBuckets(local.limiter);
+      expect(second).toBe(first);
+      expect(third).not.toBe(first);
+    },
+  );
+
+  it('refuses a request whose address it can’t tell, in development too: no shared bucket', async () => {
+    for (const headers of [{}, { 'x-forwarded-for': '192.0.2.1, 192.0.2.2' }]) {
+      const local = await setup({ environment: 'development' });
+      expect((await askForLink(local.signIn, known, headers)).status).toBe(400);
+      expect(local.limiter.calls).toEqual([]);
+    }
   });
 });
 
