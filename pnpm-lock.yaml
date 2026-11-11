@@ -262,6 +262,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@lzp/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@lzp/config':
         specifier: workspace:*
         version: link:../../config
