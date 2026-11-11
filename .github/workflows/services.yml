@@ -193,18 +193,20 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      # From the first journey (#78) on: the app at 1440 px, light and dark (playwright.config.ts starts the built app
-      # and the worker). The step starts once tests/e2e/ exists, since builders can't change this file.
+      # The app at 1440 px, light and dark, and the features' Playwright journeys (playwright.config.ts starts the built
+      # app and the worker). The step starts once tests/e2e/ or a journey spec (tests/journeys/**/*.spec.ts) exists,
+      # since builders can't change this file (#172). A project with no tests yet doesn't fail the run.
       - name: End-to-end tests
         id: e2e
-        if: ${{ steps.scope.outputs.run == 'true' && hashFiles('tests/e2e/**') != '' }}
+        if: ${{ steps.scope.outputs.run == 'true' && hashFiles('tests/e2e/**', 'tests/journeys/**/*.spec.ts') != '' }}
         run: |
           set -euo pipefail
           pnpm exec playwright install --with-deps chromium
           pnpm --filter @lzp/web build
           rm -rf "$RUNNER_TEMP/journeys-playwright"
           mkdir "$RUNNER_TEMP/journeys-playwright"
-          LZP_JOURNEY_DIR="$RUNNER_TEMP/journeys-playwright" pnpm exec playwright test --project app-light --project app-dark \
+          LZP_JOURNEY_DIR="$RUNNER_TEMP/journeys-playwright" pnpm exec playwright test \
+            --project app-light --project app-dark --project journeys --pass-with-no-tests \
             --reporter=github,./scripts/ci/journey-reporter-playwright.ts
 
       # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered

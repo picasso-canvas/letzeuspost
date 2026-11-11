@@ -1,11 +1,14 @@
 // Runs the migrations in ../migrations, as the owner role (DATABASE_OWNER_URL, which the app never holds). Applied
 // migrations are recorded in the `drizzle` schema, so running this again changes nothing.
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate as applyMigrations } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 
-const migrationsFolder = fileURLToPath(new URL('../migrations', import.meta.url));
+// Joined at run time, not as a URL relative to import.meta.url: the web app imports this package, and Turbopack reads
+// that form as an asset to bundle, which fails on a folder (#172).
+const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 
 /** An advisory lock held while migrating, so two runs at once take turns. Any fixed number; this one is the task's. */
 const MIGRATION_LOCK = 71;
