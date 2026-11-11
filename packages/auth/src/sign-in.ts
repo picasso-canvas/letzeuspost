@@ -22,7 +22,7 @@ import { createHmac } from 'node:crypto';
 import { isIP } from 'node:net';
 import { servedOverHttps, signInLimits } from '@lzp/config';
 import { betterAuth, type BetterAuthOptions, type DBAdapterInstance } from 'better-auth';
-import { APIError, createAuthMiddleware, getIP } from 'better-auth/api';
+import { APIError, createAuthMiddleware, formCsrfMiddleware, getIP } from 'better-auth/api';
 import { magicLink } from 'better-auth/plugins/magic-link';
 
 /** A5: sign-in links last 10 minutes. */
@@ -71,8 +71,11 @@ export interface SignInDeps {
   readonly queueSignInEmail: (email: SignInEmail) => Promise<void>;
 }
 
-/** Anything shaped like an address, masked in whatever Better Auth logs (§13: no emails in logs). */
-const ADDRESS = /[^\s@<>"'(),;:]+@[^\s@<>"'(),;:]+/g;
+/**
+ * Anything shaped like an address, masked in whatever Better Auth logs (§13: no emails in logs); URL-encoded too, as in
+ * a refused Referer it logs whole.
+ */
+const ADDRESS = /[^\s@<>"'(),;:]+(?:@|%40)[^\s@<>"'(),;:]+/gi;
 
 /** Better Auth's log lines, masked, and without their extra arguments: those may be records with an address in them. */
 function log(level: string, message: string): void {
@@ -159,6 +162,9 @@ function options(deps: SignInDeps, links: Links) {
     // (a driver's, say, quoting an address) would be printed whole.
     onAPIError: { throw: true },
     advanced: {
+      // Better Auth turns its Origin and cross-site checks off when NODE_ENV is `test`: they are on everywhere here.
+      disableOriginCheck: false,
+      disableCSRFCheck: false,
       ipAddress: { ipAddressHeaders: [ipHeader] },
       useSecureCookies: servedOverHttps(deps.environment),
       defaultCookieAttributes: { httpOnly: true, sameSite: 'lax' },
@@ -173,6 +179,9 @@ function options(deps: SignInDeps, links: Links) {
         // packages/auth's own call after the answer (`links.make`), the only one with no request: its request was
         // checked and counted here already.
         if (ctx.request === undefined) return undefined;
+        // The endpoint's own cross-site check (its `use: [formCsrfMiddleware]`), which the answer below would skip, and
+        // before any limit: another site's page can't spend an address's limit from its visitors' browsers.
+        await formCsrfMiddleware(ctx);
         const body: unknown = ctx.body;
         const given =
           typeof body === 'object' && body !== null
@@ -198,7 +207,7 @@ function options(deps: SignInDeps, links: Links) {
         if (afterAnswer === undefined) throw new Error('sign-in: no way to work after the answer');
         afterAnswer(() =>
           links.make({ ...asked, email: address }).catch((error: unknown) => {
-            log('error', `a sign-in link failed after the answer: ${kindOf(error) || 'unknown'}`);
+            log('error', `a sign-in link failed after the answer: ${kindOf(error)}`);
           }),
         );
         return ctx.json({ status: true });
@@ -222,13 +231,17 @@ function options(deps: SignInDeps, links: Links) {
 
 const notFound = () => new Response(null, { status: 404 });
 
-/** An error's kind, for the log: its name and a driver's code, never its message. */
-function kindOf(error: unknown): string {
+/**
+ * An error's kind, for packages/auth's log lines: its name and a driver's code, never its message (it may quote an
+ * address or a statement); a part that isn't a short word is left out, and "unknown" stands for nothing left.
+ */
+export function kindOf(error: unknown): string {
   if (typeof error !== 'object' || error === null) return 'unknown';
   const { name, code } = error as { name?: unknown; code?: unknown };
-  return [name, code]
-    .filter((part) => typeof part === 'string' && /^[\w.-]{1,40}$/.test(part))
-    .join(' ');
+  const parts = [name, code].filter(
+    (part) => typeof part === 'string' && /^[\w.-]{1,40}$/.test(part),
+  );
+  return parts.length === 0 ? 'unknown' : parts.join(' ');
 }
 
 export function createSignIn(deps: SignInDeps) {
@@ -264,7 +277,7 @@ export function createSignIn(deps: SignInDeps) {
       try {
         return await answering.run(afterAnswer, () => auth.handler(request));
       } catch (error) {
-        log('error', `${request.method} ${path} failed: ${kindOf(error) || 'unknown'}`);
+        log('error', `${request.method} ${path} failed: ${kindOf(error)}`);
         return new Response(null, { status: 500 });
       }
     },

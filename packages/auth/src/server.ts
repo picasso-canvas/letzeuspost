@@ -14,7 +14,7 @@ import {
   type UserCtx,
 } from '@lzp/db/auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { createSignIn, SIGN_IN_TEMPLATE } from './sign-in.ts';
+import { createSignIn, kindOf, SIGN_IN_TEMPLATE } from './sign-in.ts';
 import {
   createWorkspace,
   isMember,
@@ -41,12 +41,6 @@ export type AuthServerEnv = Pick<
 export interface SessionRef {
   readonly token: string;
   readonly userId: string;
-}
-
-/** An error's kind for a log line: its name and code, never its message (it may quote a statement). */
-function kindOf(error: Error): string {
-  const { code } = error as { code?: unknown };
-  return typeof code === 'string' ? `${error.name} ${code}` : error.name;
 }
 
 /** The queue's `send`, starting pg-boss on the first email: a web process that sends none never connects to it. */
