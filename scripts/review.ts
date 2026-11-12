@@ -566,11 +566,11 @@ function failureReason(error: unknown): string {
 }
 
 /**
- * The model a reviewer runs on, or null for its agent file's (Opus). Zeus, 2026-11-07: Argus reviews routine PRs on
- * Sonnet; Cerberus, Iris and every sensitive review stay on Opus.
+ * The model a reviewer runs on, or null for its agent file's (Opus). Zeus, 2026-11-12 (token budget): Argus and Iris
+ * review on Sonnet at every tier; Cerberus, the security review, stays on Opus.
  */
-export function reviewerModel(reviewer: Asker, tier: 'routine' | 'sensitive'): string | null {
-  return reviewer === 'argus' && tier === 'routine' ? 'claude-sonnet-5-5' : null;
+export function reviewerModel(reviewer: Asker): string | null {
+  return reviewer === 'cerberus' ? null : 'claude-sonnet-5-5';
 }
 
 /**
@@ -582,7 +582,6 @@ export async function runReviews(
   where: { bundle: string; outDir: string; refusal: string | null },
   reviewers: readonly Asker[],
   deps: ReviewDeps,
-  tier: 'routine' | 'sensitive' = 'sensitive',
 ): Promise<number> {
   // allSettled: one reviewer throwing still lets the others finish and record, and counts as one failure.
   const results = await Promise.allSettled(reviewers.map((reviewer) => reviewOne(reviewer)));
@@ -597,7 +596,7 @@ export async function runReviews(
   async function reviewOne(reviewer: Asker): Promise<number> {
     let failed = 0;
     const agent = REVIEWER_AGENTS[reviewer];
-    const model = reviewerModel(reviewer, tier);
+    const model = reviewerModel(reviewer);
     let summary: string;
     let sessionId: string | null = null;
     if (where.refusal !== null) {
@@ -754,43 +753,37 @@ async function main(argv: string[]): Promise<number> {
     sensitiveList === null ? null : parsePatternList(sensitiveList),
   );
   console.log(
-    `PR #${String(pr)} at ${where.sha.slice(0, 7)} (${tier}): bundle ${where.bundle}; reviewers ${reviewers.map((r) => `${r}${reviewerModel(r, tier) === null ? '' : ' on Sonnet'}`).join(', ')}`,
+    `PR #${String(pr)} at ${where.sha.slice(0, 7)} (${tier}): bundle ${where.bundle}; reviewers ${reviewers.map((r) => `${r}${reviewerModel(r) === null ? '' : ' on Sonnet'}`).join(', ')}`,
   );
   if (argv.includes('--dry-run')) return 0;
-  const failed = await runReviews(
-    pr,
-    where,
-    reviewers,
-    {
-      // Not blocking, so every reviewer's session runs at the same time. stdin is closed, as before.
-      claude: async (args, env, timeoutMs) => {
-        const run = promisify(execFile)('claude', args, {
-          cwd: ROOT,
-          env,
-          encoding: 'utf8',
-          timeout: timeoutMs,
-          maxBuffer: 64 * 1024 * 1024,
-        });
-        run.child.stdin?.end();
-        return (await run).stdout;
-      },
-      show,
-      record: (args) => run('node', [join(ROOT, 'scripts/record-review.ts'), ...args]),
-      write: (path, text) => {
-        writeFileSync(path, text, { mode: 0o600 });
-      },
-      logRetry: (entry) => {
-        mkdirSync(join(STATE_DIR, 'logs'), { recursive: true, mode: 0o700 });
-        appendFileSync(
-          join(STATE_DIR, 'logs', 'review-retries.jsonl'),
-          `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`,
-          { mode: 0o600 },
-        );
-      },
-      env: process.env,
+  const failed = await runReviews(pr, where, reviewers, {
+    // Not blocking, so every reviewer's session runs at the same time. stdin is closed, as before.
+    claude: async (args, env, timeoutMs) => {
+      const run = promisify(execFile)('claude', args, {
+        cwd: ROOT,
+        env,
+        encoding: 'utf8',
+        timeout: timeoutMs,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      run.child.stdin?.end();
+      return (await run).stdout;
     },
-    tier,
-  );
+    show,
+    record: (args) => run('node', [join(ROOT, 'scripts/record-review.ts'), ...args]),
+    write: (path, text) => {
+      writeFileSync(path, text, { mode: 0o600 });
+    },
+    logRetry: (entry) => {
+      mkdirSync(join(STATE_DIR, 'logs'), { recursive: true, mode: 0o700 });
+      appendFileSync(
+        join(STATE_DIR, 'logs', 'review-retries.jsonl'),
+        `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`,
+        { mode: 0o600 },
+      );
+    },
+    env: process.env,
+  });
   return failed === 0 ? 0 : 1;
 }
 
