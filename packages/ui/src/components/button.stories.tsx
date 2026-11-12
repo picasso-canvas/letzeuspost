@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { LoaderCircleIcon } from 'lucide-react';
+import { LoaderCircleIcon, MailIcon } from 'lucide-react';
 import { Button } from '@lzp/ui/components/button';
 
 // Every state of §05's four buttons: primary (gold), secondary, ghost and destructive. The gallery tests (tests/gallery)
@@ -43,6 +43,18 @@ export const Disabled: Story = {
           {label}
         </Button>
       ))}
+    </div>
+  ),
+};
+
+/** An icon at the start, as the approved invite card's "Email me a sign-in link" has its mail icon (Lucide, decorative). */
+export const WithIcon: Story = {
+  render: () => (
+    <div className={row}>
+      <Button>
+        <MailIcon data-icon="inline-start" aria-hidden="true" />
+        Email me a sign-in link
+      </Button>
     </div>
   ),
 };
