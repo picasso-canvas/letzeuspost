@@ -195,6 +195,18 @@ describe('lzp/inter-only (§21: the interface font is Inter)', () => {
     expect(local[0]).toContain('Inter');
     expect(local[0]).toContain('Hind Siliguri for Bangla text');
   });
+
+  // #240 (Argus F2): the variable package is refused for its real cause, not as "not an interface font".
+  it("tells a builder of '@fontsource-variable/hind-siliguri' which package carries Hind Siliguri", async () => {
+    const messages = await messagesOf(
+      "import '@fontsource-variable/hind-siliguri';",
+      'packages/ui/src/a.ts',
+      'lzp/inter-only',
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('no variable build');
+    expect(messages[0]).toContain("'@fontsource/hind-siliguri'");
+  });
 });
 
 describe('round 2 of the #82 review', () => {
