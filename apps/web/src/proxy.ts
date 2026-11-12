@@ -55,8 +55,11 @@ export function proxy(request: NextRequest): NextResponse {
 
   const to = redirectFor(request);
   if (to !== null) {
-    // A relative address: behind Caddy the app can't know its public host, and never builds one from the request's.
-    const redirect = new NextResponse(null, { status: 307, headers: { location: to } });
+    // Next reads a proxy's `location` as an absolute address, so the fixed path is resolved against the request's own
+    // URL (`nextUrl`, which keeps no query or hash from `to`). It never picks a host: Next turns an address on the
+    // request's origin back into a relative one before it answers, so the browser gets `/sign-in` whatever sits in
+    // front (Caddy) and whatever Host the caller sent.
+    const redirect = NextResponse.redirect(new URL(to, request.nextUrl), 307);
     redirect.headers.set(POLICY, policy);
     return redirect;
   }
