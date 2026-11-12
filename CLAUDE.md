@@ -78,6 +78,21 @@ skills, agents, plugins or MCP servers. Never read or commit secrets: `.env` fil
 6. Bangla is written natively, not translated from English.
 7. Nothing reaches the client before the QC check passes.
 
+## Token budget (Zeus, 2026-11-12)
+
+Most tokens go to re-sending context on every API call, not to output. So fewer calls and smaller context.
+
+- **Models:** builders, Argus and Iris run on Sonnet 5.5 (effort high). Opus 5.5 only for Cerberus and for a builder
+  whose issue says `**Predicted tier:** \`sensitive\`` (or says it unclearly). Interactive sessions default to Sonnet.
+- **Athena: few calls.** Run a whole stage as one script call that prints one summary line (`review.ts`, `ship.ts`,
+  `merge-gate.ts`, `dispatch.ts`), not a chain of `gh` and `git` steps. Chain related commands with `&&` in one Bash call.
+- **No polling from the chat.** Wait for CI or a builder with one command that returns when it is done, or with a
+  background run. Never repeat `gh pr checks` or `sleep` loops turn after turn.
+- **Small output.** Pipe long logs through `tail -n 40` or `grep`; use `gh ... --json <fields>` for only what you need.
+- **Never open a `diff.patch` or a review bundle in Athena's own session.** Reviewers read them; Athena reads the verdict.
+- **No forks from a long session.** A fork inherits the whole context. Use a fresh agent with a short brief.
+- **`/clear` at every task boundary**, and never keep one Athena session across days.
+
 ## Compact instructions
 
 Sessions compact at 200K tokens (Zeus, 2026-11-11, #235: `.claude/settings.json` sets the window and disables the 1M

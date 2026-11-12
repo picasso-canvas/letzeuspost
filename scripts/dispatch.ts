@@ -270,14 +270,14 @@ export function slugify(title: string): string {
 }
 
 /**
- * The model the builder runs on, or null for its agent file's (Opus). Zeus, 2026-11-07: routine tasks build on Sonnet.
- * The tier comes from the issue Athena wrote (`**Predicted tier:** \`routine\``); anything else keeps Opus.
+ * The model the builder runs on, or null for its agent file's (Sonnet). Zeus, 2026-11-12 (token budget): builders run
+ * on Sonnet; only a task the issue Athena wrote marks `**Predicted tier:** \`sensitive\``, or marks twice or
+ * unclearly, builds on Opus. A missing tier is Sonnet: the CI label and the merge gate decide the real tier later.
  */
 export function builderModel(issueBody: string): string | null {
   const tiers = [...issueBody.matchAll(/\*\*Predicted tier:\*\*(.*)/g)].map((m) => m[1] ?? '');
-  return tiers.length === 1 && /^\s*`routine`\s*$/.test(tiers[0] ?? '')
-    ? 'claude-sonnet-5-5'
-    : null;
+  if (tiers.length === 0) return null;
+  return tiers.length === 1 && /^\s*`routine`\s*$/.test(tiers[0] ?? '') ? null : 'claude-opus-5-5';
 }
 
 /**
@@ -788,7 +788,7 @@ async function runBuilder(o: {
   const log = join(STATE_DIR, 'runs', `${branch}-${String(Date.now())}.jsonl`);
   mkdirSync(dirname(log), { recursive: true, mode: 0o700 });
   const model = builderModel(o.body);
-  console.log(`Builder model: ${model ?? 'Opus (the agent file)'}`);
+  console.log(`Builder model: ${model ?? 'Sonnet (the agent file)'}`);
   const child = spawn(
     'claude',
     [

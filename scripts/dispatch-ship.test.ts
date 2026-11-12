@@ -370,14 +370,14 @@ describe('fetchBundle', () => {
 });
 
 describe('builderModel', () => {
-  it("builds routine tasks on Sonnet; sensitive, unknown or missing tiers keep the agent file's Opus", () => {
-    expect(builderModel('**Predicted tier:** `routine`\n')).toBe('claude-sonnet-5-5');
-    expect(builderModel('**Predicted tier:** `sensitive`')).toBeNull();
+  it("builds on the agent file's Sonnet; sensitive, unclear or repeated tiers get Opus", () => {
+    expect(builderModel('**Predicted tier:** `routine`\n')).toBeNull();
     expect(builderModel('no tier here')).toBeNull();
-    expect(builderModel('**Predicted tier:** `routine` or `sensitive`')).toBeNull();
-    expect(
-      builderModel('**Predicted tier:** `routine`\n**Predicted tier:** `sensitive`'),
-    ).toBeNull();
+    expect(builderModel('**Predicted tier:** `sensitive`')).toBe('claude-opus-5-5');
+    expect(builderModel('**Predicted tier:** `routine` or `sensitive`')).toBe('claude-opus-5-5');
+    expect(builderModel('**Predicted tier:** `routine`\n**Predicted tier:** `sensitive`')).toBe(
+      'claude-opus-5-5',
+    );
   });
 });
 

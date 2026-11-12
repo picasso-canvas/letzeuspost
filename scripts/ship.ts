@@ -27,6 +27,7 @@ import { historyRefusals, parseRawDiff, parseRevList, shipRefusals } from './lib
 import { readRegularFile } from './lib/safe-read.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
+import { taskNote } from './token-usage.ts';
 
 export const BUILDERS_DIR = join(homedir(), 'letzeuspost-builders');
 const MAX_TEXT = 64 * 1024;
@@ -459,7 +460,12 @@ function afterShip(
   record: DispatchRecord,
   lzp: string,
 ): { needsZeus: boolean; blocked: boolean } {
-  run('gh', ['issue', 'comment', String(issue), '-R', REPO, '--body-file', '-'], comment);
+  const usage = taskNote(issue);
+  run(
+    'gh',
+    ['issue', 'comment', String(issue), '-R', REPO, '--body-file', '-'],
+    usage === null ? comment : `${comment}\n\n${usage}`,
+  );
   const flags = prFlags(prText);
   if (flags.needsZeus)
     run('gh', ['issue', 'edit', String(issue), '-R', REPO, '--add-label', 'needs-zeus']);

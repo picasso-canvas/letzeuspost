@@ -3,7 +3,7 @@ name: argus-reviewer
 description: Argus, LetZeusPost's code reviewer. Reviews one pull request from a fresh context, read-only, and returns a verdict and findings. Athena runs it on every PR before the merge gate. It never edits files, runs commands or runs the PR's code.
 tools: Read, Grep, Glob
 disallowedTools: Bash, Edit, Write, NotebookEdit, Agent, WebFetch, WebSearch
-model: claude-opus-5-5
+model: claude-sonnet-5-5
 effort: high
 skills:
   - conventions
