@@ -116,6 +116,16 @@ describe('the payload a handler is given', () => {
     }
   });
 
+  it("takes an account email's job, which belongs to no workspace, only without a group (#77)", () => {
+    const account = { accountEmailId: randomUUIDv7() };
+    expect(payloadOf('account-email', { data: account, groupId: null })).toEqual(account);
+    expect(payloadOf('account-email', { data: account })).toEqual(account);
+    // A group would count it against a workspace's limit: send() never gives it one.
+    expect(() => payloadOf('account-email', { data: account, groupId: workspaceId })).toThrow(
+      JobPayloadError,
+    );
+  });
+
   it('refuses a payload with more than ids, before looking at its group', () => {
     expect(() =>
       payloadOf('email', {

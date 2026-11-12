@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@lzp/auth": "workspace:*",
     "@lzp/config": "workspace:*",
     "@lzp/db": "workspace:*",
     "@lzp/email": "workspace:*",
