@@ -467,7 +467,7 @@ export function renderReport(args: {
   const lines: string[] = [];
   lines.push(`## Token cost ${args.since} to ${args.today}`, '');
   lines.push(
-    `Estimated ${money(grand.cost)} over ${String(grand.calls)} API calls (prices as of ${prices.asOf}; cache writes at ${String(prices.cacheWriteMultiplier)}× input). Estimates, not the invoice.`,
+    `${mtok(grand.input + grand.cacheWrite + grand.cacheRead + grand.output)} tokens in ${String(grand.calls)} API calls: ${mtok(grand.cacheRead)} re-read from cache, ${mtok(grand.cacheWrite)} written to cache, ${mtok(grand.output)} output. Estimated ${money(grand.cost)} (prices as of ${prices.asOf}; cache writes at ${String(prices.cacheWriteMultiplier)}× input). Estimates, not the invoice.`,
     '',
   );
   const miss = unpriced(calls, prices);

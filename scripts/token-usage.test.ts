@@ -300,6 +300,7 @@ describe('renderReport', () => {
       suppressed: 1,
     });
     expect(body).toContain('## Token cost 2026-11-05 to 2026-11-12');
+    expect(body).toContain('3.0M tokens in 1 API calls: 2.0M re-read from cache');
     expect(body).toContain('| athena | 1 |');
     expect(body).toContain('- [ ] **polling**: 9 repeated commands (about $1.50)');
     expect(body).toContain('`approve <id>`');
