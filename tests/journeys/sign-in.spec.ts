@@ -28,8 +28,8 @@ const email = `signin-${run}@journey.invalid`;
 const stranger = `stranger-${run}@journey.invalid`;
 let removeAccount: (() => Promise<void>) | undefined;
 
-// Step 1 is not the feature, so it sits outside the expected failure: if the account or Mailpit is broken, a hook fails
-// and CI goes red, instead of the failure hiding inside `test.fail()`.
+// Step 1 is not the feature, so it sits in a hook: if the account or Mailpit is broken, the hook fails and says so,
+// instead of the journey failing at a step that has nothing to do with it.
 test.beforeAll(async () => {
   // 1. A test account exists, and Mailpit answers.
   removeAccount = await createAccount(email, run);
