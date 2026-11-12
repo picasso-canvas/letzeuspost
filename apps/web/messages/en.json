@@ -16,6 +16,29 @@
       "label": "{name} ({role})"
     }
   },
+  "signIn": {
+    "brand": { "let": "Let", "zeus": "Zeus", "post": "Post" },
+    "heading": "Sign in",
+    "intro": "Enter your email and a sign-in link will be sent to you. It works once, for 10 minutes.",
+    "emailLabel": "Your email",
+    "emailHint": "Use the address you were invited with.",
+    "submit": "Email me a sign-in link",
+    "sending": "Sending the link…",
+    "linkProblem": "This is a used or expired link. Links work once, for 10 minutes. Ask for a new one below.",
+    "sent": {
+      "heading": "Check your email",
+      "body": "If {email} has an account, a sign-in link is on its way. It works once, for 10 minutes.",
+      "spam": "Nothing there after a minute? Look in your spam folder.",
+      "again": "Use a different address"
+    },
+    "errors": {
+      "invalidEmail": "That doesn’t look like an email address. Check it and try again.",
+      "tooManyRequests": "Too many links were asked for. Wait an hour, then try again.",
+      "unknownClient": "This request couldn’t be checked because it didn’t come through letzeuspost.com. Open LetZeusPost from that address and try again, or email hello@letzeuspost.com if it keeps happening.",
+      "generic": "Something went wrong. Try again in a minute.",
+      "network": "Couldn’t reach LetZeusPost. Check your connection and try again."
+    }
+  },
   "home": {
     "eyebrow": "LetZeusPost",
     "heading": "Welcome to LetZeusPost",

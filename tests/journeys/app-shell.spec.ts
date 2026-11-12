@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 // The App shell feature's journey (§19 A task's life, #207): someone opens the app and gets a safe, on-brand page.
+// `/` is an app page, so since the Sign-in feature (#78) the person is signed in first, through the real flow
+// (tests/lib/sign-in.ts: an account, the link, Mailpit, opening it); step 4 also shows what a signed-out visit gets.
 // It lands as the feature's last task (#205, #75, #76), after the code it drives, so it is a plain `test`, with no
 // `test.fail()` mark: it passes the first time, and the feature is done when it passes in CI (#156).
 //
@@ -9,7 +11,8 @@
 // token `--color-background`, light and dark (#74). Where a name isn't fixed, a comment says what the test assumes.
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type APIResponse, type Page } from '@playwright/test';
+import { expect, type APIResponse, type Page } from '@playwright/test';
+import { sessionCookies, test } from '../lib/sign-in.ts';
 
 // Assumption: messages/en.json keeps `app.name` (the page title) and, under `home`, the `heading`, `body` and
 // `swatchesLabel` the placeholder shows. Read as data from the file the app reads, so a reworded line needs no edit here.
@@ -63,11 +66,13 @@ async function seriousAxeIssues(page: Page) {
 }
 
 test('someone opens the app and gets a safe, on-brand page', async ({
-  page,
-  context,
-  request,
+  signedInPage: page,
+  browser,
   baseURL,
 }) => {
+  const context = page.context();
+  // The same cookies as the page: the person's session, as for a browser's own requests.
+  const request = page.request;
   // 1. `/` answers 200 and shows the placeholder, its words from messages/en.json.
   const home = await openHome(page);
   expect(home.status()).toBe(200);
@@ -115,10 +120,27 @@ test('someone opens the app and gets a safe, on-brand page', async ({
   expect(tags.length).toBeGreaterThan(0);
   for (const tag of tags) expect(tag).toContain(`nonce="${againNonce}"`);
 
-  // 4. A first visit sets no cookie: the only essential ones arrive with sign-in (#77, §16).
-  const sent = await home.headersArray();
-  expect(sent.filter((h) => h.name.toLowerCase() === 'set-cookie')).toEqual([]);
-  expect(await context.cookies()).toEqual([]);
+  // 4. A first visit sets no cookie: the only essential one arrives with sign-in (#77, §16). Signed out, `/` is sent to
+  // `/sign-in` and neither answer sets one; signed in, opening the app sets none, and the session's is the only cookie.
+  const setCookies = (headers: { name: string }[]) =>
+    headers.filter((h) => h.name.toLowerCase() === 'set-cookie');
+  const visitor = await browser.newContext({ baseURL: baseURL ?? '' });
+  try {
+    const first = await visitor.request.get('/', { maxRedirects: 0, failOnStatusCode: false });
+    expect(first.status()).toBe(307);
+    expect(setCookies(first.headersArray())).toEqual([]);
+    const firstPage = await visitor.newPage();
+    const landed = await firstPage.goto('/');
+    expect(new URL(firstPage.url()).pathname).toBe('/sign-in');
+    expect(setCookies((await landed?.headersArray()) ?? [])).toEqual([]);
+    expect(await visitor.cookies()).toEqual([]);
+  } finally {
+    await visitor.close();
+  }
+  expect(setCookies(await home.headersArray())).toEqual([]);
+  const held = await context.cookies();
+  expect(held).toHaveLength(1);
+  expect(sessionCookies(held)).toEqual(held);
 
   // 5. `/api/health` answers 200 while the database is up (CI starts Postgres), and the body is the status only.
   expect(health.status()).toBe(200);
