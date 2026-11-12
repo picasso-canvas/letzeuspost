@@ -503,9 +503,11 @@ const lucideOnly = {
 
 /**
  * §21: Inter is the interface font, and Hind Siliguri carries Bangla text (Zeus, 2026-11-11, #231); every other font is
- * refused. Render-engine fonts live in packages/render, outside this rule. ESLint sees imports only: a font a stylesheet
- * loads itself (`@font-face` `src` in packages/ui's CSS) is pinned by `packages/ui/src/styles/globals.test.ts`
- * (every face is Inter or Hind Siliguri, from a local file), not here (#239).
+ * refused. Render-engine fonts live in packages/render, outside this rule. ESLint sees imports only. A font a
+ * stylesheet loads itself (`@font-face` `src`) is checked by `packages/ui/src/styles/globals.test.ts`, and only for
+ * `packages/ui/src/styles/globals.css`: every face there is Inter from a local file (Hind Siliguri too once #230
+ * reaches `main`). `components.css`, `tokens/*.css` and the stylesheets in `apps/web` have no such check until #241
+ * (#239).
  */
 /** @type {RuleModule} */
 const interOnly = {
@@ -515,6 +517,8 @@ const interOnly = {
       font: "'{{font}}' isn't an interface font: Inter, and Hind Siliguri for Bangla text, are the only ones (§21).",
       local:
         'next/font/local loads a font file: Inter, and Hind Siliguri for Bangla text, are the only interface fonts (§21).',
+      variable:
+        "Hind Siliguri has no variable build: import '@fontsource/hind-siliguri', not '@fontsource-variable/…' (§21).",
     },
     schema: [],
   },
@@ -537,8 +541,10 @@ const interOnly = {
         const match = /^@fontsource(-variable)?\/([^/]+)/.exec(source);
         if (match) {
           const [, variable, font] = match;
-          const allowed = font === 'inter' || (font === 'hind-siliguri' && variable === undefined);
-          if (!allowed) context.report({ node, messageId: 'font', data: { font } });
+          if (font === 'hind-siliguri' && variable !== undefined)
+            context.report({ node, messageId: 'variable' });
+          else if (font !== 'inter' && font !== 'hind-siliguri')
+            context.report({ node, messageId: 'font', data: { font } });
         }
       }
     });
