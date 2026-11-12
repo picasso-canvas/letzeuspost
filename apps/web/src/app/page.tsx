@@ -1,7 +1,15 @@
+import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import { messages } from '../messages.ts';
+import { INBOX, openWorkspace } from './app/workspace.ts';
 
-// The placeholder the sign-in and signed-in pages (#77 to #79) replace. Built only from the tokens, so it shows the
-// theme in light and dark; every word comes from messages/en.json.
+// `/`, where the proxy and an opened sign-in link send a signed-in person (#78). With a workspace they go on to the
+// Inbox, under /app (Q13, #79); with none yet (an invite comes later), they stay on this placeholder. It never sends
+// anyone back to /sign-in, so the redirects can't loop: /app sends a person with no workspace here, and here sends only
+// one with a workspace there.
+//
+// The placeholder is built only from the tokens, so it shows the theme in light and dark; every word comes from
+// messages/en.json.
 const swatches = [
   { name: 'background', fill: 'bg-background' },
   { name: 'card', fill: 'bg-card' },
@@ -9,7 +17,7 @@ const swatches = [
   { name: 'muted', fill: 'bg-muted' },
 ] as const;
 
-export default function Home() {
+function Placeholder() {
   const { home } = messages;
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center p-6">
@@ -29,5 +37,22 @@ export default function Home() {
         </ul>
       </section>
     </main>
+  );
+}
+
+/** The guard's answer for this request: a person with a workspace goes to the Inbox; anyone else sees the placeholder. */
+async function ToWorkspace() {
+  const opened = await openWorkspace();
+  if (opened.ok) redirect(INBOX);
+  return <Placeholder />;
+}
+
+// The page itself stays a plain function that draws the placeholder while the guard answers (messages.test.ts draws it
+// that way, outside a request); the answer then replaces it with the same placeholder, or sends the person on.
+export default function Home() {
+  return (
+    <Suspense fallback={<Placeholder />}>
+      <ToWorkspace />
+    </Suspense>
   );
 }
