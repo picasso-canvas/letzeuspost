@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   collect,
+  healthOf,
   openProposals,
   parseDecisions,
   parseTranscript,
@@ -13,6 +14,9 @@ import {
   repoRelative,
   roleOf,
   sumBy,
+  taskNote,
+  taskUsage,
+  renderTaskLine,
   unpriced,
   type Call,
   type Prices,
@@ -337,5 +341,76 @@ describe('collect', () => {
     expect(calls.map((c) => c.role).sort()).toEqual(['athena', 'headless']);
     expect(sessions).toHaveLength(2);
     expect(collect('2026-11-13', root).calls).toEqual([]);
+  });
+});
+
+describe('per-task usage', () => {
+  const builders = (root: string, dir: string, ...files: string[]) => {
+    const d = join(root, dir);
+    mkdirSync(d, { recursive: true });
+    files.forEach((text, i) => {
+      writeFileSync(join(d, `s${String(i)}.jsonl`), text);
+    });
+    return d;
+  };
+  const turn = (id: string, ctx: number, model = 'claude-sonnet-5-5') =>
+    assistant(
+      id,
+      '2026-11-12T10:00:00Z',
+      { input_tokens: 0, cache_read_input_tokens: ctx, output_tokens: 1000 },
+      [],
+      model,
+    );
+
+  it('rates the average context: green under 60K, amber from 60K, red from 110K', () => {
+    expect([healthOf(59_999), healthOf(60_000), healthOf(109_999), healthOf(110_000)]).toEqual([
+      'green',
+      'amber',
+      'amber',
+      'red',
+    ]);
+  });
+
+  it('adds up every session and forked agent of one issue, and no other issue', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tokens-'));
+    const dir = '-Users-me-letzeuspost-builders-7-fix-it';
+    builders(root, dir, [turn('a', 40_000), turn('b', 60_000)].join('\n'));
+    mkdirSync(join(root, dir, 's', 'subagents'), { recursive: true });
+    writeFileSync(join(root, dir, 's', 'subagents', 'x.jsonl'), turn('c', 200_000));
+    builders(root, '-Users-me-letzeuspost-builders-74-other', turn('d', 900_000));
+    builders(root, '-Users-me-Developer-picasso-letzeuspost', turn('e', 900_000));
+    const u = taskUsage(7, prices, root);
+    expect(u).toMatchObject({ sessions: 2, calls: 3, peakContext: 200_000, health: 'amber' });
+    expect(u?.avgContext).toBeCloseTo(100_000);
+    expect(u?.tokens).toBe(300_000 + 3000);
+    expect(taskUsage(8, prices, root)).toBeNull();
+  });
+
+  it('leaves the cost out when a model has no price', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tokens-'));
+    builders(root, '-Users-me-letzeuspost-builders-3-x', turn('a', 10, 'claude-mystery'));
+    const u = taskUsage(3, prices, root);
+    expect(u?.cost).toBeNull();
+    expect(u === null ? '' : renderTaskLine(u)).not.toContain('about $');
+    expect(u).not.toBeNull();
+  });
+
+  it('writes one line of numbers and nothing from the transcript text', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tokens-'));
+    const secret = line({ type: 'user', message: { content: 'the password is hunter2' } });
+    builders(root, '-Users-me-letzeuspost-builders-5-x', [secret, turn('a', 150_000)].join('\n'));
+    const note = taskNote(5, root);
+    expect(note).toContain('Context health: **red**, average 150K per call, peak 150K');
+    expect(note).toContain('informational, not a gate');
+    expect(note).not.toContain('hunter2');
+    expect(note).not.toContain('\n');
+  });
+
+  it('returns null, never throws, when there is nothing or the prices file is missing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tokens-'));
+    expect(taskNote(9, root)).toBeNull();
+    builders(root, '-Users-me-letzeuspost-builders-9-x', turn('a', 10));
+    expect(taskNote(9, root, join(root, 'missing.json'))).toBeNull();
+    expect(taskNote(9, join(root, 'nope'))).toBeNull();
   });
 });

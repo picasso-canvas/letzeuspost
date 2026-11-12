@@ -79,6 +79,9 @@ export const RULES = {
   longSessionHours: 12,
   longSessionPrompts: 20,
   opusShare: 0.2,
+  /** Average context per call (tokens) where a task turns amber and red. From the 30 builder tasks of 2026-11-12. */
+  healthAmber: 60_000,
+  healthRed: 110_000,
 } as const;
 
 export function totalContext(c: Pick<Call, 'input' | 'cacheWrite' | 'cacheRead'>): number {
@@ -556,6 +559,88 @@ export function collect(
     }
   }
   return { calls, sessions };
+}
+
+export type Health = 'green' | 'amber' | 'red';
+
+/** The rating of a task by the average context its calls carried. Informational only, never a gate. */
+export function healthOf(avgContext: number): Health {
+  if (avgContext >= RULES.healthRed) return 'red';
+  if (avgContext >= RULES.healthAmber) return 'amber';
+  return 'green';
+}
+
+export interface TaskUsage {
+  sessions: number;
+  calls: number;
+  tokens: number;
+  /** Null when a model in the task has no price in docs/ops/token-prices.json. */
+  cost: number | null;
+  avgContext: number;
+  peakContext: number;
+  health: Health;
+}
+
+/** Everything the builder of one issue used: its sessions and forked agents, all rounds. Null when there is none. */
+export function taskUsage(issue: number, prices: Prices, root = PROJECTS_DIR): TaskUsage | null {
+  if (!existsSync(root)) return null;
+  const mine = new RegExp(`^-Users-[^/]*-letzeuspost-builders-${String(issue)}-`);
+  const calls: Call[] = [];
+  let sessions = 0;
+  let context = 0;
+  let peak = 0;
+  for (const dir of readdirSync(root)) {
+    if (!mine.test(dir)) continue;
+    for (const file of walk(join(root, dir))) {
+      const parsed = parseTranscript(readFileSync(file, 'utf8'), {
+        role: roleOf(dir, file),
+        session: file.slice(root.length),
+      });
+      if (parsed.session === null) continue;
+      sessions += 1;
+      calls.push(...parsed.calls);
+      context += parsed.session.totalContext;
+      peak = Math.max(peak, parsed.session.maxContext);
+    }
+  }
+  if (calls.length === 0) return null;
+  const avgContext = context / calls.length;
+  const total = [...sumBy(calls, prices, () => 'all').values()][0] ?? emptyTotals();
+  return {
+    sessions,
+    calls: calls.length,
+    tokens: total.input + total.cacheWrite + total.cacheRead + total.output,
+    cost: unpriced(calls, prices).length === 0 ? total.cost : null,
+    avgContext,
+    peakContext: peak,
+    health: healthOf(avgContext),
+  };
+}
+
+const kilo = (n: number) => `${String(Math.round(n / 1000))}K`;
+
+/** The one line on the issue. Numbers only: nothing from the transcripts' text leaves this module. */
+export function renderTaskLine(u: TaskUsage): string {
+  const cost = u.cost === null ? '' : `, about ${money(u.cost)}`;
+  return [
+    `Tokens so far: ${mtok(u.tokens)} in ${String(u.calls)} calls${cost}.`,
+    `Context health: **${u.health}**, average ${kilo(u.avgContext)} per call, peak ${kilo(u.peakContext)}`,
+    `(green under ${kilo(RULES.healthAmber)}, red from ${kilo(RULES.healthRed)}; informational, not a gate).`,
+  ].join(' ');
+}
+
+/** The line for an issue's comment, or null when there is nothing to say or anything goes wrong: shipping never waits on it. */
+export function taskNote(
+  issue: number,
+  root = PROJECTS_DIR,
+  pricesFile = PRICES_FILE,
+): string | null {
+  try {
+    const u = taskUsage(issue, loadPrices(pricesFile), root);
+    return u === null ? null : renderTaskLine(u);
+  } catch {
+    return null;
+  }
 }
 
 const REVIEW_TITLE = 'Token review';
