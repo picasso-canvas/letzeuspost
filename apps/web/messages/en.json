@@ -4,16 +4,38 @@
     "description": "On-brand social posts for agencies, in English and Bangla."
   },
   "frame": {
+    "nav": {
+      "label": "Main",
+      "inbox": "Inbox"
+    },
     "switcher": {
       "menuLabel": "Workspaces",
       "current": "current",
       "note": "Each workspace is separate: brands, posts and notifications never mix.",
       "loadError": "Couldn’t load your workspaces. Check your connection and try again.",
       "retry": "Try again",
-      "loading": "Loading workspaces…"
+      "loading": "Loading workspaces…",
+      "switchError": "Couldn’t open that workspace. Check your connection and try again."
     },
     "account": {
-      "label": "{name} ({role})"
+      "label": "{name} ({role})",
+      "menuLabel": "Your account",
+      "signOut": "Sign out",
+      "signOutError": "Couldn’t sign you out. Check your connection and try again."
+    },
+    "roles": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "editor": "Editor",
+      "viewer": "Viewer"
+    }
+  },
+  "inbox": {
+    "heading": "Inbox",
+    "intro": "What needs you now, across all brands",
+    "empty": {
+      "heading": "Nothing waiting. Even gods take breaks.",
+      "body": "Posts to review, client feedback and anything that needs a fix will show up here."
     }
   },
   "signIn": {

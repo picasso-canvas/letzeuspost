@@ -6,9 +6,8 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { loadEnv } from '@lzp/config';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { openPool } from '../db.ts';
-import { seedWorkspace, studioSeed } from './seed.ts';
+import { runSeed } from './run.ts';
+import { studioSeed } from './seed.ts';
 
 const { values } = parseArgs({
   options: { email: { type: 'string' }, name: { type: 'string' } },
@@ -30,15 +29,10 @@ const seed = studioSeed({
   email: await ask(values.email, 'Zeus’s email: '),
   name: await ask(values.name, 'Zeus’s name: '),
 });
-const pool = openPool(DATABASE_OWNER_URL);
-try {
-  const { changed } = await seedWorkspace(drizzle({ client: pool }), seed);
-  // The address isn't printed: §13 keeps emails out of logs.
-  console.log(
-    changed
-      ? `${seed.workspace.name} is ready, with its Owner.`
-      : `${seed.workspace.name} was already there: nothing changed.`,
-  );
-} finally {
-  await pool.end();
-}
+const { changed } = await runSeed(DATABASE_OWNER_URL, seed);
+// The address isn't printed: §13 keeps emails out of logs.
+console.log(
+  changed
+    ? `${seed.workspace.name} is ready, with its Owner.`
+    : `${seed.workspace.name} was already there: nothing changed.`,
+);
