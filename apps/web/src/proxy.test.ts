@@ -100,7 +100,17 @@ describe('proxy: the content security policy', () => {
 // §13: the proxy only redirects, and is never the only check: every page and route checks the session itself. This is
 // the optimistic look at the cookie that saves a signed-out visitor a blank page (#78).
 describe('proxy: signed out and signed in', () => {
-  const location = (response: Response) => response.headers.get('location');
+  // Next reads a proxy's `location` as an absolute address (`new URL(value)`) and turns one on the request's own origin
+  // back into a relative one for the browser. A relative `location` throws there and every redirect answers 500, which
+  // the unit tests missed when they compared the raw header with '/sign-in'. So this reads it as Next does, and the
+  // origin must be the request's, never one the request's headers chose. It answers path, query and hash.
+  const location = (response: Response) => {
+    const value = response.headers.get('location');
+    if (value === null) return null;
+    const url = new URL(value);
+    expect(url.origin).toBe('http://localhost:3000');
+    return `${url.pathname}${url.search}${url.hash}`;
+  };
 
   it.each(['/', '/brands', '/calendar/2026-11', '/settings/members', '/posts/0198b7c2'])(
     'sends a signed-out visitor from the app page %s to /sign-in',

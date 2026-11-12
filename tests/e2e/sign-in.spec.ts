@@ -258,3 +258,16 @@ test('no third-party request and no cookie from a visit (§16: essential cookies
   expect(requests.filter((url) => !url.startsWith(origin) && !url.startsWith('data:'))).toEqual([]);
   expect(await context.cookies()).toEqual([]);
 });
+
+test('the running server sends a signed-out visitor from an app page to /sign-in', async ({
+  request,
+}) => {
+  // Not followed: Next's own runtime answers, so a `location` it can't accept (a 500) shows here, not only in the
+  // proxy's unit tests, which read the header off the response without Next's checks.
+  for (const path of ['/', '/brands']) {
+    const response = await request.get(path, { maxRedirects: 0, failOnStatusCode: false });
+    expect(response.status(), path).toBe(307);
+    expect(response.headers()['location'], path).toMatch(/\/sign-in$/);
+    expect(response.headers()['content-security-policy'], path).toContain("script-src 'self'");
+  }
+});
