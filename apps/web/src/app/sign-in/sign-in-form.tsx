@@ -10,6 +10,7 @@ import {
   FieldLabel,
   Input,
 } from '@lzp/ui';
+import { MailIcon } from '@lzp/ui/components/icons';
 import { messages } from '../../messages.ts';
 import { failureOf, type Failure } from './outcome.ts';
 
@@ -22,11 +23,11 @@ const AFTER_SIGN_IN = '/';
 const BACK_TO_SIGN_IN = '/sign-in';
 
 type Step =
-  | { name: 'asking'; email: string; sending: boolean; failure: Failure | 'network' | null }
+  | { name: 'asking'; email: string; sending: boolean; failure: Failure | null }
   | { name: 'sent'; email: string };
 
 /** Asks the API for a link. Resolves to null when it took the request, or to why it didn't. */
-async function askForLink(email: string): Promise<Failure | 'network' | null> {
+async function askForLink(email: string): Promise<Failure | null> {
   let response: Response;
   try {
     response = await fetch(ASK_FOR_LINK, {
@@ -144,12 +145,11 @@ export function SignInForm({ linkProblem }: { linkProblem: boolean }) {
               {step.failure === null ? (
                 <FieldDescription>{signIn.emailHint}</FieldDescription>
               ) : (
-                <FieldError id={problem}>
-                  {step.failure === 'network' ? signIn.errors.network : signIn.errors[step.failure]}
-                </FieldError>
+                <FieldError id={problem}>{signIn.errors[step.failure]}</FieldError>
               )}
             </Field>
-            <Button type="submit" disabled={step.sending}>
+            <Button type="submit" className="w-full" disabled={step.sending}>
+              <MailIcon data-icon="inline-start" aria-hidden="true" />
               {step.sending ? signIn.sending : signIn.submit}
             </Button>
           </FieldGroup>

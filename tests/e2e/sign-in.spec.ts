@@ -186,6 +186,20 @@ test('draws in the theme the browser asks for', async ({ page }, testInfo) => {
   expect(dark).toBe(themeOf(testInfo.project.name) === 'dark');
 });
 
+test("is built as the approved invite card is: 520 px wide, the gallery's mark, a mail icon on the button", async ({
+  page,
+}) => {
+  await openSignIn(page);
+  // The card is the section holding the heading (the invite mockup's `.wcard` in a 520 px column).
+  const card = page.getByRole('heading', { level: 1 }).locator('xpath=ancestor::section');
+  expect((await card.boundingBox())?.width).toBe(520);
+  // Under the logo, at the mockup's distance from the top of the page (52 px; 48 here).
+  const mark = page.locator('[data-slot="logo-mark"]');
+  await expect(mark).toHaveCount(1);
+  expect((await mark.boundingBox())?.y).toBe(48);
+  await expect(submitButton(page).locator('svg[data-icon="inline-start"]')).toHaveCount(1);
+});
+
 test('works by keyboard alone: type, send, read the answer, ask again', async ({ page }) => {
   await answerWith(page, 'sent');
   await openSignIn(page);

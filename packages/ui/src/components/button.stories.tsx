@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { LoaderCircleIcon, MailIcon } from 'lucide-react';
+import { LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@lzp/ui/components/button';
+import { MailIcon } from '@lzp/ui/components/icons';
 
 // Every state of §05's four buttons: primary (gold), secondary, ghost and destructive. The gallery tests (tests/gallery)
 // act on a story's tag: `hover` moves the pointer onto the button, `focus` tabs to it, so the real :hover and
