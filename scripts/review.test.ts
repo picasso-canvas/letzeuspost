@@ -105,11 +105,12 @@ describe('resultText: errors reported as success', () => {
 });
 
 describe('reviewerModel', () => {
-  it('runs Argus on Sonnet for routine PRs; every other review keeps its agent file model (Opus)', () => {
-    expect(reviewerModel('argus', 'routine')).toBe('claude-sonnet-5-5');
-    expect(reviewerModel('argus', 'sensitive')).toBeNull();
-    expect(reviewerModel('cerberus', 'sensitive')).toBeNull();
-    expect(reviewerModel('cerberus', 'routine')).toBeNull();
-    expect(reviewerModel('iris', 'routine')).toBeNull();
+  it('runs Argus and Iris on Sonnet at every tier; Cerberus keeps its agent file model (Opus)', () => {
+    expect(reviewerModel('argus')).toBe('claude-sonnet-5-5');
+    expect(reviewerModel('argus')).toBe('claude-sonnet-5-5');
+    expect(reviewerModel('iris')).toBe('claude-sonnet-5-5');
+    expect(reviewerModel('iris')).toBe('claude-sonnet-5-5');
+    expect(reviewerModel('cerberus')).toBeNull();
+    expect(reviewerModel('cerberus')).toBeNull();
   });
 });

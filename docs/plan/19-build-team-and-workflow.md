@@ -22,10 +22,10 @@
 | Agent | Role | Tools | Model |
 |---|---|---|---|
 | **Athena** (main session, Zeus's own login) | Lead: turns approved sections into build tasks, dispatches builders, runs the local reviews, merges through the merge gate, moves board cards, writes the weekly report | all | Opus 5.5 |
-| **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.ts` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Opus 5.5, effort xhigh; Sonnet 5.5 for `routine` tasks (Zeus, 2026-11-07) |
-| **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity and the Done-when evidence | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Opus 5.5, effort high; Sonnet 5.5 on `routine` PRs (Zeus, 2026-11-07) |
+| **Daedalus** `daedalus-builder` | Builds one task end to end in the clone `scripts/dispatch.ts` makes; started only by dispatch, never as Athena's subagent | Read, Edit, Write, Bash, Grep, Glob; no Agent | Sonnet 5.5, effort high; Opus 5.5 for `sensitive` or unclearly tiered tasks (Zeus, 2026-11-12) |
+| **Argus** `argus-reviewer` | Code review: correctness, tests, plan conformance, simplicity and the Done-when evidence | Read, Grep, Glob only (no shell: they run headless from main's checkout through `scripts/review.ts`, with a minimal environment, no user settings or MCP servers, and no `.env` reads); no Edit/Write/Agent | Sonnet 5.5, effort high, at every tier (Zeus, 2026-11-12) |
 | **Cerberus** `cerberus-security` | Security review, **only** when a diff touches a sensitive area: auth, tokens, uploads, website fetch (SSRF), workspace isolation, AI prompts, dependencies, workflows | same as Argus | Opus 5.5, effort high |
-| **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Opus 5.5, effort high |
+| **Iris** `iris-design` | Design review (joins at the first UI milestone): PR screenshots vs approved mockups, tokens, accessibility, interface voice | same as Argus | Sonnet 5.5, effort high (Zeus, 2026-11-12) |
 
 Reviewers never review their own work and always start from a fresh context. The builder cannot spawn agents
 (`disallowedTools: Agent`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`), so it never picks its own reviewers.
@@ -98,7 +98,7 @@ Reviewers never review their own work and always start from a fresh context. The
    one part of it), `scripts/batch.ts --open` opens the batch PR from `staging` into `main`, and that PR gets the full
    review (Zeus, 2026-11-10; until #139 ships, `batch.ts` still opens a batch at 5 task PRs or ~1,500 lines, and
    Athena holds dispatch to one feature by hand): Athena runs `scripts/review.ts <pr>`,
-   which runs Argus (Sonnet 5.5 on a `routine` batch); Cerberus when it is sensitive; Iris when it touches UI (from the
+   which runs Argus (Sonnet 5.5); Cerberus when it is sensitive; Iris when it touches UI (from the
    first UI milestone). Harness changes (Athena's) skip `staging` and go straight into `main` with the full review.
    Reviewers read a bundle: the PR's files as regular blobs (no `.git`, symlinks as stubs, `CLAUDE.md` and `.claude/` renamed),
    the diff, the history, the PR text, the issue, CI results and comments. They never run the PR's code, and only their
