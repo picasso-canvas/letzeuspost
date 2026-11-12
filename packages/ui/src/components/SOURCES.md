@@ -96,7 +96,7 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     a hover in it didn't show); the current page is the card with the mockup's 2 px ink bar on its left
     (`shadow-sidebar-current`); counts are `text-faint`; group labels are the eyebrow (`text-eyebrow`, uppercase,
     faint). The `sidebar-border` classes → `border`. Its width is DESIGN.md's 228 px, not 16 rem: the `w-sidebar` utility (`styles/components.css`), not the registry's
-    inline `--sidebar-width` style (see change 38).
+    inline `--sidebar-width` style (see change 36).
 16. **Focus** (as change 5): the toast's `ring-[3px] ring-ring/50` and the sidebar's `ring-sidebar-ring` /
     `focus-visible:ring-2` → the solid 2 px outline with a 2 px gap in the `ring` token. The dropdown's items
     (plain, checkbox, radio, submenu trigger) showed keyboard focus only as the `accent` fill, about 1.1:1 on the
@@ -140,7 +140,7 @@ and `separator`. The `cn` package the CLI added to `package.json` was taken out 
     renders them into a box in its canvas (`src/gallery/stage.tsx`), so the screenshot, focus and motion tests see
     them.
 26. **Screenshots are the same every run:** `SidebarMenuSkeleton`'s text bar had a random width (50–90%); it takes a
-    `width` prop (70% by default), as the classes `max-w-11/20`, `max-w-7/10` and `max-w-4/5` (change 38).
+    `width` prop (70% by default), as the classes `max-w-11/20`, `max-w-7/10` and `max-w-4/5` (change 36).
 27. **No cookie (§16: essential cookies only; Athena's decision on #205, 2026-11-11):** the registry's
     `SidebarProvider` wrote a `sidebar_state` cookie on every open and close. With change 28 there is nothing to open
     or close, so no state and no cookie; `sidebar.test.tsx` checks that rendering it writes none.
