@@ -72,14 +72,21 @@ export interface SignInDeps {
 }
 
 /**
- * Anything shaped like an address, masked in whatever Better Auth logs (§13: no emails in logs); URL-encoded too, as in
- * a refused Referer it logs whole.
+ * Each run of characters an address could be part of, in whatever Better Auth logs. A run with `@` in it, or `%40` as in
+ * a refused Referer or callbackURL it logs whole, is masked whole (§13: no emails in logs). Each run is read once, so
+ * masking takes time in line with the message's length: a pattern that looked for the `@` inside the run would take
+ * the square of it, and block the process on a long header (Cerberus round 3, F1).
  */
-const ADDRESS = /[^\s@<>"'(),;:]+(?:@|%40)[^\s@<>"'(),;:]+/gi;
+const RUN = /[^\s<>"'(),;:]+/g;
+const AT = /@|%40/i;
+/** The most of a message a log line keeps, once masked: a refused header or callbackURL may be a megabyte long. */
+const LOG_MESSAGE_MAX = 512;
 
 /** Better Auth's log lines, masked, and without their extra arguments: those may be records with an address in them. */
 function log(level: string, message: string): void {
-  console.error(`auth.${level}: ${message.replace(ADDRESS, '[address]')}`);
+  const masked = message.replace(RUN, (run) => (AT.test(run) ? '[address]' : run));
+  const kept = masked.length > LOG_MESSAGE_MAX ? `${masked.slice(0, LOG_MESSAGE_MAX)}…` : masked;
+  console.error(`auth.${level}: ${kept}`);
 }
 
 const tooMany = () =>
