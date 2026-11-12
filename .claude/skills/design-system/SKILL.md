@@ -26,8 +26,9 @@ first, then a build task with new baselines ([§21](../../../docs/plan/21-ai-des
   ([§20](../../../docs/plan/20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)). A token you need
   that isn't there is a `needs-zeus` item, never a one-off value in a component.
 - `pnpm check` lint refuses raw colors and arbitrary values outside the tokens (`lzp/tokens-only`), any icon set but
-  Lucide (`lzp/lucide-only`) and any interface font but Inter, and Hind Siliguri for Bangla text (`lzp/inter-only`). CI will run `design.md lint`
-  (contrast, broken references) and `diff` (regressions) once the `DESIGN.md` task (#70) adds the `design` job.
+  Lucide (`lzp/lucide-only`) and any interface font but Inter and, for Bangla text, Hind Siliguri (`lzp/inter-only`).
+  CI will run `design.md lint` (contrast, broken references) and `diff` (regressions) once the `DESIGN.md` task (#70)
+  adds the `design` job.
 
 ## The look ([§05](../../../docs/plan/05-app-design.md#design-system))
 

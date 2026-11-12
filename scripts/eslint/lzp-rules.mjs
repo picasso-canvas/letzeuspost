@@ -503,7 +503,9 @@ const lucideOnly = {
 
 /**
  * §21: Inter is the interface font, and Hind Siliguri carries Bangla text (Zeus, 2026-11-11, #231); every other font is
- * refused. Render-engine fonts live in packages/render, outside this rule.
+ * refused. Render-engine fonts live in packages/render, outside this rule. ESLint sees imports only: a font a stylesheet
+ * loads itself (`@font-face` `src` in packages/ui's CSS) is pinned by `packages/ui/src/styles/globals.test.ts`
+ * (every face is Inter or Hind Siliguri, from a local file), not here (#239).
  */
 /** @type {RuleModule} */
 const interOnly = {
@@ -531,9 +533,13 @@ const interOnly = {
       } else if (source === 'geist' || source.startsWith('geist/')) {
         context.report({ node, messageId: 'font', data: { font: 'geist' } });
       } else {
-        const match = /^@fontsource(?:-variable)?\/([^/]+)/.exec(source);
-        if (match && match[1] !== 'inter' && match[1] !== 'hind-siliguri')
-          context.report({ node, messageId: 'font', data: { font: match[1] } });
+        // Hind Siliguri has no variable build: only `@fontsource/hind-siliguri` is it (#239).
+        const match = /^@fontsource(-variable)?\/([^/]+)/.exec(source);
+        if (match) {
+          const [, variable, font] = match;
+          const allowed = font === 'inter' || (font === 'hind-siliguri' && variable === undefined);
+          if (!allowed) context.report({ node, messageId: 'font', data: { font } });
+        }
       }
     });
   },
