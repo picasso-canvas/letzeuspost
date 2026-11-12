@@ -22,7 +22,8 @@
    `design.md lint` (contrast, broken references) and `diff` (regressions), and `export` produces the Tailwind tokens.
    Changing `DESIGN.md` is a `sensitive` change. `packages/ui` holds the generated CSS variables (light and dark) and a Tailwind
    preset. Lint rules ban raw colors and arbitrary values outside the tokens, any icon set other than Lucide, and any
-   interface font other than Inter. All interface text lives in `apps/web/messages/en.json`.
+   interface font other than Inter and, for Bangla text (the Bengali range), Hind Siliguri (Zeus, 2026-11-11, #231). All
+   interface text lives in `apps/web/messages/en.json`.
 3. **Components:** shadcn/ui in `packages/ui`, each shown in a component gallery (Storybook) in all its states
    (default, hover, focus, disabled, empty, loading, error) in light and dark.
 4. **Screens:** built only from tokens and gallery components.

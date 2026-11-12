@@ -66,8 +66,9 @@ From `skills/shadcn/`:
 6. `design-system.md` Step 2: `npx tsc` → `pnpm exec tsc`. Without a local TypeScript, `npx tsc` downloads the
    unrelated `tsc` npm package. (Upstream's second, Vite-only line is gone: change 11.)
 7. `design-system.md` "Fonts": removed the `npm install` of three Fontsource fonts (unpinned; Cormorant Garamond and
-   JetBrains Mono are banned by `lzp/inter-only`). A LetZeusPost note says Inter is the only interface font and is
-   already pinned in `packages/ui`; the CSS example stays as a pattern.
+   JetBrains Mono are banned by `lzp/inter-only`). A LetZeusPost note says Inter is the interface font and is
+   already pinned in `packages/ui`; the CSS example stays as a pattern. Since 2026-11-11 the note also names Hind Siliguri
+   for Bangla text (Zeus, #231).
 
 Round 2, from Cerberus on #100:
 
