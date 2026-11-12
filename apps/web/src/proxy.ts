@@ -1,6 +1,12 @@
-// Next.js's proxy (what middleware used to be). Today it does one job: put a content security policy with a fresh nonce
-// on every response. Sign-in and session checks join it in #77 and #78; it never holds the only check on anything
-// (§13: every action and route checks the session itself).
+// Next.js's proxy (what middleware used to be). It does two jobs and nothing else:
+//
+// 1. A content security policy with a fresh nonce on every response (#76).
+// 2. One optimistic redirect (#78): a visitor with no session cookie who opens an app page goes to /sign-in, and one
+//    with a session cookie who opens /sign-in goes to the Inbox.
+//
+// It only looks for the cookie; it never asks whether the session is real, and it never holds the only check on
+// anything: every page, action and route checks the session itself (§13). A forged cookie gets a visitor past this
+// redirect and no further.
 import { NextResponse, type NextRequest } from 'next/server';
 import { contentSecurityPolicy, newNonce } from './security/csp.ts';
 
@@ -10,12 +16,53 @@ const POLICY = 'content-security-policy';
 // (instrumentation.ts), not from the request: behind Caddy the app sees plain http.
 const HTTPS_ENVIRONMENTS: readonly string[] = ['staging', 'production'];
 
+/** Where a signed-out visitor goes, and where a signed-in one goes from there: fixed, never taken from the request. */
+const SIGN_IN = '/sign-in';
+const INBOX = '/';
+
+// Better Auth's session cookie (packages/auth, #77): `better-auth.session_token`, with `__Secure-` in front where the
+// app is HTTPS. The session cache cookie (`session_data`) is not a session and isn't read.
+const SESSION_COOKIES = ['better-auth.session_token', '__Secure-better-auth.session_token'];
+
+// Pages and routes that are for people without a session (§04 Public: /sign-in, /invite/[token], /r/[token]), routes
+// that check for themselves (the API), and what the browser fetches for any page. Everything else is an app page.
+const PUBLIC_PREFIXES = ['/invite/', '/r/', '/api/', '/_next/'];
+const PUBLIC_FILES = ['/favicon.ico'];
+
+const isSignInPage = (path: string) => path === SIGN_IN || path === `${SIGN_IN}/`;
+
+const isPublic = (path: string) =>
+  isSignInPage(path) ||
+  PUBLIC_FILES.includes(path) ||
+  PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix));
+
+const hasSessionCookie = (request: NextRequest) =>
+  SESSION_COOKIES.some((name) => (request.cookies.get(name)?.value ?? '') !== '');
+
+/** Where the request should go instead, or null to let it through. */
+function redirectFor(request: NextRequest): string | null {
+  const { pathname } = request.nextUrl;
+  if (hasSessionCookie(request)) return isSignInPage(pathname) ? INBOX : null;
+  return isPublic(pathname) ? null : SIGN_IN;
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const nonce = newNonce();
   const policy = contentSecurityPolicy(nonce, {
     development: process.env.NODE_ENV === 'development',
     https: HTTPS_ENVIRONMENTS.includes(process.env.LZP_ENV ?? ''),
   });
+
+  const to = redirectFor(request);
+  if (to !== null) {
+    // Next reads a proxy's `location` as an absolute address, so the fixed path is resolved against the request's own
+    // URL (`nextUrl`, which keeps no query or hash from `to`). It never picks a host: Next turns an address on the
+    // request's origin back into a relative one before it answers, so the browser gets `/sign-in` whatever sits in
+    // front (Caddy) and whatever Host the caller sent.
+    const redirect = NextResponse.redirect(new URL(to, request.nextUrl), 307);
+    redirect.headers.set(POLICY, policy);
+    return redirect;
+  }
 
   // Next.js reads the nonce from the policy on the request and stamps its own scripts with it. `x-nonce` is for our
   // own layout. Both are set here, so a value sent by the caller never reaches the page.

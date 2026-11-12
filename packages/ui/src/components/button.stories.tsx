@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@lzp/ui/components/button';
+import { MailIcon } from '@lzp/ui/components/icons';
 
 // Every state of §05's four buttons: primary (gold), secondary, ghost and destructive. The gallery tests (tests/gallery)
 // act on a story's tag: `hover` moves the pointer onto the button, `focus` tabs to it, so the real :hover and
@@ -43,6 +44,18 @@ export const Disabled: Story = {
           {label}
         </Button>
       ))}
+    </div>
+  ),
+};
+
+/** An icon at the start, as the approved invite card's "Email me a sign-in link" has its mail icon (Lucide, decorative). */
+export const WithIcon: Story = {
+  render: () => (
+    <div className={row}>
+      <Button>
+        <MailIcon data-icon="inline-start" aria-hidden="true" />
+        Email me a sign-in link
+      </Button>
     </div>
   ),
 };

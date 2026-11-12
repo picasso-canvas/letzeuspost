@@ -4,6 +4,7 @@ import { render } from '@react-email/render';
 import type { ReactElement } from 'react';
 import { emailCheck } from './email-check.tsx';
 import { EmailTemplateError, type EmailContext, type Template } from './template.ts';
+import { signInLink } from './templates/sign-in-link.tsx';
 
 export { EmailTemplateError, type EmailContext } from './template.ts';
 
@@ -19,6 +20,7 @@ function composer<Data>(template: Template<Data>): Compose {
 
 const templates: Readonly<Record<string, Compose>> = {
   'email-check': composer(emailCheck),
+  'sign-in-link': composer(signInLink),
 };
 
 /** The names an outbox row's `template` may hold. */

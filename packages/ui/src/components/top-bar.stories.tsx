@@ -50,7 +50,7 @@ const loadError = 'Couldn’t load your workspaces. Check your connection and tr
 const retryLabel = 'Try again';
 /** en.json: frame.switcher.loading */
 const loadingLabel = 'Loading workspaces…';
-/** en.json: frame.account.label (the avatar's name: the person and their role) */
+/** en.json: frame.account.label, `{name} ({role})` (the avatar's name), filled in for Nadia Karim and her role. */
 const accountLabel = 'Nadia Karim (Admin)';
 
 function Bar({
@@ -162,19 +162,53 @@ export const ErrorOpen: Story = {
   ),
 };
 
-/** A name that doesn't fit is cut with an ellipsis, in the button and in the menu; the layout stays. */
-export const LongName: Story = {
-  render: () => {
-    const long = 'Northwind Social Media Agency of Greater Dhaka and Chattogram';
-    return (
-      <Bar
-        switcher={(container) =>
-          northwind(container, {
-            defaultOpen: true,
-            workspaces: [{ ...workspaces[0], name: long } as Workspace, ...workspaces.slice(1)],
-          })
-        }
-      />
-    );
+// Names too long for the button, in two scripts. Two start alike (Iris F1 on #221): they can only be told apart by their
+// ends, so the menu has to show them whole. The Bangla name is written natively ("Dhaka and Chattogram Digital Marketing
+// Agency Limited"), not translated from the English one.
+const longNames: Workspace[] = [
+  {
+    id: 'northwind',
+    name: 'Northwind Social Media Agency of Greater Dhaka and Chattogram',
+    role: 'Admin',
   },
+  {
+    id: 'northwind-sylhet',
+    name: 'Northwind Social Media Agency of Greater Dhaka and Sylhet',
+    role: 'Viewer',
+  },
+  {
+    id: 'dhaka-digital',
+    name: 'ঢাকা ও চট্টগ্রাম ডিজিটাল মার্কেটিং এজেন্সি লিমিটেড',
+    role: 'Editor',
+  },
+  { id: 'kite', name: 'Kite & Co', role: 'Editor', logo: kiteLogo },
+];
+
+/**
+ * A name that doesn't fit is cut with an ellipsis on the button, where one line is all there is room for, and wraps
+ * in the menu, so it is whole there; the layout stays. The Bangla name is in the list too.
+ */
+export const LongName: Story = {
+  render: () => (
+    <Bar
+      height="h-128"
+      switcher={(container) => northwind(container, { defaultOpen: true, workspaces: longNames })}
+    />
+  ),
+};
+
+/** The same list with the Bangla name as the current workspace: it is on the button (cut with an ellipsis) and whole in the menu. */
+export const LongNameBangla: Story = {
+  render: () => (
+    <Bar
+      height="h-128"
+      switcher={(container) =>
+        northwind(container, {
+          defaultOpen: true,
+          workspaces: longNames,
+          currentId: 'dhaka-digital',
+        })
+      }
+    />
+  ),
 };

@@ -1,21 +1,24 @@
 /// <reference lib="dom" />
 import { existsSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { tokenColor, type Theme } from '../gallery/gallery.ts';
+import { sessionCookies, test } from '../lib/sign-in.ts';
 
 // The placeholder page of the web app (#76), in the `app-light` and `app-dark` projects (1440 px; the browser asks for
-// the project's colour scheme). It checks what a unit test can't: that the built app really draws in both themes, that
-// Next.js stamps its own scripts with the request's nonce, and that the policy stops nothing the page needs.
+// the project's colour scheme). `/` is an app page, so a visitor with no session never sees it (#78): these tests sign
+// in first through the real flow (tests/lib/sign-in.ts: an account, the link, Mailpit, opening it), once for each
+// worker. It checks what a unit test can't: that the built app really draws in both themes, that Next.js stamps its
+// own scripts with the request's nonce, and that the policy stops nothing the page needs.
 //
 // Baselines (Q11), as in the gallery's visual test: CI renders the screenshot and uploads it (`e2e-screenshots`); Iris
 // and Zeus approve the first ones; then Athena commits them to tests/visual/approved/. A builder never writes that
 // folder, so until a baseline exists the screenshot is only taken (and annotated).
 
-/** The tokens the page uses, from DESIGN.md (`--color-faint`, `--tracking-eyebrow`), as the browser reports them. */
-const FAINT = { light: 'rgb(111, 106, 98)', dark: 'rgb(140, 135, 126)' } as const;
-const EYEBROW_TRACKING = '0.66px'; // 0.06em of 11px
+// The colours come from the generated tokens (`--color-faint`), as the gallery's tests read them (`tokenColor`), so no
+// colour is copied into this file.
+const EYEBROW_TRACKING = '0.66px'; // 0.06em of 11px, DESIGN.md's `--tracking-eyebrow`
 
-type Theme = keyof typeof FAINT;
 const themeOf = (projectName: string): Theme => (projectName === 'app-dark' ? 'dark' : 'light');
 
 interface Watch {
@@ -70,7 +73,7 @@ function nonceIn(policy: string | undefined): string {
   return match[1];
 }
 
-test('draws in the theme the browser asks for', async ({ page }, testInfo) => {
+test('draws in the theme the browser asks for', async ({ signedInPage: page }, testInfo) => {
   await openHome(page);
   const theme = themeOf(testInfo.project.name);
   // The dark project must really draw dark, or the screenshot and axe would both be of the light theme.
@@ -84,7 +87,7 @@ test('draws in the theme the browser asks for', async ({ page }, testInfo) => {
   expect(Number(red) < 128).toBe(theme === 'dark');
 });
 
-test('screenshot: placeholder page', async ({ page }, testInfo) => {
+test('screenshot: placeholder page', async ({ signedInPage: page }, testInfo) => {
   await openHome(page);
   const theme = themeOf(testInfo.project.name);
   const name = `home-${theme}.png`;
@@ -99,7 +102,7 @@ test('screenshot: placeholder page', async ({ page }, testInfo) => {
   }
 });
 
-test('axe: no serious or critical issue', async ({ page }) => {
+test('axe: no serious or critical issue', async ({ signedInPage: page }) => {
   await openHome(page);
   const { violations } = await new AxeBuilder({ page }).analyze();
   const blocking = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
@@ -113,7 +116,7 @@ test('axe: no serious or critical issue', async ({ page }) => {
 });
 
 test('the eyebrow uses the faint colour and the eyebrow tracking from DESIGN.md', async ({
-  page,
+  signedInPage: page,
 }, testInfo) => {
   await openHome(page);
   const eyebrow = await page
@@ -124,13 +127,15 @@ test('the eyebrow uses the faint colour and the eyebrow tracking from DESIGN.md'
       return { color: style.color, tracking: style.letterSpacing, transform: style.textTransform };
     });
   expect(eyebrow).toEqual({
-    color: FAINT[themeOf(testInfo.project.name)],
+    color: tokenColor(themeOf(testInfo.project.name), 'faint'),
     tracking: EYEBROW_TRACKING,
     transform: 'uppercase',
   });
 });
 
-test('the policy lets the page run and look as built: nothing is blocked', async ({ page }) => {
+test('the policy lets the page run and look as built: nothing is blocked', async ({
+  signedInPage: page,
+}) => {
   const seen = await watch(page);
   const response = await openHome(page);
   const nonce = nonceIn(response.headers()['content-security-policy']);
@@ -149,22 +154,43 @@ test('the policy lets the page run and look as built: nothing is blocked', async
   expect(seen.consoleErrors.filter((text) => /content security policy/i.test(text))).toEqual([]);
 });
 
-test('no third-party request and no cookie (§16: essential cookies only)', async ({
+/** Every request the page makes to another origin (the data: addresses of inline images aren't requests out). */
+const foreignRequests = (seen: Watch, origin: string) =>
+  seen.requests.filter((url) => !url.startsWith(origin) && !url.startsWith('data:'));
+
+test('a signed-out first visit sets no cookie and asks nothing of another site (§16)', async ({
   page,
   context,
 }) => {
   const seen = await watch(page);
-  await openHome(page);
-  const origin = new URL(page.url()).origin;
-  const foreign = seen.requests.filter(
-    (url) => !url.startsWith(origin) && !url.startsWith('data:'),
-  );
-  expect(foreign).toEqual([]);
-  // The placeholder has no session: no cookie of any kind is set.
+  // The proxy sends a signed-out visitor from `/` to `/sign-in` (#78): neither answer sets a cookie.
+  const redirect = await page.request.get('/', { maxRedirects: 0, failOnStatusCode: false });
+  expect(redirect.status()).toBe(307);
+  expect(redirect.headersArray().filter((h) => h.name.toLowerCase() === 'set-cookie')).toEqual([]);
+  const response = await page.goto('/');
+  expect(new URL(page.url()).pathname).toBe('/sign-in');
+  expect(
+    (await response?.headersArray())?.filter((h) => h.name.toLowerCase() === 'set-cookie'),
+  ).toEqual([]);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(foreignRequests(seen, new URL(page.url()).origin)).toEqual([]);
   expect(await context.cookies()).toEqual([]);
 });
 
-test('every response carries a new nonce', async ({ page }) => {
+test('signed in, the only cookie is the session, and nothing is asked of another site (§16)', async ({
+  signedInPage: page,
+}) => {
+  const seen = await watch(page);
+  await openHome(page);
+  expect(foreignRequests(seen, new URL(page.url()).origin)).toEqual([]);
+  // Essential cookies only: the session's, and no other.
+  const cookies = await page.context().cookies();
+  expect(cookies).toHaveLength(1);
+  expect(sessionCookies(cookies)).toEqual(cookies);
+});
+
+test('every response carries a new nonce', async ({ signedInPage: page }) => {
   const first = nonceIn((await page.goto('/'))?.headers()['content-security-policy']);
   const second = nonceIn((await page.goto('/'))?.headers()['content-security-policy']);
   expect(first).not.toBe(second);

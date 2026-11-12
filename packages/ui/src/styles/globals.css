@@ -49,6 +49,59 @@
     U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/*
+ * Hind Siliguri for Bangla (Zeus, 2026-11-11, #228), self-hosted from @fontsource/hind-siliguri (OFL-1.1): the Bengali
+ * subset only, so the browser uses it for Bangla letters and Inter for everything else (it follows Inter in
+ * `--font-sans`). Static weights 400 to 700: the type scale's 550 and 650 take the nearest heavier face.
+ */
+@font-face {
+  font-family: 'Hind Siliguri';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('../../node_modules/@fontsource/hind-siliguri/files/hind-siliguri-bengali-400-normal.woff2')
+    format('woff2');
+  unicode-range:
+    U+0951-0952, U+0964-0965, U+0980-09FE, U+1CD0, U+1CD2, U+1CD5-1CD6, U+1CD8, U+1CE1, U+1CEA,
+    U+1CED, U+1CF2, U+1CF5-1CF7, U+200C-200D, U+20B9, U+25CC, U+A8F1;
+}
+
+@font-face {
+  font-family: 'Hind Siliguri';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url('../../node_modules/@fontsource/hind-siliguri/files/hind-siliguri-bengali-500-normal.woff2')
+    format('woff2');
+  unicode-range:
+    U+0951-0952, U+0964-0965, U+0980-09FE, U+1CD0, U+1CD2, U+1CD5-1CD6, U+1CD8, U+1CE1, U+1CEA,
+    U+1CED, U+1CF2, U+1CF5-1CF7, U+200C-200D, U+20B9, U+25CC, U+A8F1;
+}
+
+@font-face {
+  font-family: 'Hind Siliguri';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url('../../node_modules/@fontsource/hind-siliguri/files/hind-siliguri-bengali-600-normal.woff2')
+    format('woff2');
+  unicode-range:
+    U+0951-0952, U+0964-0965, U+0980-09FE, U+1CD0, U+1CD2, U+1CD5-1CD6, U+1CD8, U+1CE1, U+1CEA,
+    U+1CED, U+1CF2, U+1CF5-1CF7, U+200C-200D, U+20B9, U+25CC, U+A8F1;
+}
+
+@font-face {
+  font-family: 'Hind Siliguri';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('../../node_modules/@fontsource/hind-siliguri/files/hind-siliguri-bengali-700-normal.woff2')
+    format('woff2');
+  unicode-range:
+    U+0951-0952, U+0964-0965, U+0980-09FE, U+1CD0, U+1CD2, U+1CD5-1CD6, U+1CD8, U+1CE1, U+1CEA,
+    U+1CED, U+1CF2, U+1CF5-1CF7, U+200C-200D, U+20B9, U+25CC, U+A8F1;
+}
+
 @layer base {
   * {
     border-color: var(--color-border);

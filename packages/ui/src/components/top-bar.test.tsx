@@ -15,6 +15,7 @@ import {
   WorkspaceSwitcher,
   WorkspaceSwitcherSkeleton,
   workspaceRows,
+  langOf,
 } from '@lzp/ui/components/top-bar';
 
 // §04's top bar and §15's workspace switcher: "a switcher in the top bar lists the workspaces a person belongs to, with
@@ -90,6 +91,29 @@ function wordsIn(markup: string): string[] {
   );
   return [...text, ...attributes].map((t) => t.replaceAll('&amp;', '&'));
 }
+
+describe('Bangla names (#228)', () => {
+  // Zeus, 2026-11-11: Bangla text is marked lang="bn", for its font, its shaping and screen readers.
+  it('marks a Bangla workspace name lang="bn", and an English one not at all', () => {
+    const bangla = html({
+      workspaces: [{ ...northwind, id: 'b1', name: 'ঢাকা ও সিলেট' }],
+      currentId: 'b1',
+    });
+    expect(bangla).toMatch(/<span[^>]*lang="bn"[^>]*>ঢাকা ও সিলেট<\/span>/);
+    expect(html()).not.toContain('lang=');
+  });
+
+  // Argus F6 on PR #230: the open menu renders in a portal, which server rendering doesn't draw, so the rows are pinned
+  // here: langOf is right, and every row's name uses it, as the button's does.
+  it('marks each menu row\'s Bangla name lang="bn" too', () => {
+    expect(langOf('ঢাকা ও সিলেট')).toBe('bn');
+    expect(langOf('Dhaka ঢাকা')).toBe('bn');
+    expect(langOf('Northwind Social')).toBeUndefined();
+    const source = readFileSync(new URL('top-bar.tsx', import.meta.url), 'utf8');
+    expect(source).toMatch(/lang=\{langOf\(row\.name\)\}/);
+    expect(source).toMatch(/lang=\{langOf\(current\.name\)\}/);
+  });
+});
 
 describe('the workspace switcher, closed', () => {
   it('is a button you can Tab to and press, showing the current workspace', () => {
@@ -259,6 +283,31 @@ describe('choosing a workspace', () => {
     }
   });
 
+  /** The class names of the span that holds a workspace's name, in a menu row. */
+  const nameClassesInRow = (row: ReactElement<ItemProps> | undefined, name: string): string[] =>
+    elementsIn(row?.props.children)
+      .filter((el) => el.type === 'span' && el.props.children === name)
+      .flatMap((el) => String((el.props as { className?: string }).className).split(' '));
+
+  it('wraps a long name in its row instead of cutting it, at the same type and spacing (Iris F1 on #221)', () => {
+    for (const [index, workspace] of workspaces.entries()) {
+      const classes = nameClassesInRow(items[index], workspace.name);
+      expect(classes, workspace.name).toContain('wrap-break-word');
+      expect(
+        classes.filter((c) => /^(truncate|line-clamp-|text-ellipsis|whitespace-nowrap)/.test(c)),
+      ).toEqual([]);
+      // Wrapping is all that changes: no size, weight or spacing of its own on the name.
+      expect(
+        classes.filter((c) => /^(text-|font-|leading-|tracking-|p[xytblr]?-|m[xytblr]?-)/.test(c)),
+      ).toEqual([]);
+    }
+  });
+
+  it('keeps the ellipsis on the button, where one line is all there is room for', () => {
+    const name = /<span[^>]*class="([^"]*)"[^>]*>Northwind Social<\/span>/.exec(html())?.[1] ?? '';
+    expect(name.split(' ')).toContain('truncate');
+  });
+
   it('closes the list with the caller’s note, and leaves it out of a list that failed to load', () => {
     const notes = (props: object) =>
       elementsIn(WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1', ...props })).filter(
@@ -347,5 +396,84 @@ describe('top-bar.tsx', () => {
     const imports = [...source.matchAll(/from '([^']+)'/g)].map((m) => m[1] ?? '');
     expect(imports.filter((from) => /icon|svg/i.test(from) && from !== 'lucide-react')).toEqual([]);
     expect(source).toContain("from 'lucide-react'");
+  });
+});
+
+describe('the long-name stories', () => {
+  const stories = readFileSync(new URL('top-bar.stories.tsx', import.meta.url), 'utf8');
+
+  it('have a Bangla workspace in the list, and one story where it is the current one (Iris F3 on #221)', () => {
+    const list = /const longNames: Workspace\[\] = \[([\s\S]*?)\n\];/.exec(stories)?.[1] ?? '';
+    const bangla = [...list.matchAll(/name: '([^']*)'/g)]
+      .map((m) => m[1] ?? '')
+      .filter((name) => /\p{Script=Bengali}/u.test(name));
+    expect(bangla).not.toEqual([]);
+    expect(list).toMatch(/id: 'dhaka-digital',\s*name: '[^']*\p{Script=Bengali}/u);
+    expect(stories).toMatch(/export const LongName: Story/);
+    expect(stories).toMatch(/export const LongNameBangla: Story[\s\S]*?currentId: 'dhaka-digital'/);
+  });
+
+  it('have two names that start alike, so only their ends tell them apart', () => {
+    const names = [...stories.matchAll(/name: '(Northwind Social Media[^']*)'/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(names).toHaveLength(2);
+    expect(names[0]?.slice(0, 40)).toBe(names[1]?.slice(0, 40));
+    expect(names[0]).not.toBe(names[1]);
+  });
+});
+
+describe('the words the top bar’s stories name', () => {
+  // The stories write each of their words in a `// en.json: <key>` comment; the app takes them from en.json, so each
+  // key must be there, with the stories' wording (Iris F2 on #221).
+  const messages: unknown = JSON.parse(
+    readFileSync(new URL('../../../../apps/web/messages/en.json', import.meta.url), 'utf8'),
+  );
+  const at = (key: string): unknown =>
+    key
+      .split('.')
+      .reduce<unknown>(
+        (node, part) => (node as Record<string, unknown> | undefined)?.[part],
+        messages,
+      );
+
+  it.each([
+    ['frame.switcher.menuLabel', 'Workspaces'],
+    ['frame.switcher.current', 'current'],
+    [
+      'frame.switcher.note',
+      'Each workspace is separate: brands, posts and notifications never mix.',
+    ],
+    [
+      'frame.switcher.loadError',
+      'Couldn’t load your workspaces. Check your connection and try again.',
+    ],
+    ['frame.switcher.retry', 'Try again'],
+    ['frame.switcher.loading', 'Loading workspaces…'],
+    ['frame.account.label', '{name} ({role})'],
+  ])('has %s in en.json, as the stories word it', (key, wording) => {
+    expect(at(key)).toBe(wording);
+  });
+
+  // The avatar's name is a message with placeholders, so each person's avatar names them and their role, not one
+  // fixed person (Iris F2 on #226). The stories show it filled in for an example person.
+  it('fills the avatar’s name with the person and their role', () => {
+    const fill = (template: unknown, values: Record<string, string>): string =>
+      String(template).replace(/\{(\w+)\}/g, (_, name: string) => values[name] ?? `{${name}}`);
+    expect(fill(at('frame.account.label'), { name: 'Nadia Karim', role: 'Admin' })).toBe(
+      'Nadia Karim (Admin)',
+    );
+    expect(fill(at('frame.account.label'), { name: 'ঢাকা Studio', role: 'Viewer' })).toBe(
+      'ঢাকা Studio (Viewer)',
+    );
+    const stories = readFileSync(new URL('top-bar.stories.tsx', import.meta.url), 'utf8');
+    expect(stories).toContain("const accountLabel = 'Nadia Karim (Admin)';");
+  });
+
+  it('has every key the stories name', () => {
+    const stories = readFileSync(new URL('top-bar.stories.tsx', import.meta.url), 'utf8');
+    const named = [...stories.matchAll(/en\.json: (frame\.[\w.]+)/g)].map((m) => m[1] ?? '');
+    expect(named).toHaveLength(7);
+    for (const key of named) expect(typeof at(key), key).toBe('string');
   });
 });

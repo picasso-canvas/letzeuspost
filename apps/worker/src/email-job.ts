@@ -45,64 +45,82 @@ function messageIdFor(id: string, from: string): string {
 
 export function emailJob(deps: EmailJobDeps): JobHandler<'email'> {
   const outboxOf = deps.outbox ?? emailOutbox;
-  return async ({ jobId, payload, db, lastAttempt }) => {
-    const id = payload.emailMessageId;
-    const outbox = outboxOf(db);
-    const said = (event: string, fields: Record<string, string> = {}) => {
-      deps.log(event, { jobId, emailMessageId: id, ...fields });
-    };
+  return ({ jobId, payload, db, lastAttempt }) =>
+    deliver(deps, outboxOf(db), {
+      jobId,
+      id: payload.emailMessageId,
+      idField: 'emailMessageId',
+      lastAttempt,
+    });
+}
 
-    const found = await outbox.load(id, jobId);
-    if ('skip' in found) {
-      said('email.skipped', { reason: found.skip });
-      return;
-    }
-    const { email } = found;
+/** What `deliver` needs besides the outbox. */
+export type DeliveryDeps = Omit<EmailJobDeps, 'outbox'>;
 
-    let rendered: RenderedEmail;
-    try {
-      rendered = await deps.render(email.template, email.data, { appUrl: deps.appUrl });
-    } catch {
-      // Rendering is the same every time, so a retry wouldn't help.
-      await outbox.fail(id, REFUSED);
-      said('email.failed', { reason: 'refused' });
-      return;
-    }
-
-    if (!(await outbox.claim(id, jobId))) {
-      said('email.skipped', { reason: 'claimed' });
-      return;
-    }
-
-    let providerId: string;
-    try {
-      ({ providerId } = await deps.transport.send({
-        from: deps.from,
-        to: email.to,
-        ...(email.replyTo === null ? {} : { replyTo: email.replyTo }),
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-        messageId: messageIdFor(id, deps.from),
-      }));
-    } catch (error) {
-      if (error instanceof NotSentError) {
-        if (lastAttempt) {
-          await outbox.fail(id, `not sent (${error.code})`);
-          said('email.failed', { code: error.code });
-        } else {
-          await outbox.release(id);
-          said('email.retry', { code: error.code });
-        }
-        throw new NotSentError(error.code);
-      }
-      // Perhaps sent: failed now, so no retry sends it again (a retry would find it `sending` and not yet stale).
-      const code = error instanceof SendOutcomeUnknownError ? error.code : 'unknown';
-      await outbox.fail(id, mayHaveGoneOut(code));
-      said('email.unknown', { code });
-      throw new SendOutcomeUnknownError(code);
-    }
-    // False only if the row left `sending` for another reason than an interrupted retry (it was deleted, say).
-    said((await outbox.sent(id, providerId)) ? 'email.sent' : 'email.unrecorded');
+/**
+ * Steps 1 to 4 above, for one row of `outbox`: the `email` job's, and the `account-email` job's on the account
+ * emails' outbox (./account-email-job.ts). The log names the row by `idField`.
+ */
+export async function deliver(
+  deps: DeliveryDeps,
+  outbox: EmailOutbox,
+  job: { jobId: string; id: string; idField: string; lastAttempt: boolean },
+): Promise<void> {
+  const { jobId, id, lastAttempt } = job;
+  const said = (event: string, fields: Record<string, string> = {}) => {
+    deps.log(event, { jobId, [job.idField]: id, ...fields });
   };
+
+  const found = await outbox.load(id, jobId);
+  if ('skip' in found) {
+    said('email.skipped', { reason: found.skip });
+    return;
+  }
+  const { email } = found;
+
+  let rendered: RenderedEmail;
+  try {
+    rendered = await deps.render(email.template, email.data, { appUrl: deps.appUrl });
+  } catch {
+    // Rendering is the same every time, so a retry wouldn't help.
+    await outbox.fail(id, REFUSED);
+    said('email.failed', { reason: 'refused' });
+    return;
+  }
+
+  if (!(await outbox.claim(id, jobId))) {
+    said('email.skipped', { reason: 'claimed' });
+    return;
+  }
+
+  let providerId: string;
+  try {
+    ({ providerId } = await deps.transport.send({
+      from: deps.from,
+      to: email.to,
+      ...(email.replyTo === null ? {} : { replyTo: email.replyTo }),
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      messageId: messageIdFor(id, deps.from),
+    }));
+  } catch (error) {
+    if (error instanceof NotSentError) {
+      if (lastAttempt) {
+        await outbox.fail(id, `not sent (${error.code})`);
+        said('email.failed', { code: error.code });
+      } else {
+        await outbox.release(id);
+        said('email.retry', { code: error.code });
+      }
+      throw new NotSentError(error.code);
+    }
+    // Perhaps sent: failed now, so no retry sends it again (a retry would find it `sending` and not yet stale).
+    const code = error instanceof SendOutcomeUnknownError ? error.code : 'unknown';
+    await outbox.fail(id, mayHaveGoneOut(code));
+    said('email.unknown', { code });
+    throw new SendOutcomeUnknownError(code);
+  }
+  // False only if the row left `sending` for another reason than an interrupted retry (it was deleted, say).
+  said((await outbox.sent(id, providerId)) ? 'email.sent' : 'email.unrecorded');
 }
