@@ -58,13 +58,18 @@ export function SignInForm({ linkProblem }: { linkProblem: boolean }) {
     failure: null,
   });
   const heading = useRef<HTMLHeadingElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const returning = useRef(false);
   const field = useId();
   const problem = `${field}-problem`;
   const sent = step.name === 'sent';
 
-  // "Check your email" replaces the form: a keyboard or screen-reader user lands on it, not on nothing.
+  // "Check your email" replaces the form: a keyboard or screen-reader user lands on it, not on nothing. Going back
+  // to the form puts the focus in its field.
   useEffect(() => {
     if (sent) heading.current?.focus();
+    else if (returning.current) input.current?.focus();
+    returning.current = false;
   }, [sent]);
 
   const submit = async (event: SubmitEvent<HTMLFormElement>) => {
@@ -107,6 +112,7 @@ export function SignInForm({ linkProblem }: { linkProblem: boolean }) {
             variant="secondary"
             type="button"
             onClick={() => {
+              returning.current = true;
               setStep({ name: 'asking', email: '', sending: false, failure: null });
             }}
           >
@@ -120,6 +126,7 @@ export function SignInForm({ linkProblem }: { linkProblem: boolean }) {
             <Field data-invalid={step.failure !== null || undefined}>
               <FieldLabel htmlFor={field}>{signIn.emailLabel}</FieldLabel>
               <Input
+                ref={input}
                 id={field}
                 name="email"
                 type="email"

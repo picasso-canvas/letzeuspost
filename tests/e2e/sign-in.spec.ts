@@ -1,0 +1,260 @@
+/// <reference lib="dom" />
+import { existsSync, readFileSync } from 'node:fs';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test, type Page, type Route } from '@playwright/test';
+import type { Theme } from '../gallery/gallery.ts';
+
+// The sign-in page (#78), in the `app-light` and `app-dark` projects (1440 px; the browser asks for the project's colour
+// scheme): each state of the card, light and dark, with axe, and the page by keyboard alone. The API's answers are
+// the test's own (`page.route`), so every state is the same on every run and no run spends a real address's limit; the
+// real API is the Sign-in journey's (tests/journeys/sign-in.spec.ts).
+//
+// Baselines (Q11), as in home.spec.ts: CI renders each screenshot and uploads it (`e2e-screenshots`); Iris and Zeus
+// approve the first ones; then Athena commits them to tests/visual/approved/. A builder never writes that folder, so
+// until a baseline exists the screenshot is only taken (and annotated).
+
+interface Messages {
+  signIn: {
+    heading: string;
+    emailLabel: string;
+    submit: string;
+    sending: string;
+    linkProblem: string;
+    sent: { heading: string; again: string };
+    errors: Record<
+      'invalidEmail' | 'tooManyRequests' | 'unknownClient' | 'generic' | 'network',
+      string
+    >;
+  };
+}
+// The words the page shows, read from the file the app reads, so a reworded line needs no edit here.
+const { signIn } = JSON.parse(
+  readFileSync(new URL('../../apps/web/messages/en.json', import.meta.url), 'utf8'),
+) as Messages;
+
+const themeOf = (projectName: string): Theme => (projectName === 'app-dark' ? 'dark' : 'light');
+
+const LINK_ENDPOINT = '**/api/auth/sign-in/magic-link';
+const address = 'nadia@northwind.social';
+
+/** What the API answers to a request for a link, as packages/auth's hook and Better Auth's validation do. */
+const answers = {
+  sent: { status: 200, body: { status: true } },
+  invalidEmail: {
+    status: 400,
+    body: { code: 'VALIDATION_ERROR', message: '[body.email] Invalid email address' },
+  },
+  tooManyRequests: {
+    status: 429,
+    body: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Too many sign-in links were asked for. Try again in an hour.',
+    },
+  },
+  unknownClient: {
+    status: 400,
+    body: { code: 'CLIENT_IP_UNKNOWN', message: 'This request could not be checked. Try again.' },
+  },
+  generic: { status: 500, body: null },
+} as const;
+
+type Answer = keyof typeof answers;
+
+const answerWith = (page: Page, answer: Answer) =>
+  page.route(LINK_ENDPOINT, (route) =>
+    route.fulfill({
+      status: answers[answer].status,
+      contentType: 'application/json',
+      body: JSON.stringify(answers[answer].body),
+    }),
+  );
+
+/** Opens the page and waits until it is drawn, hydrated and has its font. */
+async function openSignIn(page: Page, query = '') {
+  await page.goto(`/sign-in${query}`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => document.fonts.ready);
+}
+
+const emailField = (page: Page) => page.getByRole('textbox', { name: signIn.emailLabel });
+const submitButton = (page: Page) => page.getByRole('button', { name: signIn.submit });
+
+/** Types an address and asks for a link: the page is then in whatever state the API's answer puts it in. */
+async function ask(page: Page, text = address) {
+  await emailField(page).fill(text);
+  await submitButton(page).click();
+}
+
+/**
+ * The page's error, in an element with the alert role. Next.js has an empty one of its own (the route announcer), so
+ * the alerts are told apart by their words.
+ */
+const expectAlert = (page: Page, words: string) =>
+  expect(page.getByRole('alert').filter({ hasText: words })).toBeVisible();
+
+/** Each state of the card, and how to get the page into it. */
+const states: Record<string, (page: Page) => Promise<unknown>> = {
+  empty: (page) => openSignIn(page),
+  'bad-address': async (page) => {
+    await answerWith(page, 'invalidEmail');
+    await openSignIn(page);
+    await ask(page, 'nadia@');
+    await expectAlert(page, signIn.errors.invalidEmail);
+  },
+  'no-address': async (page) => {
+    await openSignIn(page);
+    await submitButton(page).click();
+    await expectAlert(page, signIn.errors.invalidEmail);
+  },
+  sending: async (page) => {
+    // The API's answer is held back, so the page is drawn while it waits.
+    await page.route(LINK_ENDPOINT, () => new Promise(() => undefined));
+    await openSignIn(page);
+    await ask(page);
+    await expect(page.getByRole('button', { name: signIn.sending })).toBeDisabled();
+  },
+  'check-your-email': async (page) => {
+    await answerWith(page, 'sent');
+    await openSignIn(page);
+    await ask(page);
+    await expect(page.getByRole('heading', { name: signIn.sent.heading })).toBeVisible();
+  },
+  'too-many-requests': async (page) => {
+    await answerWith(page, 'tooManyRequests');
+    await openSignIn(page);
+    await ask(page);
+    await expectAlert(page, signIn.errors.tooManyRequests);
+  },
+  'unknown-client': async (page) => {
+    await answerWith(page, 'unknownClient');
+    await openSignIn(page);
+    await ask(page);
+    await expectAlert(page, signIn.errors.unknownClient);
+  },
+  'something-went-wrong': async (page) => {
+    await answerWith(page, 'generic');
+    await openSignIn(page);
+    await ask(page);
+    await expectAlert(page, signIn.errors.generic);
+  },
+  offline: async (page) => {
+    await page.route(LINK_ENDPOINT, (route: Route) => route.abort('connectionrefused'));
+    await openSignIn(page);
+    await ask(page);
+    await expectAlert(page, signIn.errors.network);
+  },
+  'used-or-expired-link': async (page) => {
+    // Where Better Auth sends a refused link (INVALID_TOKEN: unknown, used or expired).
+    await openSignIn(page, '?error=INVALID_TOKEN');
+    await expectAlert(page, signIn.linkProblem);
+  },
+};
+
+for (const [state, reach] of Object.entries(states)) {
+  test(`screenshot: ${state}`, async ({ page }, testInfo) => {
+    await reach(page);
+    const name = `sign-in-${state}-${themeOf(testInfo.project.name)}.png`;
+    if (existsSync(testInfo.snapshotPath(name))) {
+      await expect(page).toHaveScreenshot(name);
+    } else {
+      await page.screenshot({ path: testInfo.outputPath(name), animations: 'disabled' });
+      testInfo.annotations.push({
+        type: 'first baseline',
+        description: 'Rendered for approval (Q11); no baseline to compare with yet.',
+      });
+    }
+  });
+
+  test(`axe: no serious or critical issue: ${state}`, async ({ page }) => {
+    await reach(page);
+    const { violations } = await new AxeBuilder({ page }).analyze();
+    const blocking = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+    expect(
+      blocking.map((v) => ({
+        rule: v.id,
+        impact: v.impact,
+        nodes: v.nodes.map((n) => `${n.target.join(' ')}: ${n.failureSummary ?? ''}`),
+      })),
+    ).toEqual([]);
+  });
+}
+
+test('draws in the theme the browser asks for', async ({ page }, testInfo) => {
+  await openSignIn(page);
+  const dark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+  expect(dark).toBe(themeOf(testInfo.project.name) === 'dark');
+});
+
+test('works by keyboard alone: type, send, read the answer, ask again', async ({ page }) => {
+  await answerWith(page, 'sent');
+  await openSignIn(page);
+
+  // The field is the first stop, and its focus can be seen.
+  await page.keyboard.press('Tab');
+  await expect(emailField(page)).toBeFocused();
+  const outline = await emailField(page).evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { style: style.outlineStyle, width: style.outlineWidth };
+  });
+  expect(outline).toEqual({ style: 'solid', width: '2px' });
+
+  // Enter in the field sends it; the same by the button, one Tab on.
+  await page.keyboard.type(address);
+  await page.keyboard.press('Tab');
+  await expect(submitButton(page)).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  // The answer takes the focus, so the next Tab is for what is on it.
+  const heading = page.getByRole('heading', { name: signIn.sent.heading });
+  await expect(heading).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: signIn.sent.again })).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  // Back to an empty field, with the focus in it: a person can type another address at once.
+  await expect(emailField(page)).toHaveValue('');
+  await expect(emailField(page)).toBeFocused();
+});
+
+test('Enter in the field asks for the link', async ({ page }) => {
+  await answerWith(page, 'sent');
+  await openSignIn(page);
+  await emailField(page).fill(address);
+  await emailField(page).press('Enter');
+  await expect(page.getByRole('heading', { name: signIn.sent.heading })).toBeVisible();
+});
+
+test('the request is the one packages/auth serves, and it holds only what the page chose', async ({
+  page,
+}) => {
+  const asked: { method: string; body: unknown }[] = [];
+  await page.route(LINK_ENDPOINT, (route) => {
+    asked.push({
+      method: route.request().method(),
+      body: route.request().postDataJSON() as unknown,
+    });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":true}' });
+  });
+  await openSignIn(page);
+  await ask(page, `  ${address}  `);
+  await expect(page.getByRole('heading', { name: signIn.sent.heading })).toBeVisible();
+  expect(asked).toEqual([
+    {
+      method: 'POST',
+      body: { email: address, callbackURL: '/', errorCallbackURL: '/sign-in' },
+    },
+  ]);
+});
+
+test('no third-party request and no cookie from a visit (§16: essential cookies only)', async ({
+  page,
+  context,
+}) => {
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await openSignIn(page);
+  const origin = new URL(page.url()).origin;
+  expect(requests.filter((url) => !url.startsWith(origin) && !url.startsWith('data:'))).toEqual([]);
+  expect(await context.cookies()).toEqual([]);
+});
