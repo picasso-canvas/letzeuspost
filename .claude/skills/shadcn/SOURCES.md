@@ -61,13 +61,15 @@ From `skills/shadcn/`:
    `packageManager`) → one line: run every command as `pnpm exec shadcn`, never `pnpm dlx`, `npx` or `@latest`.
 5. `SKILL.md`: a LetZeusPost note under the title, as a list: the CLI (change 8), the official registry only
    (change 9), this repo (Next.js App Router, `--template next` where a step asks for one, components in
-   `packages/ui`, Base UI, icons from `lucide-react` only, Inter only, no new app; §13, §21), `DESIGN.md` and §21 win,
-   and the files not in this copy.
+   `packages/ui`, Base UI, icons from `lucide-react` only, Inter and Hind Siliguri for Bangla text, no new app; §13,
+   §21), `DESIGN.md` and §21 win, and the files not in this copy. (Until #239 the note said "Inter only", from before
+   Hind Siliguri was allowed.)
 6. `design-system.md` Step 2: `npx tsc` → `pnpm exec tsc`. Without a local TypeScript, `npx tsc` downloads the
    unrelated `tsc` npm package. (Upstream's second, Vite-only line is gone: change 11.)
 7. `design-system.md` "Fonts": removed the `npm install` of three Fontsource fonts (unpinned; Cormorant Garamond and
-   JetBrains Mono are banned by `lzp/inter-only`). A LetZeusPost note says Inter is the only interface font and is
-   already pinned in `packages/ui`; the CSS example stays as a pattern.
+   JetBrains Mono are banned by `lzp/inter-only`). A LetZeusPost note says Inter is the interface font and is
+   already pinned in `packages/ui`; the CSS example stays as a pattern. Since 2026-11-11 the note also names Hind
+   Siliguri for Bangla text (Zeus, #231), pinned once #228's PR reaches `main` (#239).
 
 Round 2, from Cerberus on #100:
 

@@ -25,6 +25,11 @@ import {
 } from '@lzp/ui/components/dropdown-menu';
 import { Skeleton } from '@lzp/ui/components/skeleton';
 
+/** `bn` for a name written in Bangla, so it gets its font, its shaping and the right voice (Zeus, 2026-11-11). */
+export function langOf(name: string): 'bn' | undefined {
+  return /\p{Script=Bengali}/u.test(name) ? 'bn' : undefined;
+}
+
 // §04's top bar, as the v1 mockup's `.top` draws it: the workspace's name and switcher at the start, and at the end what
 // belongs to the person (search, + Create, the bell and the avatar come with their features). §15: "a switcher in the top
 // bar lists the workspaces a person belongs to, with their role in each". These components write no words: every label,
@@ -162,7 +167,9 @@ function WorkspaceSwitcher({
         {current !== undefined && (
           <>
             <WorkspaceMark name={current.name} logo={current.logo} />
-            <span className="truncate font-(weight:--font-weight-h3)">{current.name}</span>
+            <span className="truncate font-(weight:--font-weight-h3)" lang={langOf(current.name)}>
+              {current.name}
+            </span>
           </>
         )}
         {error !== undefined && (
@@ -211,7 +218,9 @@ function WorkspaceSwitcher({
                     <Building2Icon className="mt-0.5" aria-hidden="true" />
                   )}
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="wrap-break-word">{row.name}</span>
+                    <span className="wrap-break-word" lang={langOf(row.name)}>
+                      {row.name}
+                    </span>
                     <span className="text-meta text-muted-foreground">{row.detail}</span>
                   </span>
                 </DropdownMenuRadioItem>

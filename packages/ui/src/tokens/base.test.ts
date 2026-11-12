@@ -29,9 +29,13 @@ const norm = (value: string) =>
     .replace(/(?<![\d.])0\./g, '.');
 
 describe('base.css (#70)', () => {
-  it("uses the mockup's interface font stack, so a missing Inter falls back to a system sans", () => {
+  // Zeus, 2026-11-11 (#228): Hind Siliguri for Bangla, right after Inter, which has no Bengali letters. Its faces cover
+  // only the Bengali range, so the browser uses it for Bangla text and Inter for the rest.
+  it("uses the mockup's interface font stack, with Hind Siliguri for Bangla right after Inter", () => {
+    const mockupStack = norm(declared(mockup, ':root {', 'ui'));
+    expect(mockupStack.startsWith('"Inter",')).toBe(true);
     expect(norm(declared(base, '@theme', 'font-sans'))).toBe(
-      norm(declared(mockup, ':root {', 'ui')),
+      mockupStack.replace('"Inter",', '"Inter","HindSiliguri",'),
     );
   });
 

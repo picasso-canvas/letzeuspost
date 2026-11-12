@@ -23,6 +23,12 @@ async function ruleIds(code: string, filePath: string): Promise<string[]> {
   return (result?.messages ?? []).map((m) => m.ruleId ?? m.message);
 }
 
+/** The messages one rule reported, so a test can pin what the rule tells the builder. */
+async function messagesOf(code: string, filePath: string, ruleId: string): Promise<string[]> {
+  const [result] = await eslint.lintText(code, { filePath });
+  return (result?.messages ?? []).filter((m) => m.ruleId === ruleId).map((m) => m.message);
+}
+
 describe('lzp/no-raw-db-client (§13: the raw client stays in packages/db)', () => {
   it('refuses the Postgres driver or Drizzle client outside packages/db', async () => {
     expect(await ruleIds("import pg from 'pg';", 'apps/web/src/a.ts')).toContain(
@@ -146,6 +152,60 @@ describe('lzp/inter-only (§21: the interface font is Inter)', () => {
     expect(await ruleIds("import '@fontsource-variable/inter';", 'packages/ui/src/a.ts')).toEqual(
       [],
     );
+  });
+
+  // Zeus, 2026-11-11 (#228, #231): Hind Siliguri carries Bangla text; every other font is still refused.
+  it('lets Hind Siliguri through for Bangla, and still refuses every other font', async () => {
+    expect(await ruleIds("import '@fontsource/hind-siliguri';", 'packages/ui/src/a.ts')).toEqual(
+      [],
+    );
+    expect(
+      await ruleIds("import '@fontsource/hind-siliguri/bengali-400.css';", 'packages/ui/src/a.ts'),
+    ).toEqual([]);
+    // #239 (Cerberus F1 on #234): Hind Siliguri has no variable build, so only `@fontsource/` carries it.
+    for (const other of [
+      '@fontsource/noto-sans-bengali',
+      '@fontsource/hind',
+      '@fontsource/hind-siliguri-x',
+      '@fontsource-variable/hind-siliguri',
+    ])
+      expect(await ruleIds(`import '${other}';`, 'packages/ui/src/a.ts'), other).toContain(
+        'lzp/inter-only',
+      );
+  });
+
+  // #239 (Argus F3 on #234): the message names the font and both allowed ones, for `font` and for `local`.
+  it('says which fonts are allowed, for an import of another font and for next/font/local', async () => {
+    const font = await messagesOf(
+      "import { Roboto } from 'next/font/google';",
+      'apps/web/src/a.tsx',
+      'lzp/inter-only',
+    );
+    expect(font).toHaveLength(1);
+    expect(font[0]).toContain("'Roboto'");
+    expect(font[0]).toContain('Inter');
+    expect(font[0]).toContain('Hind Siliguri for Bangla text');
+    const local = await messagesOf(
+      "import localFont from 'next/font/local';",
+      'apps/web/src/a.tsx',
+      'lzp/inter-only',
+    );
+    expect(local).toHaveLength(1);
+    expect(local[0]).toContain('next/font/local');
+    expect(local[0]).toContain('Inter');
+    expect(local[0]).toContain('Hind Siliguri for Bangla text');
+  });
+
+  // #240 (Argus F2): the variable package is refused for its real cause, not as "not an interface font".
+  it("tells a builder of '@fontsource-variable/hind-siliguri' which package carries Hind Siliguri", async () => {
+    const messages = await messagesOf(
+      "import '@fontsource-variable/hind-siliguri';",
+      'packages/ui/src/a.ts',
+      'lzp/inter-only',
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('no variable build');
+    expect(messages[0]).toContain("'@fontsource/hind-siliguri'");
   });
 });
 

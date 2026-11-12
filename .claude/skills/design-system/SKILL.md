@@ -26,8 +26,9 @@ first, then a build task with new baselines ([§21](../../../docs/plan/21-ai-des
   ([§20](../../../docs/plan/20-builder-guardrails.md#2-claude-code-settings-committed-sensitive)). A token you need
   that isn't there is a `needs-zeus` item, never a one-off value in a component.
 - `pnpm check` lint refuses raw colors and arbitrary values outside the tokens (`lzp/tokens-only`), any icon set but
-  Lucide (`lzp/lucide-only`) and any interface font but Inter (`lzp/inter-only`). CI will run `design.md lint`
-  (contrast, broken references) and `diff` (regressions) once the `DESIGN.md` task (#70) adds the `design` job.
+  Lucide (`lzp/lucide-only`) and any interface font but Inter and, for Bangla text, Hind Siliguri (`lzp/inter-only`).
+  CI will run `design.md lint` (contrast, broken references) and `diff` (regressions) once the `DESIGN.md` task (#70)
+  adds the `design` job.
 
 ## The look ([§05](../../../docs/plan/05-app-design.md#design-system))
 
@@ -42,7 +43,8 @@ first, then a build task with new baselines ([§21](../../../docs/plan/21-ai-des
   (green) · Exported (gray). QC: pass (green) / warn (amber) / fail (red). Each one has an icon too, never color alone.
 - **Client brands** appear in their own primary color (calendar chips, tiles); post previews use the brand's own
   fonts. How text on a chip stays AA with any brand color: the plan doesn't say; write it under `needs-zeus`.
-- **Type:** Inter, 14 px base, 13 px meta, tabular numbers in meters and counters.
+- **Type:** Inter, 14 px base, 13 px meta, tabular numbers in meters and counters. Bangla text uses Hind Siliguri
+  (the Bengali range, after Inter in the stack) and is marked `lang="bn"`.
 - **Shape and space:** 8 px grid, radius 8 for controls and 12 for cards, borders instead of heavy shadows,
   comfortable density.
 - **Motion:** 150–200 ms, a shimmer on generating cards, and nothing moves when the system asks for reduced motion.
