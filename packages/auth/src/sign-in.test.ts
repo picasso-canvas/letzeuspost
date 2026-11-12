@@ -134,13 +134,18 @@ async function runAfterAnswer(): Promise<void> {
 const connecting = { 'x-forwarded-for': '192.0.2.1' };
 
 /** Asks for a link and gets the answer; what runs after it is left pending. A header given as '' is left out. */
-function ask(signIn: SignIn, email: string, headers: Record<string, string> = connecting) {
+function ask(
+  signIn: SignIn,
+  email: string,
+  headers: Record<string, string> = connecting,
+  callbackURL = '/app',
+) {
   const sent = { 'content-type': 'application/json', origin: appUrl, ...headers };
   return signIn.handler(
     new Request(`${appUrl}/api/auth/sign-in/magic-link`, {
       method: 'POST',
       headers: Object.entries(sent).filter(([, value]) => value !== ''),
-      body: JSON.stringify({ email, callbackURL: '/app' }),
+      body: JSON.stringify({ email, callbackURL }),
     }),
     afterAnswer,
   );
@@ -595,7 +600,8 @@ describe('what the route handler serves', () => {
 });
 
 describe('the logs (§13: no emails in logs)', () => {
-  it('never show an address, whatever happens', async () => {
+  /** Everything written to the console or the process's streams from now on, until the mocks are restored. */
+  function captureLogs(): string[] {
     const written: string[] = [];
     const capture = (...args: unknown[]) => {
       written.push(args.map((arg) => (arg instanceof Error ? arg.stack : String(arg))).join(' '));
@@ -609,6 +615,11 @@ describe('the logs (§13: no emails in logs)', () => {
         return true;
       });
     }
+    return written;
+  }
+
+  it('never show an address, whatever happens', async () => {
+    const written = captureLogs();
 
     const failing = createSignIn({
       database: memoryAdapter({ user: [], session: [], account: [], verification: [] }),
@@ -643,6 +654,35 @@ describe('the logs (§13: no emails in logs)', () => {
       /auth\.error: a sign-in link failed after the answer: Error/,
     );
     expect(written.join('\n')).not.toMatch(/nadia|stranger|golpo|@[\w-]+\.example/i);
+  });
+
+  // Cerberus round 3, F1: Better Auth logs a refused Origin, Referer or callbackURL whole, before any limit counts the
+  // request. A long run with no address in it must not make masking it block the process.
+  const long = (size: number) => `nadia%40golpo-cafe.example;${'a'.repeat(size)}`;
+
+  it.each([
+    [
+      'a 16 KB Referer from another site',
+      { origin: '', referer: `https://evil.example/?to=${long(16 * 1024)}` },
+      '/app',
+    ],
+    [
+      'a 1 MB callbackURL to another site',
+      {},
+      `https://evil.example/?to=${long(1024 * 1024)}`.replace('%40', '@'),
+    ],
+  ])('mask %s at once, and keep its line short', async (_, headers, callbackURL) => {
+    const written = captureLogs();
+    const started = performance.now();
+    const response = await ask(s.signIn, known, { ...connecting, ...headers }, callbackURL);
+    const took = performance.now() - started;
+
+    expect(response.status).toBe(403);
+    expect(took).toBeLessThan(200);
+    expect(written.join('\n')).toMatch(/auth\.error: Invalid (origin|callbackURL): /);
+    expect(written.join('\n')).not.toMatch(/nadia|golpo/i);
+    for (const line of written) expect(line.length).toBeLessThanOrEqual(600);
+    expect(s.limiter.calls).toEqual([]);
   });
 });
 
