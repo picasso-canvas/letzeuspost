@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // The merge gate (§19): Athena merges only through this script. Usage:
 //   node scripts/merge-gate.ts <pr> [--dry-run]
+//   node scripts/merge-gate.ts --sync-staging   (merges `main` into `staging`, when `staging` is behind it)
 // It runs from a clean checkout of `main` that matches `origin/main`, so a PR can't change the gate that judges it.
 // It merges builder PRs into `staging`, and the batch PR from `staging` or Athena's harness PRs into `main`; after every
 // merge into `main` it merges `main` into `staging` on GitHub, so builders always start from main's harness (§19).
@@ -10,6 +11,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
+import { parseArgs } from './merge-gate/args.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
 import { evaluate, kindOf } from './merge-gate/evaluate.ts';
 import { transcriptPath } from './merge-gate/meta.ts';
@@ -229,17 +231,28 @@ function main(argv: string[], pr: number): number {
 }
 
 const argv = process.argv.slice(2);
-const pr = Number(argv.find((a) => !a.startsWith('--')));
-if (!Number.isInteger(pr) || pr <= 0) {
-  console.error('usage: node scripts/merge-gate.ts <pr> [--dry-run]');
+const args = parseArgs(argv);
+if (args.kind === 'usage') {
+  console.error('usage: node scripts/merge-gate.ts <pr> [--dry-run] | --sync-staging');
   process.exitCode = 2;
+} else if (args.kind === 'sync-staging') {
+  // For a `staging` that is behind `main` (a merge into `main` the gate didn't make, or a sync that failed): the same
+  // call the gate makes after every merge into `main`, from a clean `main` that matches `origin/main`.
+  try {
+    assertCleanMain(run);
+    process.exitCode = syncStaging() ? 0 : 1;
+  } catch (error) {
+    console.error(`Merge gate error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
 } else {
+  const { pr } = args;
   try {
     process.exitCode = main(argv, pr);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Merge gate error: ${message}`);
-    if (!argv.includes('--dry-run')) {
+    if (!args.dryRun) {
       logMerge({ at: new Date().toISOString(), pr, result: 'error', message });
     }
     process.exitCode = 1;
