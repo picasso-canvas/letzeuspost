@@ -33,6 +33,16 @@ describe('the button stories', () => {
     );
   });
 
+  // The approved invite card's "Email me a sign-in link" carries a mail icon before its words (#78, Iris F4).
+  it('show the primary button with a Lucide icon at its start, as the invite card does', () => {
+    const render = stories['WithIcon']?.render;
+    if (render === undefined) throw new Error('the button has no WithIcon story');
+    const markup = renderToStaticMarkup(render());
+    expect(markup).toContain('data-icon="inline-start"');
+    expect(markup).toContain('lucide-mail');
+    expect(markup).toContain('aria-hidden="true"');
+  });
+
   it.each(['Primary', 'Secondary', 'Ghost', 'Destructive'])(
     'draw %s hovered and focused',
     (name) => {
