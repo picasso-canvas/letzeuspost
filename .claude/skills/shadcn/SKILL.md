@@ -27,7 +27,8 @@ user-invocable: false
 >   URLs, and no extra entries in `components.json`. Don't fetch the URLs `docs` prints; builders can't reach those
 >   hosts.
 > - **This repo:** Next.js App Router (`apps/web`; `--template next` where a step asks for a template), components in
->   `packages/ui`, Base UI (`base`), icons from `lucide-react` only, Inter only (§13, §21). Don't scaffold a new app.
+>   `packages/ui`, Base UI (`base`), icons from `lucide-react` only, Inter, and Hind Siliguri for Bangla text (§13,
+>   §21). Don't scaffold a new app.
 > - **Presets change the design:** the theme, fonts and CSS variables come from `DESIGN.md` (§21). Never pass a preset
 >   URL. `apply`, `init --preset`, `init --defaults`, `init --force` and switching presets each need Zeus's OK: write it
 >   under `needs-zeus` in `.lzp/pr.md` and stop. Run plain `init` only when the task says to set up `components.json`.
