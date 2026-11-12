@@ -501,14 +501,18 @@ const lucideOnly = {
   },
 };
 
-/** §21: Inter is the only interface font (render-engine fonts live in packages/render, outside this rule). */
+/**
+ * §21: Inter is the interface font, and Hind Siliguri carries Bangla text (Zeus, 2026-11-11, #231); every other font is
+ * refused. Render-engine fonts live in packages/render, outside this rule.
+ */
 /** @type {RuleModule} */
 const interOnly = {
   meta: {
     type: 'problem',
     messages: {
-      font: "'{{font}}' isn't Inter: Inter is the only interface font (§21).",
-      local: 'next/font/local loads a font file: Inter is the only interface font (§21).',
+      font: "'{{font}}' isn't an interface font: Inter, and Hind Siliguri for Bangla text, are the only ones (§21).",
+      local:
+        'next/font/local loads a font file: Inter, and Hind Siliguri for Bangla text, are the only interface fonts (§21).',
     },
     schema: [],
   },
@@ -528,7 +532,7 @@ const interOnly = {
         context.report({ node, messageId: 'font', data: { font: 'geist' } });
       } else {
         const match = /^@fontsource(?:-variable)?\/([^/]+)/.exec(source);
-        if (match && match[1] !== 'inter')
+        if (match && match[1] !== 'inter' && match[1] !== 'hind-siliguri')
           context.report({ node, messageId: 'font', data: { font: match[1] } });
       }
     });
