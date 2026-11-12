@@ -204,8 +204,8 @@ Override Tailwind's shadow scale in `@theme`, not `@theme inline`. Copy multi-la
 
 Brand fonts are usually licensed. Use the substitutes the DESIGN.md names, installed from Fontsource with the project's package manager, and import every face you reference at the top of the CSS file:
 
-LetZeusPost: Inter is the only interface font (§21), already a pinned dependency of `packages/ui`
-(`@fontsource-variable/inter`). Don't install fonts. Upstream's example here (`npm install` of Inter, Cormorant
+LetZeusPost: Inter is the interface font, and Hind Siliguri carries Bangla text (§21; Zeus, 2026-11-11); both are pinned dependencies of `packages/ui`
+(`@fontsource-variable/inter`, and `@fontsource/hind-siliguri` from #228). Don't install fonts. Upstream's example here (`npm install` of Inter, Cormorant
 Garamond and JetBrains Mono, unpinned) is removed; the CSS below shows the pattern only.
 
 ```css

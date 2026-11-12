@@ -147,6 +147,24 @@ describe('lzp/inter-only (§21: the interface font is Inter)', () => {
       [],
     );
   });
+
+  // Zeus, 2026-11-11 (#228, #231): Hind Siliguri carries Bangla text; every other font is still refused.
+  it('lets Hind Siliguri through for Bangla, and still refuses every other font', async () => {
+    expect(await ruleIds("import '@fontsource/hind-siliguri';", 'packages/ui/src/a.ts')).toEqual(
+      [],
+    );
+    expect(
+      await ruleIds("import '@fontsource/hind-siliguri/bengali-400.css';", 'packages/ui/src/a.ts'),
+    ).toEqual([]);
+    for (const other of [
+      '@fontsource/noto-sans-bengali',
+      '@fontsource/hind',
+      '@fontsource/hind-siliguri-x',
+    ])
+      expect(await ruleIds(`import '${other}';`, 'packages/ui/src/a.ts'), other).toContain(
+        'lzp/inter-only',
+      );
+  });
 });
 
 describe('round 2 of the #82 review', () => {
