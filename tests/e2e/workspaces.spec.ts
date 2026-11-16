@@ -2,7 +2,7 @@
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Request, type Route, type TestInfo } from '@playwright/test';
 import { loadEnv } from '../../config/env.ts';
 import { createDb } from '../../packages/db/src/index.ts';
 import { runSeed } from '../../packages/db/src/seed/run.ts';
@@ -48,14 +48,44 @@ async function signIn(page: Page, address: string) {
   await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
 }
 
-/** The frame's two controls: the switcher (named by the workspace it shows) and the avatar (named `{name} ({role})`). */
+/**
+ * The frame's two controls: the switcher and the avatar. The switcher is named by the text it shows, the current
+ * workspace's name; its initials badge is decorative (`aria-hidden`), so its text content is "NSNorthwind Social" but
+ * its accessible name is exactly the name, which is what the tests check. The avatar is named `{name} ({role})`.
+ */
 const switcher = (page: Page) => page.locator('[data-slot="workspace-switcher"]');
 const avatar = (page: Page) => page.locator('[data-slot="account-menu"]');
+
+/**
+ * The switcher shows `name` as the workspace in use: its accessible name is exactly that name (nothing else is read
+ * out), and the name itself is visible on the button, not only in hidden text.
+ */
+async function showsWorkspace(page: Page, name: string) {
+  await expect(switcher(page)).toHaveAccessibleName(name);
+  await expect(switcher(page).getByText(name, { exact: true })).toBeVisible();
+}
 
 /** Waits until the page is drawn, hydrated and has its font. */
 async function settled(page: Page) {
   await page.waitForLoadState('networkidle');
   await page.evaluate(() => document.fonts.ready);
+}
+
+/**
+ * Screenshots the page as `workspaces-<state>-<theme>.png`, for Iris: compared with its baseline once one is approved;
+ * until then only rendered into the output folder, which CI uploads (`e2e-screenshots`), and annotated.
+ */
+async function capture(page: Page, testInfo: TestInfo, state: string) {
+  const name = `workspaces-${state}-${themeOf(testInfo.project.name)}.png`;
+  if (existsSync(testInfo.snapshotPath(name))) {
+    await expect(page).toHaveScreenshot(name);
+  } else {
+    await page.screenshot({ path: testInfo.outputPath(name), animations: 'disabled' });
+    testInfo.annotations.push({
+      type: 'first baseline',
+      description: `${name}: rendered for approval (Q11); no baseline to compare with yet.`,
+    });
+  }
 }
 
 async function seriousIssues(page: Page) {
@@ -84,7 +114,7 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
   const role = person.role === 'owner' ? 'Owner' : 'Editor';
 
   await signIn(page, person.email);
-  await expect(switcher(page)).toHaveText(seed.workspace.name);
+  await showsWorkspace(page, seed.workspace.name);
   await expect(avatar(page)).toHaveAccessibleName(`${person.name} (${role})`);
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Inbox' })).toHaveAttribute('aria-current', 'page');
@@ -94,16 +124,7 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
   await settled(page);
 
   // The frame, drawn in the project's theme, for Iris (and, once approved, compared with its baseline).
-  const name = `workspaces-inbox-${theme}.png`;
-  if (existsSync(testInfo.snapshotPath(name))) {
-    await expect(page).toHaveScreenshot(name);
-  } else {
-    await page.screenshot({ path: testInfo.outputPath(name), animations: 'disabled' });
-    testInfo.annotations.push({
-      type: 'first baseline',
-      description: 'Rendered for approval (Q11); no baseline to compare with yet.',
-    });
-  }
+  await capture(page, testInfo, 'inbox');
   expect(await seriousIssues(page)).toEqual([]);
 
   // The avatar's menu, open: it names the person with their role, and signs them out.
@@ -111,6 +132,7 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
   const menu = page.getByRole('menu', { name: 'Your account' });
   await expect(menu).toBeVisible();
   await expect(menu.getByText(`${person.name} (${role})`)).toBeVisible();
+  await capture(page, testInfo, 'account-menu');
   expect(await seriousIssues(page)).toEqual([]);
   await menu.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(new URL('/sign-in', origin).href);
@@ -131,6 +153,24 @@ function text(strings: TemplateStringsArray, ...values: string[]): string {
     if (value !== undefined) query += `'${value.replaceAll("'", "''")}'`;
   });
   return query;
+}
+
+/** Removes a run's two workspaces and two people; their memberships and sessions go with them (cascades). */
+async function removeRun(workspaces: readonly [Seed, Seed], emails: readonly [string, string]) {
+  const [a, b] = workspaces;
+  const owner = createDb(ownerUrl);
+  try {
+    // The owner role isn't bound by row-level security; `forWorkspace` is the one door in, and any id will do.
+    const through = owner.forWorkspace({ workspaceId: randomUUIDv7() });
+    await through.transaction(async (tx) => {
+      await tx.execute(
+        text`delete from workspace where slug in (${a.workspace.slug}, ${b.workspace.slug})`,
+      );
+      await tx.execute(text`delete from "user" where email in (${emails[0]}, ${emails[1]})`);
+    });
+  } finally {
+    await owner.close();
+  }
 }
 
 test('a person in two workspaces switches between them and sees only the current one’s name and role', async ({
@@ -156,11 +196,10 @@ test('a person in two workspaces switches between them and sees only the current
   await runSeed(ownerUrl, harbour);
   await runSeed(ownerUrl, kite);
 
-  const owner = createDb(ownerUrl);
   try {
     await signIn(page, mina.email);
     // The first workspace by name, with her role in it, and nothing of the other one on the page.
-    await expect(switcher(page)).toHaveText(harbour.workspace.name);
+    await showsWorkspace(page, harbour.workspace.name);
     await expect(avatar(page)).toHaveAccessibleName(`${mina.name} (Owner)`);
     await expect(page.getByText(kite.workspace.name)).toHaveCount(0);
 
@@ -174,16 +213,16 @@ test('a person in two workspaces switches between them and sees only the current
     await menu.getByRole('menuitemradio', { name: new RegExp(`Kite ${tag}`) }).click();
 
     // Now Kite, as an Editor; Harbour's name is nowhere on the page.
-    await expect(switcher(page)).toHaveText(kite.workspace.name);
+    await showsWorkspace(page, kite.workspace.name);
     await expect(avatar(page)).toHaveAccessibleName(`${mina.name} (Editor)`);
     await expect(page.getByText(harbour.workspace.name)).toHaveCount(0);
 
     // The last one used opens first: a fresh load of the Inbox, and of `/`, opens Kite.
     await page.goto(INBOX);
-    await expect(switcher(page)).toHaveText(kite.workspace.name);
+    await showsWorkspace(page, kite.workspace.name);
     await page.goto('/');
     await expect(page).toHaveURL(new URL(INBOX, origin).href);
-    await expect(switcher(page)).toHaveText(kite.workspace.name);
+    await showsWorkspace(page, kite.workspace.name);
     await expect(avatar(page)).toHaveAccessibleName(`${mina.name} (Editor)`);
 
     // And back.
@@ -192,18 +231,130 @@ test('a person in two workspaces switches between them and sees only the current
       .getByRole('menu', { name: 'Workspaces' })
       .getByRole('menuitemradio', { name: new RegExp(`Harbour ${tag}`) })
       .click();
-    await expect(switcher(page)).toHaveText(harbour.workspace.name);
+    await showsWorkspace(page, harbour.workspace.name);
     await expect(avatar(page)).toHaveAccessibleName(`${mina.name} (Owner)`);
   } finally {
-    // The owner role isn't bound by row-level security; `forWorkspace` is the one door in, and any id will do. The
-    // memberships and sessions go with the workspaces and the people (cascades).
-    const through = owner.forWorkspace({ workspaceId: randomUUIDv7() });
-    await through.transaction(async (tx) => {
-      await tx.execute(
-        text`delete from workspace where slug in (${harbour.workspace.slug}, ${kite.workspace.slug})`,
-      );
-      await tx.execute(text`delete from "user" where email in (${mina.email}, ${rafi.email})`);
-    });
-    await owner.close();
+    await removeRun([harbour, kite], [mina.email, rafi.email]);
+  }
+});
+
+// ---- The frame's states (Iris, round 1) -------------------------------------------------------------------------
+
+/** A server action's request: a POST to the page, with Next.js's `next-action` header. */
+const isServerAction = (request: Request) =>
+  request.method() === 'POST' && request.headers()['next-action'] !== undefined;
+/** The Inbox's own address, where its server actions (the switcher's) are posted. */
+const atInbox = (url: URL) => url.pathname === INBOX;
+
+test('the frame’s states: long and Bangla names, the switcher open, switching, a failed switch and a failed sign-out', async ({
+  page,
+}, testInfo) => {
+  // This run's own people and workspaces, removed at the end. Lina (her name in Bangla) owns a workspace whose name is
+  // too long for the button, and is an Editor in one named in Bangla, whose Owner is Sumi. The Latin name sorts before
+  // the Bengali one, so a new session opens in the long one.
+  const run = randomUUID();
+  const tag = run.slice(0, 8);
+  const lina = { email: `lina-${run}@workspaces.invalid`, name: 'লিনা হক' };
+  const sumi = { email: `sumi-${run}@workspaces.invalid`, name: 'Sumi Akter' };
+  const long: Seed = {
+    workspace: {
+      name: `Brightwell Dental and Ironline Studio shared creative workspace ${tag}`,
+      slug: `long-${run}`,
+    },
+    people: [{ ...lina, role: 'owner', platformAdmin: false }],
+  };
+  const bangla: Seed = {
+    workspace: { name: `গল্প ক্যাফে স্টুডিও ${tag}`, slug: `bangla-${run}` },
+    people: [
+      { ...sumi, role: 'owner', platformAdmin: false },
+      { ...lina, role: 'editor', platformAdmin: false },
+    ],
+  };
+  await runSeed(ownerUrl, long);
+  await runSeed(ownerUrl, bangla);
+
+  try {
+    // A long name: cut with an ellipsis on the button, still its whole name for a screen reader.
+    await signIn(page, lina.email);
+    await showsWorkspace(page, long.workspace.name);
+    await expect(avatar(page)).toHaveAccessibleName(`${lina.name} (Owner)`);
+    await settled(page);
+    await capture(page, testInfo, 'long-name');
+    expect(await seriousIssues(page)).toEqual([]);
+
+    // The switcher, open: both names in full (the long one wraps), the Bangla one marked as Bangla, her role in each.
+    await switcher(page).click();
+    const menu = page.getByRole('menu', { name: 'Workspaces' });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitemradio')).toHaveCount(2);
+    await expect(menu.getByText(bangla.workspace.name, { exact: true })).toHaveAttribute(
+      'lang',
+      'bn',
+    );
+    await capture(page, testInfo, 'switcher-open');
+    expect(await seriousIssues(page)).toEqual([]);
+
+    // Switching: the switcher's server action is held, and the button stays disabled until it answers.
+    const { promise: held, resolve: release } = Promise.withResolvers<undefined>();
+    const hold = async (route: Route) => {
+      if (!isServerAction(route.request())) return route.fallback();
+      await held;
+      return route.continue();
+    };
+    await page.route(atInbox, hold);
+    await menu.getByRole('menuitemradio', { name: bangla.workspace.name }).click();
+    await expect(switcher(page)).toBeDisabled();
+    await capture(page, testInfo, 'switching');
+    release(undefined);
+
+    // The Bangla name, on the button and marked as Bangla; her role there.
+    await showsWorkspace(page, bangla.workspace.name);
+    await expect(switcher(page)).toBeEnabled();
+    await expect(switcher(page).getByText(bangla.workspace.name, { exact: true })).toHaveAttribute(
+      'lang',
+      'bn',
+    );
+    await expect(avatar(page)).toHaveAccessibleName(`${lina.name} (Editor)`);
+    await page.unroute(atInbox, hold);
+    await settled(page);
+    await capture(page, testInfo, 'bangla-name');
+    expect(await seriousIssues(page)).toEqual([]);
+
+    // A switch that never reaches the server: the switcher says so beside it, and the page stays where it was.
+    const lose = (route: Route) =>
+      isServerAction(route.request()) ? route.abort('internetdisconnected') : route.fallback();
+    await page.route(atInbox, lose);
+    await switcher(page).click();
+    await page
+      .getByRole('menu', { name: 'Workspaces' })
+      .getByRole('menuitemradio', { name: long.workspace.name })
+      .click();
+    await expect(
+      page.getByText('Couldn’t open that workspace. Check your connection and try again.'),
+    ).toBeVisible();
+    await showsWorkspace(page, bangla.workspace.name);
+    await expect(switcher(page)).toBeEnabled();
+    await page.unroute(atInbox, lose);
+    await capture(page, testInfo, 'switch-error');
+    expect(await seriousIssues(page)).toEqual([]);
+
+    // A sign-out that fails: the page says so, and stays.
+    await page.route('**/api/auth/sign-out', (route) =>
+      route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
+    );
+    await avatar(page).click();
+    await page
+      .getByRole('menu', { name: 'Your account' })
+      .getByRole('menuitem', { name: 'Sign out' })
+      .click();
+    await expect(
+      page.getByText('Couldn’t sign you out. Check your connection and try again.'),
+    ).toBeVisible();
+    await expect(page).toHaveURL(new URL(INBOX, origin).href);
+    await expect(avatar(page)).toBeEnabled();
+    await capture(page, testInfo, 'sign-out-error');
+    expect(await seriousIssues(page)).toEqual([]);
+  } finally {
+    await removeRun([long, bangla], [lina.email, sumi.email]);
   }
 });
