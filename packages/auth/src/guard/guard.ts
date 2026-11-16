@@ -96,7 +96,7 @@ export function createGuard(deps: GuardDeps) {
       if (found === null) return refuse('no-session');
       const workspaces = await deps.listWorkspaces({ userId: found.session.userId });
       const active = found.session.activeWorkspaceId;
-      if (workspaces.some((each) => each.id === active) && typeof active === 'string') {
+      if (typeof active === 'string' && workspaces.some((each) => each.id === active)) {
         return allow(found, active, workspaces, 'see-workspace');
       }
       const [first] = workspaces;
