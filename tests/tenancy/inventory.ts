@@ -234,23 +234,63 @@ export function inventory(root: string = REPO_ROOT): string[] {
   return [...appEntries(root), ...authEntries(), ...queueEntries(), ...jobEntries(root)];
 }
 
-/** Whether a function's body runs a test: an `it(…)` or `test(…)` call at any depth. */
+/** The test files the services project runs (vitest.config.ts): a test with another extension never runs. */
+const RUN_TEST = /\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|mjs)$/;
+
+/**
+ * Vitest's ways of not running what a call holds: `.skip`, `.todo`, `.skipIf(…)` and `.runIf(…)` on the call, or a
+ * `skip` or `todo` option. A condition is never read: a block under `skipIf` or `runIf` covers nothing either way.
+ */
+const NOT_RUN = new Set(['skip', 'todo', 'skipIf', 'runIf']);
+
+function skips(call: ts.CallExpression): boolean {
+  let callee: ts.Expression = call.expression;
+  while (ts.isCallExpression(callee) || ts.isPropertyAccessExpression(callee)) {
+    if (ts.isPropertyAccessExpression(callee) && NOT_RUN.has(callee.name.text)) return true;
+    callee = callee.expression;
+  }
+  return call.arguments.some(
+    (argument) =>
+      ts.isObjectLiteralExpression(argument) &&
+      argument.properties.some(
+        (property) =>
+          property.name !== undefined &&
+          (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+          NOT_RUN.has(property.name.text),
+      ),
+  );
+}
+
+/** Whether a node holds a test Vitest runs: an `it(…)` or `test(…)` call with a function, under no skipping call. */
 function holdsTest(node: ts.Node): boolean {
-  if (
-    ts.isCallExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    (node.expression.text === 'it' || node.expression.text === 'test')
-  ) {
-    return true;
+  if (ts.isCallExpression(node)) {
+    if (skips(node)) return false;
+    const [, body] = node.arguments;
+    if (
+      ts.isIdentifier(node.expression) &&
+      (node.expression.text === 'it' || node.expression.text === 'test') &&
+      body !== undefined &&
+      (ts.isArrowFunction(body) || ts.isFunctionExpression(body))
+    ) {
+      return true;
+    }
   }
   return ts.forEachChild(node, holdsTest) ?? false;
 }
 
-/** The entries the test files under `dir` cover: each `tenancy('<entry>', …)` block that holds a test. */
+/** Whether a call sits inside a skipping one (a `describe.skip(…)` around a tenancy block). */
+function underSkip(node: ts.Node): boolean {
+  for (let at = node.parent as ts.Node | undefined; at !== undefined; at = at.parent) {
+    if (ts.isCallExpression(at) && skips(at)) return true;
+  }
+  return false;
+}
+
+/** The entries the test files under `dir` cover: each `tenancy('<entry>', …)` block that holds a test Vitest runs. */
 export function coveredEntries(dir: string): string[] {
   const covered = new Set<string>();
   for (const file of sourceFiles(dir, true)) {
-    if (!/\.(?:test|spec)\.[^.]+$/.test(file)) continue;
+    if (!RUN_TEST.test(file)) continue;
     const visit = (node: ts.Node) => {
       if (
         ts.isCallExpression(node) &&
@@ -262,7 +302,8 @@ export function coveredEntries(dir: string): string[] {
           entry !== undefined &&
           ts.isStringLiteralLike(entry) &&
           body !== undefined &&
-          holdsTest(body)
+          holdsTest(body) &&
+          !underSkip(node)
         ) {
           covered.add(entry.text);
         }
