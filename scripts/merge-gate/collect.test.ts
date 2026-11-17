@@ -32,7 +32,7 @@ function fakeGh(overrides: Record<string, string | Error> = {}): CollectDeps['gh
     compare: '0\n',
     'issue view': JSON.stringify({
       labels: [{ name: 'build-task' }],
-      body: '**Done when**\n- [ ] a\n- [ ] b\n\n**Areas:** `packages/ui/**`',
+      body: '**Done when**\n- [ ] a\n- [ ] b (proof: ci:services)\n\n**Areas:** `packages/ui/**`',
     }),
     'check-runs':
       '{"name":"ci","status":"completed","conclusion":"success","app":"github-actions"}\n',
@@ -89,9 +89,10 @@ describe('collectFacts', () => {
         inRepo: true,
         labels: ['build-task'],
         doneWhenBoxes: 2,
+        proofs: ['ci:services'],
         areas: ['packages/ui/**'],
       },
-      { number: 9, inRepo: false, labels: [], doneWhenBoxes: 0, areas: null },
+      { number: 9, inRepo: false, labels: [], doneWhenBoxes: 0, proofs: [], areas: null },
     ]);
     expect(f.checkRuns).toEqual([
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },

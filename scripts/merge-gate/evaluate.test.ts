@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './collect.ts';
-import { bodyHash, doneWhenBoxes, evaluate } from './evaluate.ts';
+import { bodyHash, doneWhenBoxes, doneWhenProofs, evaluate } from './evaluate.ts';
 import type { Facts, ReviewRecord } from './types.ts';
 
 const SHA = 'a'.repeat(40);
@@ -42,7 +42,14 @@ function facts(over: Partial<Facts> = {}): Facts {
     behindBy: 0,
     body: BODY,
     closingIssues: [
-      { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
+      {
+        number: 42,
+        inRepo: true,
+        labels: ['build-task'],
+        doneWhenBoxes: 2,
+        proofs: [],
+        areas: ['**'],
+      },
     ],
     changedFiles: ['packages/ui/src/button.ts'],
     changes: [{ mode: '100644', path: 'packages/ui/src/button.ts' }],
@@ -320,6 +327,7 @@ describe('evaluate', () => {
       inRepo: true,
       labels: ['build-task'],
       doneWhenBoxes: 3,
+      proofs: [],
       areas: ['**'],
     };
     expect(failedIds(facts({ closingIssues: [issue] }))).toEqual([6]);
@@ -362,6 +370,161 @@ describe('doneWhenBoxes', () => {
       unticked: 0,
     });
     expect(doneWhenBoxes('nothing here')).toEqual({ ticked: 0, unticked: 0 });
+  });
+});
+
+describe('Done-when boxes the gate proves (#253)', () => {
+  const PROOF_BODY = [
+    'Closes #42',
+    '',
+    '**Done when**',
+    '- [x] it works at `aaaaaaa`',
+    '- [ ] the tenancy suite passes (proof: ci:services)',
+    '- [ ] Iris reviewed the screens (proof: iris)',
+    '',
+    'Agent: Daedalus',
+  ].join('\n');
+  const issue = (proofs: string[]) => ({
+    number: 42,
+    inRepo: true,
+    labels: ['build-task'],
+    doneWhenBoxes: 3,
+    proofs,
+    areas: ['**'],
+  });
+  const services = (over: Partial<Facts['checkRuns'][number]> = {}) => ({
+    name: 'services',
+    status: 'completed',
+    conclusion: 'success',
+    app: 'github-actions',
+    sha: SHA,
+    ...over,
+  });
+  const ci = (extra: Facts['checkRuns'] = []): Facts['checkRuns'] => [
+    { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions', sha: SHA },
+    {
+      name: 'risk-gate',
+      status: 'completed',
+      conclusion: 'success',
+      app: 'github-actions',
+      sha: SHA,
+    },
+    ...extra,
+  ];
+  const proven = (body: string, over: Partial<Facts> = {}): Facts =>
+    facts({
+      body,
+      closingIssues: [issue(['ci:services', 'iris'])],
+      checkRuns: ci([services()]),
+      labels: ['routine'],
+      reviews: [
+        review('argus', { bodyHash: bodyHash(body) }),
+        review('iris', { bodyHash: bodyHash(body) }),
+      ],
+      config: { ...facts().config, requireIris: false },
+      ...over,
+    });
+
+  it('reads the marker on a box, ticked or not, and ignores it anywhere else', () => {
+    expect(doneWhenProofs(PROOF_BODY)).toEqual([
+      { proof: 'ci:services', ticked: false },
+      { proof: 'iris', ticked: false },
+    ]);
+    expect(doneWhenProofs('**Done when**\n- [x] a (proof: ci: `design`)')).toEqual([
+      { proof: 'ci:design', ticked: true },
+    ]);
+    expect(
+      doneWhenProofs('**Done when**\n- [ ] a\n  (proof: ci:services)\n- [ ] b proof: iris'),
+    ).toEqual([]);
+    expect(doneWhenProofs('(proof: iris)\n- [ ] outside any list')).toEqual([]);
+  });
+
+  it('counts a box as ticked when its CI job succeeded on the head commit', () => {
+    expect(failedIds(proven(PROOF_BODY))).toEqual([]);
+  });
+
+  it('refuses when the named job failed, is pending or is missing', () => {
+    expect(
+      failedIds(proven(PROOF_BODY, { checkRuns: ci([services({ conclusion: 'failure' })]) })),
+    ).toEqual([3, 6]);
+    expect(
+      failedIds(
+        proven(PROOF_BODY, {
+          checkRuns: ci([services({ status: 'in_progress', conclusion: null })]),
+        }),
+      ),
+    ).toEqual([3, 6]);
+    expect(failedIds(proven(PROOF_BODY, { checkRuns: ci() }))).toEqual([6]);
+  });
+
+  it('refuses a job that ran on an older commit, or that did not come from GitHub Actions', () => {
+    const older = services({ sha: 'b'.repeat(40) });
+    expect(failedIds(proven(PROOF_BODY, { checkRuns: ci([older]) }))).toEqual([6]);
+    expect(
+      failedIds(proven(PROOF_BODY, { checkRuns: ci([services({ app: 'someone-else' })]) })),
+    ).toEqual([6]);
+    // A green run on the old commit beside a failing one on the head doesn't rescue it.
+    expect(
+      failedIds(
+        proven(PROOF_BODY, { checkRuns: ci([older, services({ conclusion: 'failure' })]) }),
+      ),
+    ).toEqual([3, 6]);
+  });
+
+  it('still checks the job when the builder ticked the box itself', () => {
+    const ticked = PROOF_BODY.replace('- [ ] the tenancy', '- [x] the tenancy');
+    expect(failedIds(proven(ticked, { checkRuns: ci() }))).toEqual([6]);
+    expect(failedIds(proven(ticked))).toEqual([]);
+  });
+
+  it("accepts a marker only where the issue's own list carries it", () => {
+    const f = proven(PROOF_BODY, { closingIssues: [issue(['iris'])] });
+    expect(failedIds(f)).toEqual([6]);
+    expect(evaluate(f).items.find((i) => i.id === 6)?.detail).toMatch(/ci:services.*issue/);
+  });
+
+  it("checks Iris's recorded pass for the head and this PR text", () => {
+    const noIris = proven(PROOF_BODY, {
+      reviews: [review('argus', { bodyHash: bodyHash(PROOF_BODY) })],
+    });
+    expect(failedIds(noIris)).toEqual([6]);
+    const old = review('iris', { bodyHash: bodyHash(PROOF_BODY), sha: 'b'.repeat(40) });
+    expect(
+      failedIds(
+        proven(PROOF_BODY, { reviews: [review('argus', { bodyHash: bodyHash(PROOF_BODY) }), old] }),
+      ),
+    ).toEqual([6]);
+    const stale = review('iris'); // bodyHash of another text
+    expect(
+      failedIds(
+        proven(PROOF_BODY, {
+          reviews: [review('argus', { bodyHash: bodyHash(PROOF_BODY) }), stale],
+        }),
+      ),
+    ).toEqual([6]);
+    const hand = review('iris', { bodyHash: bodyHash(PROOF_BODY), meta: undefined });
+    expect(
+      failedIds(
+        proven(PROOF_BODY, {
+          reviews: [review('argus', { bodyHash: bodyHash(PROOF_BODY) }), hand],
+        }),
+      ),
+    ).toEqual([6]);
+    const blocked = review('iris', { bodyHash: bodyHash(PROOF_BODY), verdict: 'block' });
+    expect(
+      failedIds(
+        proven(PROOF_BODY, {
+          reviews: [review('argus', { bodyHash: bodyHash(PROOF_BODY) }), blocked],
+        }),
+      ),
+    ).toEqual([5, 6]);
+  });
+
+  it('keeps the unticked and issue-length rules for boxes with no marker', () => {
+    const plain = PROOF_BODY.replace('- [x] it works', '- [ ] it works');
+    expect(failedIds(proven(plain))).toEqual([6]);
+    const short = '**Done when**\n- [x] a\n- [ ] b (proof: ci:services)';
+    expect(failedIds(proven(`Closes #42\n\n${short}`))).toEqual([6]);
   });
 });
 
@@ -593,7 +756,14 @@ describe('evaluate: round 3 of the #63 review', () => {
       headRef: 'staging',
       body,
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
+        {
+          number: 42,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 2,
+          proofs: [],
+          areas: ['**'],
+        },
         { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
       ],
       reviews: [review('argus', { bodyHash: bodyHash(body) })],
