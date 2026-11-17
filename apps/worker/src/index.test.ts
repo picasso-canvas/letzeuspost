@@ -7,9 +7,9 @@ const entry = readFileSync(new URL('index.ts', import.meta.url), 'utf8');
 const config = readFileSync(new URL('../../../playwright.config.ts', import.meta.url), 'utf8');
 
 describe('the worker says when it is ready', () => {
-  it('logs "worker ready" once startWorker has returned', () => {
+  it('logs worker.ready once startWorker has returned', () => {
     const started = entry.indexOf('await startWorker(');
-    const ready = entry.indexOf("log('worker ready')");
+    const ready = entry.indexOf("log('worker.ready')");
     expect(started).toBeGreaterThan(-1);
     expect(ready).toBeGreaterThan(started);
   });
@@ -17,7 +17,7 @@ describe('the worker says when it is ready', () => {
   it("matches what playwright.config.ts waits for on the worker's stdout", () => {
     const wait = /wait:\s*\{\s*stdout:\s*\/([^/]+)\//.exec(config)?.[1];
     expect(wait).toBeDefined();
-    const line = JSON.stringify({ at: new Date().toISOString(), event: 'worker ready' });
+    const line = JSON.stringify({ at: new Date().toISOString(), event: 'worker.ready' });
     expect(new RegExp(wait ?? '(?!)').test(line)).toBe(true);
   });
 });

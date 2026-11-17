@@ -6,7 +6,7 @@ import { startWorker } from './worker.ts';
 
 const worker = await startWorker(loadEnv('worker'));
 // Its jobs are registered: Playwright waits for this line before the end-to-end tests start (#172).
-log('worker ready');
+log('worker.ready');
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {

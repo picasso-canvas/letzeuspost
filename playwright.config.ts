@@ -12,16 +12,21 @@ const ci = process.env.CI !== undefined;
 const journeySpecs =
   existsSync('tests/journeys') &&
   readdirSync('tests/journeys', { recursive: true }).some((f) => String(f).endsWith('.spec.ts'));
-// The projects this run asks for (`--project x`, `--project=x`); none means every one. CI's design job runs only the
-// gallery, so the app's servers mustn't start there (#172).
-const asked = process.argv.flatMap((arg, i, all) =>
-  arg === '--project'
-    ? [all[i + 1] ?? '']
-    : arg.startsWith('--project=')
-      ? [arg.slice('--project='.length)]
-      : [],
-);
-const runs = (name: string) => asked.length === 0 || asked.includes(name);
+// The projects this run asks for, read the way Playwright reads them: `--project=x`, or `--project x y` (every name up
+// to the next flag), each a case-insensitive pattern where `*` matches anything; none means every one. CI's design
+// job runs only the gallery, so the app's servers mustn't start there (#172).
+const asked = process.argv
+  .flatMap((arg, i, all) => {
+    if (arg.startsWith('--project=')) return [arg.slice('--project='.length)];
+    if (arg !== '--project') return [];
+    const end = all.findIndex((next, j) => j > i && next.startsWith('-'));
+    return all.slice(i + 1, end === -1 ? undefined : end);
+  })
+  .map(
+    (name) =>
+      new RegExp(`^${name.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '.*')}$`, 'i'),
+  );
+const runs = (name: string) => asked.length === 0 || asked.some((pattern) => pattern.test(name));
 // A server starts only when its tests exist and this run includes them, so `pnpm check:services` passes before the
 // first screen tests land.
 const gallery = existsSync('tests/gallery') && runs('gallery');
@@ -57,6 +62,8 @@ export default defineConfig({
       name: 'journeys',
       testDir: 'tests/journeys',
       testMatch: '**/*.spec.ts',
+      // `<feature>.int.spec.ts` is Vitest's (vitest.config.ts runs `*.int.{test,spec}.*`), never Playwright's.
+      testIgnore: '**/*.int.*',
       use: { ...desktop, colorScheme: 'light', baseURL: 'http://localhost:3000' },
     },
   ],
@@ -81,9 +88,9 @@ export default defineConfig({
             reuseExistingServer: !ci,
           },
           {
-            // The worker has no port: it counts as started once it prints its ready line (#72 adds it).
+            // The worker has no port: it counts as started once it logs `worker.ready`, after its jobs are registered.
             command: 'pnpm --filter @lzp/worker start',
-            wait: { stdout: /worker ready/ },
+            wait: { stdout: /"event":"worker\.ready"/ },
             reuseExistingServer: false,
           },
         ]
