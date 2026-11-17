@@ -12,18 +12,21 @@ const { SwitchWorkspace } = await import('./switch-workspace.tsx');
 
 const NORTHWIND = { id: '0190a6b2-7c3d-7e4f-8a9b-0c1d2e3f4a5b', name: 'Northwind Social' };
 
-/** The declarations inside the first `{ … }` block that follows `opener` in `css`, braces balanced. */
-function block(css: string, opener: string): string {
+/** The rule that starts at `opener` in `css`: its selector and its first `{ … }` block, braces balanced. */
+function rule(css: string, opener: string): string {
   const start = css.indexOf(opener);
   if (start === -1) throw new Error(`no ${opener} in the CSS`);
   const open = css.indexOf('{', start);
   let depth = 0;
   for (let i = open; i < css.length; i++) {
     if (css[i] === '{') depth++;
-    if (css[i] === '}' && --depth === 0) return css.slice(open + 1, i);
+    if (css[i] === '}' && --depth === 0) return css.slice(start, i + 1);
   }
   throw new Error(`unbalanced braces after ${opener}`);
 }
+
+/** The classes in a `class="…"` attribute's value, as written in the source (the markup escapes `&` as `&amp;`). */
+const classesIn = (value: string) => value.replaceAll('&amp;', '&').split(' ');
 
 describe('the workspace mark in the switcher', () => {
   const html = renderToStaticMarkup(
@@ -31,7 +34,7 @@ describe('the workspace mark in the switcher', () => {
   );
   /** The switcher button's opening tag and its classes. */
   const button = /<button[^>]*data-slot="workspace-switcher"[^>]*>/.exec(html)?.[0] ?? '';
-  const buttonClasses = /class="([^"]*)"/.exec(button)?.[1]?.split(' ') ?? [];
+  const buttonClasses = classesIn(/class="([^"]*)"/.exec(button)?.[1] ?? '');
 
   it('shows the workspace’s initials in the mark, beside its name', () => {
     expect(button).not.toBe('');
@@ -40,12 +43,17 @@ describe('the workspace mark in the switcher', () => {
   });
 
   it('fills the mark with the ink token and writes its initials in the paper token, in both themes', async () => {
-    const candidates = html.match(/class="([^"]*)"/g)?.flatMap((m) => m.slice(7, -1).split(' '));
+    const candidates = html.match(/class="([^"]*)"/g)?.flatMap((m) => classesIn(m.slice(7, -1)));
     const css = await buildCss(candidates ?? []);
     // The rules the switcher's own classes give the mark's initials (the avatar fallback inside the button).
     const mark = buttonClasses.filter((c) => c.includes('data-slot=avatar-fallback'));
     expect(mark.length).toBeGreaterThan(0);
-    const rules = mark.map((c) => block(css, `${c.replace(/[[\]&=:]/g, (ch) => `\\${ch}`)}`));
+    const rules = mark.map((c) =>
+      rule(
+        css,
+        c.replace(/[[\]&=:]/g, (ch) => `\\${ch}`),
+      ),
+    );
     const declarations = rules.join('\n');
     expect(declarations).toContain('[data-slot=avatar-fallback]');
     expect(declarations).toMatch(/background-color:\s*var\(--color-foreground\)/);

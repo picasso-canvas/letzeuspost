@@ -33,6 +33,7 @@
   "inbox": {
     "heading": "Inbox",
     "intro": "What needs you now, across all brands",
+    "loading": "Loading your Inbox…",
     "empty": {
       "heading": "Nothing waiting. Even gods take breaks.",
       "body": "Posts to review, client feedback and anything that needs a fix will show up here."

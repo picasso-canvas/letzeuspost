@@ -9,6 +9,14 @@ import { messages } from '../messages.ts';
 const { switcher } = messages.frame;
 
 /**
+ * The workspace's mark as the v1 mockup's 03-inbox draws it (Iris F2 on #79): a filled dark disc with light initials,
+ * not the person's pale avatar. DESIGN.md has no navy (the mockup's is an inline value), so it is the ink token pair:
+ * `foreground` fills it and `background` writes the initials. Tokens, so the same classes serve both themes.
+ */
+const INK_MARK =
+  '[&_[data-slot=avatar-fallback]]:bg-foreground [&_[data-slot=avatar-fallback]]:text-background';
+
+/**
  * §15's switcher, as the app holds it: the person's workspaces with their role in each. Choosing one asks the server
  * action to make it the session's workspace (the guard checks the membership), then draws the page again in it. The
  * button is disabled while that runs; a refusal or a lost connection says so beside it and leaves the page as it was.
@@ -43,6 +51,7 @@ export function SwitchWorkspace({
         currentLabel={switcher.current}
         note={switcher.note}
         disabled={pending}
+        className={INK_MARK}
       />
       {/* Always in the page, so a screen reader hears the message when it appears. */}
       <p role="status" className="text-meta text-destructive">
