@@ -101,3 +101,39 @@ describe('accepted advisories stay on their accepted path', () => {
     ]);
   });
 });
+
+/** Package names a workspace package's runtime (`dependencies`, `optionalDependencies`) reaches, through the lockfile. */
+function reachedAtRuntime(lockfile: string): Set<string> {
+  const graph = edges(lockfile);
+  const seen = new Set<string>();
+  const queue = graph
+    .filter((e) => e.from.startsWith('importer:') && e.group !== 'devDependencies')
+    .map((e) => e.to);
+  while (queue.length > 0) {
+    const name = queue.pop() ?? '';
+    if (seen.has(name)) continue;
+    seen.add(name);
+    for (const e of graph) if (e.from === name) queue.push(e.to);
+  }
+  return seen;
+}
+
+describe('GHSA-fc5q-39xc-vjpf (picomatch) stays on its accepted path', () => {
+  it('is accepted in osv-scanner.toml', () => {
+    expect(OSV_CONFIG).toContain('id = "GHSA-fc5q-39xc-vjpf"');
+  });
+
+  it('picomatch is reached only through dev dependencies, never at runtime', () => {
+    expect(all.some((e) => e.to === 'picomatch')).toBe(true);
+    expect(reachedAtRuntime(LOCKFILE).has('picomatch')).toBe(false);
+  });
+
+  it('catches picomatch arriving through a runtime dependency', () => {
+    const viaRuntime = LOCKFILE.replace(
+      /(\n {2}packages\/ui:\n {4}dependencies:\n)/,
+      '$1      some-runtime-lib:\n        specifier: 1.0.0\n        version: 1.0.0\n',
+    ).concat('\n  some-runtime-lib@1.0.0:\n    dependencies:\n      picomatch: 4.0.7\n');
+    expect(viaRuntime).not.toBe(LOCKFILE);
+    expect(reachedAtRuntime(viaRuntime).has('picomatch')).toBe(true);
+  });
+});
