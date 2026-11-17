@@ -20,6 +20,8 @@
   },
   "scripts": {
     "db:generate": "drizzle-kit generate --dialect postgresql --schema ./src/schema.ts --out ./migrations",
-    "migrate": "node src/bin/migrate.ts"
+    "migrate": "node src/bin/migrate.ts",
+    "seed:studio": "node src/seed/studio.ts",
+    "seed:dev": "node src/seed/dev.ts"
   }
 }
