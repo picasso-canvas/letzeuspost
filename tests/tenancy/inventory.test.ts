@@ -186,7 +186,7 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
     expect(missing.sort()).toEqual([...appEntries(root), 'job render'].sort());
   });
 
-  it('counts a tenancy block only when it names the entry and holds a test', async () => {
+  it('counts a tenancy block only when it names the entry and holds a test Vitest runs', async () => {
     await write(
       'tests/brands.test.ts',
       `tenancy('route GET /api/brands/[brandId]', () => {
@@ -199,10 +199,44 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
          describe('nested', () => { test('counts', () => {}); });
        });`,
     );
-    // Vitest doesn't run a test under dist, node_modules or a dot folder, so one there covers nothing.
+    // A test Vitest never runs covers nothing: a todo (no function), a skipped test, or one a skipping describe
+    // holds, inside the tenancy block or around it. Each skip below is the fixture, never a test of this suite.
+    await write(
+      'tests/skipped.test.ts',
+      `tenancy('route PUT /todo/[id]', () => { it('later'); });
+       tenancy('route PUT /todo-with-options/[id]', () => { test('later', {}); });
+       tenancy('route PUT /skipped-test/[id]', () => {
+         it.skip('off', () => {}); // fixture: a skipped test covers nothing
+         it.todo('later');
+       });
+       tenancy('route PUT /skipped-inside/[id]', () => {
+         describe.skip('off', () => { it('never runs', () => {}); }); // fixture: a skipped describe
+       });
+       describe.skip('off', () => { // fixture: a skipped describe around the block
+         tenancy('route PUT /skip/[id]', () => { it('never runs', () => {}); });
+       });
+       describe.todo('later', () => { tenancy('route PUT /describe-todo/[id]', () => { it('never runs', () => {}); }); });
+       describe.skipIf(true)('off', () => { // fixture: skipIf skips here
+         describe('nested', () => { tenancy('route PUT /skip-if/[id]', () => { it('never runs', () => {}); }); });
+       });
+       describe.runIf(false)('off', () => { // fixture: runIf(false) skips
+         tenancy('route PUT /run-if/[id]', () => { it('never runs', () => {}); });
+       });
+       describe('off', { skip: true }, () => {
+         tenancy('route PUT /skip-option/[id]', () => { it('never runs', () => {}); });
+       });`,
+    );
+    // Vitest doesn't run a test under dist, node_modules or a dot folder, so one there covers nothing; nor one whose
+    // extension the services project doesn't include (vitest.config.ts: ts, tsx, mts, cts, js, mjs).
     for (const hidden of ['dist', 'node_modules', '.cache']) {
       await write(
         `tests/${hidden}/brands.test.ts`,
+        `tenancy('page /brands/[brandId]', () => { it('never runs', () => {}); });`,
+      );
+    }
+    for (const notIncluded of ['brands.test.jsx', 'brands.test.cjs', 'brands.spec.jsx']) {
+      await write(
+        `tests/${notIncluded}`,
         `tenancy('page /brands/[brandId]', () => { it('never runs', () => {}); });`,
       );
     }
