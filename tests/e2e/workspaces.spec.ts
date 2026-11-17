@@ -393,58 +393,97 @@ test('the frame’s states: long and Bangla names, the switcher open, switching,
 
 // ---- /app on its way (Iris F4, round 5) -------------------------------------------------------------------------
 
+/** Every `<script>` element in an HTML document, inline or not, with its content. */
+const SCRIPTS = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+
+/**
+ * Loads the Inbox's document as the server sends it, without its scripts, and with the theme's class on <html> (the
+ * class is put there by a script too). The browser draws the HTML as it arrives: the skeleton first, and the guarded
+ * frame after it in a hidden element, which only React's scripts swap in. With none of them in the page, it stays in
+ * the state a person sees while the guard opens the workspace. The page itself still runs script, so the screenshot,
+ * the font wait and axe work as on every other page (a context with JavaScript off stalls them).
+ */
+function withoutScripts(theme: 'light' | 'dark') {
+  return async (route: Route) => {
+    if (route.request().resourceType() !== 'document') return route.fallback();
+    const response = await route.fetch();
+    const html = (await response.text())
+      .replace(SCRIPTS, '')
+      .replace(/<html\b/, theme === 'dark' ? '<html class="dark"' : '<html');
+    // The body is new and decoded: the original's length and encoding no longer describe it.
+    const headers = Object.fromEntries(
+      Object.entries(response.headers()).filter(
+        ([name]) => !['content-length', 'content-encoding', 'transfer-encoding'].includes(name),
+      ),
+    );
+    return route.fulfill({ response, headers, body: html });
+  };
+}
+
 test('/app on its way: the frame and the Inbox are skeletons until the guard has opened the workspace', async ({
-  browser,
   page,
 }, testInfo) => {
-  // seed:dev's people, as in the first test: its Owner in the light project and its Editor in the dark one.
-  const seed = devSeed();
-  await runSeed(ownerUrl, seed);
+  // Each step has its own short timeout, so a stall fails at its cause rather than at the test's end.
   const theme = themeOf(testInfo.project.name);
-  const person = seed.people.find((p) => p.role === (theme === 'light' ? 'owner' : 'editor'));
-  if (person === undefined) throw new Error('seed:dev has no such person');
-  await signIn(page, person.email);
+  await test.step(
+    'sign in a seed:dev person',
+    async () => {
+      // seed:dev's people, as in the first test: its Owner in the light project and its Editor in the dark one.
+      const seed = devSeed();
+      await runSeed(ownerUrl, seed);
+      const person = seed.people.find((p) => p.role === (theme === 'light' ? 'owner' : 'editor'));
+      if (person === undefined) throw new Error('seed:dev has no such person');
+      await signIn(page, person.email);
+    },
+    { timeout: 20_000 },
+  );
 
-  // The same session in a page that runs no script. The browser draws the HTML as it streams in: the skeleton comes
-  // first, and the guarded frame that follows it stays hidden, as React's script is what swaps it in. So the page
-  // stays in the state a person sees while the guard opens the workspace.
-  const { viewport, colorScheme, deviceScaleFactor, userAgent } = testInfo.project.use;
-  const still = await browser.newContext({
-    viewport,
-    colorScheme,
-    deviceScaleFactor,
-    userAgent,
-    baseURL: origin,
-    storageState: await page.context().storageState(),
-    javaScriptEnabled: false,
-  });
-  try {
-    const loading = await still.newPage();
-    await loading.goto(INBOX);
-    // The theme is put on <html> by a script too: do what it does.
-    await loading.evaluate(() => {
-      const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.classList.toggle('dark', dark);
-    });
+  await test.step(
+    'load /app without its scripts',
+    async () => {
+      await page.route(atInbox, withoutScripts(theme));
+      await page.goto(INBOX);
+      await expect(page.locator('script')).toHaveCount(0);
+      if (theme === 'dark') await expect(page.locator('html')).toHaveClass('dark');
+      else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+    },
+    { timeout: 10_000 },
+  );
 
-    // The gallery's skeletons where the switcher and the list will be; the page's heading and line as they will be.
-    await expect(loading.locator('[data-slot="workspace-switcher-skeleton"]')).toBeVisible();
-    await expect(loading.locator('[data-slot="sidebar-menu-skeleton"]').first()).toBeVisible();
-    await expect(loading.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
-    await expect(
-      loading.getByRole('status').filter({ hasText: 'Loading workspaces…' }),
-    ).toHaveCount(1);
-    await expect(
-      loading.getByRole('status').filter({ hasText: 'Loading your Inbox…' }),
-    ).toHaveCount(1);
-    // Nothing of the workspace shows before the guard has answered: the real switcher and avatar are still hidden.
-    await expect(loading.locator('[data-slot="workspace-switcher"]')).toBeHidden();
-    await expect(loading.locator('[data-slot="account-menu"]')).toBeHidden();
+  await test.step(
+    'the skeletons, and nothing of the workspace',
+    async () => {
+      // The gallery's skeletons where the switcher and the list will be; the page's heading and line as they will be.
+      await expect(page.locator('[data-slot="workspace-switcher-skeleton"]')).toBeVisible();
+      await expect(page.locator('[data-slot="sidebar-menu-skeleton"]').first()).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+      await expect(page.getByRole('status').filter({ hasText: 'Loading workspaces…' })).toHaveCount(
+        1,
+      );
+      await expect(page.getByRole('status').filter({ hasText: 'Loading your Inbox…' })).toHaveCount(
+        1,
+      );
+      // Nothing of the workspace shows before the guard has answered: the real switcher and avatar are still hidden.
+      await expect(switcher(page)).toBeHidden();
+      await expect(avatar(page)).toBeHidden();
+    },
+    { timeout: 10_000 },
+  );
 
-    await settled(loading);
-    await capture(loading, testInfo, 'loading');
-    expect(await seriousIssues(loading)).toEqual([]);
-  } finally {
-    await still.close();
-  }
+  await test.step(
+    'screenshot',
+    async () => {
+      await settled(page);
+      await capture(page, testInfo, 'loading');
+    },
+    { timeout: 10_000 },
+  );
+
+  await test.step(
+    'axe',
+    async () => {
+      expect(await seriousIssues(page)).toEqual([]);
+    },
+    { timeout: 10_000 },
+  );
 });
