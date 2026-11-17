@@ -75,6 +75,27 @@ describe('a query that drops the workspace filter: the lint rule', () => {
   });
 });
 
+/** What one statement in A's unit of work came to: refused by Postgres, or its rows and the count it touched. */
+type Outcome = { refused: string } | { rows: Row[]; count: number | null };
+
+/**
+ * The two outcomes that keep B's rows from A: Postgres refused the statement for want of a privilege, or for a row
+ * the policy won't let in (both are 42501, insufficient privilege); or nothing came back and nothing was touched. A
+ * row of B's returned, changed or made, or any other error, is neither.
+ */
+const REACHED_NOTHING: Outcome[] = [{ refused: '42501' }, { rows: [], count: 0 }];
+
+/** The SQLSTATE under whatever wraps the driver's error (Drizzle puts it in `cause`), if there is one. */
+function sqlState(error: unknown): string | undefined {
+  let current: unknown = error;
+  while (typeof current === 'object' && current !== null) {
+    const { code, cause } = current as { code?: unknown; cause?: unknown };
+    if (typeof code === 'string') return code;
+    current = cause;
+  }
+  return undefined;
+}
+
 describe('a query that drops the workspace filter: row-level security', () => {
   let t: Tenancy;
 
@@ -114,46 +135,72 @@ describe('a query that drops the workspace filter: row-level security', () => {
     expect(JSON.stringify(rows)).not.toContain(t.b.ctx.workspaceId);
   });
 
+  /**
+   * One statement, alone in a unit of work of A's (a refusal ends the transaction it's in): Postgres's refusal, by its
+   * code, or what came back and how many rows it touched. A failure that isn't Postgres's is thrown.
+   */
+  async function tryInA(statement: string): Promise<Outcome> {
+    try {
+      const result = await inA((tx) => tx.execute<Row>(statement));
+      return { rows: result.rows, count: result.rowCount };
+    } catch (error) {
+      const code = sqlState(error);
+      if (code === undefined) throw error;
+      return { refused: code };
+    }
+  }
+
   it('returns nothing, changes nothing and makes nothing when A’s unit of work names B’s rows', async () => {
     const b = t.b.ctx.workspaceId;
-    const reached = await inA<{ read: Row[]; changed: number | null; removed: number | null }>(
-      async (tx) => {
-        const read = await tx.execute<Row>(
-          text`select id from invitation where workspace_id = ${b}
-           union all select id from email_message where workspace_id = ${b}
-           union all select user_id from member where workspace_id = ${b}
-           union all select id from workspace where id = ${b}`,
-        );
-        const changed = await tx.execute(
-          text`update invitation set role = 'admin' where workspace_id = ${b}`,
-        );
-        const removed = await tx.execute(text`delete from email_message where workspace_id = ${b}`);
-        return { read: read.rows, changed: changed.rowCount, removed: removed.rowCount };
-      },
-    );
-    expect(reached).toEqual({ read: [], changed: 0, removed: 0 });
+    const planted = `planted-${t.run}@tenancy.invalid`;
+    // The broken queries, each naming B's rows, with `returning` so a row reached comes back. Whether the app role
+    // holds the grant (it may not delete from email_message at all, 0003) or the policy filters the rows, the answer
+    // is the same: refused, or nothing.
+    const statements = [
+      text`select id from invitation where workspace_id = ${b}`,
+      text`select id from email_message where workspace_id = ${b}`,
+      text`select user_id from member where workspace_id = ${b}`,
+      text`select id from workspace where id = ${b}`,
+      text`update invitation set role = 'admin' where workspace_id = ${b} returning id`,
+      text`update email_message set to_address = ${planted} where workspace_id = ${b} returning id`,
+      text`update workspace set name = ${planted} where id = ${b} returning id`,
+      text`delete from invitation where workspace_id = ${b} returning id`,
+      text`delete from email_message where workspace_id = ${b} returning id`,
+      text`delete from member where workspace_id = ${b} returning user_id`,
+      // A row of B's made from A's unit of work: there is nothing to filter, so only a refusal will do.
+      text`insert into invitation (workspace_id, email, role, expires_at, inviter_id)
+           values (${b}, ${planted}, 'admin', now() + interval '1 day', ${t.a.owner.id}) returning id`,
+      text`insert into email_message (workspace_id, template, to_address, data)
+           values (${b}, 'email-check', ${planted}, '{}'::jsonb) returning id`,
+    ];
+    for (const statement of statements) {
+      expect(REACHED_NOTHING, statement).toContainEqual(await tryInA(statement));
+    }
 
-    // A row of B's made from A's unit of work is refused by the policy.
-    await expect(
-      inA(async (tx) =>
-        tx.insert(invitation).values({
-          workspaceId: b,
-          email: `planted-${t.run}@tenancy.invalid`,
-          role: 'admin',
-          expiresAt: new Date(Date.now() + 86_400_000),
-          inviterId: t.a.owner.id,
-        }),
+    // B's rows, read by the owner role (which row-level security doesn't bind), are as the fixtures made them: the
+    // statements named rows that are there, and none was changed, removed or added.
+    expect({
+      invitations: await t.asOwner(
+        text`select id, email, role from invitation where workspace_id = ${b}`,
       ),
-    ).rejects.toThrow();
-
-    // B's rows, as B sees them, are as the fixtures made them.
-    const ofB = await t.app.forWorkspace(t.b.ctx).transaction(async (tx) => ({
-      invitations: await tx.select({ id: invitation.id, role: invitation.role }).from(invitation),
-      emails: await tx.select({ id: emailMessage.id }).from(emailMessage),
-    }));
-    expect(ofB).toEqual({
-      invitations: [{ id: t.b.invitation.id, role: 'editor' }],
-      emails: [{ id: t.b.email.id }],
+      emails: await t.asOwner(
+        text`select id, to_address from email_message where workspace_id = ${b}`,
+      ),
+      members: await t.asOwner(
+        text`select user_id from member where workspace_id = ${b} order by user_id`,
+      ),
+      workspaces: await t.asOwner(text`select id, name from workspace where id = ${b}`),
+      planted: await t.asOwner(
+        text`select id from invitation where email = ${planted}
+             union all select id from email_message where to_address = ${planted}
+             union all select id from workspace where name = ${planted}`,
+      ),
+    }).toEqual({
+      invitations: [{ id: t.b.invitation.id, email: t.b.invitation.email, role: 'editor' }],
+      emails: [{ id: t.b.email.id, to_address: t.b.email.to }],
+      members: [t.b.owner.id, t.both.id].sort().map((id) => ({ user_id: id })),
+      workspaces: [{ id: b, name: t.b.name }],
+      planted: [],
     });
   });
 });
