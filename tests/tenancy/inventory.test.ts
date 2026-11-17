@@ -88,8 +88,41 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
       'apps/web/src/app/(app)/brands/[brandId]/posts/[postId]/layout.tsx',
       'export default function Post({ children }) { return children; }',
     );
-    // A page with no id in its path is not on the list: it can't be given another workspace's.
+    // A template, and a parallel route's default, render for their URL like a page does.
+    await write(
+      'apps/web/src/app/(app)/brands/[brandId]/template.tsx',
+      'export default function Frame({ children }) { return children; }',
+    );
+    await write(
+      'apps/web/src/app/(app)/brands/@panel/[brandId]/default.tsx',
+      'export default function Panel() { return null; }',
+    );
+    // Metadata files are GET routes of their own: a brand's share image or sitemap reads the brand by its id.
+    for (const image of ['opengraph-image', 'twitter-image', 'icon', 'apple-icon']) {
+      await write(
+        `apps/web/src/app/(app)/brands/[brandId]/${image}.tsx`,
+        'export default function Image() { return null; }',
+      );
+    }
+    await write(
+      'apps/web/src/app/(app)/brands/[brandId]/sitemap.ts',
+      'export default function sitemap() { return []; }',
+    );
+    // A folder named like build output, or starting with a dot, is still a route inside the app.
+    await write(
+      'apps/web/src/app/dist/[fileId]/route.ts',
+      'export function GET() { return new Response(); }',
+    );
+    await write(
+      'apps/web/src/app/.well-known/[name]/route.ts',
+      'export function GET() { return new Response(); }',
+    );
+    // A page, template or metadata file with no id in its path is not on the list: it can't be given another
+    // workspace's.
     await write('apps/web/src/app/(app)/brands/page.tsx', 'export default () => null;');
+    await write('apps/web/src/app/(app)/brands/template.tsx', 'export default () => null;');
+    await write('apps/web/src/app/opengraph-image.tsx', 'export default () => null;');
+    await write('apps/web/src/app/sitemap.ts', 'export default () => [];');
     await write(
       'apps/web/src/app/(app)/brands/actions.ts',
       `'use server';
@@ -121,14 +154,23 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
     await rm(root, { recursive: true, force: true });
   });
 
-  it('lists the fixture’s route handlers, pages and layouts with ids, actions and job handlers', () => {
+  it('lists the fixture’s route handlers, pages, layouts, templates, defaults and metadata files with ids, actions and job handlers', () => {
     expect(appEntries(root).sort()).toEqual(
       [
         'route GET /api/brands/[brandId]',
         'route PATCH /api/brands/[brandId]',
         'route DELETE /api/brands/[brandId]',
+        'route GET /brands/[brandId]/opengraph-image',
+        'route GET /brands/[brandId]/twitter-image',
+        'route GET /brands/[brandId]/icon',
+        'route GET /brands/[brandId]/apple-icon',
+        'route GET /brands/[brandId]/sitemap.xml',
+        'route GET /dist/[fileId]',
+        'route GET /.well-known/[name]',
         'page /brands/[brandId]',
         'layout /brands/[brandId]/posts/[postId]',
+        'template /brands/[brandId]',
+        'default /brands/[brandId]',
         'action apps/web/src/app/(app)/brands/actions.ts#renameBrand',
         'action apps/web/src/app/(app)/brands/actions.ts#archiveBrand',
         'action apps/web/src/app/(app)/brands/actions.ts#restoreBrand',
@@ -160,5 +202,25 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
       'layout /brands/[brandId]/posts/[postId]',
       'route GET /api/brands/[brandId]',
     ]);
+  });
+});
+
+// The list reads only apps/web/src/app. Next would also serve a Pages Router (src/pages, including pages/api), and an
+// app or pages folder at apps/web's root (it then ignores src/), so the suite refuses to list an app that has one.
+describe('a router folder the list doesn’t read fails the suite', () => {
+  it.each([
+    'apps/web/src/pages/api/brands/[brandId].ts',
+    'apps/web/src/pages/brands/[brandId].tsx',
+    'apps/web/pages/index.tsx',
+    'apps/web/app/page.tsx',
+  ])('%s', async (file) => {
+    const root = await mkdtemp(path.join(tmpdir(), 'lzp-tenancy-'));
+    try {
+      await mkdir(path.join(root, path.dirname(file)), { recursive: true });
+      await writeFile(path.join(root, file), 'export default () => null;');
+      expect(() => appEntries(root)).toThrow(/only apps\/web\/src\/app/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
