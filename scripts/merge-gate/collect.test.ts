@@ -92,7 +92,14 @@ describe('collectFacts', () => {
         proofs: ['ci:services'],
         areas: ['packages/ui/**'],
       },
-      { number: 9, inRepo: false, labels: [], doneWhenBoxes: 0, proofs: [], areas: null },
+      {
+        number: 9,
+        inRepo: false,
+        labels: [],
+        doneWhenBoxes: 0,
+        proofs: [],
+        areas: null,
+      },
     ]);
     expect(f.checkRuns).toEqual([
       { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },

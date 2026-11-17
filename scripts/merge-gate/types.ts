@@ -38,6 +38,8 @@ export interface CheckRun {
   app: string | null;
   /** The run's page (`…/actions/runs/<id>/job/<id>` for an Actions job), where the gate finds its artifacts (#156). */
   url?: string | null;
+  /** The commit the run is for: a proof counts only on the PR's head (#253). */
+  sha?: string | null;
 }
 
 export interface ClosingIssue {
@@ -47,6 +49,8 @@ export interface ClosingIssue {
   labels: string[];
   /** Boxes in the issue's own Done-when list, which Athena wrote. */
   doneWhenBoxes: number;
+  /** Boxes in that list the gate proves (`ci:<job>`, `iris`): the only proofs a PR's own list may name (#253). */
+  proofs: string[];
   /** The paths and globs on the issue's **Areas:** line (#138); null when it can't be read. */
   areas: string[] | null;
 }

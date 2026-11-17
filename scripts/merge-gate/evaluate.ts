@@ -38,11 +38,10 @@ const DONE_WHEN = /^\s{0,3}(#{1,6}\s*|\*\*)done[\s-]when/i;
 // Any task-list marker (`-`, `*`, `+`, `1.`), optionally inside a blockquote.
 const BOX = /^[\s>]*(?:[-*+]|\d+[.)])\s+\[( |x|X)\]/;
 
-/** Counts the checkboxes in a "Done when" list. */
-export function doneWhenBoxes(markdown: string): { ticked: number; unticked: number } {
+/** The box lines of a "Done when" list, each with whether it is ticked. */
+function doneWhenLines(markdown: string): { ticked: boolean; line: string }[] {
   let inList = false;
-  let ticked = 0;
-  let unticked = 0;
+  const boxes: { ticked: boolean; line: string }[] = [];
   for (const line of visibleLines(markdown)) {
     if (DONE_WHEN.test(line)) {
       inList = true;
@@ -50,12 +49,71 @@ export function doneWhenBoxes(markdown: string): { ticked: number; unticked: num
     }
     if (inList && HEADING.test(line)) inList = false;
     const box = inList ? BOX.exec(line) : null;
-    if (box) {
-      if (box[1] === ' ') unticked++;
-      else ticked++;
-    }
+    if (box) boxes.push({ ticked: box[1] !== ' ', line });
   }
-  return { ticked, unticked };
+  return boxes;
+}
+
+/** Counts the checkboxes in a "Done when" list. */
+export function doneWhenBoxes(markdown: string): { ticked: number; unticked: number } {
+  const boxes = doneWhenLines(markdown);
+  const ticked = boxes.filter((box) => box.ticked).length;
+  return { ticked, unticked: boxes.length - ticked };
+}
+
+// `(proof: ci:<job>)` or `(proof: iris)` at the end of a box's own line: the gate, not the builder, proves the box (#253).
+const PROOF = /\(proof:\s*(?:(iris)|ci:\s*`?([\w.-]+)`?)\s*\)/i;
+
+/** The boxes in a "Done when" list that the gate proves, as `ci:<job>` or `iris`, and whether each is ticked. */
+export function doneWhenProofs(markdown: string): { proof: string; ticked: boolean }[] {
+  const proofs: { proof: string; ticked: boolean }[] = [];
+  for (const { ticked, line } of doneWhenLines(markdown)) {
+    const found = PROOF.exec(line);
+    if (found === null) continue;
+    proofs.push({ proof: found[1] === undefined ? `ci:${String(found[2])}` : 'iris', ticked });
+  }
+  return proofs;
+}
+
+/** Why a proof named on a Done-when box doesn't hold for this head commit; null when it does. */
+function proofRefusal(
+  f: Facts,
+  proof: string,
+  hash: string,
+  named: Set<string>,
+  kind: string | null,
+): string | null {
+  const head = f.headSha.slice(0, 7);
+  // Only a proof the issue's own list (Athena's) names counts; a batch ticks one box per task and names none.
+  if (kind !== 'batch' && !named.has(proof)) {
+    return `"${proof}" is a proof the closing issue's Done-when list doesn't name`;
+  }
+  if (proof === 'iris') {
+    const passes = f.reviews.filter(
+      (r) =>
+        r.pr === f.pr &&
+        r.sha === f.headSha &&
+        r.reviewer === 'iris' &&
+        r.verdict === 'pass' &&
+        r.meta?.verified === true,
+    );
+    if (passes.length === 0) return `no Iris pass from scripts/review.ts for ${head}`;
+    if (!passes.some((r) => r.bodyHash === hash)) return 'PR text changed since Iris reviewed';
+    return null;
+  }
+  const job = proof.slice('ci:'.length);
+  const runs = f.checkRuns.filter((run) => run.name === job);
+  if (runs.length === 0) return `CI job "${job}" has no run`;
+  const onHead = runs.filter((run) => run.sha === f.headSha);
+  if (onHead.length === 0) return `CI job "${job}" has no run on ${head} (only an older commit)`;
+  if (onHead.some((run) => run.app !== 'github-actions')) {
+    return `CI job "${job}" didn't come from GitHub Actions`;
+  }
+  const bad = onHead.find((run) => run.status !== 'completed' || run.conclusion !== 'success');
+  if (bad !== undefined) {
+    return `CI job "${job}" is ${bad.status === 'completed' ? String(bad.conclusion) : bad.status} on ${head}`;
+  }
+  return null;
 }
 
 export function workOutTier(f: Facts): Tier {
@@ -253,15 +311,27 @@ export function evaluate(f: Facts): GateResult {
 
   // 6. Done-when complete, and at least as long as the issue's own list
   const boxes = doneWhenBoxes(f.body);
+  const proofs = doneWhenProofs(f.body);
   const doneProblems: string[] = [];
+  // A box that names a proof is closed by the proof, not by the tick: the job or Iris's verdict must hold for this head.
+  const named = new Set(f.closingIssues.flatMap((issue) => issue.proofs));
+  let proven = 0;
+  for (const { proof, ticked } of proofs) {
+    const problem = proofRefusal(f, proof, hash, named, kind);
+    if (problem !== null) doneProblems.push(problem);
+    else if (!ticked) proven++;
+  }
+  const unticked = boxes.unticked - proofs.filter((p) => !p.ticked).length;
   if (boxes.ticked + boxes.unticked === 0)
     doneProblems.push('no Done-when checklist in the PR text');
-  if (boxes.unticked > 0) doneProblems.push(`${String(boxes.unticked)} unticked`);
+  if (unticked > 0) doneProblems.push(`${String(unticked)} unticked`);
   // A batch PR ticks one box per task (each task's own list was checked when it merged into staging).
   const expected =
     kind === 'batch' ? tasks.length : Math.max(0, ...tasks.map((issue) => issue.doneWhenBoxes));
-  if (boxes.ticked < expected) {
-    doneProblems.push(`${String(boxes.ticked)} ticked, the issue lists ${String(expected)}`);
+  if (boxes.ticked + proven < expected) {
+    doneProblems.push(
+      `${String(boxes.ticked + proven)} ticked or proven, the issue lists ${String(expected)}`,
+    );
   }
   // Athena's own PRs: the evidence names a commit the reviews hold for, and a fix round answers each finding (#138).
   if (kind === 'main') {

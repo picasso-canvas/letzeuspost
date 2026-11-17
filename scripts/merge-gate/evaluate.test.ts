@@ -122,6 +122,7 @@ describe('evaluate', () => {
               inRepo: true,
               labels: ['partner-feedback'],
               doneWhenBoxes: 0,
+              proofs: [],
               areas: ['**'],
             },
           ],
@@ -135,7 +136,14 @@ describe('evaluate', () => {
       failedIds(
         facts({
           closingIssues: [
-            { number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 0, areas: ['**'] },
+            {
+              number: 5,
+              inRepo: true,
+              labels: ['section'],
+              doneWhenBoxes: 0,
+              proofs: [],
+              areas: ['**'],
+            },
           ],
         }),
       ),
@@ -317,7 +325,14 @@ describe('evaluate', () => {
 
   it('refuses a title that would skip CI on main, and an issue in another repo', () => {
     expect(failedIds(facts({ title: 'fix [skip ci]' }))).toEqual([2]);
-    const other = { number: 42, inRepo: false, labels: [], doneWhenBoxes: 0, areas: ['**'] };
+    const other = {
+      number: 42,
+      inRepo: false,
+      labels: [],
+      doneWhenBoxes: 0,
+      proofs: [],
+      areas: ['**'],
+    };
     expect(failedIds(facts({ closingIssues: [other] }))).toEqual([2]);
   });
 
@@ -616,8 +631,22 @@ describe('evaluate: the batch PR from staging into main', () => {
       headRef: 'staging',
       body: batchBody,
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 6, areas: ['**'] },
-        { number: 43, inRepo: true, labels: ['build-task'], doneWhenBoxes: 4, areas: ['**'] },
+        {
+          number: 42,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 6,
+          proofs: [],
+          areas: ['**'],
+        },
+        {
+          number: 43,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 4,
+          proofs: [],
+          areas: ['**'],
+        },
       ],
       reviews: [review('argus', { bodyHash: bodyHash(batchBody) })],
       ...over,
@@ -764,7 +793,14 @@ describe('evaluate: round 3 of the #63 review', () => {
           proofs: [],
           areas: ['**'],
         },
-        { number: 99, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: ['**'] },
+        {
+          number: 99,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 2,
+          proofs: [],
+          areas: ['**'],
+        },
       ],
       reviews: [review('argus', { bodyHash: bodyHash(body) })],
     });
@@ -791,6 +827,7 @@ describe("evaluate: Athena's own PRs get ship's hand-over checks (#138)", () => 
           inRepo: true,
           labels: ['build-task'],
           doneWhenBoxes: 2,
+          proofs: [],
           areas: ['scripts/**'],
         },
       ],
@@ -801,7 +838,14 @@ describe("evaluate: Athena's own PRs get ship's hand-over checks (#138)", () => 
     );
     const unread = facts({
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: null },
+        {
+          number: 42,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 2,
+          proofs: [],
+          areas: null,
+        },
       ],
     });
     expect(evaluate(unread).items[1]?.detail).toContain("#42's Areas can't be read");
@@ -826,7 +870,14 @@ describe("evaluate: Athena's own PRs get ship's hand-over checks (#138)", () => 
       body: BODY.replace(' at `aaaaaaa`', ''),
       reviews: [],
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: null },
+        {
+          number: 42,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 2,
+          proofs: [],
+          areas: null,
+        },
       ],
     });
     expect(evaluate(staging).items[5]?.detail).not.toContain('head commit');
@@ -838,13 +889,20 @@ describe("evaluate: Areas are a build task's (#138, Argus F2 on #152)", () => {
   it('leaves a section issue, which has no Areas, alone; a build task with none is still refused', () => {
     const section = facts({
       closingIssues: [
-        { number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 2, areas: null },
+        { number: 5, inRepo: true, labels: ['section'], doneWhenBoxes: 2, proofs: [], areas: null },
       ],
     });
     expect(evaluate(section).items[1]?.detail).not.toContain('Areas');
     const task = facts({
       closingIssues: [
-        { number: 42, inRepo: true, labels: ['build-task'], doneWhenBoxes: 2, areas: null },
+        {
+          number: 42,
+          inRepo: true,
+          labels: ['build-task'],
+          doneWhenBoxes: 2,
+          proofs: [],
+          areas: null,
+        },
       ],
     });
     expect(evaluate(task).items[1]?.detail).toContain("#42's Areas can't be read");
