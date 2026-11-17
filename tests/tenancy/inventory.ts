@@ -3,14 +3,17 @@
 // never taken for an export, an action or a test.
 //
 // The list:
-// - `route <METHOD> <path>`: each HTTP method a route handler under apps/web/src/app exports;
-// - `page <path>` and `layout <path>`: each page and layout whose path holds an id (a `[segment]`): what a link with
-//   another workspace's id would open. A path without one takes no id, so it is left to its route or action;
+// - `route <METHOD> <path>`: each HTTP method a route handler under apps/web/src/app exports, and `route GET <path>`
+//   for each metadata image (`opengraph-image`, `twitter-image`, `icon`, `apple-icon`) and `sitemap` file whose path
+//   holds an id (a `[segment]`);
+// - `page <path>`, `layout <path>`, `template <path>` and `default <path>`: each of these whose path holds an id: what
+//   a link with another workspace's id would open. A path without one takes no id, so it is left to its route or
+//   action;
 // - `action <file>#<name>`: each server action in apps/web/src, from a `'use server'` file or function;
 // - `auth <METHOD> <path>`: each Better Auth endpoint packages/auth serves (SERVED_ENDPOINTS);
 // - `queue <name>`: each job queue (packages/db's queueNames);
 // - `job <name>`: each queue apps/worker runs a handler for (`jobs.work('<name>', …)`).
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -22,10 +25,21 @@ export const REPO_ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta
 const HTTP_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 const SOURCE = /\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts)$/;
 const NOT_APP_CODE = /\.(?:test|spec)\.[^.]+$|\.d\.ts$/;
-const SKIPPED_DIRS = new Set(['node_modules', '.next', 'dist']);
+/** Files under an id segment that Next renders for a URL, like a page. */
+const PAGE_KINDS = new Set(['page', 'layout', 'template', 'default']);
+/** Metadata files Next serves as GET routes of their own (an icon may carry a number: `icon1`). */
+const METADATA_IMAGE = /^(?:opengraph-image|twitter-image|icon|apple-icon)\d*$/;
+/** Folders Next would serve routes from that the list doesn't read (a root `app` or `pages` makes Next ignore src/). */
+const OTHER_ROUTERS = ['apps/web/src/pages', 'apps/web/pages', 'apps/web/app'];
+/** Folders a test in the suite may sit in without Vitest running it. */
+const NOT_RUN_DIRS = new Set(['node_modules', 'dist']);
 
-/** Every source file under `dir` (none if it doesn't exist), skipping build output and dependencies. */
-function sourceFiles(dir: string): string[] {
+/**
+ * Every source file under `dir` (none if it doesn't exist). The app and worker scans start at `src`, which holds no
+ * build output, so they skip nothing: inside `src/app`, a `dist` or `.well-known` folder is a route. Only the scan for
+ * tenancy tests passes `skipNotRun`, so a test Vitest wouldn't run never counts as cover.
+ */
+function sourceFiles(dir: string, skipNotRun = false): string[] {
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -35,7 +49,8 @@ function sourceFiles(dir: string): string[] {
   return entries.flatMap((entry) => {
     const at = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      return SKIPPED_DIRS.has(entry.name) || entry.name.startsWith('.') ? [] : sourceFiles(at);
+      const skipped = skipNotRun && (NOT_RUN_DIRS.has(entry.name) || entry.name.startsWith('.'));
+      return skipped ? [] : sourceFiles(at, skipNotRun);
     }
     return SOURCE.test(entry.name) ? [at] : [];
   });
@@ -135,8 +150,18 @@ function actionsIn(file: string, root: string): string[] {
 /** A segment Next leaves out of the URL: a route group `(name)` or a parallel route's slot `@name`. */
 const notInUrl = (segment: string) => /^\(.*\)$/.test(segment) || segment.startsWith('@');
 
-/** apps/web's route handlers, its pages and layouts with ids, and its server actions, under `root`. */
+/**
+ * apps/web's route handlers, its pages, layouts, templates, defaults and metadata routes with ids, and its server
+ * actions, under `root`. Throws when apps/web has a router folder besides src/app, which the list doesn't read.
+ */
 export function appEntries(root: string = REPO_ROOT): string[] {
+  for (const other of OTHER_ROUTERS) {
+    if (existsSync(path.join(root, other))) {
+      throw new Error(
+        `${other}: Next serves routes from it, but the suite lists only apps/web/src/app`,
+      );
+    }
+  }
   const web = path.join(root, 'apps/web/src');
   const app = path.join(web, 'app');
   const entries: string[] = [];
@@ -149,18 +174,20 @@ export function appEntries(root: string = REPO_ROOT): string[] {
         .dirname(relative)
         .split(path.sep)
         .filter((each) => each !== '.');
-      const url = `/${segments.filter((each) => !notInUrl(each)).join('/')}`;
+      const inUrl = segments.filter((each) => !notInUrl(each));
+      const url = `/${inUrl.join('/')}`;
       const kind = path.basename(file).replace(/\..*$/, '');
+      const takesId = segments.some((each) => each.startsWith('['));
       if (kind === 'route') {
         const exported = new Set(exportedValues(parse(file)));
         for (const method of HTTP_METHODS) {
           if (exported.has(method)) entries.push(`route ${method} ${url}`);
         }
-      } else if (
-        (kind === 'page' || kind === 'layout') &&
-        segments.some((each) => each.startsWith('['))
-      ) {
+      } else if (PAGE_KINDS.has(kind) && takesId) {
         entries.push(`${kind} ${url}`);
+      } else if ((METADATA_IMAGE.test(kind) || kind === 'sitemap') && takesId) {
+        const leaf = kind === 'sitemap' ? 'sitemap.xml' : kind;
+        entries.push(`route GET /${[...inUrl, leaf].join('/')}`);
       }
     }
     entries.push(...actionsIn(file, root));
@@ -222,7 +249,7 @@ function holdsTest(node: ts.Node): boolean {
 /** The entries the test files under `dir` cover: each `tenancy('<entry>', …)` block that holds a test. */
 export function coveredEntries(dir: string): string[] {
   const covered = new Set<string>();
-  for (const file of sourceFiles(dir)) {
+  for (const file of sourceFiles(dir, true)) {
     if (!/\.(?:test|spec)\.[^.]+$/.test(file)) continue;
     const visit = (node: ts.Node) => {
       if (
