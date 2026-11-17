@@ -12,7 +12,7 @@ import { askForLink, emailsTo, sessionCookies, signInLink } from '../lib/sign-in
 // Workspaces in the app (#79), in the `app-light` and `app-dark` projects (1440 px): the people the seeds make sign in
 // through the real flow (the link asked for on /sign-in, the email in Mailpit, the link opened) and land in their
 // workspace under /app (Q13); a person in two workspaces switches between them and sees only the one they're in; the
-// avatar menu signs out. The Inbox's frame is screenshotted in both themes and checked with axe.
+// avatar menu signs out. The Inbox's frame, and its loading state, are screenshotted in both themes and checked with axe.
 //
 // Baselines (Q11), as in home.spec.ts: CI renders the screenshot and uploads it (`e2e-screenshots`); Iris and Zeus
 // approve the first ones; then Athena commits them to tests/visual/approved/. A builder never writes that folder, so
@@ -88,6 +88,32 @@ async function capture(page: Page, testInfo: TestInfo, state: string) {
   }
 }
 
+/**
+ * The switcher's workspace mark, as drawn: its fill and its initials' colour, beside the theme's ink (`foreground`) and
+ * paper (`background`) tokens, all as the browser computes them (`rgb(…)`), so they compare whatever the notation.
+ */
+async function markColours(page: Page) {
+  return switcher(page)
+    .locator('[data-slot="avatar-fallback"]')
+    .evaluate((mark) => {
+      const token = (name: string) => {
+        const probe = document.createElement('i');
+        probe.style.color = `var(${name})`;
+        mark.append(probe);
+        const colour = getComputedStyle(probe).color;
+        probe.remove();
+        return colour;
+      };
+      const drawn = getComputedStyle(mark);
+      return {
+        fill: drawn.backgroundColor,
+        initials: drawn.color,
+        ink: token('--color-foreground'),
+        paper: token('--color-background'),
+      };
+    });
+}
+
 async function seriousIssues(page: Page) {
   const { violations } = await new AxeBuilder({ page }).analyze();
   return violations
@@ -122,6 +148,12 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
     page.getByRole('heading', { level: 2, name: 'Nothing waiting. Even gods take breaks.' }),
   ).toBeVisible();
   await settled(page);
+
+  // The workspace's mark, as the mockup's 03-inbox draws it: a filled dark disc with light initials (Iris F2). The tokens
+  // are the ink pair, so it is the same classes in light and dark.
+  const mark = await markColours(page);
+  expect(mark.fill).toBe(mark.ink);
+  expect(mark.initials).toBe(mark.paper);
 
   // The frame, drawn in the project's theme, for Iris (and, once approved, compared with its baseline).
   await capture(page, testInfo, 'inbox');
@@ -356,5 +388,63 @@ test('the frame’s states: long and Bangla names, the switcher open, switching,
     expect(await seriousIssues(page)).toEqual([]);
   } finally {
     await removeRun([long, bangla], [lina.email, sumi.email]);
+  }
+});
+
+// ---- /app on its way (Iris F4, round 5) -------------------------------------------------------------------------
+
+test('/app on its way: the frame and the Inbox are skeletons until the guard has opened the workspace', async ({
+  browser,
+  page,
+}, testInfo) => {
+  // seed:dev's people, as in the first test: its Owner in the light project and its Editor in the dark one.
+  const seed = devSeed();
+  await runSeed(ownerUrl, seed);
+  const theme = themeOf(testInfo.project.name);
+  const person = seed.people.find((p) => p.role === (theme === 'light' ? 'owner' : 'editor'));
+  if (person === undefined) throw new Error('seed:dev has no such person');
+  await signIn(page, person.email);
+
+  // The same session in a page that runs no script. The browser draws the HTML as it streams in: the skeleton comes
+  // first, and the guarded frame that follows it stays hidden, as React's script is what swaps it in. So the page
+  // stays in the state a person sees while the guard opens the workspace.
+  const { viewport, colorScheme, deviceScaleFactor, userAgent } = testInfo.project.use;
+  const still = await browser.newContext({
+    viewport,
+    colorScheme,
+    deviceScaleFactor,
+    userAgent,
+    baseURL: origin,
+    storageState: await page.context().storageState(),
+    javaScriptEnabled: false,
+  });
+  try {
+    const loading = await still.newPage();
+    await loading.goto(INBOX);
+    // The theme is put on <html> by a script too: do what it does.
+    await loading.evaluate(() => {
+      const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.classList.toggle('dark', dark);
+    });
+
+    // The gallery's skeletons where the switcher and the list will be; the page's heading and line as they will be.
+    await expect(loading.locator('[data-slot="workspace-switcher-skeleton"]')).toBeVisible();
+    await expect(loading.locator('[data-slot="sidebar-menu-skeleton"]').first()).toBeVisible();
+    await expect(loading.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+    await expect(
+      loading.getByRole('status').filter({ hasText: 'Loading workspaces…' }),
+    ).toHaveCount(1);
+    await expect(
+      loading.getByRole('status').filter({ hasText: 'Loading your Inbox…' }),
+    ).toHaveCount(1);
+    // Nothing of the workspace shows before the guard has answered: the real switcher and avatar are still hidden.
+    await expect(loading.locator('[data-slot="workspace-switcher"]')).toBeHidden();
+    await expect(loading.locator('[data-slot="account-menu"]')).toBeHidden();
+
+    await settled(loading);
+    await capture(loading, testInfo, 'loading');
+    expect(await seriousIssues(loading)).toEqual([]);
+  } finally {
+    await still.close();
   }
 });
