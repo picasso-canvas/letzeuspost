@@ -1,7 +1,7 @@
 // The tenancy suite's list of what a request or a job can reach (§17: "the list of routes comes from the app itself, so
 // a new route without a tenancy test fails the suite"). The list is read from the code: apps/web's route handlers, its
-// pages and layouts with ids in their path, its server actions, packages/auth's Better Auth endpoints, packages/db's
-// job queues and the handlers apps/worker registers. Every entry needs a `tenancy('<entry>', …)` block in this folder
+// pages, layouts, templates, defaults and metadata routes with ids in their path, its server actions, packages/auth's
+// Better Auth endpoints, packages/db's job queues and the handlers apps/worker registers. Every entry needs a `tenancy('<entry>', …)` block in this folder
 // with at least one test in it; this file fails on one that has none, and on a block that names nothing on the list.
 // It reads files only, so it needs no service, but it runs with the rest of the suite in CI's `services` job.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -199,6 +199,13 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
          describe('nested', () => { test('counts', () => {}); });
        });`,
     );
+    // Vitest doesn't run a test under dist, node_modules or a dot folder, so one there covers nothing.
+    for (const hidden of ['dist', 'node_modules', '.cache']) {
+      await write(
+        `tests/${hidden}/brands.test.ts`,
+        `tenancy('page /brands/[brandId]', () => { it('never runs', () => {}); });`,
+      );
+    }
     expect(coveredEntries(path.join(root, 'tests')).sort()).toEqual([
       'layout /brands/[brandId]/posts/[postId]',
       'route GET /api/brands/[brandId]',
