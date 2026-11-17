@@ -98,7 +98,7 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
       'export default function Panel() { return null; }',
     );
     // Metadata files are GET routes of their own: a brand's share image or sitemap reads the brand by its id.
-    for (const image of ['opengraph-image', 'twitter-image', 'icon', 'apple-icon']) {
+    for (const image of ['opengraph-image', 'twitter-image', 'icon', 'icon1', 'apple-icon']) {
       await write(
         `apps/web/src/app/(app)/brands/[brandId]/${image}.tsx`,
         'export default function Image() { return null; }',
@@ -163,6 +163,7 @@ describe('a new route without a tenancy test fails the suite (a fixture app)', (
         'route GET /brands/[brandId]/opengraph-image',
         'route GET /brands/[brandId]/twitter-image',
         'route GET /brands/[brandId]/icon',
+        'route GET /brands/[brandId]/icon1',
         'route GET /brands/[brandId]/apple-icon',
         'route GET /brands/[brandId]/sitemap.xml',
         'route GET /dist/[fileId]',
