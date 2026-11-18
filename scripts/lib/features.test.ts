@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dispatchRefusal,
   featureBatch,
-  stagingFeature,
+  stagingFeatures,
   toTaskIssue,
   featureOf,
   followUpOf,
@@ -179,45 +179,45 @@ describe('featureBatch', () => {
   const base = {
     onStaging: [150, 71, 144],
     issues,
-    featureTasks: [150, 71],
-    journeyMarked: false,
+    featureTasks: { data: [150, 71] },
+    journeyMarked: [],
     lines: 400,
   };
 
   it('opens the batch when every task of the open feature is on staging and its journey is unmarked', () => {
     expect(featureBatch(base)).toEqual({
       due: true,
-      feature: 'data',
+      features: ['data'],
       reason: 'every task of feature "data" is on staging (#150, #71)',
     });
   });
 
   it("waits for the feature's missing tasks; a journey mark is only a warning, since the gate holds the batch on CI's result (#156)", () => {
-    expect(featureBatch({ ...base, featureTasks: [150, 71, 72, 73] })).toEqual({
+    expect(featureBatch({ ...base, featureTasks: { data: [150, 71, 72, 73] } })).toEqual({
       due: false,
-      feature: 'data',
+      features: ['data'],
       reason: 'feature "data" still needs #72, #73 on staging',
     });
-    expect(featureBatch({ ...base, journeyMarked: true })).toEqual({
+    expect(featureBatch({ ...base, journeyMarked: ['data'] })).toEqual({
       due: true,
-      feature: 'data',
+      features: ['data'],
       reason:
         'every task of feature "data" is on staging (#150, #71). Warning: its journey test still looks marked or switched off, and the merge gate holds the batch until CI shows the journey ran and passed',
     });
   });
 
   it('opens a part of a feature that outgrows the size cap', () => {
-    expect(featureBatch({ ...base, featureTasks: [150, 71, 72], lines: 1600 })).toEqual({
+    expect(featureBatch({ ...base, featureTasks: { data: [150, 71, 72] }, lines: 1600 })).toEqual({
       due: true,
-      feature: 'data',
+      features: ['data'],
       reason: 'staging is 1600 changed lines ahead: a part of feature "data"',
     });
   });
 
   it('opens a batch of tasks with no feature (follow-ups, which dispatch admits) on their own', () => {
-    expect(featureBatch({ ...base, onStaging: [144], featureTasks: [] })).toEqual({
+    expect(featureBatch({ ...base, onStaging: [144], featureTasks: {} })).toEqual({
       due: true,
-      feature: null,
+      features: [],
       reason: 'staging holds only tasks with no feature (#144)',
     });
   });
@@ -231,39 +231,80 @@ describe('featureBatch', () => {
       }),
     ).toEqual({
       due: false,
-      feature: null,
+      features: [],
       reason: '#72 has two features (data, sign-in): Athena fixes its labels first',
     });
   });
 
-  it('refuses to open while staging holds two features, and has nothing to open when empty', () => {
-    expect(
-      featureBatch({
-        ...base,
-        issues: { ...issues, 75: task(75, ['feature:app-shell']) },
-        onStaging: [150, 75],
-      }),
-    ).toEqual({ due: false, feature: null, reason: 'staging holds two features: data, app-shell' });
-    expect(featureBatch({ ...base, onStaging: [], featureTasks: [] })).toEqual({
+  it('has nothing to open when staging is empty', () => {
+    expect(featureBatch({ ...base, onStaging: [], featureTasks: {} })).toEqual({
       due: false,
-      feature: null,
+      features: [],
       reason: 'staging holds no task',
+    });
+  });
+
+  describe('staging holds several features (#265)', () => {
+    const several = {
+      ...base,
+      issues: {
+        ...issues,
+        75: task(75, ['feature:app-shell']),
+        76: task(76, ['feature:app-shell']),
+      },
+      onStaging: [150, 71, 75, 76],
+      featureTasks: { data: [150, 71], 'app-shell': [75, 76] },
+    };
+
+    it('opens one batch when every feature on staging has all its tasks there', () => {
+      expect(featureBatch(several)).toEqual({
+        due: true,
+        features: ['data', 'app-shell'],
+        reason: 'every task of features "data", "app-shell" is on staging (#150, #71, #75, #76)',
+      });
+    });
+
+    it("waits while any one feature's tasks are missing, naming each", () => {
+      expect(
+        featureBatch({ ...several, featureTasks: { data: [150, 71, 72], 'app-shell': [75, 76, 77] } }),
+      ).toEqual({
+        due: false,
+        features: ['data', 'app-shell'],
+        reason:
+          'feature "data" still needs #72 on staging; feature "app-shell" still needs #77 on staging',
+      });
+    });
+
+    it('warns for the features whose journey still looks marked, not the others', () => {
+      expect(featureBatch({ ...several, journeyMarked: ['app-shell'] }).reason).toBe(
+        'every task of features "data", "app-shell" is on staging (#150, #71, #75, #76). Warning: the journey test of feature "app-shell" still looks marked or switched off, and the merge gate holds the batch until CI shows each journey ran and passed',
+      );
+      expect(featureBatch({ ...several, journeyMarked: ['data', 'app-shell'] }).reason).toContain(
+        'the journey tests of features "data", "app-shell" still look marked',
+      );
+    });
+
+    it('opens a part of several features that outgrow the size cap', () => {
+      expect(featureBatch({ ...several, lines: 1600 })).toEqual({
+        due: true,
+        features: ['data', 'app-shell'],
+        reason: 'staging is 1600 changed lines ahead: a part of features "data", "app-shell"',
+      });
     });
   });
 });
 
-describe('stagingFeature', () => {
-  it('names the one feature on staging, none, or why it cannot', () => {
+describe('stagingFeatures', () => {
+  it('names the features on staging, none, or why it cannot', () => {
     const issues = {
       1: task(1, ['feature:data']),
       2: task(2, ['follow-up']),
       3: task(3, ['feature:app-shell']),
     };
-    expect(stagingFeature([1, 2], issues)).toEqual({ feature: 'data' });
-    expect(stagingFeature([2], issues)).toEqual({ feature: null });
-    expect(stagingFeature([1, 3], issues)).toEqual({
-      refusal: 'staging holds two features: data, app-shell',
-    });
+    expect(stagingFeatures([1, 2], issues)).toEqual({ features: ['data'] });
+    expect(stagingFeatures([2], issues)).toEqual({ features: [] });
+    expect(stagingFeatures([1, 3], issues)).toEqual({ features: ['data', 'app-shell'] });
+    expect(stagingFeatures([3, 1, 3], issues)).toEqual({ features: ['app-shell', 'data'] });
   });
 });
 
