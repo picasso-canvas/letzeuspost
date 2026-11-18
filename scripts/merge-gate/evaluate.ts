@@ -62,32 +62,21 @@ export function doneWhenBoxes(markdown: string): { ticked: number; unticked: num
 }
 
 // `(proof: ci:<job>)` or `(proof: iris)` at the end of a box's own line: the gate, not the builder, proves the box (#253).
-const PROOF = /\(proof:\s*(?:(iris)|ci:\s*`?([\w.-]+)`?)\s*\)/i;
+// Inline code is blanked first, so a box that only quotes a marker isn't marked.
+const PROOF = /\(proof:\s*(?:(iris)|ci:\s*([\w.-]+))\s*\)\s*$/i;
 
-/** The boxes in a "Done when" list that the gate proves, as `ci:<job>` or `iris`, and whether each is ticked. */
-export function doneWhenProofs(markdown: string): { proof: string; ticked: boolean }[] {
-  const proofs: { proof: string; ticked: boolean }[] = [];
-  for (const { ticked, line } of doneWhenLines(markdown)) {
-    const found = PROOF.exec(line);
-    if (found === null) continue;
-    proofs.push({ proof: found[1] === undefined ? `ci:${String(found[2])}` : 'iris', ticked });
-  }
-  return proofs;
+/** Every box in a "Done when" list, in order, with the proof it names (`ci:<job>`, `iris`) or null, and whether it is ticked. */
+export function doneWhenMarks(markdown: string): { proof: string | null; ticked: boolean }[] {
+  return doneWhenLines(markdown).map(({ ticked, line }) => {
+    const found = PROOF.exec(line.replace(/`[^`]*`/g, ''));
+    if (found === null) return { proof: null, ticked };
+    return { proof: found[1] === undefined ? `ci:${String(found[2])}` : 'iris', ticked };
+  });
 }
 
 /** Why a proof named on a Done-when box doesn't hold for this head commit; null when it does. */
-function proofRefusal(
-  f: Facts,
-  proof: string,
-  hash: string,
-  named: Set<string>,
-  kind: string | null,
-): string | null {
+function proofRefusal(f: Facts, proof: string, hash: string): string | null {
   const head = f.headSha.slice(0, 7);
-  // Only a proof the issue's own list (Athena's) names counts; a batch ticks one box per task and names none.
-  if (kind !== 'batch' && !named.has(proof)) {
-    return `"${proof}" is a proof the closing issue's Done-when list doesn't name`;
-  }
   if (proof === 'iris') {
     const passes = f.reviews.filter(
       (r) =>
@@ -311,17 +300,41 @@ export function evaluate(f: Facts): GateResult {
 
   // 6. Done-when complete, and at least as long as the issue's own list
   const boxes = doneWhenBoxes(f.body);
-  const proofs = doneWhenProofs(f.body);
+  const marks = doneWhenMarks(f.body);
   const doneProblems: string[] = [];
   // A box that names a proof is closed by the proof, not by the tick: the job or Iris's verdict must hold for this head.
-  const named = new Set(f.closingIssues.flatMap((issue) => issue.proofs));
+  // The proof must sit on the same box of the closing issue's own list (Athena's), and no marker may be dropped from it.
+  // A batch PR ticks one box per task and names no proofs.
   let proven = 0;
-  for (const { proof, ticked } of proofs) {
-    const problem = proofRefusal(f, proof, hash, named, kind);
+  marks.forEach(({ proof, ticked }, index) => {
+    if (proof === null) return;
+    const box = `box ${String(index + 1)}`;
+    if (kind === 'batch') {
+      doneProblems.push(`${box} names "${proof}", and a batch PR names no proofs`);
+      return;
+    }
+    if (!tasks.some((issue) => issue.proofs[index] === proof)) {
+      doneProblems.push(
+        `${box} names "${proof}", but the closing issue's list has no such proof on ${box}`,
+      );
+      return;
+    }
+    const problem = proofRefusal(f, proof, hash);
     if (problem !== null) doneProblems.push(problem);
     else if (!ticked) proven++;
+  });
+  if (kind !== 'batch') {
+    for (const issue of tasks) {
+      issue.proofs.forEach((proof, index) => {
+        if (proof !== null && marks[index]?.proof !== proof) {
+          doneProblems.push(
+            `box ${String(index + 1)} lost its "${proof}" marker from issue #${String(issue.number)}`,
+          );
+        }
+      });
+    }
   }
-  const unticked = boxes.unticked - proofs.filter((p) => !p.ticked).length;
+  const unticked = boxes.unticked - marks.filter((m) => m.proof !== null && !m.ticked).length;
   if (boxes.ticked + boxes.unticked === 0)
     doneProblems.push('no Done-when checklist in the PR text');
   if (unticked > 0) doneProblems.push(`${String(unticked)} unticked`);

@@ -89,7 +89,7 @@ describe('collectFacts', () => {
         inRepo: true,
         labels: ['build-task'],
         doneWhenBoxes: 2,
-        proofs: ['ci:services'],
+        proofs: [null, 'ci:services'],
         areas: ['packages/ui/**'],
       },
       {

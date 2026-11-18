@@ -7,7 +7,7 @@ import { wantsComments, type OpenIssue } from '../lib/follow-ups.ts';
 import { parseJourneyReport } from '../lib/journey-proof.ts';
 import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
-import { bodyHash, doneWhenBoxes, doneWhenProofs } from './evaluate.ts';
+import { bodyHash, doneWhenBoxes, doneWhenMarks } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
 import { parseVerdict } from './verdict.ts';
 import type { CheckRun, ClosingIssue, Facts, GateConfig, ReviewRecord } from './types.ts';
@@ -344,7 +344,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       inRepo: true,
       labels: issue.labels.map((label) => label.name),
       doneWhenBoxes: boxes.ticked + boxes.unticked,
-      proofs: doneWhenProofs(issue.body).map((p) => p.proof),
+      proofs: doneWhenMarks(issue.body).map((box) => box.proof),
       areas: 'patterns' in areas ? areas.patterns : null,
     };
   });

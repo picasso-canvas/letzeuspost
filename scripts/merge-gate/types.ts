@@ -49,8 +49,8 @@ export interface ClosingIssue {
   labels: string[];
   /** Boxes in the issue's own Done-when list, which Athena wrote. */
   doneWhenBoxes: number;
-  /** Boxes in that list the gate proves (`ci:<job>`, `iris`): the only proofs a PR's own list may name (#253). */
-  proofs: string[];
+  /** One entry per box of that list: the proof the gate makes (`ci:<job>`, `iris`) or null. A PR may name only these, on these boxes (#253). */
+  proofs: (string | null)[];
   /** The paths and globs on the issue's **Areas:** line (#138); null when it can't be read. */
   areas: string[] | null;
 }
