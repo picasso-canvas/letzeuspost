@@ -251,13 +251,16 @@ export function evaluate(f: Facts): GateResult {
   for (const status of f.statuses) {
     if (status.state !== 'success') checks.push(`status "${status.context}" is ${status.state}`);
   }
-  // A batch that completes a feature: CI's own report shows its journey ran and passed (§19, #156).
-  if (kind === 'batch' && f.journey !== null) {
-    if (f.journey.unreadable !== undefined)
-      checks.push(
-        `the journey report of the services run on this commit can't be read: ${f.journey.unreadable}`,
-      );
-    else checks.push(...journeyProof(f.journey.entries, f.journey.feature, f.journey.files));
+  // A batch that completes features: CI's own report shows each journey ran and passed (§19, #156, #265). An
+  // unreadable report is one fact, said once; a journey's own failures name its test files.
+  if (kind === 'batch') {
+    const unreadable = new Set<string>();
+    for (const journey of f.journeys) {
+      if (journey.unreadable !== undefined) unreadable.add(journey.unreadable);
+      else checks.push(...journeyProof(journey.entries, journey.feature, journey.files));
+    }
+    for (const why of unreadable)
+      checks.push(`the journey report of the services run on this commit can't be read: ${why}`);
   }
   add(3, 'Checks green', checks);
 

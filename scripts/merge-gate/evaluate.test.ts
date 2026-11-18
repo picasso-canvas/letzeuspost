@@ -707,7 +707,9 @@ describe('evaluate: the batch PR from staging into main', () => {
       mode: 'run',
     };
     expect(
-      failedIds(batch({ journeys: [{ feature: 'data', entries: [passed], files: [passed.file] }] })),
+      failedIds(
+        batch({ journeys: [{ feature: 'data', entries: [passed], files: [passed.file] }] }),
+      ),
     ).toEqual([]);
     // A journey file no runner reported holds the batch too (Argus F1 in round 2 on #171).
     const unreported = batch({
@@ -759,9 +761,7 @@ describe('evaluate: the batch PR from staging into main', () => {
       entries: [entry(feature, state)],
       files: [`tests/journeys/${feature}.int.test.ts`],
     });
-    expect(
-      failedIds(batch({ journeys: [journey('workspaces'), journey('sign-in')] })),
-    ).toEqual([]);
+    expect(failedIds(batch({ journeys: [journey('workspaces'), journey('sign-in')] }))).toEqual([]);
     const oneFails = batch({ journeys: [journey('workspaces'), journey('sign-in', 'failed')] });
     expect(failedIds(oneFails)).toEqual([3]);
     expect(evaluate(oneFails).items[2]?.detail).toContain('tests/journeys/sign-in.int.test.ts');

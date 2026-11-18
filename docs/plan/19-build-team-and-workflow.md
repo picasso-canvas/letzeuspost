@@ -43,7 +43,10 @@ Reviewers never review their own work and always start from a fresh context. The
    with no screen. It lands marked as expected to fail (`test.fail()`), so CI stays green, and the feature's last
    task removes the mark, so the feature is done when its journey passes in CI. The feature's batch doesn't open
    while the mark is still there. A small planned fix joins the feature whose files it touches; a follow-up from a
-   batch review doesn't join a feature, it rides the open batch (step 3). Built in #139.
+   batch review doesn't join a feature, it rides the open batch (step 3). Built in #139. A batch may close the tasks
+   of several complete features, each held by its own journey in CI
+   ([Zeus, 2026-11-18](https://github.com/picasso-canvas/letzeuspost/issues/265)); dispatch still opens one feature
+   at a time (below).
 2. **Ready.** Athena moves tasks from approved sections to **Ready to build**. Zeus can pull any back.
 3. **Dispatch.** Athena runs `scripts/dispatch.ts <issue>`: a fresh `--no-local` clone of the repo with no remote, on
    the issue's branch (`<issue>-<slug>`; an existing branch keeps its name, must contain current main and must not touch

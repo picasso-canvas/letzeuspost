@@ -358,11 +358,12 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       '.check_runs[] | {name, status, conclusion, app: .app.slug, url: .details_url, sha: .head_sha}',
     ]),
   );
-  // A batch that completes a feature is held until the services run on its head shows the journey passed (§19, #156).
-  // A part of a feature (another of its build tasks still open) isn't: its journey is still marked, by design. The gate
-  // names the open tasks that made it a part (Argus F3, Cerberus F2 on #171).
-  let journey: Facts['journey'] = null;
-  let journeyPart: Facts['journeyPart'] = null;
+  // A batch may close several features (#265). Each one that is complete is held until the services run on its head
+  // shows its journey passed (§19, #156); one that is only a part (another of its build tasks still open) isn't: its
+  // journey is still marked, by design. The gate names the open tasks that made it a part (Argus F3, Cerberus F2 on
+  // #171).
+  const journeys: Facts['journeys'] = [];
+  const journeyParts: Facts['journeyParts'] = [];
   if (isBatch) {
     const features = [
       ...new Set(
@@ -372,12 +373,12 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
           .filter((x) => x !== null),
       ),
     ];
-    if (features.length > 1)
-      throw new Error(
-        `the batch closes tasks of two features (${features.join(', ')}): §19 batches one feature at a time`,
-      );
-    const feature = features[0];
-    if (feature !== undefined) {
+    // This repository's issues only: another's #73 isn't this feature's task (Argus F4 on #171).
+    const closes = new Set(closingIssues.filter((i) => i.inRepo).map((i) => i.number));
+    // The services run is one run, so its report is read once however many features it holds.
+    let report: Pick<Facts['journeys'][number], 'entries' | 'unreadable'> | undefined;
+    let journeyFiles: string[] = [];
+    for (const feature of features) {
       const open = (
         JSON.parse(
           gh([
@@ -399,26 +400,26 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
         // Only a build task makes the feature unfinished: a stray issue with the label doesn't (Argus F3 on #171).
         .filter((i) => i.labels.some((l) => l.name === 'build-task'))
         .map((i) => i.number);
-      // This repository's issues only: another's #73 isn't this feature's task (Argus F4 on #171).
-      const closes = new Set(closingIssues.filter((i) => i.inRepo).map((i) => i.number));
       const rest = open.filter((n) => !closes.has(n));
-      if (rest.length > 0) journeyPart = { feature, open: rest };
-      else {
+      if (rest.length > 0) {
+        journeyParts.push({ feature, open: rest });
+        continue;
+      }
+      if (report === undefined) {
         const services = checkRuns.find((r) => r.name === 'services' && r.app === 'github-actions');
         const runId = /\/actions\/runs\/(\d+)\//.exec(services?.url ?? '')?.[1];
         const files =
           runId === undefined ? null : (deps.readJourneyReport?.(Number(runId)) ?? null);
         const parsed = files === null ? null : parseJourneyReport(files);
+        report =
+          typeof parsed === 'string' ? { entries: null, unreadable: parsed } : { entries: parsed };
         // The head commit's journey files: one no runner reported holds the batch (Argus F1 in round 2 on #171).
-        const journeyFiles = deps
+        journeyFiles = deps
           .git(['ls-tree', '-r', '--name-only', sha, '--', 'tests/journeys/'])
           .split('\n')
           .filter((line) => line !== '');
-        journey =
-          typeof parsed === 'string'
-            ? { feature, entries: null, files: journeyFiles, unreadable: parsed }
-            : { feature, entries: parsed, files: journeyFiles };
       }
+      journeys.push({ feature, ...report, files: journeyFiles });
     }
   }
   const statuses = jsonLines<{ context: string; state: string }>(
@@ -456,8 +457,8 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     ...handoverFacts(pr, sha, base, deps),
     labels: view.labels.map((label) => label.name),
     checkRuns,
-    journey,
-    journeyPart,
+    journeys,
+    journeyParts,
     statuses,
     reviews: reviewsFor(pr, sha, base, deps),
     sensitivePatterns: sensitiveList === null ? null : parsePatternList(sensitiveList),

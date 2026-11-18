@@ -266,7 +266,10 @@ describe('featureBatch', () => {
 
     it("waits while any one feature's tasks are missing, naming each", () => {
       expect(
-        featureBatch({ ...several, featureTasks: { data: [150, 71, 72], 'app-shell': [75, 76, 77] } }),
+        featureBatch({
+          ...several,
+          featureTasks: { data: [150, 71, 72], 'app-shell': [75, 76, 77] },
+        }),
       ).toEqual({
         due: false,
         features: ['data', 'app-shell'],

@@ -1,4 +1,4 @@
-// Feature batches (§19, Zeus 2026-11-10, #139): one feature open at a time on `staging`; its tasks build in parallel,
+// Feature batches (§19, Zeus 2026-11-10, #139): one feature open at a time on `staging` (dispatch's rule); its tasks build in parallel,
 // and its batch into `main` opens when every one of them is on `staging` (the merge gate then holds it until CI shows
 // the journey ran and passed, #156), or as a part when `staging` outgrows the size cap. Follow-ups of a merged batch, and harness
 // tasks, run alongside. Dispatch and batch.ts gather the facts; these functions decide.
@@ -133,11 +133,11 @@ export function toTaskIssue(view: {
   };
 }
 
-/** The one feature on staging, none (only tasks without one), or why there can't be one. */
-export function stagingFeature(
+/** The features on staging (a batch may close several, #265), none (only tasks without one), or why there can't be any. */
+export function stagingFeatures(
   onStaging: readonly number[],
   issues: Readonly<Record<number, TaskIssue>>,
-): { feature: string | null } | { refusal: string } {
+): { features: string[] } | { refusal: string } {
   const features: string[] = [];
   for (const n of onStaging) {
     const issue = issues[n];
@@ -152,53 +152,62 @@ export function stagingFeature(
     }
     if (feature !== null && !features.includes(feature)) features.push(feature);
   }
-  if (features.length > 1) return { refusal: `staging holds two features: ${features.join(', ')}` };
-  return { feature: features[0] ?? null };
+  return { features };
 }
 
 /**
  * Whether the batch is due. `onStaging` are the task issues the gate merged into `staging` since `main`;
- * `featureTasks` are the open feature's open task issues, wherever they are.
+ * `featureTasks` are each feature on `staging`'s open task issues, wherever they are; `journeyMarked` names the
+ * features whose journey test still looks marked. The batch closes every feature on `staging`, each held by its own
+ * journey (#265), so it is due only when every one of them is complete (or `staging` outgrows the size cap).
  */
 export function featureBatch(input: {
   onStaging: readonly number[];
   issues: Readonly<Record<number, TaskIssue>>;
-  featureTasks: readonly number[];
-  journeyMarked: boolean;
+  featureTasks: Readonly<Record<string, readonly number[]>>;
+  journeyMarked: readonly string[];
   lines: number;
-}): { due: boolean; feature: string | null; reason: string } {
+}): { due: boolean; features: string[]; reason: string } {
   if (input.onStaging.length === 0)
-    return { due: false, feature: null, reason: 'staging holds no task' };
-  const found = stagingFeature(input.onStaging, input.issues);
-  if ('refusal' in found) return { due: false, feature: null, reason: found.refusal };
-  const feature = found.feature;
+    return { due: false, features: [], reason: 'staging holds no task' };
+  const found = stagingFeatures(input.onStaging, input.issues);
+  if ('refusal' in found) return { due: false, features: [], reason: found.refusal };
+  const features = found.features;
   const list = (ns: readonly number[]) => ns.map((n) => `#${String(n)}`).join(', ');
-  if (feature === null)
+  const names = (fs: readonly string[]) => fs.map((f) => `"${f}"`).join(', ');
+  if (features.length === 0)
     return {
       due: true,
-      feature: null,
+      features,
       reason: `staging holds only tasks with no feature (${list(input.onStaging)})`,
     };
+  const which =
+    features.length === 1 ? `feature ${names(features)}` : `features ${names(features)}`;
   if (input.lines >= BATCH_LINES)
     return {
       due: true,
-      feature,
-      reason: `staging is ${String(input.lines)} changed lines ahead: a part of feature "${feature}"`,
+      features,
+      reason: `staging is ${String(input.lines)} changed lines ahead: a part of ${which}`,
     };
-  const missing = input.featureTasks.filter((n) => !input.onStaging.includes(n));
-  if (missing.length > 0)
-    return {
-      due: false,
-      feature,
-      reason: `feature "${feature}" still needs ${list(missing)} on staging`,
-    };
+  const missing = features.flatMap((feature) => {
+    const left = (input.featureTasks[feature] ?? []).filter((n) => !input.onStaging.includes(n));
+    return left.length === 0 ? [] : [`feature "${feature}" still needs ${list(left)} on staging`];
+  });
+  if (missing.length > 0) return { due: false, features, reason: missing.join('; ') };
   // The mark is only reported: the merge gate holds the batch on CI's result, which no pattern here can fool (#156).
-  const warning = input.journeyMarked
-    ? '. Warning: its journey test still looks marked or switched off, and the merge gate holds the batch until CI shows the journey ran and passed'
-    : '';
+  const marked = features.filter((feature) => input.journeyMarked.includes(feature));
+  let warning = '';
+  if (marked.length > 0 && features.length === 1)
+    warning =
+      '. Warning: its journey test still looks marked or switched off, and the merge gate holds the batch until CI shows the journey ran and passed';
+  else if (marked.length > 0) {
+    const one = marked.length === 1;
+    warning = `. Warning: the journey ${one ? 'test' : 'tests'} of ${one ? 'feature' : 'features'} ${names(marked)} still ${one ? 'looks' : 'look'} marked or switched off, and the merge gate holds the batch until CI shows each journey ran and passed`;
+  }
+  const tasks = features.flatMap((feature) => input.featureTasks[feature] ?? []);
   return {
     due: true,
-    feature,
-    reason: `every task of feature "${feature}" is on staging (${list(input.featureTasks)})${warning}`,
+    features,
+    reason: `every task of ${which} is on staging (${list(tasks)})${warning}`,
   };
 }
