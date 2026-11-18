@@ -139,31 +139,49 @@ describe('GHSA-fc5q-39xc-vjpf (picomatch) stays on its accepted path', () => {
   });
 });
 
-/** The ids under `audit.ignore` in pnpm-workspace.yaml (the list `pnpm audit` skips). */
-function auditIgnored(workspace: string): string[] {
-  const block = /^audit:\n {2}ignore:\n((?: {4}.*\n|\n)*)/m.exec(workspace)?.[1] ?? '';
-  return block
-    .split('\n')
-    .map((line) => /^ {4}- (GHSA-[\w-]+)\s*$/.exec(line)?.[1])
-    .filter((id): id is string => id !== undefined);
+/** The lines under the top-level `audit:` key in pnpm-workspace.yaml, up to the next top-level key. */
+function auditBlock(workspace: string): string[] {
+  const lines = workspace.split('\n');
+  const start = lines.findIndex((line) => /^audit:\s*$/.test(line));
+  if (start === -1) return [];
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^\S/.test(line));
+  return end === -1 ? rest : rest.slice(0, end);
 }
 
-/** When osv-scanner.toml stops accepting `id`; null when it doesn't accept it. */
+const IGNORE_ITEM = /^ {4}- (GHSA-[\w-]+)\s*(?:#.*)?$/;
+
+/** The ids under `audit.ignore` in pnpm-workspace.yaml (the list `pnpm audit` skips). */
+function auditIgnored(workspace: string): string[] {
+  return auditBlock(workspace).flatMap((line) => IGNORE_ITEM.exec(line)?.[1] ?? []);
+}
+
+/** When osv-scanner.toml stops accepting `id` (NaN when its date can't be read); null when it doesn't accept it. */
 function acceptedUntil(osv: string, id: string): Date | null {
-  const entry = osv.split('[[IgnoredVulns]]').find((part) => part.includes(`id = "${id}"`));
-  const until = /ignoreUntil = (\S+)/.exec(entry ?? '')?.[1];
-  return until === undefined ? null : new Date(until);
+  const entry = osv
+    .split('[[IgnoredVulns]]')
+    .find((part) => new RegExp(`^id = "${id}"\\s*$`, 'm').test(part));
+  const until = /^ignoreUntil = (\S+)\s*$/m.exec(entry ?? '')?.[1];
+  return entry === undefined ? null : new Date(until ?? 'missing');
 }
 
 /** What keeps `pnpm audit`'s own ignore list inside what Zeus accepted: each id needs a live OSV entry (#262). */
 function auditIgnoreProblems(workspace: string, osv: string, now: Date): string[] {
-  return auditIgnored(workspace).flatMap((id) => {
+  // Anything but the expected shape fails: a line this parser skips would still be ignored by pnpm.
+  const unreadable = auditBlock(workspace)
+    .filter((line) => line.trim() !== '' && !/^\s*#/.test(line))
+    .filter((line) => line !== '  ignore:' && !IGNORE_ITEM.test(line))
+    .map((line) => `pnpm-workspace.yaml's audit block has an unreadable line: "${line.trim()}"`);
+  const ids = auditIgnored(workspace).flatMap((id) => {
     const until = acceptedUntil(osv, id);
     if (until === null) return [`${id} is in audit.ignore but has no entry in osv-scanner.toml`];
+    if (Number.isNaN(until.getTime()))
+      return [`${id}'s ignoreUntil in osv-scanner.toml isn't a date`];
     if (until.getTime() <= now.getTime())
       return [`${id}'s acceptance ended on ${until.toISOString().slice(0, 10)}: look at it again`];
     return [];
   });
+  return [...unreadable, ...ids];
 }
 
 describe('pnpm audit ignores only what osv-scanner.toml still accepts (#262)', () => {
@@ -213,7 +231,7 @@ describe('pnpm audit ignores only what osv-scanner.toml still accepts (#262)', (
   });
 
   it('refuses an ignoreUntil it cannot read, and an id that only appears in another reason (Cerberus F2, F3)', () => {
-    const typo = OSV_CONFIG.replace('ignoreUntil = 2026-12-08T00:00:00Z', 'ignoreUntil = soon');
+    const typo = OSV_CONFIG.replaceAll('ignoreUntil = 2026-12-08T00:00:00Z', 'ignoreUntil = soon');
     expect(auditIgnoreProblems(WORKSPACE, typo, new Date()).join(' ')).toMatch(
       /GHSA-fc5q-39xc-vjpf.*date/,
     );
