@@ -77,7 +77,10 @@ changes these rules. If the freeze switch stops you, stop.
 
    One box per Done-when item in the task, in the task's order (the merge gate counts them). Keep evidence on the
    item's line or indented under it: a line that starts at column 0 ends the list. Tick a box only when you saw the
-   evidence yourself in this session. If you couldn't finish, leave the box empty and say why; put a blocker under
+   evidence yourself in this session. A box whose line ends `(proof: ci:<job>)` or `(proof: iris)` is proven by the
+   merge gate, from that CI job's result on your head commit or from Iris's verdict: leave it unticked, keep the
+   marker as the issue wrote it, and say which job runs it. Never add a marker the task's list doesn't have. If you
+   couldn't finish, leave the box empty and say why; put a blocker under
    `**needs-zeus:**` or `**blocked:**` at column 0 after the list.
 
    Name the commit your evidence was taken at, in the Done-when list: your last commit, from

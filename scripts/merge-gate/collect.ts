@@ -7,7 +7,7 @@ import { wantsComments, type OpenIssue } from '../lib/follow-ups.ts';
 import { parseJourneyReport } from '../lib/journey-proof.ts';
 import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
-import { bodyHash, doneWhenBoxes } from './evaluate.ts';
+import { bodyHash, doneWhenBoxes, doneWhenMarks } from './evaluate.ts';
 import { bundlePattern, checkTranscript } from './meta.ts';
 import { parseVerdict } from './verdict.ts';
 import type { CheckRun, ClosingIssue, Facts, GateConfig, ReviewRecord } from './types.ts';
@@ -333,7 +333,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     : [];
   const closingIssues: ClosingIssue[] = references.map(({ number, url }) => {
     if (!url.startsWith(issuePrefix))
-      return { number, inRepo: false, labels: [], doneWhenBoxes: 0, areas: null };
+      return { number, inRepo: false, labels: [], doneWhenBoxes: 0, proofs: [], areas: null };
     const issue = JSON.parse(
       gh(['issue', 'view', String(number), '-R', repo, '--json', 'labels,body']),
     ) as { labels: { name: string }[]; body: string };
@@ -344,6 +344,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       inRepo: true,
       labels: issue.labels.map((label) => label.name),
       doneWhenBoxes: boxes.ticked + boxes.unticked,
+      proofs: doneWhenMarks(issue.body).map((box) => box.proof),
       areas: 'patterns' in areas ? areas.patterns : null,
     };
   });
@@ -354,7 +355,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       `repos/${repo}/commits/${sha}/check-runs`,
       '--paginate',
       '--jq',
-      '.check_runs[] | {name, status, conclusion, app: .app.slug, url: .details_url}',
+      '.check_runs[] | {name, status, conclusion, app: .app.slug, url: .details_url, sha: .head_sha}',
     ]),
   );
   // A batch that completes a feature is held until the services run on its head shows the journey passed (§19, #156).
