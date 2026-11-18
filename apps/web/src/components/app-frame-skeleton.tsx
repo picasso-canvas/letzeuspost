@@ -1,3 +1,4 @@
+import { Empty, EmptyHeader } from '@lzp/ui/components/empty';
 import { LogoMark } from '@lzp/ui/components/logo-mark';
 import {
   Sidebar,
@@ -17,16 +18,12 @@ import { messages } from '../messages.ts';
 
 const { frame, inbox } = messages;
 
-/** The list's rows on their way: each a thumbnail, a title and a line, and the action at the end, at varied widths. */
-const ROWS = [
-  { title: 'w-1/3', line: 'w-1/2' },
-  { title: 'w-1/4', line: 'w-2/5' },
-  { title: 'w-2/5', line: 'w-1/3' },
-] as const;
-
 /**
- * The Inbox while it loads (§04: "Loading: skeletons"): its heading and line as they will be, and the list drawn as the
- * gallery's skeletons. A screen reader hears that it is loading; nothing of the workspace is in it.
+ * The Inbox while it loads (§04: "Loading: skeletons"): its heading and line as they will be, and the empty state's one
+ * box (page.tsx's, the same classes) with its two lines drawn as the gallery's skeletons, so nothing moves when the page
+ * arrives. Each skeleton holds the words it stands for, invisible and hidden from a screen reader, so it is as tall as
+ * those words wrap at any width, the phone's included. A screen reader hears that it is loading; nothing of the
+ * workspace is in it.
  */
 export function InboxSkeleton() {
   return (
@@ -37,22 +34,20 @@ export function InboxSkeleton() {
         </h1>
         <p className="text-pretty text-muted-foreground">{inbox.intro}</p>
       </div>
-      <div role="status" aria-busy="true" className="flex flex-col rounded-lg border">
+      <Empty role="status" aria-busy="true" className="border">
         <span className="sr-only">{inbox.loading}</span>
-        {ROWS.map(({ title, line }) => (
-          <div
-            key={`${title} ${line}`}
-            className="flex items-center gap-4 border-b p-4 last:border-b-0"
+        <EmptyHeader>
+          <Skeleton
+            aria-hidden="true"
+            className="text-h2 font-(weight:--font-weight-h2) tracking-h2"
           >
-            <Skeleton className="size-12 shrink-0" />
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <Skeleton className={`h-4 ${title}`} />
-              <Skeleton className={`h-3 ${line}`} />
-            </div>
-            <Skeleton className="h-8 w-20 shrink-0" />
-          </div>
-        ))}
-      </div>
+            <span className="invisible">{inbox.empty.heading}</span>
+          </Skeleton>
+          <Skeleton aria-hidden="true" className="text-sm/relaxed">
+            <span className="invisible">{inbox.empty.body}</span>
+          </Skeleton>
+        </EmptyHeader>
+      </Empty>
     </div>
   );
 }
