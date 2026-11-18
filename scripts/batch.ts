@@ -3,8 +3,8 @@
 // (Argus, Cerberus, and Iris from the first UI milestone) happens once per batch, on the PR from `staging` into
 // `main`.
 //   node scripts/batch.ts [--open]
-// It runs from a clean `main` and reports the open feature (§19, Zeus 2026-11-10, #139): its tasks, which of them the
-// gate merged into `staging`, and the changed lines. The batch is due when every task of the feature is there (a journey
+// It runs from a clean `main` and reports the open feature(s) (§19, Zeus 2026-11-10, #139; several, #265): their tasks, which of them the
+// gate merged into `staging`, and the changed lines. The batch is due when every task of every feature is there (a journey
 // test that still looks marked is reported as a warning; the merge gate holds the batch until CI shows the journey ran
 // and passed, #156), as a part when `staging` is ~1,500 changed lines ahead, or when
 // `staging` holds only follow-ups (lib/features.ts decides). With --open, a due batch's PR is opened (or its text
@@ -19,7 +19,7 @@ import { isEntryPoint } from './lib/entry.ts';
 import {
   featureBatch,
   journeyMarked,
-  stagingFeature,
+  stagingFeatures,
   toTaskIssue,
   type TaskIssue,
 } from './lib/features.ts';
@@ -155,39 +155,45 @@ function main(argv: string[]): number {
   const onStaging = tasks.filter((t) => t.gated).flatMap((t) => t.issues);
   const issues: Record<number, TaskIssue> = {};
   for (const n of onStaging) issues[n] = taskIssue(n);
-  // The same helper featureBatch uses, so the two can't disagree on the open feature (Argus F3 on #155).
-  const found = stagingFeature(onStaging, issues);
-  const feature = 'feature' in found && found.feature !== null ? found.feature : undefined;
-  const featureTasks =
-    feature === undefined
-      ? []
-      : (
-          JSON.parse(
-            run('gh', [
-              'issue',
-              'list',
-              '-R',
-              REPO,
-              '--label',
-              `feature:${feature}`,
-              '--state',
-              'open',
-              '--limit',
-              '100',
-              '--json',
-              'number',
-            ]),
-          ) as { number: number }[]
-        ).map((i) => i.number);
+  // The same helper featureBatch uses, so the two can't disagree on the features on staging (Argus F3 on #155).
+  const found = stagingFeatures(onStaging, issues);
+  const features = 'features' in found ? found.features : [];
+  const featureTasks: Record<string, number[]> = {};
+  for (const feature of features)
+    featureTasks[feature] = (
+      JSON.parse(
+        run('gh', [
+          'issue',
+          'list',
+          '-R',
+          REPO,
+          '--label',
+          `feature:${feature}`,
+          '--state',
+          'open',
+          '--limit',
+          '100',
+          '--json',
+          'number',
+        ]),
+      ) as { number: number }[]
+    ).map((i) => i.number);
+  const files = features.length === 0 ? [] : journeyFiles();
   const verdict = featureBatch({
     onStaging,
     issues,
     featureTasks,
-    journeyMarked: feature !== undefined && journeyMarked(journeyFiles(), feature),
+    journeyMarked: features.filter((feature) => journeyMarked(files, feature)),
     lines,
   });
+  const openFeatures = features
+    .map(
+      (feature) =>
+        `open feature "${feature}": ${(featureTasks[feature] ?? []).map((n) => `#${String(n)}${onStaging.includes(n) ? ' (on staging)' : ''}`).join(', ')}`,
+    )
+    .join('; ');
   console.log(
-    `staging is ${String(prs.length)} task PRs and ${String(lines)} changed lines ahead of main${feature === undefined ? '' : `; open feature "${feature}": ${featureTasks.map((n) => `#${String(n)}${onStaging.includes(n) ? ' (on staging)' : ''}`).join(', ')}`}. The batch is ${verdict.due ? 'due' : 'not due'}: ${verdict.reason}.`,
+    `staging is ${String(prs.length)} task PRs and ${String(lines)} changed lines ahead of main${openFeatures === '' ? '' : `; ${openFeatures}`}. The batch is ${verdict.due ? 'due' : 'not due'}: ${verdict.reason}.`,
   );
   if (!argv.includes('--open') || !verdict.due) return 0;
   const body = batchBody(tasks);

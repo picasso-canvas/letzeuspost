@@ -393,11 +393,13 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
       ),
     );
     expect(runs).toEqual([4242]);
-    expect(f.journey).toEqual({
-      feature: 'data',
-      entries: [],
-      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
-    });
+    expect(f.journeys).toEqual([
+      {
+        feature: 'data',
+        entries: [],
+        files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+      },
+    ]);
     expect(calls).toContain(
       'issue list -R picasso-canvas/letzeuspost --label feature:data --state open --limit 1000 --json number,labels',
     );
@@ -409,27 +411,33 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
       7,
       batchDeps(batchGh({ 'check-runs': '' }), { readJourneyReport: () => report }),
     );
-    expect(none.journey).toEqual({
-      feature: 'data',
-      entries: null,
-      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
-    });
+    expect(none.journeys).toEqual([
+      {
+        feature: 'data',
+        entries: null,
+        files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+      },
+    ]);
     const gone = collectFacts(7, batchDeps(batchGh(), { readJourneyReport: () => null }));
-    expect(gone.journey).toEqual({
-      feature: 'data',
-      entries: null,
-      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
-    });
+    expect(gone.journeys).toEqual([
+      {
+        feature: 'data',
+        entries: null,
+        files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+      },
+    ]);
     const bad = collectFacts(
       7,
       batchDeps(batchGh(), { readJourneyReport: () => ({ 'vitest.json': 'nope' }) }),
     );
-    expect(bad.journey).toEqual({
-      feature: 'data',
-      entries: null,
-      unreadable: "vitest.json isn't JSON",
-      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
-    });
+    expect(bad.journeys).toEqual([
+      {
+        feature: 'data',
+        entries: null,
+        unreadable: "vitest.json isn't JSON",
+        files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+      },
+    ]);
   });
 
   it("doesn't hold a part of a feature (a task of it is still open elsewhere), a batch with no feature, or a PR into staging", () => {
@@ -450,7 +458,7 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
         },
       ),
     );
-    expect(part.journey).toBeNull();
+    expect(part.journeys).toEqual([]);
     const noFeature = collectFacts(
       7,
       batchDeps(
@@ -462,25 +470,51 @@ describe("collectFacts: a feature's journey, from CI's report (#156)", () => {
         },
       ),
     );
-    expect(noFeature.journey).toBeNull();
-    expect(collectFacts(7, deps({ readJourneyReport: read })).journey).toBeNull();
+    expect(noFeature.journeys).toEqual([]);
+    expect(collectFacts(7, deps({ readJourneyReport: read })).journeys).toEqual([]);
   });
 
-  it('refuses to guess when a batch closes tasks of two features', () => {
-    expect(() =>
-      collectFacts(
+  describe('a batch that closes several features (#265)', () => {
+    const two = (over: Record<string, string> = {}) =>
+      batchGh({
+        'issue view 148 ': JSON.stringify({
+          labels: [{ name: 'build-task' }, { name: 'feature:sign-in' }],
+          body: '**Done when**\n- [ ] a',
+        }),
+        'issue list -R picasso-canvas/letzeuspost --label feature:sign-in': JSON.stringify([
+          { number: 148, labels: [{ name: 'build-task' }] },
+        ]),
+        ...over,
+      });
+
+    it('builds one journey per complete feature, from one read of the services run', () => {
+      const runs: number[] = [];
+      const f = collectFacts(
+        7,
+        batchDeps(two(), { readJourneyReport: (run) => (runs.push(run), report) }),
+      );
+      expect(runs).toEqual([4242]);
+      expect(f.journeys.map((j) => j.feature)).toEqual(['data', 'sign-in']);
+      expect(f.journeys.every((j) => j.entries?.length === 0)).toBe(true);
+      expect(f.journeyParts).toEqual([]);
+    });
+
+    it('holds a complete feature by its journey and names the other as a part when its tasks are still open', () => {
+      const f = collectFacts(
         7,
         batchDeps(
-          batchGh({
-            'issue view 148 ': JSON.stringify({
-              labels: [{ name: 'build-task' }, { name: 'feature:sign-in' }],
-              body: 'x',
-            }),
+          two({
+            'issue list -R picasso-canvas/letzeuspost --label feature:sign-in': JSON.stringify([
+              { number: 148, labels: [{ name: 'build-task' }] },
+              { number: 149, labels: [{ name: 'build-task' }] },
+            ]),
           }),
           { readJourneyReport: () => report },
         ),
-      ),
-    ).toThrow('closes tasks of two features (data, sign-in)');
+      );
+      expect(f.journeys.map((j) => j.feature)).toEqual(['data']);
+      expect(f.journeyParts).toEqual([{ feature: 'sign-in', open: [149] }]);
+    });
   });
 });
 
@@ -614,18 +648,20 @@ describe('collectFacts: what makes a part of a feature (Argus F3-F4, Cerberus F2
 
   it('counts only open build tasks: a stray issue with the label still leaves the batch held', () => {
     const f = run(gh([task(72), { number: 90, labels: [{ name: 'feature:data' }] }]));
-    expect(f.journey).toEqual({
-      feature: 'data',
-      entries: [],
-      files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
-    });
-    expect(f.journeyPart).toBeNull();
+    expect(f.journeys).toEqual([
+      {
+        feature: 'data',
+        entries: [],
+        files: ['tests/journeys/data.int.test.ts', 'tests/journeys/sign-in.spec.ts'],
+      },
+    ]);
+    expect(f.journeyParts).toEqual([]);
   });
 
   it('says which open tasks make a batch a part, so the gate can show why it is not held', () => {
     const f = run(gh([task(72), task(73)]));
-    expect(f.journey).toBeNull();
-    expect(f.journeyPart).toEqual({ feature: 'data', open: [73] });
+    expect(f.journeys).toEqual([]);
+    expect(f.journeyParts).toEqual([{ feature: 'data', open: [73] }]);
   });
 
   it("doesn't take another repository's issue for one of this feature's tasks", () => {
@@ -635,6 +671,6 @@ describe('collectFacts: what makes a part of a feature (Argus F3-F4, Cerberus F2
         [own, { number: 73, url: 'https://github.com/someone/else/issues/73' }],
       ),
     );
-    expect(f.journeyPart).toEqual({ feature: 'data', open: [73] });
+    expect(f.journeyParts).toEqual([{ feature: 'data', open: [73] }]);
   });
 });
