@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 const LOCKFILE = readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8');
 const OSV_CONFIG = readFileSync(new URL('../osv-scanner.toml', import.meta.url), 'utf8');
+const WORKSPACE = readFileSync(new URL('../pnpm-workspace.yaml', import.meta.url), 'utf8');
 
 /** `'@shadcn/registry@0.2.1'` or `shadcn@4.23.0(react@19.3.1)` → its package name. */
 function nameOf(key: string): string {
@@ -135,5 +136,56 @@ describe('GHSA-fc5q-39xc-vjpf (picomatch) stays on its accepted path', () => {
     ).concat('\n  some-runtime-lib@1.0.0:\n    dependencies:\n      picomatch: 4.0.7\n');
     expect(viaRuntime).not.toBe(LOCKFILE);
     expect(reachedAtRuntime(viaRuntime).has('picomatch')).toBe(true);
+  });
+});
+
+/** The ids under `audit.ignore` in pnpm-workspace.yaml (the list `pnpm audit` skips). */
+function auditIgnored(workspace: string): string[] {
+  const block = /^audit:\n {2}ignore:\n((?: {4}.*\n|\n)*)/m.exec(workspace)?.[1] ?? '';
+  return block
+    .split('\n')
+    .map((line) => /^ {4}- (GHSA-[\w-]+)\s*$/.exec(line)?.[1])
+    .filter((id): id is string => id !== undefined);
+}
+
+/** When osv-scanner.toml stops accepting `id`; null when it doesn't accept it. */
+function acceptedUntil(osv: string, id: string): Date | null {
+  const entry = osv.split('[[IgnoredVulns]]').find((part) => part.includes(`id = "${id}"`));
+  const until = /ignoreUntil = (\S+)/.exec(entry ?? '')?.[1];
+  return until === undefined ? null : new Date(until);
+}
+
+/** What keeps `pnpm audit`'s own ignore list inside what Zeus accepted: each id needs a live OSV entry (#262). */
+function auditIgnoreProblems(workspace: string, osv: string, now: Date): string[] {
+  return auditIgnored(workspace).flatMap((id) => {
+    const until = acceptedUntil(osv, id);
+    if (until === null) return [`${id} is in audit.ignore but has no entry in osv-scanner.toml`];
+    if (until.getTime() <= now.getTime())
+      return [`${id}'s acceptance ended on ${until.toISOString().slice(0, 10)}: look at it again`];
+    return [];
+  });
+}
+
+describe('pnpm audit ignores only what osv-scanner.toml still accepts (#262)', () => {
+  it('lists GHSA-fc5q-39xc-vjpf, and every id in it is accepted until a date still ahead', () => {
+    expect(auditIgnored(WORKSPACE)).toContain('GHSA-fc5q-39xc-vjpf');
+    expect(auditIgnoreProblems(WORKSPACE, OSV_CONFIG, new Date())).toEqual([]);
+  });
+
+  it('catches an id with no OSV entry, and an acceptance whose date has passed', () => {
+    const extra = WORKSPACE.replace(
+      '    - GHSA-fc5q-39xc-vjpf',
+      '    - GHSA-fc5q-39xc-vjpf\n    - GHSA-0000-0000-0000',
+    );
+    expect(auditIgnoreProblems(extra, OSV_CONFIG, new Date())).toEqual([
+      'GHSA-0000-0000-0000 is in audit.ignore but has no entry in osv-scanner.toml',
+    ]);
+    const later = new Date('2026-12-08T00:00:01Z');
+    expect(auditIgnoreProblems(WORKSPACE, OSV_CONFIG, later)).toEqual([
+      "GHSA-fc5q-39xc-vjpf's acceptance ended on 2026-12-08: look at it again",
+    ]);
+    expect(auditIgnoreProblems(WORKSPACE.replace('audit:', 'other:'), OSV_CONFIG, later)).toEqual(
+      [],
+    );
   });
 });

@@ -32,3 +32,10 @@ overrides:
 # package already ships as an optional dependency, so it stays off.
 allowBuilds:
   esbuild: false
+
+# Advisories Zeus accepted, for `pnpm audit` (CI's "Advisories" step). The reason and the date are in osv-scanner.toml, which
+# scripts/accepted-advisories.test.ts ties each id here to: it fails once that entry's `ignoreUntil` passes.
+audit:
+  ignore:
+    # GHSA-fc5q-39xc-vjpf (high, picomatch ReDoS, no patched version), dev tooling only. Zeus, 2026-11-17 (#259), until 2026-12-08.
+    - GHSA-fc5q-39xc-vjpf
