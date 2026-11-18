@@ -1,7 +1,8 @@
-// Feature batches (§19, Zeus 2026-11-10, #139): one feature open at a time on `staging` (dispatch's rule); its tasks build in parallel,
-// and its batch into `main` opens when every one of them is on `staging` (the merge gate then holds it until CI shows
-// the journey ran and passed, #156), or as a part when `staging` outgrows the size cap. Follow-ups of a merged batch, and harness
-// tasks, run alongside. Dispatch and batch.ts gather the facts; these functions decide.
+// Feature batches (§19, Zeus 2026-11-10, #139): dispatch opens one feature at a time on `staging`; its tasks build in
+// parallel, and its batch into `main` opens when every one of them is on `staging` (the merge gate then holds it until
+// CI shows the journey ran and passed, #156), or as a part when `staging` outgrows the size cap. A batch may close
+// several complete features, each held by its own journey (#265). Follow-ups of a merged batch, and harness tasks, run
+// alongside. Dispatch and batch.ts gather the facts; these functions decide.
 
 /** An issue as dispatch and batch.ts read it (its labels and milestone are Athena's; its body is Athena's text). */
 export interface TaskIssue {
