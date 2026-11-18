@@ -184,8 +184,48 @@ describe('pnpm audit ignores only what osv-scanner.toml still accepts (#262)', (
     expect(auditIgnoreProblems(WORKSPACE, OSV_CONFIG, later)).toEqual([
       "GHSA-fc5q-39xc-vjpf's acceptance ended on 2026-12-08: look at it again",
     ]);
-    expect(auditIgnoreProblems(WORKSPACE.replace('audit:', 'other:'), OSV_CONFIG, later)).toEqual(
-      [],
+  });
+
+  it('refuses a list it cannot read, rather than skipping what pnpm would still ignore (Cerberus F1)', () => {
+    for (const line of [
+      '    - "GHSA-0000-0000-0000"',
+      '    - GHSA-0000-0000-0000 reviewed',
+      '  ignore: [GHSA-0000-0000-0000]',
+      '      - GHSA-0000-0000-0000',
+      '  ignorePrune: true',
+    ]) {
+      const odd = WORKSPACE.replace(
+        '    - GHSA-fc5q-39xc-vjpf',
+        `    - GHSA-fc5q-39xc-vjpf\n${line}`,
+      );
+      const problems = auditIgnoreProblems(odd, OSV_CONFIG, new Date());
+      expect(
+        problems.some((p) => p.includes('unreadable')),
+        line,
+      ).toBe(true);
+    }
+    // A comment, a blank line and a trailing comment are fine.
+    const fine = WORKSPACE.replace(
+      '    - GHSA-fc5q-39xc-vjpf',
+      '    - GHSA-fc5q-39xc-vjpf # the picomatch one\n\n    # note',
     );
+    expect(auditIgnoreProblems(fine, OSV_CONFIG, new Date())).toEqual([]);
+  });
+
+  it('refuses an ignoreUntil it cannot read, and an id that only appears in another reason (Cerberus F2, F3)', () => {
+    const typo = OSV_CONFIG.replace('ignoreUntil = 2026-12-08T00:00:00Z', 'ignoreUntil = soon');
+    expect(auditIgnoreProblems(WORKSPACE, typo, new Date()).join(' ')).toMatch(
+      /GHSA-fc5q-39xc-vjpf.*date/,
+    );
+    const borrowed = [
+      '[[IgnoredVulns]]',
+      'id = "GHSA-aaaa-aaaa-aaaa"',
+      'ignoreUntil = 2027-01-01T00:00:00Z',
+      'reason = "id = \\"GHSA-fc5q-39xc-vjpf\\" is a different one"',
+    ].join('\n');
+    const osv = OSV_CONFIG.replace(/\[\[IgnoredVulns\]\]\nid = "GHSA-fc5q[\s\S]*$/, '') + borrowed;
+    expect(auditIgnoreProblems(WORKSPACE, osv, new Date())).toEqual([
+      'GHSA-fc5q-39xc-vjpf is in audit.ignore but has no entry in osv-scanner.toml',
+    ]);
   });
 });
