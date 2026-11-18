@@ -186,7 +186,13 @@ A PR merges only when all of these hold:
    (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`), so no note left in `~/.claude/projects/*/memory/` reaches a review. The reviewers
    confirm the Done-when evidence and that each comment on the PR that raises a problem is fixed or answered. Each
    verdict is also posted on the PR, for the record.
-6. **Done-when complete:** no unticked box in the PR's Done-when list.
+6. **Done-when complete:** no unticked box in the PR's Done-when list, and at least as many as the issue's. A box
+   only CI or a reviewer can prove carries `(proof: ci:<job>)` or `(proof: iris)` on its own line, in the issue's list
+   (Athena writes it there) and in the PR's. The builder leaves it unticked; the gate counts it as ticked when the
+   named GitHub Actions job is `success` on the PR's head commit (a run on an older commit, a pending, failed or
+   missing one, or another app's, refuses it), or when Iris's recorded `scripts/review.ts` pass holds for the head and
+   the PR text. A proof the issue's list doesn't name is refused, so a builder can't mark a box as someone else's to
+   prove. A ticked box with a proof is checked the same way. (#253, replaces Athena ticking these boxes by hand.)
 7. **Harness changes re-tested:** when the PR touches a harness path (`.github/`, `.claude/`, any `CLAUDE.md`,
    `scripts/`, the sensitive-paths list), Athena's record holds the red-team items it affects, run again, with their
    results (before #34 exists: the manual checks that were run).

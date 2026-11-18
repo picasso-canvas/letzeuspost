@@ -32,10 +32,10 @@ function fakeGh(overrides: Record<string, string | Error> = {}): CollectDeps['gh
     compare: '0\n',
     'issue view': JSON.stringify({
       labels: [{ name: 'build-task' }],
-      body: '**Done when**\n- [ ] a\n- [ ] b\n\n**Areas:** `packages/ui/**`',
+      body: '**Done when**\n- [ ] a\n- [ ] b (proof: ci:services)\n\n**Areas:** `packages/ui/**`',
     }),
     'check-runs':
-      '{"name":"ci","status":"completed","conclusion":"success","app":"github-actions"}\n',
+      '{"name":"ci","status":"completed","conclusion":"success","app":"github-actions","sha":"abc1234"}\n',
     status: '',
     ...overrides,
   };
@@ -78,6 +78,13 @@ function deps(over: Partial<CollectDeps> = {}): CollectDeps {
 }
 
 describe('collectFacts', () => {
+  it("asks GitHub for each check run's commit, so a proof counts only on the head (#253)", () => {
+    const asked: string[] = [];
+    const gh = fakeGh();
+    collectFacts(7, deps({ gh: (args) => (asked.push(args.join(' ')), gh(args)) }));
+    expect(asked.find((call) => call.includes('/check-runs'))).toContain('sha: .head_sha');
+  });
+
   it('gathers the PR, files (renames under both names), checks and main-side files', () => {
     const f = collectFacts(7, deps());
     expect(f.headSha).toBe(SHA);
@@ -89,12 +96,26 @@ describe('collectFacts', () => {
         inRepo: true,
         labels: ['build-task'],
         doneWhenBoxes: 2,
+        proofs: [null, 'ci:services'],
         areas: ['packages/ui/**'],
       },
-      { number: 9, inRepo: false, labels: [], doneWhenBoxes: 0, areas: null },
+      {
+        number: 9,
+        inRepo: false,
+        labels: [],
+        doneWhenBoxes: 0,
+        proofs: [],
+        areas: null,
+      },
     ]);
     expect(f.checkRuns).toEqual([
-      { name: 'ci', status: 'completed', conclusion: 'success', app: 'github-actions' },
+      {
+        name: 'ci',
+        status: 'completed',
+        conclusion: 'success',
+        app: 'github-actions',
+        sha: 'abc1234',
+      },
     ]);
     expect(f.title).toBe('[H0] Thing');
     expect(f.statuses).toEqual([]);
