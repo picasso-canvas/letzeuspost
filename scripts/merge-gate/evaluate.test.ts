@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './collect.ts';
-import { bodyHash, doneWhenBoxes, doneWhenProofs, evaluate } from './evaluate.ts';
+import { bodyHash, doneWhenBoxes, doneWhenMarks, evaluate } from './evaluate.ts';
 import type { Facts, ReviewRecord } from './types.ts';
 
 const SHA = 'a'.repeat(40);
@@ -399,7 +399,8 @@ describe('Done-when boxes the gate proves (#253)', () => {
     '',
     'Agent: Daedalus',
   ].join('\n');
-  const issue = (proofs: string[]) => ({
+  // One entry per box of the issue's list: the proof it names, or null.
+  const issue = (proofs: (string | null)[] = [null, 'ci:services', 'iris']) => ({
     number: 42,
     inRepo: true,
     labels: ['build-task'],
@@ -429,7 +430,7 @@ describe('Done-when boxes the gate proves (#253)', () => {
   const proven = (body: string, over: Partial<Facts> = {}): Facts =>
     facts({
       body,
-      closingIssues: [issue(['ci:services', 'iris'])],
+      closingIssues: [issue()],
       checkRuns: ci([services()]),
       labels: ['routine'],
       reviews: [
@@ -440,18 +441,26 @@ describe('Done-when boxes the gate proves (#253)', () => {
       ...over,
     });
 
-  it('reads the marker on a box, ticked or not, and ignores it anywhere else', () => {
-    expect(doneWhenProofs(PROOF_BODY)).toEqual([
+  it('reads the marker at the end of each box line, ticked or not, and nowhere else', () => {
+    expect(doneWhenMarks(PROOF_BODY)).toEqual([
+      { proof: null, ticked: true },
       { proof: 'ci:services', ticked: false },
       { proof: 'iris', ticked: false },
     ]);
-    expect(doneWhenProofs('**Done when**\n- [x] a (proof: ci: `design`)')).toEqual([
+    expect(doneWhenMarks('**Done when**\n- [x] a (proof: ci: design)  ')).toEqual([
       { proof: 'ci:design', ticked: true },
     ]);
-    expect(
-      doneWhenProofs('**Done when**\n- [ ] a\n  (proof: ci:services)\n- [ ] b proof: iris'),
-    ).toEqual([]);
-    expect(doneWhenProofs('(proof: iris)\n- [ ] outside any list')).toEqual([]);
+    const quoted = [
+      '**Done when**',
+      '- [ ] mid-line (proof: ci:services) and more',
+      '- [ ] in code `(proof: iris)`',
+      '- [ ] in code at the end (`(proof: ci:services)`)',
+      '- [ ] on the next line',
+      '  (proof: ci:services)',
+      '- [ ] no parentheses proof: iris',
+    ].join('\n');
+    expect(doneWhenMarks(quoted).map((box) => box.proof)).toEqual([null, null, null, null, null]);
+    expect(doneWhenMarks('(proof: iris)\n- [ ] outside any list')).toEqual([]);
   });
 
   it('counts a box as ticked when its CI job succeeded on the head commit', () => {
@@ -492,10 +501,42 @@ describe('Done-when boxes the gate proves (#253)', () => {
     expect(failedIds(proven(ticked))).toEqual([]);
   });
 
-  it("accepts a marker only where the issue's own list carries it", () => {
-    const f = proven(PROOF_BODY, { closingIssues: [issue(['iris'])] });
-    expect(failedIds(f)).toEqual([6]);
-    expect(evaluate(f).items.find((i) => i.id === 6)?.detail).toMatch(/ci:services.*issue/);
+  it("accepts a marker only on the box where the issue's own list carries it", () => {
+    const unnamed = proven(PROOF_BODY, { closingIssues: [issue([null, null, 'iris'])] });
+    expect(failedIds(unnamed)).toEqual([6]);
+    expect(evaluate(unnamed).items.find((i) => i.id === 6)?.detail).toMatch(/ci:services.*box 2/);
+    // The marker copied onto a second box the builder couldn't finish.
+    const copied = PROOF_BODY.replace(
+      'Iris reviewed the screens (proof: iris)',
+      'Iris reviewed (proof: ci:services)',
+    );
+    const once = issue([null, 'ci:services', null]);
+    expect(failedIds(proven(copied, { closingIssues: [once] }))).toEqual([6]);
+    // The marker moved to another box, or dropped from the box the issue marked.
+    const moved = '**Done when**\n- [ ] a (proof: ci:services)\n- [x] b\n- [x] c';
+    expect(failedIds(proven(`Closes #42\n\n${moved}`, { closingIssues: [once] }))).toEqual([6]);
+    const dropped = PROOF_BODY.replace(' (proof: ci:services)', '').replace(
+      '- [ ] the tenancy',
+      '- [x] the tenancy',
+    );
+    const lost = proven(dropped, { closingIssues: [issue([null, 'ci:services', 'iris'])] });
+    expect(failedIds(lost)).toEqual([6]);
+    expect(evaluate(lost).items.find((i) => i.id === 6)?.detail).toMatch(/box 2.*ci:services/);
+  });
+
+  it('does not count a marker quoted in inline code as a proof', () => {
+    const quoted = PROOF_BODY.replace('(proof: iris)', '(`(proof: iris)`)');
+    expect(failedIds(proven(quoted))).toEqual([6]);
+  });
+
+  it('names no proofs in a batch PR, which ticks one box per task', () => {
+    const batch = facts({
+      baseRef: 'main',
+      headRef: 'staging',
+      body: PROOF_BODY,
+      reviews: [],
+    });
+    expect(evaluate(batch).items.find((i) => i.id === 6)?.detail ?? '').toMatch(/batch/);
   });
 
   it("checks Iris's recorded pass for the head and this PR text", () => {
