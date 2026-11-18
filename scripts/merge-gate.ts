@@ -136,9 +136,9 @@ function main(argv: string[], pr: number): number {
     console.log(`${item.ok ? '✓' : '✗'} ${String(item.id)}. ${item.title}: ${item.detail}`);
   }
   // A part of a feature isn't held by its journey: say so, with the tasks that made it a part (Cerberus F2 on #171).
-  if (facts.journeyPart !== null)
+  for (const part of facts.journeyParts)
     console.log(
-      `  Journey: a part of feature "${facts.journeyPart.feature}" (${facts.journeyPart.open.map((n) => `#${String(n)}`).join(', ')} still open), so its journey isn't checked yet.`,
+      `  Journey: a part of feature "${part.feature}" (${part.open.map((n) => `#${String(n)}`).join(', ')} still open), so its journey isn't checked yet.`,
     );
   const entry = {
     at: new Date().toISOString(),

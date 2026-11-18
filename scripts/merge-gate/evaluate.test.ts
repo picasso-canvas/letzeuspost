@@ -57,8 +57,8 @@ function facts(over: Partial<Facts> = {}): Facts {
     gatedIssues: [42, 43],
     evidenceShas: [SHA],
     earlierFindingIds: [],
-    journey: null,
-    journeyPart: null,
+    journeys: [],
+    journeyParts: [],
     openIssues: [],
     openIssuesCutOff: false,
     mergedBatches: [],
@@ -707,27 +707,35 @@ describe('evaluate: the batch PR from staging into main', () => {
       mode: 'run',
     };
     expect(
-      failedIds(batch({ journey: { feature: 'data', entries: [passed], files: [passed.file] } })),
+      failedIds(
+        batch({ journeys: [{ feature: 'data', entries: [passed], files: [passed.file] }] }),
+      ),
     ).toEqual([]);
     // A journey file no runner reported holds the batch too (Argus F1 in round 2 on #171).
     const unreported = batch({
-      journey: {
-        feature: 'data',
-        entries: [passed],
-        files: [passed.file, 'tests/journeys/data.spec.ts'],
-      },
+      journeys: [
+        {
+          feature: 'data',
+          entries: [passed],
+          files: [passed.file, 'tests/journeys/data.spec.ts'],
+        },
+      ],
     });
     expect(failedIds(unreported)).toEqual([3]);
-    const none = batch({ journey: { feature: 'data', entries: null, files: [] } });
+    const none = batch({ journeys: [{ feature: 'data', entries: null, files: [] }] });
     expect(failedIds(none)).toEqual([3]);
     expect(evaluate(none).items[2]?.detail).toContain('left no journey report');
     expect(
       failedIds(
-        batch({ journey: { feature: 'data', entries: [{ ...passed, fails: true }], files: [] } }),
+        batch({
+          journeys: [{ feature: 'data', entries: [{ ...passed, fails: true }], files: [] }],
+        }),
       ),
     ).toEqual([3]);
     const unreadable = batch({
-      journey: { feature: 'data', entries: null, files: [], unreadable: "vitest.json isn't JSON" },
+      journeys: [
+        { feature: 'data', entries: null, files: [], unreadable: "vitest.json isn't JSON" },
+      ],
     });
     expect(failedIds(unreadable)).toEqual([3]);
     expect(evaluate(unreadable).items[2]?.detail).toBe(
@@ -735,8 +743,45 @@ describe('evaluate: the batch PR from staging into main', () => {
     );
     // Only a batch is held by its journey: a PR into staging isn't.
     expect(
-      evaluate(facts({ journey: { feature: 'data', entries: null, files: [] } })).items[2]?.detail,
+      evaluate(facts({ journeys: [{ feature: 'data', entries: null, files: [] }] })).items[2]
+        ?.detail,
     ).not.toContain('journey');
+  });
+
+  it('holds a batch of several complete features until every one of their journeys passed (#265)', () => {
+    const entry = (feature: string, state = 'passed') => ({
+      file: `tests/journeys/${feature}.int.test.ts`,
+      name: `${feature} works`,
+      state,
+      fails: false,
+      mode: 'run',
+    });
+    const journey = (feature: string, state?: string) => ({
+      feature,
+      entries: [entry(feature, state)],
+      files: [`tests/journeys/${feature}.int.test.ts`],
+    });
+    expect(failedIds(batch({ journeys: [journey('workspaces'), journey('sign-in')] }))).toEqual([]);
+    const oneFails = batch({ journeys: [journey('workspaces'), journey('sign-in', 'failed')] });
+    expect(failedIds(oneFails)).toEqual([3]);
+    expect(evaluate(oneFails).items[2]?.detail).toContain('tests/journeys/sign-in.int.test.ts');
+    expect(evaluate(oneFails).items[2]?.detail).not.toContain('tests/journeys/workspaces');
+    // One feature with no journey test of its own isn't carried by the other's.
+    const noOwn = batch({
+      journeys: [journey('workspaces'), { ...journey('workspaces'), feature: 'sign-in' }],
+    });
+    expect(evaluate(noOwn).items[2]?.detail).toContain('no journey test of feature "sign-in"');
+    // An unreadable report is one fact: said once, not once per feature.
+    const unreadable = batch({
+      journeys: ['workspaces', 'sign-in'].map((feature) => ({
+        feature,
+        entries: null,
+        files: [],
+        unreadable: "vitest.json isn't JSON",
+      })),
+    });
+    const said = evaluate(unreadable).items[2]?.detail.match(/can't be read/g) ?? [];
+    expect(said).toHaveLength(1);
   });
 
   it('refuses a batch while a follow-up of an earlier batch is open, and checks its follow-up links (#154)', () => {

@@ -84,19 +84,19 @@ export interface Facts {
   /** The previous review round's numbered findings (`Argus F1`), which a Round section must answer (#138). */
   earlierFindingIds: string[];
   /**
-   * For a batch that completes a feature: the journey tests the `services` run on its head commit reported (#156);
-   * `entries` is null when there's no report, and `unreadable` says why one can't be read. Null for any other PR, a
-   * batch with no feature, and a part of a feature whose other tasks are still open.
+   * For each feature a batch completes (a batch may close several, #265): the journey tests the `services` run on its
+   * head commit reported (#156); `entries` is null when there's no report, and `unreadable` says why one can't be
+   * read. Empty for any other PR, a batch with no feature, and a feature whose other tasks are still open.
    */
-  journey: {
+  journeys: {
     feature: string;
     entries: JourneyEntry[] | null;
     /** Every file under `tests/journeys/` at the head commit, so an unreported journey test is caught. */
     files: string[];
     unreadable?: string;
-  } | null;
-  /** For a batch that is a part of a feature: the feature's open build tasks it doesn't close, which the gate prints. */
-  journeyPart: { feature: string; open: number[] } | null;
+  }[];
+  /** For each feature the batch is only a part of: its open build tasks the batch doesn't close, which the gate prints. */
+  journeyParts: { feature: string; open: number[] }[];
   /** For a batch: the open issues, the batch PRs merged into main, and this PR's comments (#154, follow-ups). */
   openIssues: OpenIssue[];
   /** The open-issue list hit its limit (#170): the gate refuses rather than miss a follow-up. */
