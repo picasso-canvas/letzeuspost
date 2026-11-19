@@ -209,6 +209,19 @@ describe('requireFindingIds (what dispatch records)', () => {
     ).toEqual(['Cerberus F1']);
   });
 
+  it("still counts a CI id written out after a reviewer's heading: only a reviewer's text names older ids", () => {
+    expect(
+      requireFindingIds(
+        [
+          '## Argus',
+          '[blocking] F1 evidence pr.md — x',
+          '',
+          'Also: CI F1, the services job failed',
+        ].join('\n'),
+      ),
+    ).toEqual(['Argus F1', 'CI F1']);
+  });
+
   it('only a heading-like line starts a reviewer section', () => {
     // Prose that starts with a reviewer's name, or bolds one, switches nothing.
     expect(

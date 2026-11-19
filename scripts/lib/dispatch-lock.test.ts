@@ -39,6 +39,32 @@ describe('takeDispatchLock (#148: two dispatches at once)', () => {
     expect(readFileSync(join(dir, '.lock'), 'utf8').trim()).toBe(String(process.pid));
   });
 
+  it("doesn't remove a lock another dispatch took while this one was deciding the holder was dead", () => {
+    const path = join(dir, '.lock');
+    writeFileSync(path, '99999999\n');
+    // While this taker decides the holder is dead, another taker takes the stale lock over completely.
+    let first = true;
+    const taken = takeDispatchLock(dir, (pid) => {
+      if (first && pid === 99999999) {
+        first = false;
+        rmSync(path);
+        writeFileSync(path, '12345\n');
+        return false;
+      }
+      return pid === 12345;
+    });
+    expect('refusal' in taken && taken.refusal).toContain('pid 12345');
+    expect(readFileSync(path, 'utf8').trim()).toBe('12345');
+  });
+
+  it('refuses while another dispatch is taking over a stale lock', () => {
+    writeFileSync(join(dir, '.lock'), '99999999\n');
+    writeFileSync(join(dir, '.lock.takeover'), '4242\n');
+    const taken = takeDispatchLock(dir, (pid) => pid !== 99999999);
+    expect('refusal' in taken && taken.refusal).toContain('taking over');
+    expect(readFileSync(join(dir, '.lock'), 'utf8').trim()).toBe('99999999');
+  });
+
   it('refuses a lock it cannot read, rather than taking it', () => {
     writeFileSync(join(dir, '.lock'), 'not a pid');
     const taken = takeDispatchLock(dir, () => false);
