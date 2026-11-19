@@ -34,7 +34,12 @@ export function parseAreas(issueBody: string): { patterns: string[] } | { refusa
   const beside = (files: string[], kinds: string[]) =>
     [...new Set(files)].flatMap((file) => {
       const stem = file.replace(/\.[a-z0-9]+$/i, '');
-      return kinds.flatMap((kind) => [`${stem}.${kind}.*`, `${stem}.*.${kind}.*`]);
+      // A shared or named test file beside the file (`dispatch-ship.test.ts` for `dispatch.ts`) counts for tests, not stories.
+      return kinds.flatMap((kind) => [
+        `${stem}.${kind}.*`,
+        `${stem}.*.${kind}.*`,
+        ...(kind === 'stories' ? [] : [`${stem}-*.${kind}.*`]),
+      ]);
     });
   return {
     patterns: [...named, ...beside(tested, ['test', 'spec']), ...beside(storied, ['stories'])],
@@ -92,9 +97,9 @@ export function evidenceRefusal(prText: string, acceptedShas: readonly string[])
   return `the Done-when evidence doesn't name the head commit ${(acceptedShas[0] ?? '').slice(0, 7)}: run the checks there and name it`;
 }
 
-/** `Argus F1`-style ids in a text, once each, in order of first mention. */
+/** `Argus F1`-style ids in a text, once each, in order of first mention. `CI F1` is a failed check, not a reviewer's finding. */
 export function findingIds(text: string): string[] {
-  return [...new Set([...text.matchAll(/\b(Argus|Cerberus|Iris) F(\d+)\b/g)].map((m) => m[0]))];
+  return [...new Set([...text.matchAll(/\b(Argus|Cerberus|Iris|CI) F(\d+)\b/g)].map((m) => m[0]))];
 }
 
 /** The finding numbers in a reviewer's summary: `[severity] F<n> <type> …`, behind any list or emphasis markup. */
@@ -106,14 +111,16 @@ export function numberedFindings(summary: string): number[] {
     .map(Number);
 }
 
-const REVIEWER_HEADING = /^[#*_\s>-]*(Argus|Cerberus|Iris)\b[^[\]]*$/;
+// A reviewer's section starts at a heading-like line only: the name alone (`Argus:`, `## Cerberus`, `**Iris**`), or
+// Athena's posted `review record: **Name**` line. A prose line that starts with or bolds a name switches nothing.
+const HEADING_NAME = '(Argus|Cerberus|Iris|CI)';
+const REVIEWER_HEADING = new RegExp(`^[#>*_\\s-]*${HEADING_NAME}[*_]*\\s*:?[*_\\s]*$`);
+const REVIEW_RECORD = new RegExp(`review record:\\s*\\*\\*${HEADING_NAME}\\*\\*`);
 
-/** The reviewer a line introduces: one name in bold anywhere (Athena's posted review records), or one leading it. */
+/** The reviewer (or `CI`) a line introduces, or undefined. */
 function reviewerHeading(line: string): string | undefined {
   if (/\[(?:blocking|should-fix|nit)\]/i.test(line) || /\bF\d+\b/.test(line)) return undefined;
-  const bold = [...line.matchAll(/\*\*(Argus|Cerberus|Iris)\*\*/g)].map((m) => m[1]);
-  if (bold.length === 1) return bold[0];
-  return REVIEWER_HEADING.exec(line)?.[1];
+  return REVIEWER_HEADING.exec(line)?.[1] ?? REVIEW_RECORD.exec(line)?.[1];
 }
 
 /**
@@ -127,7 +134,9 @@ export function requireFindingIds(text: string): string[] {
   let reviewer: string | undefined;
   for (const line of text.split(/\r\n?|\n/)) {
     reviewer = reviewerHeading(line) ?? reviewer;
-    ids.push(...findingIds(line));
+    // Inside a reviewer's section only its own `[severity] F<n>` lines count: an older round's id named in a
+    // finding's text is no finding of this round.
+    if (reviewer === undefined) ids.push(...findingIds(line));
     const numbers = numberedFindings(line);
     if (numbers.length > 0 && reviewer === undefined) {
       const tag = /\[(?:blocking|should-fix|nit)\]/i.exec(line)?.[0] ?? '';

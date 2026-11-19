@@ -74,7 +74,7 @@ export function parseDispatchRecord(text: string, issue: number): DispatchRecord
     (r.findings !== undefined &&
       (!Array.isArray(r.findings) ||
         !r.findings.every(
-          (id: unknown) => typeof id === 'string' && /^(Argus|Cerberus|Iris) F\d+$/.test(id),
+          (id: unknown) => typeof id === 'string' && /^(Argus|Cerberus|Iris|CI) F\d+$/.test(id),
         ))) ||
     (r.ending !== undefined &&
       !['finished', 'usage-limit', 'frozen', 'failed'].includes(r.ending)) ||

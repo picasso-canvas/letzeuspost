@@ -179,9 +179,7 @@ describe('findingIds', () => {
 describe('a shared or named test file beside the file (#148)', () => {
   it('also covers <file>-*.test.* for "its tests", but not for stories', () => {
     const areas = parseAreas('**Areas:** `scripts/dispatch.ts` and its tests and stories');
-    expect(areas).toMatchObject({
-      patterns: expect.arrayContaining(['scripts/dispatch-*.test.*']),
-    });
+    expect('patterns' in areas && areas.patterns).toContain('scripts/dispatch-*.test.*');
     expect(
       areaRefusals(['scripts/dispatch-ship.test.ts'], 'patterns' in areas ? areas.patterns : []),
     ).toEqual([]);

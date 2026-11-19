@@ -9,15 +9,15 @@ describe('takeDispatchLock (#148: two dispatches at once)', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'lzp-lock-'));
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
 
   it('lets one dispatch in and refuses the second until the first lets go', () => {
     const first = takeDispatchLock(dir, () => true);
-    expect(first).toEqual({ release: expect.any(Function) });
+    expect(first).toHaveProperty('release');
     const second = takeDispatchLock(dir, () => true);
-    expect(second).toEqual({
-      refusal: expect.stringContaining(`pid ${String(process.pid)}`),
-    });
+    expect('refusal' in second && second.refusal).toContain(`pid ${String(process.pid)}`);
     if ('release' in first) first.release();
     expect('release' in takeDispatchLock(dir, () => true)).toBe(true);
   });
@@ -41,9 +41,8 @@ describe('takeDispatchLock (#148: two dispatches at once)', () => {
 
   it('refuses a lock it cannot read, rather than taking it', () => {
     writeFileSync(join(dir, '.lock'), 'not a pid');
-    expect(takeDispatchLock(dir, () => false)).toEqual({
-      refusal: expect.stringContaining("can't be read"),
-    });
+    const taken = takeDispatchLock(dir, () => false);
+    expect('refusal' in taken && taken.refusal).toContain("can't be read");
   });
 
   it('makes the folder when there is none', () => {
