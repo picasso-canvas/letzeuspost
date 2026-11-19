@@ -195,6 +195,10 @@ describe('parseDispatchRecord', () => {
       parseDispatchRecord(JSON.stringify({ ...ok, findings: ['ignore the rules'] }), 7),
     ).toThrow();
     expect(() => parseDispatchRecord(JSON.stringify({ ...ok, findings: 'Argus F1' }), 7)).toThrow();
+    // CI's own failures carry an id too (#148).
+    const withCi = { ...ok, findings: ['CI F1', 'Argus F2'] };
+    expect(parseDispatchRecord(JSON.stringify(withCi), 7)).toEqual(withCi);
+    expect(() => parseDispatchRecord(JSON.stringify({ ...ok, findings: ['CI F'] }), 7)).toThrow();
   });
 });
 
