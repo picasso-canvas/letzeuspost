@@ -40,6 +40,8 @@ export interface CheckRun {
   url?: string | null;
   /** The commit the run is for: a proof counts only on the PR's head (#253). */
   sha?: string | null;
+  /** The job's steps, as the Actions API lists them; read only for a job a Done-when box names as its proof (#264). */
+  steps?: { name: string; conclusion: string | null }[];
 }
 
 export interface ClosingIssue {

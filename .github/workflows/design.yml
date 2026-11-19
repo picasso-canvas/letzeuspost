@@ -160,3 +160,9 @@ jobs:
           name: gallery-screenshots
           path: tests/visual/output
           retention-days: 14
+
+      # The gate reads this step (#264): a `(proof: ci:<job>)` box counts only when the checks ran, and this step runs only
+      # when the scope step said so and every step before it passed. A job the scope step skipped passes without it.
+      - name: Scoped checks ran
+        if: steps.scope.outputs.run == 'true'
+        run: echo "The checks ran."
