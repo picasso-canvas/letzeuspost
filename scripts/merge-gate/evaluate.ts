@@ -74,6 +74,20 @@ export function doneWhenMarks(markdown: string): { proof: string | null; ticked:
   });
 }
 
+/** A scoped job's first step is named `Scope (…)`: it can skip the job's checks and let the job pass (#160). */
+const SCOPE_STEP = /^Scope \(/;
+/** The step a scoped job ends with, which runs only when its scope step said `run=true` and every step before it passed. */
+const RAN_STEP = 'Scoped checks ran';
+
+/**
+ * Whether a scoped job ran its checks (#264): null for a job with no scope step, which has nothing to skip. A scoped
+ * job without the closing step, or whose closing step didn't succeed, didn't run them: its green check proves nothing.
+ */
+export function scopedJobRan(steps: { name: string; conclusion: string | null }[]): boolean | null {
+  if (!steps.some((step) => SCOPE_STEP.test(step.name))) return null;
+  return steps.some((step) => step.name === RAN_STEP && step.conclusion === 'success');
+}
+
 /** Why a proof named on a Done-when box doesn't hold for this head commit; null when it does. */
 function proofRefusal(f: Facts, proof: string, hash: string): string | null {
   const head = f.headSha.slice(0, 7);
@@ -101,6 +115,14 @@ function proofRefusal(f: Facts, proof: string, hash: string): string | null {
   const bad = onHead.find((run) => run.status !== 'completed' || run.conclusion !== 'success');
   if (bad !== undefined) {
     return `CI job "${job}" is ${bad.status === 'completed' ? String(bad.conclusion) : bad.status} on ${head}`;
+  }
+  // A scoped job passes without running anything when the PR can't affect it; that doesn't prove a box (#264).
+  // Steps the gate couldn't read count as a run that didn't happen.
+  const skipped = onHead.find(
+    (run) => run.steps === undefined || scopedJobRan(run.steps) === false,
+  );
+  if (skipped !== undefined) {
+    return `CI job "${job}" passed on ${head} without running its checks (its scope step skipped them), so it proves nothing`;
   }
   return null;
 }

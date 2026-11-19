@@ -358,6 +358,21 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       '.check_runs[] | {name, status, conclusion, app: .app.slug, url: .details_url, sha: .head_sha}',
     ]),
   );
+  // A job a Done-when box names as its proof: its steps show whether a scoped job ran its checks or skipped them (#264).
+  // Only the runs on the head, and only those boxes' jobs, so a PR with no proofs makes no extra call.
+  const proofJobs = new Set(
+    closingIssues.flatMap((issue) =>
+      issue.proofs.flatMap((proof) => (proof?.startsWith('ci:') === true ? [proof.slice(3)] : [])),
+    ),
+  );
+  for (const run of checkRuns) {
+    const jobId = /\/job\/(\d+)$/.exec(run.url ?? '')?.[1];
+    if (!proofJobs.has(run.name) || run.sha !== sha || run.app !== 'github-actions') continue;
+    if (jobId === undefined) continue; // no steps to read: the gate refuses the proof
+    run.steps = jsonLines<{ name: string; conclusion: string | null }>(
+      gh(['api', `repos/${repo}/actions/jobs/${jobId}`, '--jq', '.steps[] | {name, conclusion}']),
+    );
+  }
   // A batch may close several features (#265). Each one that is complete is held until the services run on its head
   // shows its journey passed (§19, #156); one that is only a part (another of its build tasks still open) isn't: its
   // journey is still marked, by design. The gate names the open tasks that made it a part (Argus F3, Cerberus F2 on
