@@ -4,6 +4,7 @@ import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
 import { featureOf } from '../lib/features.ts';
 import {
+  followUpOf,
   landingProblem,
   wantsComments,
   type ClosedFollowUp,
@@ -340,8 +341,6 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
           repo,
           '--state',
           'closed',
-          '--search',
-          'in:body "Follow-up of"',
           '--limit',
           String(ISSUE_LIMIT),
           '--json',
@@ -352,42 +351,48 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
         labels: { name: string }[];
         body: string;
         stateReason: string | null;
-        closedByPullRequestsReferences: { number: number }[];
+        closedByPullRequestsReferences: { number: number; url: string }[];
       }[])
     : [];
   const closedCutOff = closedListed.length >= ISSUE_LIMIT;
-  const closedFollowUps: ClosedFollowUp[] = closedListed.map((i) => {
-    const mergedClosers = i.closedByPullRequestsReferences.filter(
-      (ref) =>
-        gh([
-          'pr',
-          'view',
-          String(ref.number),
-          '-R',
-          repo,
-          '--json',
-          'state',
-          '--jq',
-          '.state',
-        ]).trim() === 'MERGED',
-    ).length;
-    const issue = {
-      number: i.number,
-      labels: i.labels.map((l) => l.name),
-      body: i.body,
-      stateReason: i.stateReason,
-      mergedClosers,
-    };
-    const comments =
-      landingProblem(issue) === null
-        ? []
-        : (
-            JSON.parse(
-              gh(['issue', 'view', String(i.number), '-R', repo, '--json', 'comments']),
-            ) as { comments: { author: { login: string } | null; body: string }[] }
-          ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body }));
-    return { ...issue, comments };
-  });
+  // The whole closed list, read directly (a search index lags behind a close), then narrowed here by the line.
+  // A reference to another repository's pull request is no closer of ours, whatever its number.
+  const closedFollowUps: ClosedFollowUp[] = closedListed
+    .filter((i) => followUpOf(i.body).length > 0)
+    .map((i) => {
+      const mergedClosers = i.closedByPullRequestsReferences
+        .filter((ref) => ref.url.startsWith(`https://github.com/${repo}/pull/`))
+        .filter(
+          (ref) =>
+            gh([
+              'pr',
+              'view',
+              String(ref.number),
+              '-R',
+              repo,
+              '--json',
+              'state',
+              '--jq',
+              '.state',
+            ]).trim() === 'MERGED',
+        ).length;
+      const issue = {
+        number: i.number,
+        labels: i.labels.map((l) => l.name),
+        body: i.body,
+        stateReason: i.stateReason,
+        mergedClosers,
+      };
+      const comments =
+        landingProblem(issue) === null
+          ? []
+          : (
+              JSON.parse(
+                gh(['issue', 'view', String(i.number), '-R', repo, '--json', 'comments']),
+              ) as { comments: { author: { login: string } | null; body: string }[] }
+            ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body }));
+      return { ...issue, comments };
+    });
   // With their authors: only Zeus's account links a follow-up (Argus F1 in round 2 on #170).
   const prComments: { author: string; body: string }[] = isBatch
     ? (

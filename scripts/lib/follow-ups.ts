@@ -37,7 +37,7 @@ export function landingProblem(issue: Omit<ClosedFollowUp, 'comments'>): string 
 }
 
 /** Every PR a follow-up's **Follow-up of:** line names. */
-function followUpOf(body: string): number[] {
+export function followUpOf(body: string): number[] {
   const line = /^\*\*Follow-up of:\*\*(.*)$/m.exec(body)?.[1] ?? '';
   return [...line.matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
 }

@@ -638,7 +638,11 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
           labels: [{ name: 'follow-up' }],
           body: '**Follow-up of:** #130',
           stateReason: 'COMPLETED',
-          closedByPullRequestsReferences: [{ number: 160 }, { number: 161 }],
+          closedByPullRequestsReferences: [
+            { number: 160, url: 'https://github.com/picasso-canvas/letzeuspost/pull/160' },
+            { number: 161, url: 'https://github.com/picasso-canvas/letzeuspost/pull/161' },
+            { number: 162, url: 'https://github.com/someone/else/pull/162' },
+          ],
         },
         {
           number: 151,
@@ -647,7 +651,19 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
           stateReason: 'NOT_PLANNED',
           closedByPullRequestsReferences: [],
         },
+        // Not a follow-up (no line): the gate reads the whole closed list, not a search, so it filters here.
+        {
+          number: 152,
+          labels: [{ name: 'build-task' }],
+          body: 'a task',
+          stateReason: 'COMPLETED',
+          closedByPullRequestsReferences: [
+            { number: 163, url: 'https://github.com/picasso-canvas/letzeuspost/pull/163' },
+          ],
+        },
       ]),
+      // Another repository's PR with the same number is no closer of ours.
+      'pr view 162 -R picasso-canvas/letzeuspost --json state': 'MERGED\n',
       'pr view 160 -R picasso-canvas/letzeuspost --json state': 'CLOSED\n',
       'pr view 161 -R picasso-canvas/letzeuspost --json state': 'MERGED\n',
       'issue view 151 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
@@ -682,6 +698,10 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
       },
     ]);
     expect(calls).not.toContain('issue view 150 -R picasso-canvas/letzeuspost --json comments');
+    expect(calls.some((c) => c.includes('--search'))).toBe(false);
+    expect(calls.some((c) => c.startsWith('pr view 162') || c.startsWith('pr view 163'))).toBe(
+      false,
+    );
     expect(f.closedCutOff).toBe(false);
   });
 
@@ -691,7 +711,9 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
       labels: [{ name: 'follow-up' }],
       body: '**Follow-up of:** #130',
       stateReason: 'COMPLETED',
-      closedByPullRequestsReferences: [{ number: 5 }],
+      closedByPullRequestsReferences: [
+        { number: 5, url: 'https://github.com/picasso-canvas/letzeuspost/pull/5' },
+      ],
     }));
     const gh = fakeGh({
       'pr view': batchView,
