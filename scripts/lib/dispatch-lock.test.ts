@@ -62,7 +62,18 @@ describe('takeDispatchLock (#148: two dispatches at once)', () => {
     writeFileSync(join(dir, '.lock.takeover'), '4242\n');
     const taken = takeDispatchLock(dir, (pid) => pid !== 99999999);
     expect('refusal' in taken && taken.refusal).toContain('taking over');
+    // The refusal says whose guard it is and whether that process is alive, so a dead one can be removed by hand.
+    expect('refusal' in taken && taken.refusal).toContain('pid 4242');
+    expect('refusal' in taken && taken.refusal).toContain('still running');
     expect(readFileSync(join(dir, '.lock'), 'utf8').trim()).toBe('99999999');
+  });
+
+  it('says a guard whose process is gone can be removed by hand', () => {
+    writeFileSync(join(dir, '.lock'), '99999999\n');
+    writeFileSync(join(dir, '.lock.takeover'), '4242\n');
+    const taken = takeDispatchLock(dir, (pid) => pid === 12345);
+    expect('refusal' in taken && taken.refusal).toContain('pid 4242');
+    expect('refusal' in taken && taken.refusal).toContain('is gone');
   });
 
   it('refuses a lock it cannot read, rather than taking it', () => {

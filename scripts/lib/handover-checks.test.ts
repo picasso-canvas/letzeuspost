@@ -222,6 +222,19 @@ describe('requireFindingIds (what dispatch records)', () => {
     ).toEqual(['Argus F1', 'CI F1']);
   });
 
+  it("doesn't count a CI id a reviewer names inside one of its own finding lines", () => {
+    // Found by the live re-run over the real review records (PR #279): reviewers discuss the CI ids of this very task.
+    expect(
+      requireFindingIds(
+        [
+          'Cerberus:',
+          '[nit] F1 correctness a.ts:1 — a written-out `CI F1` after a heading is dropped',
+          '[nit] F2 guardrails a.ts:2 — and if a real CI F2 exists too',
+        ].join('\n'),
+      ),
+    ).toEqual(['Cerberus F1', 'Cerberus F2']);
+  });
+
   it('only a heading-like line starts a reviewer section', () => {
     // Prose that starts with a reviewer's name, or bolds one, switches nothing.
     expect(
