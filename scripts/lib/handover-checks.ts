@@ -135,8 +135,9 @@ export function requireFindingIds(text: string): string[] {
   for (const line of text.split(/\r\n?|\n/)) {
     reviewer = reviewerHeading(line) ?? reviewer;
     // Inside a reviewer's section only its own `[severity] F<n>` lines count: an older round's id named in a
-    // finding's text is no finding of this round.
-    if (reviewer === undefined) ids.push(...findingIds(line));
+    // finding's text is no finding of this round. A `CI F<n>` is Athena's alone, so it counts wherever it is written
+    // (Cerberus F2 on #279).
+    ids.push(...findingIds(line).filter((id) => reviewer === undefined || id.startsWith('CI ')));
     const numbers = numberedFindings(line);
     if (numbers.length > 0 && reviewer === undefined) {
       const tag = /\[(?:blocking|should-fix|nit)\]/i.exec(line)?.[0] ?? '';

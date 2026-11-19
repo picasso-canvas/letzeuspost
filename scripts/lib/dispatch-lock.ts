@@ -62,7 +62,24 @@ export function takeDispatchLock(
       return {
         refusal: `another dispatch is starting (pid ${String(holder)} holds ${path}): wait for it, then dispatch again`,
       };
-    rmSync(path, { force: true }); // its process is gone
+    // Its process is gone. Two dispatches can both see that, so only one at a time takes the lock over, and it looks
+    // again before removing: a lock another dispatch took meanwhile is theirs (Argus F1, Cerberus F1 on #279).
+    const guard = `${path}.takeover`;
+    try {
+      writeFileSync(guard, `${String(process.pid)}\n`, { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== 'EEXIST') throw error;
+      return {
+        refusal: `another dispatch is taking over a stale ${path} (${guard}): wait for it, then dispatch again`,
+      };
+    }
+    try {
+      if (readFileSync(path, 'utf8').trim() === String(holder)) rmSync(path, { force: true });
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== 'ENOENT') throw error;
+    } finally {
+      rmSync(guard, { force: true });
+    }
   }
   return { refusal: `couldn't take ${path}: another dispatch took it first` };
 }
