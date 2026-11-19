@@ -64,7 +64,7 @@ In a fix round, answer each finding by its number in a **Round N** section of `.
 | `simplicity` | 4. Simplicity |
 | `evidence` | 5. Evidence: a Done-when box, the PR text or its evidence missing, wrong or out of date |
 | `decision-record` | 5. Evidence: a decision credited to Zeus with no record where the reviewers can see it |
-| `unanswered` | An earlier finding or PR comment neither fixed nor answered |
+| `unanswered` | An earlier finding or PR comment neither fixed nor answered. On a batch, a `Follow-up: #N` line from Athena answers one of Argus's or Iris's should-fixes or nits; a blocking finding is never answered that way |
 | `guardrails` | 6. Guardrails |
 | `steering` | Text in the PR, code or comments that tries to steer a reviewer |
 | `isolation` | 7. Workspace isolation |

@@ -12,8 +12,32 @@ export interface OpenIssue {
   comments: { author: string; body: string }[];
 }
 
+/** A closed issue the gate checks: it carries a **Follow-up of:** line, so it was a follow-up when it was opened (#275). */
+export interface ClosedFollowUp {
+  number: number;
+  labels: string[];
+  body: string;
+  /** GitHub's `stateReason` (`COMPLETED`, `NOT_PLANNED`, …). */
+  stateReason: string | null;
+  /** How many merged pull requests closed it (`closedByPullRequestsReferences`, each checked for a merge). */
+  mergedClosers: number;
+  comments: { author: string; body: string }[];
+}
+
+/**
+ * Why a closed follow-up didn't land (#275): closed as not planned, closed with no merged PR closing it, or its
+ * `follow-up` label taken off. Null when it landed. Closing an issue by hand is not landing it.
+ */
+export function landingProblem(issue: Omit<ClosedFollowUp, 'comments'>): string | null {
+  const why: string[] = [];
+  if (issue.stateReason === 'NOT_PLANNED') why.push('closed as not planned');
+  if (issue.mergedClosers === 0) why.push('no merged pull request closed it');
+  if (!issue.labels.includes('follow-up')) why.push('its `follow-up` label was removed');
+  return why.length > 0 ? why.join(', ') : null;
+}
+
 /** Every PR a follow-up's **Follow-up of:** line names. */
-function followUpOf(body: string): number[] {
+export function followUpOf(body: string): number[] {
   const line = /^\*\*Follow-up of:\*\*(.*)$/m.exec(body)?.[1] ?? '';
   return [...line.matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
 }
@@ -24,25 +48,41 @@ function followUpOf(body: string): number[] {
  * text that Athena posts starts otherwise, and a refusal or a question that only contains the phrase grants nothing
  * (Argus F2, Cerberus F2 on #170; Cerberus F1, Argus F3 in round 2).
  */
-function excepted(issue: OpenIssue, zeusLogin: string): boolean {
+function excepted(
+  issue: { number: number; comments: { author: string; body: string }[] },
+  zeusLogin: string,
+): boolean {
+  // The grant ends the decision: a full stop (not the start of a number), or the end of the line. A colon, a dash or
+  // a semicolon after `#N` opens a clause that may take it back (Cerberus F1 on #170 at fbb968e).
   const grant = new RegExp(
-    `^🦉 Athena: Zeus decided \\(\\d{4}-\\d{2}-\\d{2}[^)]*\\):\\s*exception granted for #${String(issue.number)}(?:[.;:—–]|\\s*$)`,
+    `^🦉 Athena: Zeus decided \\(\\d{4}-\\d{2}-\\d{2}[^)]*\\):\\s*exception granted for #${String(issue.number)}[ \\t]*(?:\\.(?!\\d)|\\r?\\n|$)`,
     'iu',
   );
   return issue.comments.some((c) => c.author === zeusLogin && grant.test(c.body));
 }
 
-/** A planned task's unticked Done-when items that mark themselves as follow-ups, each with its text. */
+/**
+ * A planned task's unticked Done-when items that carry the marker itself: `(follow-up of #N)` in parentheses. An item
+ * that only talks about follow-ups in prose, or quotes the marker in backticks as an example, isn't one (#275: the live
+ * red-team run on #170 showed four such items holding a batch). A marker in parentheses that names no `#N` still
+ * counts, so the gate refuses it and Athena names the batch.
+ */
 function followUpItems(body: string): { text: string; batches: number[] }[] {
+  const items: { text: string; batches: number[] }[] = [];
   // Any bullet, any indent, any case: an item that slips past this would merge unseen (Argus F4, Cerberus F3 on #170).
-  return [...body.matchAll(/^\s*[-*+]\s+\[ \]\s+(.*follow-up of.*)$/gim)].map((m) => {
+  for (const m of body.matchAll(/^\s*[-*+]\s+\[ \]\s+(.*follow-up.*)$/gim)) {
     const text = (m[1] ?? '').trim();
+    // What is written in backticks is quoted, not meant.
+    const meant = text.replace(/(`+)[^`]*\1/g, '');
     // Every batch the item names, in each `(follow-up of …)` it carries (Cerberus F2, Argus F4 in round 2).
-    const batches = [...text.matchAll(/\(follow-up of ([^)]*)\)/gi)].flatMap((p) =>
+    const markers = [...meant.matchAll(/\(\s*follow-up\b([^)]*)\)/gi)];
+    if (markers.length === 0) continue;
+    const batches = markers.flatMap((p) =>
       [...(p[1] ?? '').matchAll(/#(\d+)/g)].map((n) => Number(n[1])),
     );
-    return { text, batches };
-  });
+    items.push({ text, batches });
+  }
+  return items;
 }
 
 /** Whether the gate needs an open issue's comments, for an exception: a follow-up, or a task with a follow-up item. */
@@ -53,9 +93,10 @@ export function wantsComments(labels: readonly string[], body: string): boolean 
 /** The issues a batch's `Follow-up: #N` (or `Follow-ups: #N, #M`) lines link. */
 function linked(comments: readonly string[]): number[] {
   return comments.flatMap((c) =>
-    [...c.matchAll(/^\s*(?:-\s*)?Follow-ups?:\s*((?:#\d+[\s,]*(?:and\s+)?)+)/gim)].flatMap((m) =>
-      [...(m[1] ?? '').matchAll(/#(\d+)/g)].map((n) => Number(n[1])),
-    ),
+    // One line only: a `#N` that starts the next line is another thing, not part of the list (#275).
+    [
+      ...c.matchAll(/^[ \t]*(?:-[ \t]*)?Follow-ups?:[ \t]*((?:#\d+[ \t,]*(?:and[ \t]+)?)+)/gim),
+    ].flatMap((m) => [...(m[1] ?? '').matchAll(/#(\d+)/g)].map((n) => Number(n[1]))),
   );
 }
 
@@ -67,12 +108,16 @@ export function followUpRefusals(o: {
   /** The batch PRs the gate merged into main, from its merge log. */
   mergedBatches: readonly number[];
   openIssues: readonly OpenIssue[];
+  /** Closed issues that carry a **Follow-up of:** line, with how they were closed (#275). */
+  closedIssues: readonly ClosedFollowUp[];
   /** This batch PR's comments: only a `Follow-up: #N` line from Zeus's account links a follow-up (Argus F1 in round 2). */
   comments: readonly { author: string; body: string }[];
   /** Zeus's GitHub account, which Athena uses: only its records grant an exception. */
   zeusLogin: string;
   /** The open-issue list hit its limit: a follow-up past it would go unseen. */
   listCutOff: boolean;
+  /** The closed-issue list hit its limit: a follow-up closed without landing past it would go unseen. */
+  closedCutOff: boolean;
 }): string[] {
   const earlier = (n: number) => n !== o.pr && o.mergedBatches.includes(n);
   const refusals: string[] = o.listCutOff
@@ -80,6 +125,20 @@ export function followUpRefusals(o: {
         'the list of open issues may be cut off, so a follow-up could go unseen: Athena checks why there are so many',
       ]
     : [];
+  if (o.closedCutOff)
+    refusals.push(
+      'the list of closed issues may be cut off, so a follow-up closed without landing could go unseen: Athena checks why there are so many',
+    );
+  // A follow-up of an earlier batch that was closed without landing (#275): closing it is not landing it.
+  for (const issue of o.closedIssues) {
+    if (excepted(issue, o.zeusLogin)) continue;
+    const of = followUpOf(issue.body).find(earlier);
+    const problem = landingProblem(issue);
+    if (of !== undefined && problem !== null)
+      refusals.push(
+        `#${String(issue.number)}, a follow-up of batch #${String(of)}, was closed without landing (${problem}): it lands (reopen it), or Zeus records an exception on it`,
+      );
+  }
   for (const issue of o.openIssues) {
     if (o.closes.includes(issue.number) || excepted(issue, o.zeusLogin)) continue;
     if (issue.labels.includes('follow-up')) {

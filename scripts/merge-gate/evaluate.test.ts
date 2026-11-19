@@ -61,6 +61,8 @@ function facts(over: Partial<Facts> = {}): Facts {
     journeyParts: [],
     openIssues: [],
     openIssuesCutOff: false,
+    closedFollowUps: [],
+    closedCutOff: false,
     mergedBatches: [],
     prComments: [],
     labels: ['routine'],
@@ -834,6 +836,32 @@ describe('evaluate: the batch PR from staging into main', () => {
     expect(
       evaluate(facts({ openIssues: [open], mergedBatches: [130] })).items[1]?.detail,
     ).not.toContain('follow-up');
+  });
+
+  it('refuses a batch while a follow-up of an earlier batch was closed without landing (#275)', () => {
+    const closed = {
+      number: 151,
+      labels: ['follow-up'],
+      body: '**Follow-up of:** #130',
+      stateReason: 'NOT_PLANNED',
+      mergedClosers: 0,
+      comments: [],
+    };
+    const refused = batch({ closedFollowUps: [closed], mergedBatches: [130] });
+    expect(failedIds(refused)).toEqual([2]);
+    expect(evaluate(refused).items[1]?.detail).toContain(
+      '#151, a follow-up of batch #130, was closed without landing',
+    );
+    // One a merged PR closed has landed, and a cut-off list is one fact the gate can't see past.
+    expect(
+      failedIds(
+        batch({
+          closedFollowUps: [{ ...closed, stateReason: 'COMPLETED', mergedClosers: 1 }],
+          mergedBatches: [130],
+        }),
+      ),
+    ).toEqual([]);
+    expect(failedIds(batch({ closedCutOff: true, mergedBatches: [130] }))).toEqual([2]);
   });
 
   it('refuses a batch that carries a harness path, or misses a task box', () => {
