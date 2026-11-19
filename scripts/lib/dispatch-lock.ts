@@ -18,6 +18,25 @@ export function pidAlive(pid: number): boolean {
 export type DispatchLock = { release: () => void } | { refusal: string };
 
 /**
+ * Why a takeover can't start: another dispatch holds the guard. The guard stays fail-closed (a dead taker's guard is
+ * never removed by a dispatch), so the message says whose it is and whether that process is still running, and a dead
+ * one can be removed by hand (Cerberus F1, Argus F1 on #279).
+ */
+function guardRefusal(path: string, guard: string, alive: (pid: number) => boolean): string {
+  let owner = Number.NaN;
+  try {
+    owner = Number(readFileSync(guard, 'utf8').trim());
+  } catch {
+    // gone already, or being written
+  }
+  if (!Number.isInteger(owner) || owner <= 0)
+    return `another dispatch is taking over a stale ${path} (${guard} has no readable pid): wait for it, then dispatch again`;
+  if (alive(owner))
+    return `another dispatch is taking over a stale ${path} (pid ${String(owner)} holds ${guard} and is still running): wait for it, then dispatch again`;
+  return `another dispatch was taking over a stale ${path}, but pid ${String(owner)} is gone: look, then remove ${guard} if no dispatch is starting`;
+}
+
+/**
  * Takes the lock, or says who holds it. A lock whose process is gone is taken over; one that can't be read is
  * refused, not taken, since it may belong to a dispatch that is running.
  */
@@ -69,9 +88,7 @@ export function takeDispatchLock(
       writeFileSync(guard, `${String(process.pid)}\n`, { flag: 'wx', mode: 0o600 });
     } catch (error) {
       if ((error as { code?: unknown }).code !== 'EEXIST') throw error;
-      return {
-        refusal: `another dispatch is taking over a stale ${path} (${guard}): wait for it, then dispatch again`,
-      };
+      return { refusal: guardRefusal(path, guard, alive) };
     }
     try {
       if (readFileSync(path, 'utf8').trim() === String(holder)) rmSync(path, { force: true });

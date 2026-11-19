@@ -126,8 +126,10 @@ function reviewerHeading(line: string): string | undefined {
 /**
  * The finding ids in Athena's findings file for a fix round: ids written out (`Argus F1`), and the reviewers' own
  * `[severity] F<n>` lines under each reviewer's name (`Argus:`, `## Cerberus`, or a posted record's
- * `review record: **Iris**`). A numbered finding with no reviewer above it is refused rather than dropped, and so is a
- * file with no ids at all, so a fix round can't skip part of its Round section by accident.
+ * `review record: **Iris**`). Under a reviewer's name only its own `[severity] F<n>` lines count: a reviewer id written
+ * in prose there (an older round's `Argus F1` in a finding's text) is ignored. A numbered finding with no reviewer above
+ * it is refused rather than dropped, and so is a file with no ids at all, so a fix round can't skip part of its Round
+ * section by accident.
  */
 export function requireFindingIds(text: string): string[] {
   const ids: string[] = [];
@@ -135,10 +137,12 @@ export function requireFindingIds(text: string): string[] {
   for (const line of text.split(/\r\n?|\n/)) {
     reviewer = reviewerHeading(line) ?? reviewer;
     // Inside a reviewer's section only its own `[severity] F<n>` lines count: an older round's id named in a
-    // finding's text is no finding of this round. A `CI F<n>` is Athena's alone, so it counts wherever it is written
-    // (Cerberus F2 on #279).
-    ids.push(...findingIds(line).filter((id) => reviewer === undefined || id.startsWith('CI ')));
+    // finding's text is no finding of this round. A `CI F<n>` is Athena's alone, so it counts wherever it is written,
+    // except inside a reviewer's own finding line, which may only be discussing one (Cerberus F2 on #279; the live
+    // re-run over the real review records found two such lines).
     const numbers = numberedFindings(line);
+    if (numbers.length === 0)
+      ids.push(...findingIds(line).filter((id) => reviewer === undefined || id.startsWith('CI ')));
     if (numbers.length > 0 && reviewer === undefined) {
       const tag = /\[(?:blocking|should-fix|nit)\]/i.exec(line)?.[0] ?? '';
       throw new Error(
