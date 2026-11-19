@@ -3,7 +3,12 @@ import { agentFor } from './agents.ts';
 import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
 import { featureOf } from '../lib/features.ts';
-import { wantsComments, type OpenIssue } from '../lib/follow-ups.ts';
+import {
+  landingProblem,
+  wantsComments,
+  type ClosedFollowUp,
+  type OpenIssue,
+} from '../lib/follow-ups.ts';
 import { parseJourneyReport } from '../lib/journey-proof.ts';
 import { numberedFindings, parseAreas } from '../lib/handover-checks.ts';
 import { parseRawDiff } from '../lib/protected.ts';
@@ -323,6 +328,66 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       : [];
     return { number: i.number, labels, body: i.body, comments };
   });
+  // Closed issues that carry a **Follow-up of:** line (#275): a follow-up closed by hand or as not planned hasn't landed.
+  // Each one's closing PRs are checked for a merge; the comments, for an exception, are read only for one that
+  // didn't land. A list that reaches its limit may be cut off, and the gate refuses then.
+  const closedListed = isBatch
+    ? (JSON.parse(
+        gh([
+          'issue',
+          'list',
+          '-R',
+          repo,
+          '--state',
+          'closed',
+          '--search',
+          'in:body "Follow-up of"',
+          '--limit',
+          String(ISSUE_LIMIT),
+          '--json',
+          'number,labels,body,stateReason,closedByPullRequestsReferences',
+        ]),
+      ) as {
+        number: number;
+        labels: { name: string }[];
+        body: string;
+        stateReason: string | null;
+        closedByPullRequestsReferences: { number: number }[];
+      }[])
+    : [];
+  const closedCutOff = closedListed.length >= ISSUE_LIMIT;
+  const closedFollowUps: ClosedFollowUp[] = closedListed.map((i) => {
+    const mergedClosers = i.closedByPullRequestsReferences.filter(
+      (ref) =>
+        gh([
+          'pr',
+          'view',
+          String(ref.number),
+          '-R',
+          repo,
+          '--json',
+          'state',
+          '--jq',
+          '.state',
+        ]).trim() === 'MERGED',
+    ).length;
+    const issue = {
+      number: i.number,
+      labels: i.labels.map((l) => l.name),
+      body: i.body,
+      stateReason: i.stateReason,
+      mergedClosers,
+    };
+    const comments =
+      landingProblem(issue) === null
+        ? []
+        : (
+            JSON.parse(
+              gh(['issue', 'view', String(i.number), '-R', repo, '--json', 'comments']),
+            ) as { comments: { author: { login: string } | null; body: string }[] }
+          ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body }));
+    return { ...issue, comments };
+  });
   // With their authors: only Zeus's account links a follow-up (Argus F1 in round 2 on #170).
   const prComments: { author: string; body: string }[] = isBatch
     ? (
@@ -467,6 +532,8 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     gatedIssues,
     openIssues,
     openIssuesCutOff,
+    closedFollowUps,
+    closedCutOff,
     mergedBatches,
     prComments,
     ...handoverFacts(pr, sha, base, deps),

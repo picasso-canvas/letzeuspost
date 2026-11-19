@@ -564,6 +564,7 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
         { number: 72, labels: [{ name: 'build-task' }], body: '- [ ] a test (follow-up of #130)' },
         { number: 73, labels: [{ name: 'build-task' }], body: 'x' },
       ]),
+      'issue list -R picasso-canvas/letzeuspost --state closed': '[]',
       'issue view 72 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
         comments: [],
       }),
@@ -607,6 +608,8 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     expect(calls).toContain('issue view 72 -R picasso-canvas/letzeuspost --json comments');
     expect(calls).not.toContain('issue view 73 -R picasso-canvas/letzeuspost --json comments');
     expect(f.openIssuesCutOff).toBe(false);
+    expect(f.closedFollowUps).toEqual([]);
+    expect(f.closedCutOff).toBe(false);
     expect(f.prComments).toEqual([{ author: 'picasso-canvas', body: 'Follow-up: #148' }]);
 
     calls.length = 0;
@@ -617,6 +620,96 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     expect(other.openIssues).toEqual([]);
     expect(other.prComments).toEqual([]);
     expect(calls.some((c) => c.startsWith('issue list'))).toBe(false);
+    expect(other.closedFollowUps).toEqual([]);
+    expect(other.closedCutOff).toBe(false);
+  });
+
+  // #275: a follow-up closed by hand, or as not planned, hasn't landed. Its closing PRs are asked whether they merged,
+  // and its comments are read only when it didn't land (an exception can be there).
+  it("gathers a closed follow-up with how many of its closing PRs merged, and its comments only when it didn't land", () => {
+    const calls: string[] = [];
+    const gh = fakeGh({
+      'pr view': batchView,
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'issue list -R picasso-canvas/letzeuspost --state open': '[]',
+      'issue list -R picasso-canvas/letzeuspost --state closed': JSON.stringify([
+        {
+          number: 150,
+          labels: [{ name: 'follow-up' }],
+          body: '**Follow-up of:** #130',
+          stateReason: 'COMPLETED',
+          closedByPullRequestsReferences: [{ number: 160 }, { number: 161 }],
+        },
+        {
+          number: 151,
+          labels: [{ name: 'follow-up' }],
+          body: '**Follow-up of:** #130',
+          stateReason: 'NOT_PLANNED',
+          closedByPullRequestsReferences: [],
+        },
+      ]),
+      'pr view 160 -R picasso-canvas/letzeuspost --json state': 'CLOSED\n',
+      'pr view 161 -R picasso-canvas/letzeuspost --json state': 'MERGED\n',
+      'issue view 151 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [{ author: { login: 'picasso-canvas' }, body: 'a note' }],
+      }),
+      'log --first-parent': '',
+    });
+    const f = collectFacts(
+      7,
+      deps({
+        gh: (args) => (calls.push(args.join(' ')), gh(args)),
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readMergeLog: () => [{ result: 'merged', base: 'main', kind: 'batch', pr: 130 }],
+      }),
+    );
+    expect(f.closedFollowUps).toEqual([
+      {
+        number: 150,
+        labels: ['follow-up'],
+        body: '**Follow-up of:** #130',
+        stateReason: 'COMPLETED',
+        mergedClosers: 1,
+        comments: [],
+      },
+      {
+        number: 151,
+        labels: ['follow-up'],
+        body: '**Follow-up of:** #130',
+        stateReason: 'NOT_PLANNED',
+        mergedClosers: 0,
+        comments: [{ author: 'picasso-canvas', body: 'a note' }],
+      },
+    ]);
+    expect(calls).not.toContain('issue view 150 -R picasso-canvas/letzeuspost --json comments');
+    expect(f.closedCutOff).toBe(false);
+  });
+
+  it('flags a closed list that reaches its limit as cut off', () => {
+    const many = Array.from({ length: 1000 }, (_, i) => ({
+      number: 1000 + i,
+      labels: [{ name: 'follow-up' }],
+      body: '**Follow-up of:** #130',
+      stateReason: 'COMPLETED',
+      closedByPullRequestsReferences: [{ number: 5 }],
+    }));
+    const gh = fakeGh({
+      'pr view': batchView,
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'issue list -R picasso-canvas/letzeuspost --state open': '[]',
+      'issue list -R picasso-canvas/letzeuspost --state closed': JSON.stringify(many),
+      'pr view 5 -R picasso-canvas/letzeuspost --json state': 'MERGED\n',
+      'log --first-parent': '',
+    });
+    const f = collectFacts(
+      7,
+      deps({
+        gh,
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readMergeLog: () => [],
+      }),
+    );
+    expect(f.closedCutOff).toBe(true);
   });
 });
 

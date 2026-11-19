@@ -225,9 +225,11 @@ export function evaluate(f: Facts): GateResult {
         closes: f.closingIssues.map((i) => i.number),
         mergedBatches: f.mergedBatches,
         openIssues: f.openIssues,
+        closedIssues: f.closedFollowUps,
         comments: f.prComments,
         zeusLogin: ZEUS_LOGIN,
         listCutOff: f.openIssuesCutOff,
+        closedCutOff: f.closedCutOff,
       }),
     );
   if (kind === 'batch' && f.ungatedStaging.length > 0) {
