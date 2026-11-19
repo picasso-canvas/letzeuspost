@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { followUpRefusals, wantsComments, type OpenIssue } from './follow-ups.ts';
+import {
+  followUpRefusals,
+  landingProblem,
+  wantsComments,
+  type ClosedFollowUp,
+  type OpenIssue,
+} from './follow-ups.ts';
 
 const ZEUS = 'picasso-canvas';
 const issue = (
@@ -13,11 +19,22 @@ const issue = (
   body,
   comments,
 });
+const closed = (over: Partial<ClosedFollowUp> = {}): ClosedFollowUp => ({
+  number: 148,
+  labels: ['build-task', 'follow-up'],
+  body: '**Follow-up of:** #130',
+  stateReason: 'COMPLETED',
+  mergedClosers: 1,
+  comments: [],
+  ...over,
+});
 const base = {
   pr: 170,
   closes: [69, 71, 144],
   mergedBatches: [130],
   openIssues: [] as OpenIssue[],
+  closedIssues: [] as ClosedFollowUp[],
+  closedCutOff: false,
   comments: [] as { author: string; body: string }[],
   zeusLogin: ZEUS,
   listCutOff: false,
@@ -49,7 +66,7 @@ describe('followUpRefusals (#154)', () => {
     const excused = issue(148, ['follow-up'], '**Follow-up of:** #130', [
       {
         author: ZEUS,
-        body: '🦉 Athena: Zeus decided (2026-11-12, in chat): exception granted for #148; it may stay open past the Data batch.',
+        body: '🦉 Athena: Zeus decided (2026-11-12, in chat): exception granted for #148. It may stay open past the Data batch.',
       },
     ]);
     expect(followUpRefusals({ ...base, openIssues: [excused] })).toEqual([]);
@@ -171,5 +188,147 @@ describe('followUpRefusals (#154)', () => {
       '#173 is linked as a follow-up of this batch but has no `follow-up` label or no **Follow-up of:** #170 line',
       '#999 is linked as a follow-up of this batch but is not an open issue',
     ]);
+  });
+});
+
+describe('a follow-up closed without landing (#275)', () => {
+  const refusals = (...issues: ClosedFollowUp[]) =>
+    followUpRefusals({ ...base, closedIssues: issues });
+
+  it('lets through a follow-up that landed: completed, closed by a merged PR, label kept', () => {
+    expect(landingProblem(closed())).toBeNull();
+    expect(refusals(closed())).toEqual([]);
+  });
+
+  it('refuses one closed as not planned, with no merged PR closing it, or with its label removed', () => {
+    expect(landingProblem(closed({ stateReason: 'NOT_PLANNED' }))).toMatch(/not planned/);
+    expect(landingProblem(closed({ mergedClosers: 0 }))).toMatch(/no merged pull request/);
+    expect(landingProblem(closed({ labels: ['build-task'] }))).toMatch(/label was removed/);
+    for (const bad of [
+      closed({ stateReason: 'NOT_PLANNED' }),
+      closed({ mergedClosers: 0 }),
+      closed({ labels: ['build-task'] }),
+    ])
+      expect(refusals(bad)).toEqual([
+        expect.stringMatching(
+          /^#148, a follow-up of batch #130, was closed without landing \(.+\): /,
+        ),
+      ]);
+    expect(refusals(closed({ stateReason: 'NOT_PLANNED', mergedClosers: 0 }))[0]).toMatch(
+      /not planned.*no merged pull request/,
+    );
+  });
+
+  it("takes Zeus's recorded exception, and ignores a closed issue of no earlier batch", () => {
+    const grant = {
+      author: ZEUS,
+      body: '🦉 Athena: Zeus decided (2026-11-19, in chat): exception granted for #148.',
+    };
+    expect(refusals(closed({ stateReason: 'NOT_PLANNED', comments: [grant] }))).toEqual([]);
+    expect(
+      refusals(closed({ stateReason: 'NOT_PLANNED', comments: [{ ...grant, author: 'someone' }] })),
+    ).toHaveLength(1);
+    // A follow-up of a task, of a batch not yet merged, or this batch's own: nothing to land before this batch.
+    for (const body of [
+      '**Follow-up of:** #79',
+      '**Follow-up of:** #165',
+      '**Follow-up of:** #170',
+    ])
+      expect(refusals(closed({ stateReason: 'NOT_PLANNED', body }))).toEqual([]);
+  });
+
+  it('refuses when the list of closed issues may be cut off', () => {
+    expect(followUpRefusals({ ...base, closedCutOff: true })).toEqual([
+      'the list of closed issues may be cut off, so a follow-up closed without landing could go unseen: Athena checks why there are so many',
+    ]);
+  });
+});
+
+describe('a follow-up item is only one that carries the marker itself (#275)', () => {
+  const held = (line: string) =>
+    followUpRefusals({ ...base, openIssues: [issue(72, ['build-task'], line)] });
+
+  it('does not hold a batch for an item that talks about follow-ups in prose or quotes the marker in backticks', () => {
+    for (const line of [
+      '- [ ] explain what a follow-up of #130 means in the review text',
+      '- [ ] the gate reads a `(follow-up of #130)` marker only in parentheses',
+      '- [ ] an example, written (`(follow-up of #130)`), is not a marker',
+      "- [ ] the gate's marker check reads follow-up of batch #130 items",
+    ]) {
+      expect(held(line), line).toEqual([]);
+      expect(wantsComments(['build-task'], line), line).toBe(false);
+    }
+  });
+
+  it('still holds a batch for the marker itself, in parentheses with a #N, even beside a quoted one', () => {
+    for (const line of [
+      '- [ ] a migration test (follow-up of #130)',
+      '- [ ] a test (follow-up of #165, #130) and a note about `(follow-up of #5)`',
+    ])
+      expect(held(line), line).toHaveLength(1);
+    expect(wantsComments(['build-task'], '- [ ] a test (follow-up of #130)')).toBe(true);
+  });
+});
+
+describe('a Follow-up link stays on its line (#275)', () => {
+  const linkedTo = (body: string) => {
+    const open = [171, 172, 173, 5, 6].map((n) =>
+      issue(n, ['follow-up'], '**Follow-up of:** #170'),
+    );
+    return followUpRefusals({
+      ...base,
+      mergedBatches: [],
+      openIssues: open,
+      comments: [{ author: ZEUS, body }],
+    });
+  };
+
+  it("doesn't read a #N at the start of the next line as part of the list", () => {
+    // #5 and #6 are real follow-ups of this batch, so a link to either is accepted; an unrelated #N would be refused.
+    const refused = (body: string) =>
+      followUpRefusals({
+        ...base,
+        mergedBatches: [],
+        openIssues: [issue(5, ['follow-up'], '**Follow-up of:** #170')],
+        comments: [{ author: ZEUS, body }],
+      });
+    expect(refused('Follow-up: #5,\n#999 is a different thing')).toEqual([]);
+    expect(refused('Follow-ups: #5\n#999 starts a list item')).toEqual([]);
+    expect(refused('Follow-up: #5, #999')).toEqual([
+      '#999 is linked as a follow-up of this batch but is not an open issue',
+    ]);
+    expect(linkedTo('Follow-ups: #171, #172 and #173')).toEqual([]);
+  });
+});
+
+describe('an exception counts only when the grant ends the decision (#275)', () => {
+  const grant = (tail: string) =>
+    followUpRefusals({
+      ...base,
+      openIssues: [
+        issue(148, ['follow-up'], '**Follow-up of:** #130', [
+          {
+            author: ZEUS,
+            body: `🦉 Athena: Zeus decided (2026-11-19, in chat): exception granted for #148${tail}`,
+          },
+        ]),
+      ],
+    });
+
+  it('grants only at a full stop or the end of the line', () => {
+    for (const tail of ['', '.', '. It may stay open.', '  ', '\nDetails follow.', '.\nMore.'])
+      expect(grant(tail), JSON.stringify(tail)).toEqual([]);
+  });
+
+  it('grants nothing when a colon, dash or semicolon follows #N', () => {
+    for (const tail of [
+      ': no, withdrawn',
+      ' — withdrawn',
+      ' – withdrawn',
+      ' - withdrawn',
+      '; no',
+      ', but only if it lands',
+    ])
+      expect(grant(tail), JSON.stringify(tail)).toHaveLength(1);
   });
 });

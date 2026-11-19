@@ -1,4 +1,4 @@
-import type { OpenIssue } from '../lib/follow-ups.ts';
+import type { ClosedFollowUp, OpenIssue } from '../lib/follow-ups.ts';
 import type { JourneyEntry } from '../lib/journey-proof.ts';
 import type { RawChange } from '../lib/protected.ts';
 export const REVIEWERS = ['argus', 'cerberus', 'iris', 'redteam'] as const;
@@ -103,6 +103,9 @@ export interface Facts {
   openIssues: OpenIssue[];
   /** The open-issue list hit its limit (#170): the gate refuses rather than miss a follow-up. */
   openIssuesCutOff: boolean;
+  /** For a batch: closed issues with a **Follow-up of:** line, and whether that list hit its limit (#275). */
+  closedFollowUps: ClosedFollowUp[];
+  closedCutOff: boolean;
   mergedBatches: number[];
   /** A batch PR's comments with their authors: only Zeus's account links a follow-up (#154). */
   prComments: { author: string; body: string }[];
