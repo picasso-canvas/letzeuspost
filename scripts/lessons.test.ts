@@ -56,6 +56,25 @@ describe('parseFindings', () => {
     ]);
   });
 
+  it('counts a finding in any markup and spelling, as the verdict parser reads it (#273)', () => {
+    expect(
+      parseFindings(
+        [
+          'VERDICT: pass',
+          '- **[should-fix]** F1 auth a.ts:1 — x',
+          '> 2. [Should Fix] F2 correctness a.ts:2 — y',
+          '| [nit] F3 simplicity a.ts:3 — z',
+          '* __[ blocking ]__: a.ts:4 — My round-2 should-fix is not answered.',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      { severity: 'should-fix', number: 1, type: 'auth', approximate: false },
+      { severity: 'should-fix', number: 2, type: 'correctness', approximate: false },
+      { severity: 'nit', number: 3, type: 'simplicity', approximate: false },
+      { severity: 'blocking', number: null, type: 'unanswered', approximate: true },
+    ]);
+  });
+
   it('ignores lines that only mention a severity', () => {
     expect(parseFindings('VERDICT: pass\nChecked: no [blocking] findings remain.')).toEqual([]);
   });
