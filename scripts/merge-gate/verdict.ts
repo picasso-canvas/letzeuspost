@@ -34,12 +34,12 @@ export function parseVerdict(
     return { verdict: 'block', reason: 'says pass, then VERDICT: block' };
   }
   // A blocking finding behind any leading markup: list markers, task boxes, emphasis, quotes, headings, HTML tags.
-  if (lines.slice(1).some((line) => /^\[\s*blocking\s*\]/i.test(stripLeadingMarkup(line)))) {
+  if (lines.slice(1).some((line) => findingTag(line)?.severity === 'blocking')) {
     return { verdict: 'block', reason: 'says pass but lists a [blocking] finding' };
   }
   if (
     reviewer === 'cerberus' &&
-    lines.slice(1).some((line) => /^\[\s*should-fix\s*\]/i.test(stripLeadingMarkup(line)))
+    lines.slice(1).some((line) => findingTag(line)?.severity === 'should-fix')
   ) {
     return {
       verdict: 'block',
@@ -47,6 +47,30 @@ export function parseVerdict(
     };
   }
   return { verdict: 'pass', reason: 'ok' };
+}
+
+/** A finding's severity as the reviewers' tag spells it (`[blocking]`, `[should-fix]`, `[nit]`). */
+export type FindingSeverity = 'blocking' | 'should-fix' | 'nit';
+
+// Zero-width characters a finding may carry inside its tag; a space or any dash (hyphen, non-breaking hyphen, en and
+// em dash, minus) or underscore may stand between `should` and `fix`, as a model or an editor writes it.
+const ZERO_WIDTH = /[\u200B-\u200D\u2060\uFEFF]/gu;
+const TAG = /^\[\s*(blocking|should[\s\p{Pd}\u2212_]*fix|nit)\s*\]/iu;
+
+/**
+ * Reads a line as a finding: its severity and what follows the tag (`F1 auth a.ts:1 — …`), behind any leading markup
+ * (bullets, bold, quotes, table bars, numbers) and in any spelling of the tag. Null for a line that doesn't start with
+ * a tag, so a sentence that only mentions one is no finding. The verdict parser and the lessons count both read
+ * findings through this (#273).
+ */
+export function findingTag(line: string): { severity: FindingSeverity; rest: string } | null {
+  const text = stripLeadingMarkup(line.replace(ZERO_WIDTH, ''));
+  const match = TAG.exec(text);
+  if (match === null) return null;
+  const word = (match[1] ?? '').toLowerCase();
+  const severity: FindingSeverity = word === 'blocking' || word === 'nit' ? word : 'should-fix';
+  // What closes the markup around the tag (`**`, `:`, a dash) isn't part of the finding.
+  return { severity, rest: text.slice(match[0].length).replace(/^[^\p{L}\p{N}]+/u, '') };
 }
 
 /**

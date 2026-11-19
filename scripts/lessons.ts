@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isEntryPoint } from './lib/entry.ts';
 import { REVIEW_FILE, STATE_DIR } from './merge-gate/reviews.ts';
+import { findingTag, type FindingSeverity } from './merge-gate/verdict.ts';
 
 /** The review checklist's finding types, in its order (a test keeps the two the same). */
 export const FINDING_TYPES = [
@@ -37,7 +38,7 @@ export const FINDING_TYPES = [
   'copy',
 ] as const;
 
-export type Severity = 'blocking' | 'should-fix' | 'nit';
+export type Severity = FindingSeverity;
 
 export interface Finding {
   severity: Severity;
@@ -72,16 +73,14 @@ const KEYWORDS: [string, RegExp][] = [
   ['areas', /outside .*Areas|not in .*Areas/i],
 ];
 
-const LINE = /^\[(blocking|should-fix|nit)\]\s+(.*)$/;
 const TYPED = /^F(\d+)\s+([a-z0-9-]+)\b/;
 
 export function parseFindings(summary: string): Finding[] {
   const findings: Finding[] = [];
   for (const raw of summary.split(/\r\n?|\n/)) {
-    const line = LINE.exec(raw.trim());
-    if (!line) continue;
-    const severity = line[1] as Severity;
-    const rest = line[2] ?? '';
+    const line = findingTag(raw);
+    if (line === null) continue;
+    const { severity, rest } = line;
     const typed = TYPED.exec(rest);
     if (typed) {
       const type = typed[2] ?? '';

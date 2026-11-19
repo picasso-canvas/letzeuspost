@@ -23,6 +23,39 @@ matched whole reviews, including their "checked and fine" lines, and gave higher
 | Tests-first not visible in a batch's history | `tests-first` | 4 | `tasks.md` in batch bundles (#134) | Done 2026-11-10 |
 | A decision of Zeus's not recorded where the reviewers look | `decision-record` | 3 | Athena records each chat decision, dated, on the task's own issue or PR (the one in the reviewers' bundle) in the same turn | In force 2026-11-10 |
 
+## The count again (2026-11-19)
+
+`node scripts/lessons.ts` run on `main` at `cb5b5c2`, with the parser of #273 (a finding counts in any markup and
+spelling of its tag, so bulleted, bold and `[should fix]` findings that the first parser dropped are in it). The
+counts come from the review records in `~/.letzeuspost/reviews/`, not from git, so the commit names the code the run
+used, not a snapshot of the records. A type is exact when reviewers typed it; "approximate" ones come from
+before types existed. The first count's PRs column above stays as it was.
+
+| Type | PRs | Findings | Blocking |
+|---|---|---|---|
+| `evidence` (approximate) | 56 | 129 | 21 |
+| `other` (approximate) | 41 | 791 | 110 |
+| `correctness` | 41 | 128 | 12 |
+| `unknown` | 32 | 120 | 11 |
+| `simplicity` | 23 | 35 | 0 |
+| `guardrails` | 22 | 56 | 8 |
+| `tests-first` (approximate) | 21 | 38 | 4 |
+| `decision-record` (approximate) | 16 | 31 | 13 |
+| `plan` | 16 | 25 | 2 |
+| `areas` (approximate) | 15 | 16 | 5 |
+| `unanswered` (approximate) | 12 | 20 | 4 |
+| `design` | 10 | 35 | 8 |
+| `copy` | 10 | 16 | 0 |
+| `security` | 8 | 13 | 2 |
+| `states` | 7 | 16 | 9 |
+| `isolation` | 6 | 13 | 1 |
+| `auth` | 6 | 12 | 1 |
+| `a11y` | 3 | 8 | 5 |
+| `uploads` | 1 | 2 | 0 |
+| `billing` | 1 | 1 | 0 |
+| `secrets` | 1 | 1 | 0 |
+| `dependencies` | 1 | 1 | 0 |
+
 One more reason for feature batches, not a repeated finding type: a single should-fix in one task
 held batch #130's four other tasks (2026-11-09 and 2026-11-10).
 
