@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './collect.ts';
-import { bodyHash, doneWhenBoxes, doneWhenMarks, evaluate } from './evaluate.ts';
+import { bodyHash, doneWhenBoxes, doneWhenMarks, evaluate, scopedJobRan } from './evaluate.ts';
 import type { Facts, ReviewRecord } from './types.ts';
 
 const SHA = 'a'.repeat(40);
@@ -408,12 +408,15 @@ describe('Done-when boxes the gate proves (#253)', () => {
     proofs,
     areas: ['**'],
   });
+  const SCOPE = { name: 'Scope (can this PR affect the services checks?)', conclusion: 'success' };
+  const RAN = { name: 'Scoped checks ran', conclusion: 'success' };
   const services = (over: Partial<Facts['checkRuns'][number]> = {}) => ({
     name: 'services',
     status: 'completed',
     conclusion: 'success',
     app: 'github-actions',
     sha: SHA,
+    steps: [SCOPE, RAN],
     ...over,
   });
   const ci = (extra: Facts['checkRuns'] = []): Facts['checkRuns'] => [
@@ -522,6 +525,34 @@ describe('Done-when boxes the gate proves (#253)', () => {
     const lost = proven(dropped, { closingIssues: [issue([null, 'ci:services', 'iris'])] });
     expect(failedIds(lost)).toEqual([6]);
     expect(evaluate(lost).items.find((i) => i.id === 6)?.detail).toMatch(/box 2.*ci:services/);
+  });
+
+  it('refuses a scoped job that passed without running its checks, and accepts one that ran (#264)', () => {
+    const run = (steps: Facts['checkRuns'][number]['steps']) =>
+      proven(PROOF_BODY, { checkRuns: ci([services({ steps })]) });
+    expect(failedIds(run([SCOPE, RAN]))).toEqual([]);
+    // The scope step said run=false: the job is green, and the closing step never ran.
+    const skipped = run([SCOPE, { name: 'Scoped checks ran', conclusion: 'skipped' }]);
+    expect(failedIds(skipped)).toEqual([6]);
+    expect(evaluate(skipped).items.find((i) => i.id === 6)?.detail).toMatch(
+      /services.*without running its checks/,
+    );
+    // No closing step at all (an older head, or a workflow that dropped it).
+    expect(failedIds(run([SCOPE]))).toEqual([6]);
+    // A job with no scope step has nothing to skip.
+    expect(failedIds(run([{ name: 'Build', conclusion: 'success' }]))).toEqual([]);
+    // Steps the gate couldn't read prove nothing.
+    expect(
+      failedIds(proven(PROOF_BODY, { checkRuns: ci([services({ steps: undefined })]) })),
+    ).toEqual([6]);
+  });
+
+  it('works out whether a scoped job ran from its steps (#264)', () => {
+    expect(scopedJobRan([])).toBeNull();
+    expect(scopedJobRan([SCOPE])).toBe(false);
+    expect(scopedJobRan([SCOPE, RAN])).toBe(true);
+    expect(scopedJobRan([SCOPE, { ...RAN, conclusion: 'failure' }])).toBe(false);
+    expect(scopedJobRan([{ name: 'Scope: other', conclusion: 'success' }])).toBeNull();
   });
 
   it('does not count a marker quoted in inline code as a proof', () => {

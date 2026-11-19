@@ -85,6 +85,27 @@ describe('collectFacts', () => {
     expect(asked.find((call) => call.includes('/check-runs'))).toContain('sha: .head_sha');
   });
 
+  it('reads the steps of a job a box names as its proof, on the head only (#264)', () => {
+    const run = (sha: string) =>
+      `${JSON.stringify({ name: 'services', status: 'completed', conclusion: 'success', app: 'github-actions', sha, url: 'https://github.com/picasso-canvas/letzeuspost/actions/runs/4242/job/99' })}\n`;
+    const steps =
+      '{"name":"Scope (x)","conclusion":"success"}\n{"name":"Scoped checks ran","conclusion":"skipped"}\n';
+    const asked: string[] = [];
+    const via = (check: string) => {
+      const gh = fakeGh({ 'check-runs': check, 'actions/jobs/99': steps });
+      asked.length = 0;
+      return collectFacts(7, deps({ gh: (args) => (asked.push(args.join(' ')), gh(args)) }));
+    };
+    expect(via(run(SHA)).checkRuns[0]?.steps).toEqual([
+      { name: 'Scope (x)', conclusion: 'success' },
+      { name: 'Scoped checks ran', conclusion: 'skipped' },
+    ]);
+    expect(asked.some((call) => call.includes('actions/jobs/99'))).toBe(true);
+    // An older commit's run, or a job no box names, costs no call.
+    expect(via(run('0'.repeat(40))).checkRuns[0]?.steps).toBeUndefined();
+    expect(asked.some((call) => call.includes('actions/jobs'))).toBe(false);
+  });
+
   it('gathers the PR, files (renames under both names), checks and main-side files', () => {
     const f = collectFacts(7, deps());
     expect(f.headSha).toBe(SHA);
