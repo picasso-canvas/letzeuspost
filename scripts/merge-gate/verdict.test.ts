@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseVerdict } from './verdict.ts';
+import { findingTag, parseVerdict } from './verdict.ts';
 
 describe('parseVerdict', () => {
   it('reads pass and block from the first line', () => {
@@ -165,5 +165,70 @@ describe("parseVerdict: Cerberus's should-fixes hold (§19, Zeus 2026-11-10)", (
     expect(parseVerdict('VERDICT: pass\n[nit] F1 security a.ts:1 — x', 'cerberus').verdict).toBe(
       'pass',
     );
+  });
+});
+
+describe('findingTag: one reading of a finding line (#273)', () => {
+  it('reads the severity and the rest behind any leading markup', () => {
+    expect(findingTag('[nit] F3 simplicity a.ts:1 — x')).toEqual({
+      severity: 'nit',
+      rest: 'F3 simplicity a.ts:1 — x',
+    });
+    expect(findingTag('- **[should-fix]** F1 auth a.ts:1 — x')).toEqual({
+      severity: 'should-fix',
+      rest: 'F1 auth a.ts:1 — x',
+    });
+    expect(findingTag('> 2. __[blocking]:__ a.ts:1 — x')).toEqual({
+      severity: 'blocking',
+      rest: 'a.ts:1 — x',
+    });
+  });
+
+  it('reads should-fix and blocking in every spelling', () => {
+    for (const tag of [
+      '[should fix]',
+      '[should\u2011fix]', // non-breaking hyphen
+      '[should\u2013fix]', // en dash
+      '[Should - Fix]',
+      '[ should-fix ]',
+      '[should\u200b-fix]', // zero-width space
+    ]) {
+      expect(findingTag(`${tag} F1 auth a.ts:1 — x`)?.severity, tag).toBe('should-fix');
+    }
+    for (const tag of ['[ blocking ]', '[blocking ]', '[BLOCKING]', '[block\u200bing]']) {
+      expect(findingTag(`${tag} F1 auth a.ts:1 — x`)?.severity, tag).toBe('blocking');
+    }
+  });
+
+  it('reads nothing from a line that only mentions a severity', () => {
+    expect(findingTag('Checked: no [blocking] findings remain.')).toBeNull();
+    expect(findingTag('[should be fixed] a.ts:1 — x')).toBeNull();
+    expect(findingTag('')).toBeNull();
+  });
+});
+
+describe('parseVerdict: every spelling of should-fix and blocking (#273)', () => {
+  const summary = (tag: string) =>
+    `VERDICT: pass\n${tag} F1 security a.ts:1 — no rate limit — add one`;
+
+  it("blocks Cerberus's pass that lists [should fix] and its other spellings", () => {
+    for (const tag of [
+      '[should fix]',
+      '[should\u2011fix]',
+      '[Should - Fix]',
+      '- **[ should-fix ]**',
+    ]) {
+      expect(parseVerdict(summary(tag), 'cerberus').verdict, tag).toBe('block');
+    }
+  });
+
+  it('blocks any pass that lists [blocking] with stray spacing', () => {
+    for (const tag of ['[ blocking ]', '[blocking ]', '[block\u200bing]']) {
+      expect(parseVerdict(summary(tag)).verdict, tag).toBe('block');
+    }
+  });
+
+  it("still passes Argus's pass that lists a [should fix]", () => {
+    expect(parseVerdict(summary('[should fix]'), 'argus').verdict).toBe('pass');
   });
 });
