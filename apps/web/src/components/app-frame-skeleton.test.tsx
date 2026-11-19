@@ -25,12 +25,30 @@ describe('the Inbox on its way', () => {
     expect(html).toContain('aria-busy="true"');
   });
 
-  it('draws the list as the gallery’s skeletons', () => {
-    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  it('is the final empty state’s one box, drawn as skeletons, so nothing jumps when it loads', () => {
+    // Exactly the Empty box the page draws: the same single box, with the same spacing classes, and no list rows.
+    expect((html.match(/data-slot="empty"/g) ?? []).length).toBe(1);
+    expect((html.match(/data-slot="empty-header"/g) ?? []).length).toBe(1);
+    expect(html).not.toContain('border-b p-4');
+    expect((html.match(/data-slot="skeleton"/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // The box is the status region, so the screen reader hears it once.
+    expect(html).toMatch(/<div[^>]*data-slot="empty"[^>]*role="status"/);
+    expect((html.match(/role="status"/g) ?? []).length).toBe(1);
+  });
+
+  it('holds the empty state’s own words out of sight, so each skeleton is as tall as the text it stands for', () => {
+    // The copy is invisible and hidden from a screen reader: it only gives the skeleton its wrapped size at every width.
+    for (const words of [inbox.empty.heading, inbox.empty.body]) {
+      expect(html).toMatch(
+        new RegExp(`aria-hidden="true"[^>]*>(?:<[^>]*>)*<span class="invisible">${words}</span>`),
+      );
+    }
   });
 
   it('writes only en.json’s words', () => {
-    expect(texts(html).sort()).toEqual([inbox.heading, inbox.intro, inbox.loading].sort());
+    expect(texts(html).sort()).toEqual(
+      [inbox.heading, inbox.intro, inbox.loading, inbox.empty.heading, inbox.empty.body].sort(),
+    );
   });
 });
 
@@ -48,7 +66,15 @@ describe('the frame on its way', () => {
 
   it('says the workspaces are loading, and shows nothing of a person or a workspace', () => {
     expect(texts(html).sort()).toEqual(
-      [messages.app.name, frame.switcher.loading, inbox.heading, inbox.intro, inbox.loading].sort(),
+      [
+        messages.app.name,
+        frame.switcher.loading,
+        inbox.heading,
+        inbox.intro,
+        inbox.loading,
+        inbox.empty.heading,
+        inbox.empty.body,
+      ].sort(),
     );
   });
 });

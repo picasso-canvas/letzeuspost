@@ -2,7 +2,15 @@
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page, type Request, type Route, type TestInfo } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Request,
+  type Route,
+  type TestInfo,
+} from '@playwright/test';
 import { loadEnv } from '../../config/env.ts';
 import { createDb } from '../../packages/db/src/index.ts';
 import { runSeed } from '../../packages/db/src/seed/run.ts';
@@ -21,6 +29,8 @@ import { askForLink, emailsTo, sessionCookies, signInLink } from '../lib/sign-in
 const ownerUrl = loadEnv('migrate').DATABASE_OWNER_URL;
 const origin = new URL(loadEnv('worker').APP_URL).origin;
 const INBOX = '/app';
+/** The phone's viewport (§04 lists the Inbox as a phone view): 390 px wide, an iPhone 14's size. */
+const PHONE = { width: 390, height: 844 } as const;
 
 const themeOf = (projectName: string) => (projectName === 'app-dark' ? 'dark' : 'light');
 
@@ -72,11 +82,13 @@ async function settled(page: Page) {
 }
 
 /**
- * Screenshots the page as `workspaces-<state>-<theme>.png`, for Iris: compared with its baseline once one is approved;
- * until then only rendered into the output folder, which CI uploads (`e2e-screenshots`), and annotated.
+ * Screenshots the page as `workspaces-<state>-<theme>.png` (`workspaces-<state>-390-<theme>.png` at the phone's width),
+ * for Iris: compared with its baseline once one is approved; until then only rendered into the output folder, which CI
+ * uploads (`e2e-screenshots`), and annotated.
  */
 async function capture(page: Page, testInfo: TestInfo, state: string) {
-  const name = `workspaces-${state}-${themeOf(testInfo.project.name)}.png`;
+  const width = page.viewportSize()?.width === PHONE.width ? `-${String(PHONE.width)}` : '';
+  const name = `workspaces-${state}${width}-${themeOf(testInfo.project.name)}.png`;
   if (existsSync(testInfo.snapshotPath(name))) {
     await expect(page).toHaveScreenshot(name);
   } else {
@@ -420,23 +432,28 @@ function withoutScripts(theme: 'light' | 'dark') {
   };
 }
 
-test('/app on its way: the frame and the Inbox are skeletons until the guard has opened the workspace', async ({
-  page,
-}, testInfo) => {
+/**
+ * Signs a `seed:dev` person in (unless `signedIn`) and loads /app without its scripts: the frame and the Inbox as they
+ * are drawn until the guard has opened the workspace. Screenshots it, in the viewport the page has, and checks it with
+ * axe.
+ */
+async function showsLoading(page: Page, testInfo: TestInfo, signedIn = false) {
   // Each step has its own short timeout, so a stall fails at its cause rather than at the test's end.
   const theme = themeOf(testInfo.project.name);
-  await test.step(
-    'sign in a seed:dev person',
-    async () => {
-      // seed:dev's people, as in the first test: its Owner in the light project and its Editor in the dark one.
-      const seed = devSeed();
-      await runSeed(ownerUrl, seed);
-      const person = seed.people.find((p) => p.role === (theme === 'light' ? 'owner' : 'editor'));
-      if (person === undefined) throw new Error('seed:dev has no such person');
-      await signIn(page, person.email);
-    },
-    { timeout: 20_000 },
-  );
+  if (!signedIn) {
+    await test.step(
+      'sign in a seed:dev person',
+      async () => {
+        // seed:dev's people, as in the first test: its Owner in the light project and its Editor in the dark one.
+        const seed = devSeed();
+        await runSeed(ownerUrl, seed);
+        const person = seed.people.find((p) => p.role === (theme === 'light' ? 'owner' : 'editor'));
+        if (person === undefined) throw new Error('seed:dev has no such person');
+        await signIn(page, person.email);
+      },
+      { timeout: 20_000 },
+    );
+  }
 
   await test.step(
     'load /app without its scripts',
@@ -486,4 +503,164 @@ test('/app on its way: the frame and the Inbox are skeletons until the guard has
     },
     { timeout: 10_000 },
   );
+}
+
+test('/app on its way: the frame and the Inbox are skeletons until the guard has opened the workspace', async ({
+  page,
+}, testInfo) => {
+  await showsLoading(page, testInfo);
+});
+
+// ---- The same states on a phone (Iris F1 and F3, batch #267) ----------------------------------------------------
+
+/** The page doesn't scroll sideways at the phone's width. */
+async function noSidewaysScroll(page: Page) {
+  const scroll = await page.evaluate(() => ({
+    page: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+    view: document.documentElement.clientWidth,
+  }));
+  expect(scroll.view).toBeLessThanOrEqual(PHONE.width);
+  expect(scroll.page).toBeLessThanOrEqual(scroll.view);
+  expect(scroll.body).toBeLessThanOrEqual(scroll.view);
+}
+
+/** Each of `parts` is drawn, and sits wholly inside the phone's width; it returns their boxes, in order. */
+async function insideTheScreen(...parts: Locator[]) {
+  const boxes = [];
+  for (const part of parts) {
+    const box = await part.boundingBox();
+    if (box === null) throw new Error(`${String(part)} isn't drawn`);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(PHONE.width);
+    boxes.push(box);
+  }
+  return boxes;
+}
+
+/**
+ * Nothing runs off the screen at the phone's width: the page doesn't scroll sideways, and the switcher, the avatar and
+ * each of `parts` (a message) sit wholly inside the viewport; the switcher and the avatar never overlap, whether the
+ * top bar keeps them in one row or wraps the avatar under it. A name too long for the button is cut with an ellipsis
+ * inside it, by design; what mustn't happen is the button, or the page, being cut by the screen's edge.
+ */
+async function fitsThePhone(page: Page, ...parts: Locator[]) {
+  await noSidewaysScroll(page);
+  const [button, mark] = await insideTheScreen(switcher(page), avatar(page), ...parts);
+  if (button === undefined || mark === undefined) throw new Error('no switcher or avatar');
+  const sameRow = button.y < mark.y + mark.height && mark.y < button.y + button.height;
+  if (sameRow) expect(button.x + button.width).toBeLessThanOrEqual(mark.x);
+}
+
+test.describe('on a phone, 390 px wide', () => {
+  test.use({ viewport: PHONE });
+
+  test('the Inbox’s empty state and its skeleton: one box, the same in both, nothing off the screen', async ({
+    page,
+  }, testInfo) => {
+    const seed = devSeed();
+    await runSeed(ownerUrl, seed);
+    const theme = themeOf(testInfo.project.name);
+    const person = seed.people.find((p) => p.role === (theme === 'light' ? 'owner' : 'editor'));
+    if (person === undefined) throw new Error('seed:dev has no such person');
+
+    await signIn(page, person.email);
+    await showsWorkspace(page, seed.workspace.name);
+    const empty = page.locator('[data-slot="empty"]');
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'Nothing waiting. Even gods take breaks.' }),
+    ).toBeVisible();
+    await settled(page);
+    await fitsThePhone(page, empty);
+    await capture(page, testInfo, 'empty');
+    expect(await seriousIssues(page)).toEqual([]);
+    const finalBox = await empty.boundingBox();
+
+    // The skeleton, drawn with the same box (the same place and size, so nothing jumps when the page arrives). The
+    // skeleton's box is the one with the `status` role; the guarded page's, still in the document, is hidden.
+    await showsLoading(page, testInfo, true);
+    await noSidewaysScroll(page);
+    const [skeletonBox] = await insideTheScreen(
+      page.locator('[data-slot="empty"][role="status"]'),
+      page.locator('[data-slot="workspace-switcher-skeleton"]'),
+    );
+    expect(finalBox).not.toBeNull();
+    for (const edge of ['x', 'y', 'width', 'height'] as const) {
+      expect(skeletonBox?.[edge]).toBeCloseTo(finalBox?.[edge] ?? NaN, 0);
+    }
+  });
+
+  test('the frame filled with a long name and a Bangla one, and a failed switch: nothing off the screen', async ({
+    page,
+  }, testInfo) => {
+    // As the 1440 px test of the frame's states: Lina (her name in Bangla) owns a workspace whose name is too long for
+    // the button, and is an Editor in one named in Bangla, whose Owner is Sumi.
+    const run = randomUUID();
+    const tag = run.slice(0, 8);
+    const lina = { email: `lina-${run}@workspaces.invalid`, name: 'লিনা হক' };
+    const sumi = { email: `sumi-${run}@workspaces.invalid`, name: 'Sumi Akter' };
+    const long: Seed = {
+      workspace: {
+        name: `Brightwell Dental and Ironline Studio shared creative workspace ${tag}`,
+        slug: `long-${run}`,
+      },
+      people: [{ ...lina, role: 'owner', platformAdmin: false }],
+    };
+    const bangla: Seed = {
+      workspace: { name: `গল্প ক্যাফে স্টুডিও ${tag}`, slug: `bangla-${run}` },
+      people: [
+        { ...sumi, role: 'owner', platformAdmin: false },
+        { ...lina, role: 'editor', platformAdmin: false },
+      ],
+    };
+    await runSeed(ownerUrl, long);
+    await runSeed(ownerUrl, bangla);
+
+    try {
+      // The long name, and a person whose name is in Bangla, on the button and the avatar.
+      await signIn(page, lina.email);
+      await showsWorkspace(page, long.workspace.name);
+      await expect(avatar(page)).toHaveAccessibleName(`${lina.name} (Owner)`);
+      await settled(page);
+      await fitsThePhone(page);
+      await capture(page, testInfo, 'filled');
+      expect(await seriousIssues(page)).toEqual([]);
+
+      // The switcher's menu, open at 390 px: it stays inside the screen too.
+      await switcher(page).click();
+      const menu = page.getByRole('menu', { name: 'Workspaces' });
+      await expect(menu).toBeVisible();
+      const menuBox = await menu.boundingBox();
+      expect(menuBox?.x).toBeGreaterThanOrEqual(0);
+      expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(PHONE.width);
+      await menu.getByRole('menuitemradio', { name: bangla.workspace.name }).click();
+
+      // The Bangla name.
+      await showsWorkspace(page, bangla.workspace.name);
+      await settled(page);
+      await fitsThePhone(page);
+
+      // A switch that never reaches the server: the message beside the switcher, inside the screen.
+      const lose = (route: Route) =>
+        isServerAction(route.request()) ? route.abort('internetdisconnected') : route.fallback();
+      await page.route(atInbox, lose);
+      await switcher(page).click();
+      await page
+        .getByRole('menu', { name: 'Workspaces' })
+        .getByRole('menuitemradio', { name: long.workspace.name })
+        .click();
+      const message = page.getByText(
+        'Couldn’t open that workspace. Check your connection and try again.',
+      );
+      await expect(message).toBeVisible();
+      await expect(switcher(page)).toBeEnabled();
+      await page.unroute(atInbox, lose);
+      await settled(page);
+      await fitsThePhone(page, message);
+      await capture(page, testInfo, 'switch-error');
+      expect(await seriousIssues(page)).toEqual([]);
+    } finally {
+      await removeRun([long, bangla], [lina.email, sumi.email]);
+    }
+  });
 });
