@@ -57,9 +57,10 @@ export function parseRawDiff(raw: string): RawChange[] {
 /**
  * A path part git, macOS or Windows would read as a path step or as `.git`: empty, `.`, `..`, or `.git` once the name
  * is normalised, characters macOS ignores (zero-width and the like) are dropped, an NTFS stream (`::$INDEX_ALLOCATION`)
- * is cut off and trailing dots and spaces are trimmed; also Windows' short name for it, `GIT~1`.
+ * is cut off and trailing dots and spaces are trimmed; also Windows' short name for it, `GIT~1`, and `GIT~2` and up
+ * when the part is a folder.
  */
-function unsafePart(part: string): boolean {
+function unsafePart(part: string, isFolder: boolean): boolean {
   if (part === '' || part === '.' || part === '..') return true;
   const name = (
     part
@@ -69,7 +70,8 @@ function unsafePart(part: string): boolean {
   )
     .replace(/[. ]+$/, '')
     .toLowerCase();
-  return name === '.git' || name === 'git~1';
+  // Windows numbers the short name up (`GIT~2`, …) when `GIT~1` is taken; as a file name that is harmless.
+  return name === '.git' || name === 'git~1' || (isFolder && /^git~\d+$/.test(name));
 }
 
 /** Why a builder's branch may not be shipped; empty when it may. */
@@ -78,7 +80,8 @@ export function shipRefusals(changes: readonly RawChange[]): string[] {
   if (changes.length === 0) reasons.push('the branch changes nothing');
   for (const { mode, path } of changes) {
     // A tree a builder crafted can hold names checkout would refuse; older git lets them in from a bundle unchecked.
-    if (path.split('/').some(unsafePart)) reasons.push(`unsafe path: ${path}`);
+    if (path.split('/').some((part, i, parts) => unsafePart(part, i < parts.length - 1)))
+      reasons.push(`unsafe path: ${path}`);
     if (matchesAny(path, BUILDER_PROTECTED)) reasons.push(`protected path: ${path}`);
     if (mode === '120000') reasons.push(`symlink: ${path}`);
     if (mode === '160000') reasons.push(`submodule: ${path}`);

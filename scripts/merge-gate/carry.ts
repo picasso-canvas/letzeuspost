@@ -4,7 +4,8 @@ import type { ReviewRecord } from './types.ts';
 /**
  * What a PR changes on its own: every changed path with its old and new mode and blob, against the PR's merge-base
  * with main. Merging main in leaves it unchanged unless main touched one of the PR's files (then its old blob moves)
- * or the merge changed the PR's result. Equal ids mean the reviewers saw exactly this change.
+ * or the merge changed the PR's result. Equal ids mean the reviewers saw exactly this change. It reads the local
+ * `origin/<branch>`: collectFacts runs changedFilesFromGit first, which fetches `origin/main` and checks it.
  */
 export function changeId(git: (args: string[]) => string, sha: string, branch = 'main'): string {
   const base = git(['merge-base', `origin/${branch}`, sha]).trim();
