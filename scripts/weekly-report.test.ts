@@ -262,7 +262,9 @@ describe('renderReport: review retries (#158)', () => {
       guardrailHits: {},
       reviewRetries: 2,
     });
-    expect(text).toContain('Review answers that needed a retry (a line before the verdict): 2.');
+    expect(text).toContain(
+      "Review answers that needed a retry (didn't start with its verdict line): 2.",
+    );
   });
 });
 
@@ -362,6 +364,17 @@ describe("the month's minutes, a day at a time (Argus F1 on #168)", () => {
       capped: false,
     });
     expect(monthEstimate([{ runs: [run], total: 1200 }])).toEqual({ minutes: 2, capped: true });
+  });
+
+  it('counts a run once when it comes back on two pages, and notices a day still short of its total (Argus F1 on #168)', () => {
+    const at = { started: '2026-11-10T08:00:00Z', updated: '2026-11-10T08:01:30Z' };
+    const a = { id: 1, ...at };
+    const b = { id: 2, ...at };
+    expect(monthEstimate([{ runs: [a, b, a], total: 2 }])).toEqual({ minutes: 4, capped: false });
+    // Three rows, but only two different runs, of a day with three: a run was missed.
+    expect(monthEstimate([{ runs: [a, b, a], total: 3 }])).toEqual({ minutes: 4, capped: true });
+    // A row with no id can't be matched with another, so each counts.
+    expect(monthEstimate([{ runs: [at, at], total: 2 }])).toEqual({ minutes: 4, capped: false });
   });
 
   it('shows "at least" in the report when capped', () => {
