@@ -4,9 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   areaRefusals,
+  CI_NOTE_HEADING,
+  CI_NOTE_PREFIX,
   evidenceRefusal,
   findingIds,
   handoverRefusals,
+  keepCiNotes,
   numberedFindings,
   parseAreas,
   requireFindingIds,
@@ -380,6 +383,99 @@ describe('handoverRefusals (what ship checks)', () => {
       'a fix round needs a **Round N** section answering each finding (Argus F1)',
       "package.json is outside the task's Areas",
     ]);
+  });
+});
+
+describe("Athena's CI notes survive a fix round (#286)", () => {
+  const note = (text: string) => `${CI_NOTE_PREFIX} ${text}`;
+  const A = note('`ci` run 1 passed `storage.int.test.ts (10 tests)` on `f1b8fb9`.');
+  const B = note('`services` run 2 passed the expired-link refusal.');
+  const old = (...lines: string[]) =>
+    `Closes #73\n\n**Done when**\n- [x] one — at \`37ad669\`\n${lines.join('\n')}\n\n**Self-review**\n1. fine\n`;
+  const builderText = '```\nCloses #73\n```\n\n**Done when**\n- [x] one — at `abc1234`\n';
+
+  it('uses the prefix Zeus chose', () => {
+    expect(CI_NOTE_PREFIX).toBe('🦉 Athena: CI note:');
+  });
+
+  it('appends each earlier note once, in order, in a section at the end, and counts them', () => {
+    const body = old(`  - ${A}`, `  * ${B}`);
+    const out = keepCiNotes('Closes #73\n\nNew text.\n', body);
+    expect(out.kept).toBe(2);
+    expect(out.text).toBe(`Closes #73\n\nNew text.\n\n${CI_NOTE_HEADING}\n- ${A}\n- ${B}\n`);
+    expect(CI_NOTE_HEADING).toBe("**Athena's CI notes, kept from earlier rounds**");
+  });
+
+  it('adds a blank line before the section when the text has none at its end', () => {
+    expect(keepCiNotes('New text.', old(A)).text).toBe(`New text.\n\n${CI_NOTE_HEADING}\n- ${A}\n`);
+    expect(keepCiNotes('New text.\n\n\n', old(A)).text).toBe(
+      `New text.\n\n${CI_NOTE_HEADING}\n- ${A}\n`,
+    );
+  });
+
+  it('leaves the text exactly as it is when there is nothing to keep', () => {
+    expect(keepCiNotes('New text.\n', old())).toEqual({ text: 'New text.\n', kept: 0 });
+    expect(keepCiNotes('New text.\n', '')).toEqual({ text: 'New text.\n', kept: 0 });
+  });
+
+  it('does not repeat a note the new text already has, whatever its list marker or indent', () => {
+    const out = keepCiNotes(`Done.\n    1. ${A}\n`, old(`- ${A}`, `- ${B}`));
+    expect(out.kept).toBe(1);
+    expect(out.text).toBe(`Done.\n    1. ${A}\n\n${CI_NOTE_HEADING}\n- ${B}\n`);
+    expect(keepCiNotes(`Done.\n- ${A}\n- ${B}\n`, old(A, B))).toEqual({
+      text: `Done.\n- ${A}\n- ${B}\n`,
+      kept: 0,
+    });
+  });
+
+  it('keeps them again a round later and never twice (the section is read back like any note)', () => {
+    const round1 = keepCiNotes(builderText, old(`  - ${A}`)).text;
+    const round2 = keepCiNotes('Round two text.\n', round1);
+    expect(round2.kept).toBe(1);
+    expect(round2.text.split(CI_NOTE_HEADING)).toHaveLength(2);
+    expect(round2.text.split(A)).toHaveLength(2);
+    expect(keepCiNotes(round1, round1)).toEqual({ text: round1, kept: 0 });
+  });
+
+  it('reads a note only at the start of a line, and only with this prefix', () => {
+    const body = old(
+      `  - see ${A} in the run`,
+      '  - 🦉 Athena, from CI on the head `f1b8fb9`: `services` passed.',
+      '  - 🦉 Athena: a comment, no CI note label.',
+      `  -${B}`,
+    );
+    expect(keepCiNotes('x\n', body)).toEqual({ text: 'x\n', kept: 0 });
+    expect(keepCiNotes('x\r\n', `- ${A}\r\n`).kept).toBe(1);
+  });
+
+  it("doesn't let a kept note answer a finding or name the head commit", () => {
+    const withNote = keepCiNotes(
+      '**Round 2**\n- Argus F1: fixed.\n',
+      old(note('this answers CI F1 and passed at `d5df703`.')),
+    ).text;
+    expect(roundRefusals(withNote, ['Argus F1', 'CI F1'])).toEqual([
+      "the Round 2 section doesn't answer CI F1",
+    ]);
+    expect(evidenceRefusal(`**Done when**\n- [x] a — passes\n\n${withNote}`, [HEAD])).toContain(
+      "doesn't name the head commit",
+    );
+  });
+
+  it("refuses a builder's text that has a CI note or the kept heading in it", () => {
+    const base = {
+      issueBody: '**Areas:** `a.ts`',
+      changedFiles: [],
+      headSha: HEAD,
+      findings: [],
+    };
+    const text = (extra: string) => pr('- [x] a — passes at `d5df703`', `\n${extra}`);
+    expect(handoverRefusals({ ...base, prText: text('') })).toEqual([]);
+    for (const extra of [A, `  - ${A}`, `> ${A}`, CI_NOTE_HEADING]) {
+      const refusals = handoverRefusals({ ...base, prText: text(extra) });
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toContain('only Athena writes');
+    }
+    expect(handoverRefusals({ ...base, prText: text(`mentions ${A} mid-line`) })).toEqual([]);
   });
 });
 
