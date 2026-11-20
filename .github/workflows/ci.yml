@@ -158,12 +158,13 @@ jobs:
       # pending migration in `session.transaction`) and on #71's test that a migration failing partway leaves nothing
       # applied; if either changes, this setting must too (Zeus, 2026-11-10, recorded on #161).
       # Nor can a migration's own comments: any `squawk-ignore` in a SQL file fails the step, and so does a SQL file
-      # outside packages/db/, which squawk would never see.
+      # outside packages/db/, which squawk would never see. The search reads every file as text (`-a`, no `-I`): a file
+      # git treats as binary (a NUL byte, or a `binary` attribute) can't hide one (Cerberus F1 on #119).
       - name: Migrations (squawk)
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
-          if git grep -nIi 'squawk-ignore' -- '*.sql'; then
+          if git grep -nai 'squawk-ignore' -- '*.sql'; then
             echo "::error::a SQL file silences squawk (safe-migrations: no rule silenced, no file skipped)"
             exit 1
           fi
