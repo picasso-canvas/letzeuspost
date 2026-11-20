@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { changesDirectory } from './lib/shell-cd.ts';
 
@@ -73,5 +74,37 @@ describe('changesDirectory (#284)', () => {
     expect(changesDirectory('echo "unclosed; cd x')).toBe(false);
     expect(changesDirectory('(cd x; ls')).toBe(false);
     expect(changesDirectory('ls); cd x')).toBe(true);
+  });
+
+  it('finds a backslashed cd, and reads an ANSI-C quote to its own closing quote (Argus F1, Cerberus F4 on #285)', () => {
+    expect(changesDirectory('\\cd x')).toBe(true);
+    expect(changesDirectory('ls; \\cd x')).toBe(true);
+    expect(changesDirectory('\\ls x')).toBe(false);
+    expect(changesDirectory("echo $'a'; cd x")).toBe(true);
+    expect(changesDirectory("echo $'it\\'s'; cd x")).toBe(true);
+    expect(changesDirectory("echo $'cd x'")).toBe(false);
+    // A word glued to a quote or a variable is another word (`cd"x"` runs a program called cdx).
+    expect(changesDirectory('cd"x"')).toBe(false);
+    expect(changesDirectory('cd$HOME')).toBe(false);
+  });
+
+  // Cerberus F1 on #285: a space the shell doesn't treat as a blank hung the scan. Run in a child with a timeout, so a
+  // regression fails the test instead of hanging the runner.
+  it.each([
+    ['U+00A0', ' '],
+    ['U+2028', ' '],
+    ['U+3000', '　'],
+    ['U+000B', '\u000b'],
+  ])('ends, and still reads on, with %s outside quotes', (_name, space) => {
+    const script = `import { changesDirectory } from './.claude/hooks/lib/shell-cd.ts';
+      const a = changesDirectory(${JSON.stringify(`ls${space}; cd x`)});
+      const b = changesDirectory(${JSON.stringify(`ls${space}; ls`)});
+      process.stdout.write(JSON.stringify([a, b]));`;
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+    expect(run.error).toBeUndefined();
+    expect(run.stdout).toBe('[true,false]');
   });
 });
