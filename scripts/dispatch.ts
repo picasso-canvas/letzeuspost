@@ -128,11 +128,45 @@ export function runEnding(
   }
   if (result === undefined || result.subtype === 'error_max_turns') return 'failed';
   // Only the session's own error, in Claude Code's own words, counts: a summary that mentions a limit doesn't (#166).
-  return result.is_error === true &&
+  if (
+    result.is_error === true &&
     typeof result.result === 'string' &&
     USAGE_LIMIT.test(result.result)
-    ? 'usage-limit'
-    : 'finished';
+  )
+    return 'usage-limit';
+  // A run whose writes were refused went on without them: its work isn't done, however it ends (#284).
+  return refusedWrites(log).length > 0 ? 'failed' : 'finished';
+}
+
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
+
+/**
+ * The files the session's final `result` says Write, Edit or MultiEdit were refused for (#284), once each. The usual
+ * cause is a top-level `cd` that moved the shell out of the folder `Edit(./**)` is judged from.
+ */
+export function refusedWrites(log: string): string[] {
+  let denials: unknown;
+  for (const line of log.split('\n')) {
+    try {
+      const event = JSON.parse(line) as { type?: unknown; permission_denials?: unknown };
+      if (event.type === 'result') denials = event.permission_denials;
+    } catch {
+      // not an event line
+    }
+  }
+  if (!Array.isArray(denials)) return [];
+  const files = new Set<string>();
+  for (const denial of denials as unknown[]) {
+    if (typeof denial !== 'object' || denial === null) continue;
+    const { tool_name: tool, tool_input: input } = denial as {
+      tool_name?: unknown;
+      tool_input?: { file_path?: unknown } | null;
+    };
+    if (typeof tool !== 'string' || !WRITE_TOOLS.has(tool)) continue;
+    const path = input?.file_path;
+    files.add(typeof path === 'string' ? path : '(no path)');
+  }
+  return [...files];
 }
 
 /** Claude Code's message when a session stops on a usage limit. */
@@ -898,6 +932,11 @@ async function runBuilder(o: {
     `${JSON.stringify(endedRecord(now, ending, new Date().toISOString()))}\n`,
     { mode: 0o600 },
   );
+  const refused = refusedWrites(tail);
+  if (ending === 'failed' && refused.length > 0)
+    console.log(
+      `HARNESS FAILURE: the run went on with ${String(refused.length)} refused Write/Edit call(s), so its work is incomplete: ${refused.slice(0, 5).join(', ')}${refused.length > 5 ? ', …' : ''}. Usually a top-level cd moved its shell (#284). Ship it only after a look, or dispatch again with --fresh.`,
+    );
   if (ending === 'usage-limit')
     console.log(
       `The run was stopped by a usage limit. Once it resets: node scripts/dispatch.ts ${String(issue)} --resume`,
