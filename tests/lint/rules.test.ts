@@ -489,3 +489,94 @@ describe('round 7 of the #82 review', () => {
     ).toContain('lzp/no-raw-db-client');
   });
 });
+
+describe('lzp/tokens-only: inline style values (#61, from the #82 review)', () => {
+  const style = (value: string) => `export const A = () => <div style={{ ${value} }} />;`;
+
+  it('reports a named colour in a colour property and a length in an arbitrary unit', async () => {
+    for (const value of [
+      "color: 'red'",
+      "backgroundColor: 'RebeccaPurple'",
+      "background: 'linear-gradient(to right, red, blue)'",
+      "border: '1px solid navy'",
+      "'border-color': 'tomato'",
+      'color: `red`',
+      "width: '13px'",
+      "padding: '4px 8px'",
+      "marginTop: '-0.5rem'",
+      "height: 'min(100%, 40rem)'",
+      "fontSize: '.875em'",
+    ]) {
+      expect(await ruleIds(style(value), 'packages/ui/src/a.tsx'), value).toContain(
+        'lzp/tokens-only',
+      );
+    }
+  });
+
+  it('says what it found', async () => {
+    expect(
+      await messagesOf(style("width: '13px'"), 'packages/ui/src/a.tsx', 'lzp/tokens-only'),
+    ).toEqual(["'13px' is a raw length: use a token (§21)."]);
+    expect(
+      await messagesOf(style("color: 'red'"), 'packages/ui/src/a.tsx', 'lzp/tokens-only'),
+    ).toEqual(["'red' is a raw colour: use a token (§21)."]);
+  });
+
+  it('lets tokens, relative and keyword values through', async () => {
+    for (const value of [
+      "color: 'var(--color-fg)'",
+      "width: '100%'",
+      "margin: '0 auto'",
+      "color: 'transparent'",
+      "color: 'currentColor'",
+      "transition: 'opacity 200ms ease'",
+      "animationDelay: '0ms'",
+      "fontFamily: 'Orange Sans'",
+      "height: 'calc(100% - var(--space-4))'",
+      'width: `${pct}%`',
+      'width: `${px}px`',
+      'opacity: 0.5',
+      'width: 13',
+    ]) {
+      expect(await ruleIds(style(value), 'packages/ui/src/a.tsx'), value).toEqual([]);
+    }
+  });
+});
+
+describe("lzp/no-use-cache: fetch's next option held elsewhere (#61, from the #82 review)", () => {
+  it('reports a next option in a variable or with a spread inside, for fetch and Request', async () => {
+    for (const code of [
+      'const shared = { revalidate: 60 }; export const f = () => fetch("/api", { next: shared });',
+      'const shared = { revalidate: 60 }; export const f = () => fetch("/api", { next: { ...shared } });',
+      'export const f = (on: boolean) => fetch("/api", { next: on ? { revalidate: 60 } : {} });',
+      'const shared = { tags: ["a"] }; export const r = new Request("/api", { next: shared });',
+      'const shared = {}; export const r = new Request("/api", { next: { ...shared } });',
+    ]) {
+      expect(await messagesOf(code, 'apps/web/src/a.ts', 'lzp/no-use-cache'), code).toEqual([
+        "Write fetch's and Request's options inline, so their cache setting is visible (§13).",
+      ]);
+    }
+  });
+
+  it('leaves inline next options, next: 0 and other packages as they were', async () => {
+    for (const code of [
+      'export const f = () => fetch("/api", { next: { revalidate: 0 } });',
+      'export const f = () => fetch("/api", { next: {} });',
+      'export const r = new Request("/api", { next: { revalidate: 0 } });',
+    ]) {
+      expect(await ruleIds(code, 'apps/web/src/a.ts'), code).toEqual([]);
+    }
+    expect(
+      await ruleIds(
+        'const shared = { revalidate: 60 }; export const f = () => fetch("/api", { next: shared });',
+        'packages/core/src/a.ts',
+      ),
+    ).toEqual([]);
+    expect(
+      await ruleIds(
+        'export const f = () => fetch("/api", { next: { revalidate: 60 } });',
+        'apps/web/src/a.ts',
+      ),
+    ).toContain('lzp/no-use-cache');
+  });
+});

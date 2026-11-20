@@ -203,8 +203,15 @@ const noUseCache = {
             messageId: 'fetch',
             data: { option: `cache: ${String(staticString(prop.value))}` },
           });
+        // next held in a variable, a call or a condition can't be read here: ask for it inline, like the options.
+        if (key === 'next' && prop.value.type !== 'ObjectExpression')
+          context.report({ node: prop.value, messageId: 'inline' });
         if (key === 'next' && prop.value.type === 'ObjectExpression') {
           for (const inner of prop.value.properties) {
+            if (inner.type === 'SpreadElement') {
+              context.report({ node: inner, messageId: 'inline' });
+              continue;
+            }
             const name = inner.key?.name ?? inner.key?.value;
             // Only 0 turns caching off: false means cache forever in Next.js.
             const off = inner.value?.type === 'Literal' && inner.value.value === 0;
@@ -359,6 +366,37 @@ const PALETTE = new RegExp(
   `^${COLOUR_UTILS}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|mauve|olive|mist|taupe)-(?:50|[1-9]00|950)|black|white)(?:/\\d+)?$`,
 );
 const RAW_COLOUR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color)\(/i;
+// Inline style values (§21): CSS named colours in a colour property, and a length in any unit but %, which no token
+// stands for. `transparent`, `currentColor`, `var(--…)`, `0`, `auto` and times (`200ms`) are not listed or matched.
+const NAMED_COLOURS = new Set(
+  (
+    'aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood ' +
+    'cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray ' +
+    'darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen ' +
+    'darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue ' +
+    'firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew ' +
+    'hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan ' +
+    'lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray ' +
+    'lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue ' +
+    'mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred ' +
+    'midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid ' +
+    'palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple ' +
+    'rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue ' +
+    'slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white ' +
+    'whitesmoke yellow yellowgreen'
+  ).split(' '),
+);
+const COLOUR_PROP = /color|background|border|outline|fill|stroke|shadow|decoration|caret|accent/i;
+const RAW_LENGTH =
+  /(?<![\w.-])-?(?:\d+\.?\d*|\.\d+)(?:px|r?em|ex|ch|vw|vh|vmin|vmax|pt|pc|cm|mm|in|cqw|cqh)(?![\w-])/i;
+
+/** The word of a fixed style value that is a named colour (`var(--…)` and `url(…)` are skipped), or null. @param {string} value */
+const namedColour = (value) =>
+  value
+    .replace(/(?:var|url)\([^)]*\)/gi, '')
+    .toLowerCase()
+    .match(/[a-z]+/g)
+    ?.find((word) => NAMED_COLOURS.has(word)) ?? null;
 
 /** The class tokens in a string that use a raw palette colour or an arbitrary value. */
 /** The index of the last colon outside brackets (the end of the variants), or -1. */
@@ -392,6 +430,7 @@ const tokensOnly = {
     messages: {
       classes: "'{{classes}}' isn't a design token: use the token classes (§21).",
       style: "'{{value}}' is a raw colour: use a token (§21).",
+      length: "'{{value}}' is a raw length: use a token (§21).",
     },
     schema: [],
   },
@@ -453,18 +492,20 @@ const tokensOnly = {
         if (name === 'className' || name === 'class') walk(node.value);
         if (name === 'style' && node.value?.expression?.type === 'ObjectExpression') {
           for (const prop of node.value.expression.properties) {
-            if (
-              prop.type === 'Property' &&
-              prop.value.type === 'Literal' &&
-              typeof prop.value.value === 'string'
-            ) {
-              if (RAW_COLOUR.test(prop.value.value))
-                context.report({
-                  node: prop.value,
-                  messageId: 'style',
-                  data: { value: prop.value.value },
-                });
-            }
+            if (prop.type !== 'Property') continue;
+            const value = staticString(prop.value);
+            if (value === null) continue;
+            const key = String(
+              prop.computed ? staticString(prop.key) : (prop.key?.name ?? prop.key?.value),
+            );
+            const colour =
+              RAW_COLOUR.test(value) || (COLOUR_PROP.test(key) && namedColour(value) !== null);
+            if (colour || RAW_LENGTH.test(value))
+              context.report({
+                node: prop.value,
+                messageId: colour ? 'style' : 'length',
+                data: { value },
+              });
           }
         }
       },
