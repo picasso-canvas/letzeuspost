@@ -770,6 +770,40 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     ).toHaveLength(1);
   });
 
+  // Argus F1 and Cerberus F1 on #290: an open issue an earlier batch linked may have lost its label and line, and Zeus's
+  // exception on it is in its comments, so they are read for it too.
+  it('reads the comments of an open issue an earlier batch linked, though its label and line are gone', () => {
+    const gh = fakeGh({
+      'pr view': batchView,
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [{ author: { login: 'picasso-canvas' }, body: 'Follow-up: #300' }],
+      }),
+      'issue list': JSON.stringify([
+        { number: 300, labels: [{ name: 'build-task' }], body: 'the line was edited out' },
+        { number: 301, labels: [{ name: 'build-task' }], body: 'unrelated' },
+      ]),
+      'issue list -R picasso-canvas/letzeuspost --state closed': '[]',
+      'issue view 300 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [{ author: { login: 'picasso-canvas' }, body: 'an exception, maybe' }],
+      }),
+      'log --first-parent': '',
+    });
+    const calls: string[] = [];
+    const f = collectFacts(
+      7,
+      deps({
+        gh: (args) => (calls.push(args.join(' ')), gh(args)),
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readMergeLog: () => [{ result: 'merged', base: 'main', kind: 'batch', pr: 130 }],
+      }),
+    );
+    expect(f.openIssues.find((i) => i.number === 300)?.comments).toEqual([
+      { author: 'picasso-canvas', body: 'an exception, maybe' },
+    ]);
+    expect(calls).not.toContain('issue view 301 -R picasso-canvas/letzeuspost --json comments');
+  });
+
   it('flags a closed list that reaches its limit as cut off', () => {
     const many = Array.from({ length: 1000 }, (_, i) => ({
       number: 1000 + i,
