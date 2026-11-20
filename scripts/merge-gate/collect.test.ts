@@ -705,6 +705,69 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     expect(f.closedCutOff).toBe(false);
   });
 
+  // #277: Athena's `Follow-up: #N` lines on an earlier batch are read, and the issues they name are gathered even when
+  // the issue's own **Follow-up of:** line was edited out before it was closed.
+  it("reads each earlier batch's comments, and gathers a closed issue it links though its line is gone", () => {
+    const calls: string[] = [];
+    const gh = fakeGh({
+      'pr view': batchView,
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [
+          { author: { login: 'picasso-canvas' }, body: 'Follow-up: #153' },
+          { author: null, body: 'Follow-up: #154' },
+        ],
+      }),
+      'issue list -R picasso-canvas/letzeuspost --state open': '[]',
+      'issue list -R picasso-canvas/letzeuspost --state closed': JSON.stringify([
+        {
+          number: 153,
+          labels: [{ name: 'follow-up' }],
+          body: 'the line was edited out',
+          stateReason: 'NOT_PLANNED',
+          closedByPullRequestsReferences: [],
+        },
+        // Not linked and no line: not gathered.
+        {
+          number: 155,
+          labels: [{ name: 'build-task' }],
+          body: 'a task',
+          stateReason: 'COMPLETED',
+          closedByPullRequestsReferences: [],
+        },
+      ]),
+      'issue view 153 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [],
+      }),
+      'log --first-parent': '',
+    });
+    const f = collectFacts(
+      7,
+      deps({
+        gh: (args) => (calls.push(args.join(' ')), gh(args)),
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readMergeLog: () => [
+          { result: 'merged', base: 'main', kind: 'batch', pr: 130 },
+          { result: 'merged', base: 'main', kind: 'batch', pr: 7 },
+        ],
+      }),
+    );
+    expect(f.earlierBatchComments).toEqual([
+      {
+        batch: 130,
+        comments: [
+          { author: 'picasso-canvas', body: 'Follow-up: #153' },
+          { author: '', body: 'Follow-up: #154' },
+        ],
+      },
+    ]);
+    expect(f.closedFollowUps.map((i) => i.number)).toEqual([153]);
+    // This batch's own comments are read once, as before; a PR into staging reads none.
+    expect(
+      calls.filter((c) => c === 'pr view 7 -R picasso-canvas/letzeuspost --json comments'),
+    ).toHaveLength(1);
+  });
+
   it('flags a closed list that reaches its limit as cut off', () => {
     const many = Array.from({ length: 1000 }, (_, i) => ({
       number: 1000 + i,
