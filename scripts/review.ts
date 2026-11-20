@@ -540,13 +540,16 @@ export function retryWorthy(summary: string, reviewer: Asker): boolean {
 }
 
 /** The reason a reviewer run failed, from its output: never the command line, which holds local paths. */
-function failureReason(error: unknown): string {
-  const { stderr, stdout, signal } = error as {
+export function failureReason(error: unknown): string {
+  const { stderr, stdout, signal, code } = error as {
+    code?: unknown;
     stderr?: unknown;
     stdout?: unknown;
     signal?: unknown;
   };
   if (signal === 'SIGTERM') return 'it timed out';
+  if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER')
+    return 'its output passed the buffer limit (64 MB)';
   for (const text of [stdout, stderr]) {
     if (typeof text !== 'string' || text.trim() === '') continue;
     try {
