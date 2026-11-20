@@ -1013,8 +1013,32 @@ describe('runReviews: a malformed answer gets one retry (#158)', () => {
         firstSha256: createHash('sha256')
           .update('Checked round 4.\n\nVERDICT: pass\n[nit] F1 simplicity a.ts:1 — x')
           .digest('hex'),
+        firstHead: 'Checked round 4.\n\nVERDICT: pass\n[nit] F1 simplicity a.ts:1 — x',
       },
     ]);
+  });
+
+  it('keeps only the first 200 characters of the first answer next to its hash, whole answer hashed', async () => {
+    const long = `Checked.\n${'x'.repeat(500)}\nVERDICT: pass`;
+    const r = await runWith([answer(long, 's1'), answer('VERDICT: pass', 's2')]);
+    expect(r.retries).toEqual([
+      expect.objectContaining({
+        firstHead: long.slice(0, 200),
+        firstSha256: createHash('sha256').update(long).digest('hex'),
+      }),
+    ]);
+  });
+
+  it("says the answer didn't start with its verdict line when it asks again", async () => {
+    const said: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => said.push(args.join(' '));
+    try {
+      await runWith([answer('Checked.\nVERDICT: pass', 's1'), answer('VERDICT: pass', 's2')]);
+    } finally {
+      console.error = original;
+    }
+    expect(said.join('\n')).toContain("argus's answer didn't start with its verdict line");
   });
 
   it('records a malformed answer that signals a block at once, without a retry', async () => {
