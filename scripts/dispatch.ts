@@ -162,10 +162,11 @@ export function resumedRecord(record: DispatchRecord, marker: string, at: string
 
 /**
  * The builder session's extra environment. Only gh's config lives in `configDir` (`GH_CONFIG_DIR`), outside the clone,
- * which the builder can write. Git reads no config file at all: its settings come from the environment
+ * which the builder can write. Git reads no system or global config file: its settings come from the environment
  * (`GIT_CONFIG_COUNT`/`KEY`/`VALUE`), with `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null`, so git that Claude
  * Code runs itself, outside the sandbox, never reads a config the builder planted (Cerberus F1 on #166, Argus F1 on
- * #175). pnpm's dirs stay in the clone; only the sandboxed pnpm reads them.
+ * #175). The clone's own `.git/config` is still read: the builder can't write it (denied in the builder settings), and
+ * a resume refuses the clone if its hash changed. pnpm's dirs stay in the clone; only the sandboxed pnpm reads them.
  */
 export function runEnvExtra(o: {
   lzp: string;
