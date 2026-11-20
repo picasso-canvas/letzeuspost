@@ -1,10 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import {
-  CoffeeIcon,
-  InboxIcon,
-  LogOutIcon,
-  MailIcon,
-} from '@lzp/ui/components/icons';
+import { CoffeeIcon, InboxIcon, LogOutIcon, MailIcon } from '@lzp/ui/components/icons';
 
 // The icons a screen takes from `@lzp/ui/components/icons` (§13, §21: Lucide is the one icon set), each with its name.
 // They are decoration beside a label, so the screen hides them from assistive technology (`aria-hidden`).
