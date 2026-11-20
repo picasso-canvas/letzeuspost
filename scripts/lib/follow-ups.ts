@@ -90,14 +90,18 @@ export function wantsComments(labels: readonly string[], body: string): boolean 
   return labels.includes('follow-up') || followUpItems(body).length > 0;
 }
 
-/** The issues a batch's `Follow-up: #N` (or `Follow-ups: #N, #M`) lines link. */
-function linked(comments: readonly string[]): number[] {
-  return comments.flatMap((c) =>
-    // One line only: a `#N` that starts the next line is another thing, not part of the list (#275).
-    [
-      ...c.matchAll(/^[ \t]*(?:-[ \t]*)?Follow-ups?:[ \t]*((?:#\d+[ \t,]*(?:and[ \t]+)?)+)/gim),
-    ].flatMap((m) => [...(m[1] ?? '').matchAll(/#(\d+)/g)].map((n) => Number(n[1]))),
-  );
+/** The issues a batch's `Follow-up: #N` (or `Follow-ups: #N, #M`) lines link, once each. */
+export function followUpLinks(comments: readonly string[]): number[] {
+  return [
+    ...new Set(
+      comments.flatMap((c) =>
+        // One line only: a `#N` that starts the next line is another thing, not part of the list (#275).
+        [
+          ...c.matchAll(/^[ \t]*(?:-[ \t]*)?Follow-ups?:[ \t]*((?:#\d+[ \t,]*(?:and[ \t]+)?)+)/gim),
+        ].flatMap((m) => [...(m[1] ?? '').matchAll(/#(\d+)/g)].map((n) => Number(n[1]))),
+      ),
+    ),
+  ];
 }
 
 export function followUpRefusals(o: {
@@ -110,6 +114,11 @@ export function followUpRefusals(o: {
   openIssues: readonly OpenIssue[];
   /** Closed issues that carry a **Follow-up of:** line, with how they were closed (#275). */
   closedIssues: readonly ClosedFollowUp[];
+  /**
+   * The comments of each batch the gate merged into main (#277). Athena's own `Follow-up: #N` lines there are what an
+   * earlier batch promised, so the gate checks those issues whatever their text says now.
+   */
+  earlierBatchComments: readonly { batch: number; comments: { author: string; body: string }[] }[];
   /** This batch PR's comments: only a `Follow-up: #N` line from Zeus's account links a follow-up (Argus F1 in round 2). */
   comments: readonly { author: string; body: string }[];
   /** Zeus's GitHub account, which Athena uses: only its records grant an exception. */
@@ -129,24 +138,30 @@ export function followUpRefusals(o: {
     refusals.push(
       'the list of closed issues may be cut off, so a follow-up closed without landing could go unseen: Athena checks why there are so many',
     );
+  // The issues an older check already refused, so the link check below doesn't say it twice.
+  const refused = new Set<number>();
   // A follow-up of an earlier batch that was closed without landing (#275): closing it is not landing it.
   for (const issue of o.closedIssues) {
     if (excepted(issue, o.zeusLogin)) continue;
     const of = followUpOf(issue.body).find(earlier);
     const problem = landingProblem(issue);
-    if (of !== undefined && problem !== null)
+    if (of !== undefined && problem !== null) {
+      refused.add(issue.number);
       refusals.push(
         `#${String(issue.number)}, a follow-up of batch #${String(of)}, was closed without landing (${problem}): it lands (reopen it), or Zeus records an exception on it`,
       );
+    }
   }
   for (const issue of o.openIssues) {
     if (o.closes.includes(issue.number) || excepted(issue, o.zeusLogin)) continue;
     if (issue.labels.includes('follow-up')) {
       const of = followUpOf(issue.body).find(earlier);
-      if (of !== undefined)
+      if (of !== undefined) {
+        refused.add(issue.number);
         refusals.push(
           `#${String(issue.number)}, a follow-up of batch #${String(of)}, is still open: it lands before the next batch merges (§19), or Zeus records an exception on it`,
         );
+      }
     }
     for (const item of followUpItems(issue.body)) {
       if (item.batches.length === 0)
@@ -159,9 +174,42 @@ export function followUpRefusals(o: {
         );
     }
   }
+  // A follow-up an earlier batch linked (#277), whatever its text says now: its `**Follow-up of:**` line or its label may
+  // have been edited out, but Athena's record on the batch still names it. Only Zeus's account counts.
+  const closedByNumber = new Map(o.closedIssues.map((i) => [i.number, i]));
+  const openByNumber = new Map(o.openIssues.map((i) => [i.number, i]));
+  for (const { batch, comments } of o.earlierBatchComments) {
+    if (!earlier(batch)) continue;
+    const mine = comments.filter((c) => c.author === o.zeusLogin).map((c) => c.body);
+    for (const n of followUpLinks(mine)) {
+      if (refused.has(n)) continue;
+      const said = `#${String(n)}, linked as a follow-up of batch #${String(batch)}`;
+      const stillOpen = openByNumber.get(n);
+      const done = closedByNumber.get(n);
+      if (stillOpen !== undefined) {
+        if (o.closes.includes(n) || excepted(stillOpen, o.zeusLogin)) continue;
+        refused.add(n);
+        refusals.push(
+          `${said}, is still open: it lands before the next batch merges (§19), or Zeus records an exception on it`,
+        );
+      } else if (done !== undefined) {
+        const problem = landingProblem(done);
+        if (problem === null || excepted(done, o.zeusLogin)) continue;
+        refused.add(n);
+        refusals.push(
+          `${said}, was closed without landing (${problem}): it lands (reopen it), or Zeus records an exception on it`,
+        );
+      } else {
+        refused.add(n);
+        refusals.push(
+          `${said}, is an issue the gate can't find, open or closed: Athena checks the link`,
+        );
+      }
+    }
+  }
   const open = new Map(o.openIssues.map((i) => [i.number, i]));
   const own = o.comments.filter((c) => c.author === o.zeusLogin).map((c) => c.body);
-  for (const n of [...new Set(linked(own))]) {
+  for (const n of followUpLinks(own)) {
     const issue = open.get(n);
     if (issue === undefined)
       refusals.push(

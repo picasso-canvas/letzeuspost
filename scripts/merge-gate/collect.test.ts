@@ -556,6 +556,7 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     const calls: string[] = [];
     const gh = fakeGh({
       'pr view': batchView,
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
         comments: [{ author: { login: 'picasso-canvas' }, body: 'Follow-up: #148' }],
       }),
@@ -630,6 +631,7 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     const calls: string[] = [];
     const gh = fakeGh({
       'pr view': batchView,
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'issue list -R picasso-canvas/letzeuspost --state open': '[]',
       'issue list -R picasso-canvas/letzeuspost --state closed': JSON.stringify([

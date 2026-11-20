@@ -4,6 +4,7 @@ import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
 import { featureOf } from '../lib/features.ts';
 import {
+  followUpLinks,
   followUpOf,
   landingProblem,
   wantsComments,
@@ -355,10 +356,27 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
       }[])
     : [];
   const closedCutOff = closedListed.length >= ISSUE_LIMIT;
+  // Athena's `Follow-up: #N` lines on each earlier batch (#277), with their authors: the issues they name are checked
+  // even when the issue's own line was edited out. The gate keeps only Zeus's account's lines.
+  const earlierBatchComments = isBatch
+    ? [...new Set(mergedBatches)]
+        .filter((batch) => batch !== pr)
+        .map((batch) => ({
+          batch,
+          comments: (
+            JSON.parse(gh(['pr', 'view', String(batch), '-R', repo, '--json', 'comments'])) as {
+              comments: { author: { login: string } | null; body: string }[];
+            }
+          ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body })),
+        }))
+    : [];
+  const linkedEarlier = new Set(
+    earlierBatchComments.flatMap((b) => followUpLinks(b.comments.map((c) => c.body))),
+  );
   // The whole closed list, read directly (a search index lags behind a close), then narrowed here by the line.
   // A reference to another repository's pull request is no closer of ours, whatever its number.
   const closedFollowUps: ClosedFollowUp[] = closedListed
-    .filter((i) => followUpOf(i.body).length > 0)
+    .filter((i) => followUpOf(i.body).length > 0 || linkedEarlier.has(i.number))
     .map((i) => {
       const mergedClosers = i.closedByPullRequestsReferences
         .filter((ref) => ref.url.startsWith(`https://github.com/${repo}/pull/`))
@@ -539,6 +557,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     openIssuesCutOff,
     closedFollowUps,
     closedCutOff,
+    earlierBatchComments,
     mergedBatches,
     prComments,
     ...handoverFacts(pr, sha, base, deps),
