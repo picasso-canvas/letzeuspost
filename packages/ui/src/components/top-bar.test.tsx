@@ -103,15 +103,54 @@ describe('Bangla names (#228)', () => {
     expect(html()).not.toContain('lang=');
   });
 
-  // Argus F6 on PR #230: the open menu renders in a portal, which server rendering doesn't draw, so the rows are pinned
-  // here: langOf is right, and every row's name uses it, as the button's does.
-  it('marks each menu row\'s Bangla name lang="bn" too', () => {
+  // Argus F1, round 2 on #230: the open menu is drawn in a portal in a browser (server rendering skips it), so the rows
+  // are read from the tree the switcher renders, not from its source: each name's own element carries the `lang`.
+  it('marks each open-menu row’s Bangla name lang="bn", and an English one not at all', () => {
+    const tree = WorkspaceSwitcher({ ...words, workspaces, currentId: 'w1' });
+    const rows = elementsOfType<ItemProps>(tree, DropdownMenuRadioItem);
+    expect(rows).toHaveLength(workspaces.length);
+    for (const [index, workspace] of workspaces.entries()) {
+      const named = elementsIn(rows[index]?.props.children).filter(
+        (el) => el.props.children === workspace.name,
+      );
+      expect(named, workspace.name).toHaveLength(1);
+      expect(named[0]?.props.lang, workspace.name).toBe(
+        workspace.name === 'বাংলা স্টুডিও' ? 'bn' : undefined,
+      );
+    }
+  });
+
+  // Argus F2, round 2 on #230: a name is Bangla when it is mostly in Bengali script, not when one letter is.
+  it('marks a name lang="bn" only when it is mostly in Bengali script', () => {
     expect(langOf('ঢাকা ও সিলেট')).toBe('bn');
-    expect(langOf('Dhaka ঢাকা')).toBe('bn');
+    expect(langOf('ঢাকা Studio')).toBe('bn');
     expect(langOf('Northwind Social')).toBeUndefined();
-    const source = readFileSync(new URL('top-bar.tsx', import.meta.url), 'utf8');
-    expect(source).toMatch(/lang=\{langOf\(row\.name\)\}/);
-    expect(source).toMatch(/lang=\{langOf\(current\.name\)\}/);
+    expect(langOf('Northwind Social ঢাকা')).toBeUndefined();
+    expect(langOf('Dhaka ঢাকা')).toBeUndefined();
+    expect(langOf('2024 ঢাকা')).toBe('bn');
+    expect(langOf('& 24')).toBeUndefined();
+    expect(langOf('')).toBeUndefined();
+  });
+
+  it('leaves a mixed-script name unmarked, in the button and in its menu row', () => {
+    const mixed = { ...northwind, id: 'm1', name: 'Northwind Social ঢাকা' };
+    expect(html({ workspaces: [mixed], currentId: 'm1' })).not.toContain('lang="bn"');
+    const tree = WorkspaceSwitcher({ ...words, workspaces: [mixed], currentId: 'm1' });
+    const named = elementsIn(tree).filter((el) => el.props.children === mixed.name);
+    expect(named).toHaveLength(2); // the button's span and the row's
+    for (const el of named) expect(el.props.lang).toBeUndefined();
+  });
+
+  // Argus F3, round 2 on #230: the mark stays hidden from a screen reader (the name is beside it), and its Bangla
+  // initial is marked too, for its font and shaping.
+  it('marks the workspace mark’s Bangla initial lang="bn", and an English one not', () => {
+    const bangla = html({
+      workspaces: [{ ...northwind, id: 'b1', name: 'ঢাকা ও সিলেট' }],
+      currentId: 'b1',
+    });
+    expect(bangla).toMatch(/<span[^>]*lang="bn"[^>]*data-slot="avatar-fallback"[^>]*>ঢা<\/span>/);
+    expect(bangla).toMatch(/<span[^>]*aria-hidden="true"[^>]*data-slot="avatar"/);
+    expect(/<span[^>]*data-slot="avatar-fallback"[^>]*>/.exec(html())?.[0]).not.toContain('lang=');
   });
 });
 
@@ -230,6 +269,13 @@ interface GroupProps {
   onValueChange: (id: string) => void;
 }
 
+/** Every element in a tree of React elements, in order. */
+function elementsIn(node: ReactNode): ReactElement<{ children?: ReactNode; lang?: string }>[] {
+  if (Array.isArray(node)) return (node as ReactNode[]).flatMap(elementsIn);
+  if (!isValidElement<{ children?: ReactNode; lang?: string }>(node)) return [];
+  return [node, ...elementsIn(node.props.children)];
+}
+
 /** The elements of one component type in a tree of React elements (the open menu is drawn in a portal, in a browser). */
 function elementsOfType<P>(node: ReactNode, type: unknown): ReactElement<P>[] {
   if (Array.isArray(node)) {
@@ -264,13 +310,6 @@ describe('choosing a workspace', () => {
   it('closes the menu when a row is chosen, which a radio row does not do by itself', () => {
     expect(items.map((item) => item.props.closeOnClick)).toEqual([true, true, true]);
   });
-
-  /** Every element in a tree of React elements, in order. */
-  const elementsIn = (node: ReactNode): ReactElement<{ children?: ReactNode }>[] => {
-    if (Array.isArray(node)) return node.flatMap(elementsIn);
-    if (!isValidElement<{ children?: ReactNode }>(node)) return [];
-    return [node, ...elementsIn(node.props.children)];
-  };
 
   it('draws the mockup’s rows (Iris F3): a check on the current one, a building on the others, no avatar', () => {
     const rows = items.map((item) => elementsIn(item.props.children).map((el) => el.type));
