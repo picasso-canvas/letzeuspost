@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { athenaGitEnv } from './lib/athena-git.ts';
 import { assertCleanMain } from './lib/clean-main.ts';
-import { handoverRefusals } from './lib/handover-checks.ts';
+import { handoverRefusals, keepCiNotes } from './lib/handover-checks.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, takeHandover } from './lib/handover.ts';
 import { historyRefusals, parseRawDiff, parseRevList, shipRefusals } from './lib/protected.ts';
@@ -302,9 +302,11 @@ function main(argv: string[]): number {
       `#${String(issue)} ${branch}: no new commits this round, so only the PR text ships; the branch stays at ${record.baseSha.slice(0, 7)}.`,
     );
     if (dryRun) return 0;
-    run('gh', ['pr', 'edit', String(target.pr), '-R', REPO, '--body-file', '-'], prText);
+    const kept = editPrText(target.pr, prText);
     const flags = afterShip(issue, prText, approach.comment, record, lzp);
-    console.log(`Shipped the text of PR #${String(target.pr)} only${flagNote(flags)}.`);
+    console.log(
+      `Shipped the text of PR #${String(target.pr)} only${keptNote(kept)}${flagNote(flags)}.`,
+    );
     return 0;
   }
 
@@ -392,6 +394,7 @@ function main(argv: string[]): number {
     return 1;
   }
   let pr = openPr();
+  let kept = 0;
   if (pr === undefined) {
     const url = run(
       'gh',
@@ -413,7 +416,7 @@ function main(argv: string[]): number {
     );
     pr = Number(url.trim().split('/').pop());
   } else {
-    run('gh', ['pr', 'edit', String(pr), '-R', REPO, '--body-file', '-'], prText);
+    kept = editPrText(pr, prText);
   }
   const flags = afterShip(issue, prText, approach.comment, record, lzp);
   try {
@@ -431,7 +434,7 @@ function main(argv: string[]): number {
       `Staging moved while the builder worked: run \`gh pr update-branch ${String(pr)}\` before the gate.`,
     );
   }
-  console.log(`Shipped as PR #${String(pr)}${flagNote(flags)}.`);
+  console.log(`Shipped as PR #${String(pr)}${keptNote(kept)}${flagNote(flags)}.`);
   return 0;
 }
 
@@ -478,6 +481,33 @@ function afterShip(
   );
   rmSync(lzp, { recursive: true, force: true });
   return flags;
+}
+
+/**
+ * Replaces an open PR's text with the builder's new text, keeping Athena's CI notes from the current text (#286). The
+ * checks have already run on the builder's own text. Returns how many notes it kept.
+ */
+function editPrText(pr: number, prText: string): number {
+  const current = run('gh', [
+    'pr',
+    'view',
+    String(pr),
+    '-R',
+    REPO,
+    '--json',
+    'body',
+    '-q',
+    '.body',
+  ]);
+  const { text, kept } = keepCiNotes(prText, current);
+  run('gh', ['pr', 'edit', String(pr), '-R', REPO, '--body-file', '-'], text);
+  return kept;
+}
+
+function keptNote(kept: number): string {
+  return kept === 0
+    ? ''
+    : ` (kept ${String(kept)} CI note${kept === 1 ? '' : 's'} from the earlier text)`;
 }
 
 function flagNote(flags: { needsZeus: boolean; blocked: boolean }): string {
