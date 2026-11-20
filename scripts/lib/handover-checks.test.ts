@@ -39,8 +39,10 @@ describe('parseAreas', () => {
         'scripts/batch.ts',
         'packages/ui/src/components/button.test.*',
         'packages/ui/src/components/button.*.test.*',
+        'packages/ui/src/components/button-*.test.*',
         'packages/ui/src/components/button.spec.*',
         'packages/ui/src/components/button.*.spec.*',
+        'packages/ui/src/components/button-*.spec.*',
         'packages/ui/src/components/button.stories.*',
         'packages/ui/src/components/button.*.stories.*',
       ],
@@ -53,8 +55,10 @@ describe('parseAreas', () => {
         'scripts/foo.ts',
         'scripts/foo.test.*',
         'scripts/foo.*.test.*',
+        'scripts/foo-*.test.*',
         'scripts/foo.spec.*',
         'scripts/foo.*.spec.*',
+        'scripts/foo-*.spec.*',
       ],
     });
   });
@@ -66,12 +70,16 @@ describe('parseAreas', () => {
         'scripts/b.ts',
         'scripts/a.test.*',
         'scripts/a.*.test.*',
+        'scripts/a-*.test.*',
         'scripts/a.spec.*',
         'scripts/a.*.spec.*',
+        'scripts/a-*.spec.*',
         'scripts/b.test.*',
         'scripts/b.*.test.*',
+        'scripts/b-*.test.*',
         'scripts/b.spec.*',
         'scripts/b.*.spec.*',
+        'scripts/b-*.spec.*',
       ],
     });
   });
@@ -168,7 +176,111 @@ describe('findingIds', () => {
   });
 });
 
+describe('a shared or named test file beside the file (#148)', () => {
+  it('also covers <file>-*.test.* for "its tests", but not for stories', () => {
+    const areas = parseAreas('**Areas:** `scripts/dispatch.ts` and its tests and stories');
+    expect('patterns' in areas && areas.patterns).toContain('scripts/dispatch-*.test.*');
+    expect(
+      areaRefusals(['scripts/dispatch-ship.test.ts'], 'patterns' in areas ? areas.patterns : []),
+    ).toEqual([]);
+    expect(
+      areaRefusals(
+        ['scripts/dispatch-ship.stories.tsx'],
+        'patterns' in areas ? areas.patterns : [],
+      ),
+    ).toEqual(["scripts/dispatch-ship.stories.tsx is outside the task's Areas"]);
+    // A name that only starts like the file, with no dash, is another file.
+    expect(
+      areaRefusals(['scripts/dispatcher.test.ts'], 'patterns' in areas ? areas.patterns : []),
+    ).toHaveLength(1);
+  });
+});
+
 describe('requireFindingIds (what dispatch records)', () => {
+  it("doesn't add an older round's id that a finding's text or a reviewer's section names", () => {
+    expect(
+      requireFindingIds(
+        [
+          'Cerberus:',
+          '[nit] F1 evidence pr.md — still open since Argus F3 in round 1',
+          'Argus F4 said the same, and Iris F2 too.',
+        ].join('\n'),
+      ),
+    ).toEqual(['Cerberus F1']);
+  });
+
+  it("still counts a CI id written out after a reviewer's heading: only a reviewer's text names older ids", () => {
+    expect(
+      requireFindingIds(
+        [
+          '## Argus',
+          '[blocking] F1 evidence pr.md — x',
+          '',
+          'Also: CI F1, the services job failed',
+        ].join('\n'),
+      ),
+    ).toEqual(['Argus F1', 'CI F1']);
+  });
+
+  it("doesn't count a CI id a reviewer names inside one of its own finding lines", () => {
+    // Found by the live re-run over the real review records (PR #279): reviewers discuss the CI ids of this very task.
+    expect(
+      requireFindingIds(
+        [
+          'Cerberus:',
+          '[nit] F1 correctness a.ts:1 — a written-out `CI F1` after a heading is dropped',
+          '[nit] F2 guardrails a.ts:2 — and if a real CI F2 exists too',
+        ].join('\n'),
+      ),
+    ).toEqual(['Cerberus F1', 'Cerberus F2']);
+  });
+
+  it('only a heading-like line starts a reviewer section', () => {
+    // Prose that starts with a reviewer's name, or bolds one, switches nothing.
+    expect(
+      requireFindingIds(
+        [
+          'Cerberus:',
+          'Argus thinks the retry is wrong, but this one is mine.',
+          '**Iris** would like it too, said the builder.',
+          '[nit] F1 evidence pr.md — x',
+        ].join('\n'),
+      ),
+    ).toEqual(['Cerberus F1']);
+    // With no heading at all, such a line leaves the finding with no reviewer.
+    expect(() => requireFindingIds('Argus thinks so.\n[nit] F1 evidence pr.md — x')).toThrow(
+      /no reviewer above it/,
+    );
+    // The four heading forms still work.
+    expect(
+      requireFindingIds(
+        [
+          'Argus:',
+          '[nit] F1 a x — y',
+          '## Cerberus',
+          '[nit] F2 a x — y',
+          '**Iris**',
+          '[nit] F3 a x — y',
+          '🦉 Athena: review record: **Argus**, **block** for `c22cd7c`.',
+          '[nit] F4 a x — y',
+        ].join('\n'),
+      ),
+    ).toEqual(['Argus F1', 'Cerberus F2', 'Iris F3', 'Argus F4']);
+  });
+
+  it("takes CI's own failures with an id, written out or under a CI heading", () => {
+    expect(requireFindingIds('Fix CI F1 and Argus F2.')).toEqual(['CI F1', 'Argus F2']);
+    expect(
+      requireFindingIds(
+        'CI:\n[blocking] F1 tests packages/core/a.test.ts:3 — the services job failed',
+      ),
+    ).toEqual(['CI F1']);
+    expect(roundRefusals(`x\n\n**Round 2**\n- CI F1: fixed.`, ['CI F1'])).toEqual([]);
+    expect(roundRefusals(`x\n\n**Round 2**\n- Argus F1: fixed.`, ['CI F1'])).toEqual([
+      "the Round 2 section doesn't answer CI F1",
+    ]);
+  });
+
   it("reads the reviewers' own output, grouped under each reviewer's name", () => {
     expect(
       requireFindingIds(

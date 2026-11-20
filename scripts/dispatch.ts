@@ -31,6 +31,7 @@ import { assertCleanMain } from './lib/clean-main.ts';
 import { isEntryPoint } from './lib/entry.ts';
 import { builderProcesses, killMarkedProcesses, trash } from './lib/handover.ts';
 import { parseRawDiff, shipRefusals } from './lib/protected.ts';
+import { takeDispatchLock } from './lib/dispatch-lock.ts';
 import { requireFindingIds } from './lib/handover-checks.ts';
 import { dispatchRefusal, toTaskIssue } from './lib/features.ts';
 import { readRegularFile } from './lib/safe-read.ts';
@@ -457,6 +458,14 @@ async function main(argv: string[]): Promise<number> {
     console.error(`#${String(issue)} isn't an open build-task issue.`);
     return 1;
   }
+  // One dispatch at a time past the feature rule (#148): the lock is held until this dispatch's record is written, so a
+  // second dispatch reads it, and any exit (a throw, a refusal) lets go.
+  const lock = takeDispatchLock(join(STATE_DIR, 'dispatch'));
+  if ('refusal' in lock) {
+    console.error(`Refused: ${lock.refusal}.`);
+    return 1;
+  }
+  process.once('exit', lock.release);
   // One feature open at a time (§19, Zeus 2026-11-10, #139); follow-ups of a merged batch and harness tasks run alongside.
   const featureRefusal = featureRule(issue);
   if (featureRefusal !== null) {
@@ -470,7 +479,10 @@ async function main(argv: string[]): Promise<number> {
   const clone = join(BUILDERS_DIR, branch);
   // Never wipe work that hasn't been shipped yet.
   const recordFile = dispatchRecordPath(issue);
-  if (args.resume) return resume(issue, view.body, recordFile, args);
+  if (args.resume) {
+    lock.release(); // a resume writes no new record, and runs for hours
+    return resume(issue, view.body, recordFile, args);
+  }
   if (existsSync(clone) && !args.fresh) {
     const record = existsSync(recordFile)
       ? parseDispatchRecord(readFileSync(recordFile, 'utf8'), issue)
@@ -612,6 +624,7 @@ async function main(argv: string[]): Promise<number> {
     `${JSON.stringify({ issue, branch, baseSha, dispatchedAt: new Date().toISOString(), marker, ...(findings.length > 0 ? { findings } : {}) })}\n`,
     { mode: 0o600 },
   );
+  lock.release(); // the record is written: the next dispatch's feature rule sees this one
   writeFileSync(taskCopyPath(issue), task, { mode: 0o600 }); // what a resume sends, whatever the clone's task.md says
   mkdirSync(BUILDERS_DIR, { recursive: true, mode: 0o700 });
   run(
