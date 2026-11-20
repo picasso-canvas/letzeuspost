@@ -175,6 +175,48 @@ export function roundRefusals(prText: string, ids: readonly string[]): string[] 
     .map((id) => `the Round ${last[1] ?? ''} section doesn't answer ${id}`);
 }
 
+/** What marks one of Athena's notes from CI on a builder PR (Zeus, 2026-11-20, #286): ship keeps these across a fix round. */
+export const CI_NOTE_PREFIX = '🦉 Athena: CI note:';
+/** The section ship appends the kept notes under. */
+export const CI_NOTE_HEADING = "**Athena's CI notes, kept from earlier rounds**";
+
+// A list marker or quote in front of a line doesn't change what it says.
+const LINE_LEAD = /^[\s>]*(?:(?:[-*+]|\d+[.)])\s+)?/;
+
+/** The text of each line that starts with the prefix (behind any list marker), in order. One note is one line. */
+function ciNoteLines(text: string): string[] {
+  return text
+    .split(/\r\n?|\n/)
+    .map((line) => line.replace(LINE_LEAD, '').trimEnd())
+    .filter((line) => line.startsWith(CI_NOTE_PREFIX));
+}
+
+/**
+ * A builder PR's text for a fix round with the CI notes of the current text kept: each earlier note that the new text
+ * doesn't already have is appended once, under {@link CI_NOTE_HEADING} at the end. The section is read back like any
+ * note, so a later round keeps them again and never twice. Only the one-line, prefixed form counts: Athena writes
+ * each note that way.
+ */
+export function keepCiNotes(newText: string, currentText: string): { text: string; kept: number } {
+  const have = new Set(ciNoteLines(newText));
+  const missing = [...new Set(ciNoteLines(currentText))].filter((note) => !have.has(note));
+  if (missing.length === 0) return { text: newText, kept: 0 };
+  const list = missing.map((note) => `- ${note}`).join('\n');
+  return { text: `${newText.trimEnd()}\n\n${CI_NOTE_HEADING}\n${list}\n`, kept: missing.length };
+}
+
+/** Only Athena writes a CI note (or the kept section): a builder's text with one would make it stay forever. */
+function ciNoteForgery(prText: string): string[] {
+  const forged =
+    ciNoteLines(prText).length > 0 ||
+    prText.split(/\r\n?|\n/).some((line) => line.replace(LINE_LEAD, '').trim() === CI_NOTE_HEADING);
+  return forged
+    ? [
+        `the text has a line that starts with "${CI_NOTE_PREFIX}" or the kept-notes heading: only Athena writes those, so remove it`,
+      ]
+    : [];
+}
+
 /** Everything ship refuses in a hand-over, at once. */
 export function handoverRefusals(h: {
   prText: string;
@@ -188,6 +230,7 @@ export function handoverRefusals(h: {
   return [
     ...(evidence === null ? [] : [evidence]),
     ...roundRefusals(h.prText, h.findings),
+    ...ciNoteForgery(h.prText),
     ...('refusal' in areas ? [areas.refusal] : areaRefusals(h.changedFiles, areas.patterns)),
   ];
 }
