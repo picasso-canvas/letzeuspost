@@ -20,7 +20,7 @@ import {
 } from './lessons.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
-import { ungatedStagingCommits } from './merge-gate/staging.ts';
+import { auditStaging } from './merge-gate/staging.ts';
 
 export interface MainCommit {
   sha: string;
@@ -378,40 +378,7 @@ function main(argv: string[]): number {
   const log = readJsonLines<LogEntry>(join(STATE_DIR, 'merges.jsonl'));
   const unknown = auditMain(commits, log);
   // Nobody pushes to staging either (no branch rules on the free plan): a commit there the gate didn't make counts too.
-  // Only a missing staging branch skips this; any other failure is reported as a finding (and freezes).
-  const hasStaging =
-    run('git', ['ls-remote', '--heads', 'origin', 'refs/heads/staging']).trim() !== '';
-  try {
-    if (!hasStaging) throw new Error('no staging');
-    run('git', ['fetch', '--quiet', 'origin', '+refs/heads/staging:refs/remotes/origin/staging']);
-    const onStaging = run('git', [
-      'log',
-      '--first-parent',
-      '--format=%H%x09%cI%x09%s',
-      'origin/main..origin/staging',
-    ])
-      .split('\n')
-      .filter((line) => line !== '')
-      .map((line) => {
-        const [sha = '', at = '', ...subject] = line.split('\t');
-        return { sha, at, subject: `on staging, not through the gate: ${subject.join('\t')}` };
-      });
-    const ungated = new Set(
-      ungatedStagingCommits(
-        onStaging.map((c) => c.sha),
-        log,
-      ),
-    );
-    unknown.push(...onStaging.filter((c) => ungated.has(c.sha)));
-  } catch (error) {
-    if (hasStaging) {
-      unknown.push({
-        sha: '',
-        at: new Date().toISOString(),
-        subject: `couldn't audit staging: ${error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error)}`,
-      });
-    }
-  }
+  unknown.push(...auditStaging(run, log));
   let froze = false;
   if (unknown.length > 0 && args.freeze) {
     run('gh', ['variable', 'set', 'AGENTS_PAUSED', '-b', 'true', '-R', REPO]);

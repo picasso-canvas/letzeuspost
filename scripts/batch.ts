@@ -11,7 +11,6 @@
 // brought up to date): it closes every task's issues and ticks a task only when the merge log shows the gate merged it
 // into staging. Then Athena runs scripts/review.ts and the merge gate on it.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain } from './lib/clean-main.ts';
@@ -24,7 +23,7 @@ import {
   type TaskIssue,
 } from './lib/features.ts';
 import { REPO } from './merge-gate/collect.ts';
-import { issueFromBranch } from './merge-gate/staging.ts';
+import { issueFromBranch, readStagingLog } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 
 /** The task PRs on `staging` and not on `main`, oldest first, from the gate's squash subjects (`Title (#n)`). */
@@ -101,22 +100,10 @@ function journeyFiles(): { path: string; text: string }[] {
 
 /** The task PRs the gate merged into staging, from its merge log (#132 reads it too); none when there's no log. */
 export function gatedIntoStaging(stateDir = STATE_DIR): Set<number> {
-  let text: string;
-  try {
-    text = readFileSync(join(stateDir, 'merges.jsonl'), 'utf8');
-  } catch {
-    return new Set();
-  }
   const prs = new Set<number>();
-  for (const line of text.split('\n')) {
-    try {
-      const entry = JSON.parse(line) as { pr?: unknown; result?: unknown; base?: unknown };
-      if (entry.result === 'merged' && entry.base === 'staging' && typeof entry.pr === 'number')
-        prs.add(entry.pr);
-    } catch {
-      // not a log line
-    }
-  }
+  for (const entry of readStagingLog(stateDir))
+    if (entry.result === 'merged' && entry.base === 'staging' && entry.pr !== undefined)
+      prs.add(entry.pr);
   return prs;
 }
 
