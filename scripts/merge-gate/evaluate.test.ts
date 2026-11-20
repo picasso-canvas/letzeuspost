@@ -63,6 +63,7 @@ function facts(over: Partial<Facts> = {}): Facts {
     openIssuesCutOff: false,
     closedFollowUps: [],
     closedCutOff: false,
+    earlierBatchComments: [],
     mergedBatches: [],
     prComments: [],
     labels: ['routine'],
@@ -862,6 +863,36 @@ describe('evaluate: the batch PR from staging into main', () => {
       ),
     ).toEqual([]);
     expect(failedIds(batch({ closedCutOff: true, mergedBatches: [130] }))).toEqual([2]);
+  });
+
+  it('refuses a batch while a follow-up an earlier batch linked sits unlanded, though its line was edited out (#277)', () => {
+    const edited = {
+      number: 300,
+      labels: ['follow-up'],
+      body: 'no line any more',
+      stateReason: 'NOT_PLANNED',
+      mergedClosers: 0,
+      comments: [],
+    };
+    const linked = [
+      { batch: 130, comments: [{ author: 'picasso-canvas', body: 'Follow-up: #300' }] },
+    ];
+    const refused = batch({
+      closedFollowUps: [edited],
+      earlierBatchComments: linked,
+      mergedBatches: [130],
+    });
+    expect(failedIds(refused)).toEqual([2]);
+    expect(evaluate(refused).items[1]?.detail).toContain('#300');
+    expect(
+      failedIds(
+        batch({
+          closedFollowUps: [{ ...edited, stateReason: 'COMPLETED', mergedClosers: 1 }],
+          earlierBatchComments: linked,
+          mergedBatches: [130],
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it('refuses a batch that carries a harness path, or misses a task box', () => {

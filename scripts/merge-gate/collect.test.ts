@@ -556,6 +556,7 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     const calls: string[] = [];
     const gh = fakeGh({
       'pr view': batchView,
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
         comments: [{ author: { login: 'picasso-canvas' }, body: 'Follow-up: #148' }],
       }),
@@ -630,6 +631,7 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
     const calls: string[] = [];
     const gh = fakeGh({
       'pr view': batchView,
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
       'issue list -R picasso-canvas/letzeuspost --state open': '[]',
       'issue list -R picasso-canvas/letzeuspost --state closed': JSON.stringify([
@@ -703,6 +705,103 @@ describe("collectFacts: an earlier batch's follow-ups (#154)", () => {
       false,
     );
     expect(f.closedCutOff).toBe(false);
+  });
+
+  // #277: Athena's `Follow-up: #N` lines on an earlier batch are read, and the issues they name are gathered even when
+  // the issue's own **Follow-up of:** line was edited out before it was closed.
+  it("reads each earlier batch's comments, and gathers a closed issue it links though its line is gone", () => {
+    const calls: string[] = [];
+    const gh = fakeGh({
+      'pr view': batchView,
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [
+          { author: { login: 'picasso-canvas' }, body: 'Follow-up: #153' },
+          { author: null, body: 'Follow-up: #154' },
+        ],
+      }),
+      'issue list -R picasso-canvas/letzeuspost --state open': '[]',
+      'issue list -R picasso-canvas/letzeuspost --state closed': JSON.stringify([
+        {
+          number: 153,
+          labels: [{ name: 'follow-up' }],
+          body: 'the line was edited out',
+          stateReason: 'NOT_PLANNED',
+          closedByPullRequestsReferences: [],
+        },
+        // Not linked and no line: not gathered.
+        {
+          number: 155,
+          labels: [{ name: 'build-task' }],
+          body: 'a task',
+          stateReason: 'COMPLETED',
+          closedByPullRequestsReferences: [],
+        },
+      ]),
+      'issue view 153 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [],
+      }),
+      'log --first-parent': '',
+    });
+    const f = collectFacts(
+      7,
+      deps({
+        gh: (args) => (calls.push(args.join(' ')), gh(args)),
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readMergeLog: () => [
+          { result: 'merged', base: 'main', kind: 'batch', pr: 130 },
+          { result: 'merged', base: 'main', kind: 'batch', pr: 7 },
+        ],
+      }),
+    );
+    expect(f.earlierBatchComments).toEqual([
+      {
+        batch: 130,
+        comments: [
+          { author: 'picasso-canvas', body: 'Follow-up: #153' },
+          { author: '', body: 'Follow-up: #154' },
+        ],
+      },
+    ]);
+    expect(f.closedFollowUps.map((i) => i.number)).toEqual([153]);
+    // This batch's own comments are read once, as before; a PR into staging reads none.
+    expect(
+      calls.filter((c) => c === 'pr view 7 -R picasso-canvas/letzeuspost --json comments'),
+    ).toHaveLength(1);
+  });
+
+  // Argus F1 and Cerberus F1 on #290: an open issue an earlier batch linked may have lost its label and line, and Zeus's
+  // exception on it is in its comments, so they are read for it too.
+  it('reads the comments of an open issue an earlier batch linked, though its label and line are gone', () => {
+    const gh = fakeGh({
+      'pr view': batchView,
+      'pr view 7 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({ comments: [] }),
+      'pr view 130 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [{ author: { login: 'picasso-canvas' }, body: 'Follow-up: #300' }],
+      }),
+      'issue list': JSON.stringify([
+        { number: 300, labels: [{ name: 'build-task' }], body: 'the line was edited out' },
+        { number: 301, labels: [{ name: 'build-task' }], body: 'unrelated' },
+      ]),
+      'issue list -R picasso-canvas/letzeuspost --state closed': '[]',
+      'issue view 300 -R picasso-canvas/letzeuspost --json comments': JSON.stringify({
+        comments: [{ author: { login: 'picasso-canvas' }, body: 'an exception, maybe' }],
+      }),
+      'log --first-parent': '',
+    });
+    const calls: string[] = [];
+    const f = collectFacts(
+      7,
+      deps({
+        gh: (args) => (calls.push(args.join(' ')), gh(args)),
+        git: (args) => (args[0] === 'log' ? '' : fakeGit()(args)),
+        readMergeLog: () => [{ result: 'merged', base: 'main', kind: 'batch', pr: 130 }],
+      }),
+    );
+    expect(f.openIssues.find((i) => i.number === 300)?.comments).toEqual([
+      { author: 'picasso-canvas', body: 'an exception, maybe' },
+    ]);
+    expect(calls).not.toContain('issue view 301 -R picasso-canvas/letzeuspost --json comments');
   });
 
   it('flags a closed list that reaches its limit as cut off', () => {
