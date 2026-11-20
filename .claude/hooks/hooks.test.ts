@@ -96,6 +96,11 @@ describe('Bash rules', () => {
     ['pnpm check', false, false],
     ['git log --oneline -5', false, false],
     ['pnpm exec vitest run packages/core', false, false],
+    // A top-level cd moves the shell, and the builder's Edit(./**) with it (#284): builders only.
+    ['cd packages/db && pnpm test', false, true],
+    ['pushd packages/db', false, true],
+    ['(cd packages/db && pnpm test)', false, false],
+    ['git -C packages/db status', false, false],
   ];
   it.each(cases)('%s', (command, everyone, builder) => {
     expect(checkBash(command, 'other') !== null).toBe(everyone);
@@ -490,6 +495,18 @@ afterEach(() => {
 });
 
 describe('PreToolUse hook', () => {
+  it('refuses a builder a top-level cd and says what to use, and lets Athena cd (#284)', () => {
+    const out = run('pre-tool-use.ts', bash('cd packages/db && pnpm test'));
+    expect(decision(out)).toBe('deny');
+    expect(JSON.stringify(out)).toContain('git -C');
+    expect(JSON.stringify(out)).toContain('(cd <dir> && …)');
+    expect(logLines().map((l) => l.rule)).toEqual(['bash:builder-cd']);
+    expect(
+      decision(run('pre-tool-use.ts', bash('cd packages/db && pnpm test'), { builder: false })),
+    ).toBeNull();
+    expect(decision(run('pre-tool-use.ts', bash('(cd packages/db && pnpm test)')))).toBeNull();
+  });
+
   it('lets a builder work while the flag is fresh and false', () => {
     expect(decision(run('pre-tool-use.ts', bash('git status')))).toBeNull();
     expect(logLines()).toHaveLength(0);
