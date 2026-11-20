@@ -37,8 +37,8 @@ import { dispatchRefusal, toTaskIssue } from './lib/features.ts';
 import { readRegularFile } from './lib/safe-read.ts';
 import { stampPath } from '../.claude/hooks/lib/stamp.ts';
 import { REPO } from './merge-gate/collect.ts';
-import { readMergeLog, STATE_DIR } from './merge-gate/reviews.ts';
-import { stagingProblems, ungatedStagingCommits } from './merge-gate/staging.ts';
+import { STATE_DIR } from './merge-gate/reviews.ts';
+import { readStagingLog, stagingRefusal } from './merge-gate/staging.ts';
 import {
   BUILDERS_DIR,
   dispatchRecordPath,
@@ -548,52 +548,10 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
-  // Builders work on staging (Zeus, 2026-11-07), which must contain current main: main's harness, not an old copy,
-  // loads in the builder's session. The merge gate merges main into staging after every merge into main.
-  run('git', [
-    '-c',
-    'core.hooksPath=/dev/null',
-    'fetch',
-    '--quiet',
-    '--no-tags',
-    'origin',
-    '+refs/heads/staging:refs/remotes/origin/staging',
-  ]);
-  try {
-    run('git', ['merge-base', '--is-ancestor', 'origin/main', 'origin/staging']);
-  } catch {
-    console.error(
-      "Refused: staging doesn't contain main (the merge gate merges main into staging after each merge into main; settle that first).",
-    );
-    return 1;
-  }
-  // staging has no branch rules (free plan): it may differ from main only by gated builder work, or a direct push
-  // could put a hook or an agent file in every builder's session.
-  const stagingIssues = stagingProblems(
-    parseRawDiff(
-      run('git', [
-        'diff',
-        '--raw',
-        '-z',
-        '--no-renames',
-        '--no-abbrev',
-        'origin/main',
-        'origin/staging',
-      ]),
-    ),
-    ungatedStagingCommits(
-      run('git', ['log', '--first-parent', '--format=%H', 'origin/main..origin/staging'])
-        .split('\n')
-        .filter((line) => line !== ''),
-      readMergeLog().map((e) => ({
-        result: String(e.result),
-        ...(typeof e.base === 'string' ? { base: e.base } : {}),
-        ...(typeof e.mergeCommit === 'string' ? { mergeCommit: e.mergeCommit } : {}),
-      })),
-    ),
-  );
-  if (stagingIssues.length > 0) {
-    console.error(`Refused: staging isn't safe to build on:\n- ${stagingIssues.join('\n- ')}`);
+  // Builders work on staging (Zeus, 2026-11-07): it must contain current main and hold only gated work (staging.ts).
+  const stagingRefused = stagingRefusal(run, readStagingLog());
+  if (stagingRefused !== null) {
+    console.error(stagingRefused);
     return 1;
   }
   // A review round: the branch must contain current staging and must not change any protected path (its .claude/
