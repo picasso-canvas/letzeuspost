@@ -10,6 +10,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertCleanMain, readMainFile } from './lib/clean-main.ts';
+import { isMissingArtifact } from './lib/journey-artifact.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
 import { evaluate, kindOf } from './merge-gate/evaluate.ts';
 import { transcriptPath } from './merge-gate/meta.ts';
@@ -49,10 +50,9 @@ function readJourneyReport(runId: number): Record<string, string> | null {
     try {
       run('gh', ['run', 'download', String(runId), '-R', REPO, '-n', artifact, '-D', into]);
     } catch (error) {
-      // No such artifact reads as none; any other failure stops the gate rather than drop a report (Argus F1 in round 2
-      // on #171).
-      const { stderr } = error as { stderr?: unknown };
-      if (typeof stderr === 'string' && stderr.includes('no artifact matches')) return null;
+      // No such artifact, or one past its 30 days, reads as none; any other failure stops the gate rather than drop a
+      // report (Argus F1 in round 2 on #171; Argus F1 and Cerberus F1 on #171 at 9695678).
+      if (isMissingArtifact((error as { stderr?: unknown }).stderr)) return null;
       throw error;
     }
     const path = join(into, file);

@@ -127,6 +127,8 @@ describe('buildBundle', () => {
       expect(existsSync(join(result.bundle, name)), name).toBe(true);
     }
     expect(result.outDir.startsWith(result.bundle)).toBe(false); // summaries stay outside --add-dir
+    // The base, so review.ts asks the reviewers the gate's rule for a PR into main needs (Argus F2 on #186).
+    expect(result.base).toBe('main');
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toContain('Task seven');
     // The issue's comments, with author and date: where Zeus's decisions are recorded (#116).
     expect(readFileSync(join(result.bundle, 'issues.md'), 'utf8')).toMatch(
