@@ -21,6 +21,15 @@ sudo tee "/Library/Application Support/ClaudeCode/managed-settings.json" >/dev/n
 JSON
 ```
 
+`sudo` needs a terminal to read the password. In a Claude Code session (the `!` prefix, or Athena's own shell) there
+is none: it fails with "a terminal is required to read the password". Either run the block in Terminal.app, or copy a
+prepared copy of the JSON into place through the macOS administrator dialog, which asks for the password on screen
+and never shows it to the session (done on 2026-11-20, #35):
+
+```sh
+osascript -e 'do shell script "cp <prepared-file> \"/Library/Application Support/ClaudeCode/managed-settings.json\" && chmod 644 \"/Library/Application Support/ClaudeCode/managed-settings.json\"" with administrator privileges'
+```
+
 ## Check
 
 Start `claude` anywhere and run `/status` (or try `claude --permission-mode bypassPermissions`): bypass mode is
