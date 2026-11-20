@@ -25,7 +25,8 @@ const PASSES = new Set([
   'eval',
 ]);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-const BLANK = /[ \t\r\f\v]/;
+// Every space but the newline: a non-breaking or ideographic space is part of a shell word, but it must never stall the scan.
+const BLANK = /[^\S\n]/;
 const WORD_END = /[\s;&|()<>'"`\\$]/;
 const BOUNDARY = /[\s;&|()<>]/;
 
@@ -70,9 +71,9 @@ function readDelimiter(command: string, from: number): { delimiter: string; next
 }
 
 /** The index after the closing `quote` of a quoted string that starts at `from`, or -1 if it never closes. */
-function closeQuote(command: string, from: number): number {
+function closeQuote(command: string, from: number, escapes = command[from] !== "'"): number {
   const quote = command[from] ?? '';
-  if (quote === "'") {
+  if (!escapes) {
     const end = command.indexOf("'", from + 1);
     return end === -1 ? -1 : end + 1;
   }
@@ -108,6 +109,12 @@ export function changesDirectory(command: string): boolean {
       if (!assigning) atStart = false;
     } else if (c === '\\') {
       if (command[i + 1] === '\n') i += 2;
+      else if (
+        atStart &&
+        depth === 0 &&
+        /^(?:cd|pushd|popd)(?![^\s;&|()<>])/.test(command.slice(i + 1, i + 7))
+      )
+        return true; // `\cd x`: the backslash only skips an alias
       else {
         i += 2;
         if (!assigning) atStart = false;
@@ -117,6 +124,11 @@ export function changesDirectory(command: string): boolean {
         depth += 1;
         atStart = true;
         i += 2;
+      } else if (command[i + 1] === "'") {
+        const next = closeQuote(command, i + 1, true); // $'…' honours \' inside
+        if (next === -1) return false;
+        i = next;
+        if (!assigning) atStart = false;
       } else if (command[i + 1] === '{') {
         const end = command.indexOf('}', i);
         if (end === -1) return false;
@@ -157,6 +169,11 @@ export function changesDirectory(command: string): boolean {
     } else {
       let end = i;
       while (end < n && !WORD_END.test(command[end] ?? '')) end += 1;
+      if (end === i) {
+        i += 1; // a character no branch above reads: step over it, never stall
+        atStart = false;
+        continue;
+      }
       const word = command.slice(i, end);
       i = end;
       const wholeWord = end >= n || BOUNDARY.test(command[end] ?? '');

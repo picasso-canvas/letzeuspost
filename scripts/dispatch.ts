@@ -138,6 +138,17 @@ export function runEnding(
   return refusedWrites(log).length > 0 ? 'failed' : 'finished';
 }
 
+/**
+ * The harness-failure line for refused writes. The paths are the builder's own text, so each is stripped of control and
+ * formatting characters, capped and quoted: one line, and nothing in it can pass for dispatch's own output (#285).
+ */
+export function refusedWritesNote(files: readonly string[]): string {
+  const shown = files
+    .slice(0, 5)
+    .map((f) => JSON.stringify(f.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, '?').slice(0, 200)));
+  return `HARNESS FAILURE: the run went on with ${String(files.length)} refused Write/Edit call(s), so its work is incomplete: ${shown.join(', ')}${files.length > 5 ? ', …' : ''}. Usually a top-level cd moved its shell (#284). Ship it only after a look, or dispatch again with --fresh.`;
+}
+
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
 
 /**
@@ -916,27 +927,25 @@ async function runBuilder(o: {
   clearInterval(timer);
   killGroup(); // anything the builder left running in the background
 
+  // How it ended, in Athena's record: a run a usage limit stopped can be resumed (#157).
+  const ending = runEnding(tail, state.frozen);
+  const refused = refusedWrites(tail);
+  const refusedRun = ending === 'failed' && refused.length > 0;
   console.log(
-    `Builder ${state.frozen ? 'stopped: the freeze switch is on' : 'finished'} (exit ${String(code)}). Log: ${log}`,
+    `Builder ${state.frozen ? 'stopped: the freeze switch is on' : refusedRun ? 'ended with refused writes' : 'finished'} (exit ${String(code)}). Log: ${log}`,
   );
+  if (refusedRun) console.log(refusedWritesNote(refused));
   const ready = ['branch.bundle', 'pr.md', 'approach.md'].map(
     (name) => `${name}: ${isRegularFile(join(lzp, name)) ? 'yes' : 'no'}`,
   );
   console.log(`Handed over: ${ready.join(', ')}. Next: node scripts/ship.ts ${String(issue)}`);
   console.log(noGit);
-  // How it ended, in Athena's record: a run a usage limit stopped can be resumed (#157).
-  const ending = runEnding(tail, state.frozen);
   const now = parseDispatchRecord(readFileSync(o.recordFile, 'utf8'), issue);
   writeFileSync(
     o.recordFile,
     `${JSON.stringify(endedRecord(now, ending, new Date().toISOString()))}\n`,
     { mode: 0o600 },
   );
-  const refused = refusedWrites(tail);
-  if (ending === 'failed' && refused.length > 0)
-    console.log(
-      `HARNESS FAILURE: the run went on with ${String(refused.length)} refused Write/Edit call(s), so its work is incomplete: ${refused.slice(0, 5).join(', ')}${refused.length > 5 ? ', …' : ''}. Usually a top-level cd moved its shell (#284). Ship it only after a look, or dispatch again with --fresh.`,
-    );
   if (ending === 'usage-limit')
     console.log(
       `The run was stopped by a usage limit. Once it resets: node scripts/dispatch.ts ${String(issue)} --resume`,

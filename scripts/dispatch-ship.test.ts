@@ -556,7 +556,11 @@ describe('resuming an interrupted builder (#157)', () => {
       `/${'long'.repeat(100)}`,
     ]);
     expect(forged.split('\n')).toHaveLength(1);
-    expect(forged).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/);
+    const printable = Array.from(forged).every((ch) => {
+      const c = ch.codePointAt(0) ?? 0;
+      return (c >= 0x20 && c < 0x7f) || (c > 0x9f && c !== 0x2028 && c !== 0x2029);
+    });
+    expect(printable).toBe(true);
     expect(forged).not.toContain(
       'longlonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglonglong'.repeat(
         3,
