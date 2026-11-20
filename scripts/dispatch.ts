@@ -225,6 +225,7 @@ export function runEnvExtra(o: {
     LZP_ROLE: 'builder',
     LZP_HARNESS_DIR: o.harnessDir,
     LZP_DISPATCH: o.marker,
+    ENABLE_CLAUDEAI_MCP_SERVERS: 'false', // no claude.ai connectors in a builder's session, as in a reviewer's (review.ts)
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', // no notes carried between builder sessions (#54 turns it off repo-wide)
     GH_CONFIG_DIR: join(o.configDir, 'gh'),
     // Git's settings come from the environment, with no global or system file: the sandbox can't read outside the

@@ -124,8 +124,10 @@ describe('failureReason', () => {
     expect(failureReason(error)).toBe('its output passed the buffer limit (64 MB)');
   });
 
-  it('still reports a timeout, the failure in claude\'s JSON, and a bare failed command', () => {
-    expect(failureReason(Object.assign(new Error('t'), { signal: 'SIGTERM' }))).toBe('it timed out');
+  it("still reports a timeout, the failure in claude's JSON, and a bare failed command", () => {
+    expect(failureReason(Object.assign(new Error('t'), { signal: 'SIGTERM' }))).toBe(
+      'it timed out',
+    );
     expect(
       failureReason(
         Object.assign(new Error('Command failed: claude -p secret-path'), {
