@@ -535,6 +535,9 @@ describe('resuming an interrupted builder (#157)', () => {
 
   it("gives real git its settings from the environment and never reads the user's ~/.gitconfig (#174)", () => {
     const home = mkdtempSync(join(tmpdir(), 'lzp-home-'));
+    onTestFinished(() => {
+      rmSync(home, { recursive: true, force: true });
+    });
     writeFileSync(join(home, '.gitconfig'), '[user]\n\tname = Someone Else\n');
     const env = builderEnv(
       { PATH: process.env.PATH, HOME: home },

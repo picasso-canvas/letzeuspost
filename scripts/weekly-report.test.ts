@@ -262,7 +262,9 @@ describe('renderReport: review retries (#158)', () => {
       guardrailHits: {},
       reviewRetries: 2,
     });
-    expect(text).toContain("Review answers that needed a retry (didn't start with its verdict line): 2.");
+    expect(text).toContain(
+      "Review answers that needed a retry (didn't start with its verdict line): 2.",
+    );
   });
 });
 

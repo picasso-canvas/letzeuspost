@@ -518,6 +518,8 @@ export interface ReviewDeps {
     second: string | null;
     /** The first answer's hash, to audit it without its transcript (Cerberus F3 on #165). */
     firstSha256: string;
+    /** The first answer's first characters, to see what went wrong without its transcript (Argus F1, Cerberus F1 on #165). */
+    firstHead: string;
   }) => void;
   env: NodeJS.ProcessEnv;
 }
@@ -638,7 +640,7 @@ export async function runReviews(
         if (retryWorthy(out.text, reviewer)) {
           // One fresh session; its answer is recorded as it comes, well-formed or not (#158).
           console.error(
-            `${reviewer}'s answer had a line before its verdict: asking once more in a fresh session.`,
+            `${reviewer}'s answer didn't start with its verdict line: asking once more in a fresh session.`,
           );
           const first = out;
           let second: typeof out | undefined;
@@ -652,6 +654,7 @@ export async function runReviews(
               first: first.sessionId,
               second: second?.sessionId ?? null,
               firstSha256: createHash('sha256').update(first.text).digest('hex'),
+              firstHead: first.text.slice(0, 200),
             });
           }
           out = second;
