@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectFacts, parseConfig, type CollectDeps } from './collect.ts';
+import { changedFilesFromGit, collectFacts, parseConfig, type CollectDeps } from './collect.ts';
 import { bodyHash } from './evaluate.ts';
 import { reviewPrompt } from './meta.ts';
 
@@ -153,6 +153,51 @@ describe('collectFacts', () => {
 
   it('refuses when the PR head moved between the view and the fetch', () => {
     expect(() => collectFacts(7, deps({ git: fakeGit('b'.repeat(40)) }))).toThrow(/moved/);
+  });
+
+  it('fetches origin/main before any diff against it, for either base', () => {
+    for (const base of ['main', 'staging']) {
+      const calls: string[][] = [];
+      const git: CollectDeps['git'] = (args) => {
+        calls.push(args);
+        return fakeGit()(args);
+      };
+      const view = JSON.parse(fakeGh()(['pr', 'view'])) as object;
+      const gh = fakeGh({
+        'pr view': JSON.stringify({ ...view, baseRefName: base, headRefName: '42-thing' }),
+      });
+      collectFacts(7, deps({ git, gh }));
+      const fetchMain = calls.findIndex((a) =>
+        a.includes('+refs/heads/main:refs/remotes/origin/main'),
+      );
+      const firstDiff = calls.findIndex((a) => a[0] === 'diff');
+      expect(fetchMain, base).toBeGreaterThanOrEqual(0);
+      expect(fetchMain, base).toBeLessThan(firstDiff);
+    }
+  });
+
+  it('refuses when origin/main is not the checkout the gate verified', () => {
+    const git: CollectDeps['git'] = (args) => {
+      if (args[0] === 'rev-parse' && args.includes('refs/remotes/origin/main'))
+        return `${'c'.repeat(40)}\n`;
+      return fakeGit()(args);
+    };
+    expect(() => collectFacts(7, deps({ git }))).toThrow(/main moved while checking/);
+  });
+
+  it('changedFilesFromGit fetches origin/main and refuses a moved main by itself (Argus F1 on #296)', () => {
+    const calls: string[][] = [];
+    const git: CollectDeps['git'] = (args) => {
+      calls.push(args);
+      return fakeGit()(args);
+    };
+    expect(changedFilesFromGit(git, 7, SHA, 'main')).toContain('packages/ui/a.ts');
+    expect(calls.some((a) => a.includes('+refs/heads/main:refs/remotes/origin/main'))).toBe(true);
+    const moved: CollectDeps['git'] = (args) =>
+      args[0] === 'rev-parse' && args.includes('refs/remotes/origin/main')
+        ? `${'c'.repeat(40)}\n`
+        : fakeGit()(args);
+    expect(() => changedFilesFromGit(moved, 7, SHA, 'staging')).toThrow(/main moved/);
   });
 
   it('reads reviews for the head commit only', () => {

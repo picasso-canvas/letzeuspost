@@ -94,6 +94,22 @@ describe('shipRefusals: Windows names for .git', () => {
     }
     expect(shipRefusals([{ mode: '100644', path: 'docs/git~2.md' }])).toEqual([]);
   });
+
+  it('refuses GIT~2 and up as a folder part, and allows them as a file name', () => {
+    for (const path of ['GIT~2/config', 'a/git~3/hooks/x', 'git~12/x', 'a/GIT~9/b/c']) {
+      expect(shipRefusals([{ mode: '100644', path }]), path).toContain(`unsafe path: ${path}`);
+    }
+    for (const path of [
+      'docs/git~2',
+      'docs/GIT~10',
+      'docs/git~2.md',
+      'xgit~2/a',
+      'git~2x/a',
+      'git~/a',
+    ]) {
+      expect(shipRefusals([{ mode: '100644', path }]), path).toEqual([]);
+    }
+  });
 });
 
 describe('parseRevList', () => {
