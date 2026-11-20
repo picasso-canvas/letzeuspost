@@ -27,13 +27,11 @@ export function parseVerdict(
   // A later block counts on the raw line (a leading `[` or `<`) and behind any markup or non-ASCII character (a letter
   // included: main's old `\W*` skipped one too); "blocked" and "blocking" count. So prose that opens with
   // "Verdict: blocking findings: none" after a pass is a block, on purpose: a false block costs a re-run, a missed one a merge.
-  const laterBlock =
-    /^(?:[^\p{L}\p{N}]|[\u{80}-\u{10ffff}])*VERDICT[^\p{L}\p{N}]*block(?:ed|ing)?(?![\p{L}\p{N}])/iu;
-  if (
-    lines
-      .slice(1)
-      .some((line) => laterBlock.test(line) || laterBlock.test(stripLeadingMarkup(line)))
-  ) {
+  // The lead is cut with one class and no `i` flag, so it runs in linear time and ASCII letters (`sVERDICT`) are the
+  // only ones that stop it (Cerberus F1, F2 on #296).
+  const laterBlock = /^VERDICT[^\p{L}\p{N}]*block(?:ed|ing)?(?![\p{L}\p{N}])/iu;
+  const blocks = (line: string) => laterBlock.test(line.replace(/^[^A-Za-z0-9]+/, ''));
+  if (lines.slice(1).some((line) => blocks(line) || blocks(stripLeadingMarkup(line)))) {
     return { verdict: 'block', reason: 'says pass, then VERDICT: block' };
   }
   // A blocking finding behind any leading markup: list markers, task boxes, emphasis, quotes, headings, HTML tags.
