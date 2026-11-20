@@ -128,11 +128,56 @@ export function runEnding(
   }
   if (result === undefined || result.subtype === 'error_max_turns') return 'failed';
   // Only the session's own error, in Claude Code's own words, counts: a summary that mentions a limit doesn't (#166).
-  return result.is_error === true &&
+  if (
+    result.is_error === true &&
     typeof result.result === 'string' &&
     USAGE_LIMIT.test(result.result)
-    ? 'usage-limit'
-    : 'finished';
+  )
+    return 'usage-limit';
+  // A run whose writes were refused went on without them: its work isn't done, however it ends (#284).
+  return refusedWrites(log).length > 0 ? 'failed' : 'finished';
+}
+
+/**
+ * The harness-failure line for refused writes. The paths are the builder's own text, so each is stripped of control and
+ * formatting characters, capped and quoted: one line, and nothing in it can pass for dispatch's own output (#285).
+ */
+export function refusedWritesNote(files: readonly string[]): string {
+  const shown = files
+    .slice(0, 5)
+    .map((f) => JSON.stringify(f.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, '?').slice(0, 200)));
+  return `HARNESS FAILURE: the run went on with ${String(files.length)} refused Write/Edit call(s), so its work is incomplete: ${shown.join(', ')}${files.length > 5 ? ', …' : ''}. Usually a top-level cd moved its shell (#284). Ship it only after a look, or dispatch again with --fresh.`;
+}
+
+const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
+
+/**
+ * The files the session's final `result` says Write, Edit or MultiEdit were refused for (#284), once each. The usual
+ * cause is a top-level `cd` that moved the shell out of the folder `Edit(./**)` is judged from.
+ */
+export function refusedWrites(log: string): string[] {
+  let denials: unknown;
+  for (const line of log.split('\n')) {
+    try {
+      const event = JSON.parse(line) as { type?: unknown; permission_denials?: unknown };
+      if (event.type === 'result') denials = event.permission_denials;
+    } catch {
+      // not an event line
+    }
+  }
+  if (!Array.isArray(denials)) return [];
+  const files = new Set<string>();
+  for (const denial of denials as unknown[]) {
+    if (typeof denial !== 'object' || denial === null) continue;
+    const { tool_name: tool, tool_input: input } = denial as {
+      tool_name?: unknown;
+      tool_input?: { file_path?: unknown } | null;
+    };
+    if (typeof tool !== 'string' || !WRITE_TOOLS.has(tool)) continue;
+    const path = input?.file_path;
+    files.add(typeof path === 'string' ? path : '(no path)');
+  }
+  return [...files];
 }
 
 /** Claude Code's message when a session stops on a usage limit. */
@@ -882,16 +927,19 @@ async function runBuilder(o: {
   clearInterval(timer);
   killGroup(); // anything the builder left running in the background
 
+  // How it ended, in Athena's record: a run a usage limit stopped can be resumed (#157).
+  const ending = runEnding(tail, state.frozen);
+  const refused = refusedWrites(tail);
+  const refusedRun = ending === 'failed' && refused.length > 0;
   console.log(
-    `Builder ${state.frozen ? 'stopped: the freeze switch is on' : 'finished'} (exit ${String(code)}). Log: ${log}`,
+    `Builder ${state.frozen ? 'stopped: the freeze switch is on' : refusedRun ? 'ended with refused writes' : 'finished'} (exit ${String(code)}). Log: ${log}`,
   );
+  if (refusedRun) console.log(refusedWritesNote(refused));
   const ready = ['branch.bundle', 'pr.md', 'approach.md'].map(
     (name) => `${name}: ${isRegularFile(join(lzp, name)) ? 'yes' : 'no'}`,
   );
   console.log(`Handed over: ${ready.join(', ')}. Next: node scripts/ship.ts ${String(issue)}`);
   console.log(noGit);
-  // How it ended, in Athena's record: a run a usage limit stopped can be resumed (#157).
-  const ending = runEnding(tail, state.frozen);
   const now = parseDispatchRecord(readFileSync(o.recordFile, 'utf8'), issue);
   writeFileSync(
     o.recordFile,

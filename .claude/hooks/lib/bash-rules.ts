@@ -4,11 +4,12 @@
 // subcommand rather than words anywhere, so `git commit -m "push notifications"` or `pnpm vitest run publish.test.ts`
 // pass. Still a backstop, not a boundary: the sandbox, the missing GitHub credential and the merge gate are.
 import type { Role } from './freeze.ts';
+import { changesDirectory } from './shell-cd.ts';
 
 export interface BashRule {
   id: string;
   scope: 'everyone' | 'builder';
-  pattern: RegExp;
+  matches: (command: string) => boolean;
   reason: string;
 }
 
@@ -32,12 +33,10 @@ const rule = (
   source: string,
   reason: string,
   flags = '',
-): BashRule => ({
-  id,
-  scope,
-  pattern: new RegExp(source, flags),
-  reason,
-});
+): BashRule => {
+  const pattern = new RegExp(source, flags);
+  return { id, scope, matches: (command) => pattern.test(command), reason };
+};
 
 export const BASH_RULES: readonly BashRule[] = [
   rule(
@@ -114,6 +113,13 @@ export const BASH_RULES: readonly BashRule[] = [
     'builders never read or write .env files (only .env.example)',
     'i',
   ),
+  {
+    id: 'builder-cd',
+    scope: 'builder',
+    matches: changesDirectory,
+    reason:
+      "a top-level cd moves the Bash shell, and your write permission (Edit(./**)) is judged from where it is, so later Write/Edit calls are refused. Don't change directory: use `git -C <dir> …`, `pnpm --filter <package> …`, a path from the clone root, or a subshell `(cd <dir> && …)`",
+  },
 ];
 
 export interface BashHit {
@@ -123,7 +129,7 @@ export interface BashHit {
 export function checkBash(command: string, role: Role): BashHit | null {
   for (const r of BASH_RULES) {
     if (r.scope === 'builder' && role !== 'builder') continue;
-    if (r.pattern.test(command)) return { rule: r };
+    if (r.matches(command)) return { rule: r };
   }
   return null;
 }
