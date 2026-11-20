@@ -123,7 +123,8 @@ describe('Bangla names (#228)', () => {
   // Argus F2, round 2 on #230: a name is Bangla when it is mostly in Bengali script, not when one letter is.
   it('marks a name lang="bn" only when it is mostly in Bengali script', () => {
     expect(langOf('ঢাকা ও সিলেট')).toBe('bn');
-    expect(langOf('ঢাকা Studio')).toBe('bn');
+    expect(langOf('ঢাকা ডিজিটাল Co')).toBe('bn');
+    expect(langOf('ঢাকা Studio')).toBeUndefined();
     expect(langOf('Northwind Social')).toBeUndefined();
     expect(langOf('Northwind Social ঢাকা')).toBeUndefined();
     expect(langOf('Dhaka ঢাকা')).toBeUndefined();
@@ -148,8 +149,10 @@ describe('Bangla names (#228)', () => {
       workspaces: [{ ...northwind, id: 'b1', name: 'ঢাকা ও সিলেট' }],
       currentId: 'b1',
     });
-    expect(bangla).toMatch(/<span[^>]*lang="bn"[^>]*data-slot="avatar-fallback"[^>]*>ঢা<\/span>/);
-    expect(bangla).toMatch(/<span[^>]*aria-hidden="true"[^>]*data-slot="avatar"/);
+    const initial = /<span[^>]*data-slot="avatar-fallback"[^>]*>[^<]*<\/span>/.exec(bangla)?.[0];
+    expect(initial).toContain('lang="bn"');
+    expect(initial).toMatch(/>ঢা<\/span>$/);
+    expect(/<span[^>]*data-slot="avatar"[^>]*>/.exec(bangla)?.[0]).toContain('aria-hidden="true"');
     expect(/<span[^>]*data-slot="avatar-fallback"[^>]*>/.exec(html())?.[0]).not.toContain('lang=');
   });
 });

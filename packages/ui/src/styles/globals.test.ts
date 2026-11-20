@@ -60,7 +60,9 @@ describe('globals.css', () => {
   // come from Inter inside Bangla text. `:lang(bn)` puts Hind Siliguri first, as the mockup's `.lang.bn` does.
   it('sets :lang(bn) text in Hind Siliguri before Inter, so its spaces and joiners come from the same face', async () => {
     const css = await build([]);
-    expect(css).toMatch(/:lang\(bn\)\s*\{[^}]*font-family:\s*['"]Hind Siliguri['"],\s*var\(--font-sans\)/);
+    expect(css).toMatch(
+      /:lang\(bn\)\s*\{[^}]*font-family:\s*['"]Hind Siliguri['"],\s*var\(--font-sans\)/,
+    );
   });
 
   it('self-hosts its fonts: Inter, and Hind Siliguri for Bangla, from files that exist, nothing from the web', () => {
