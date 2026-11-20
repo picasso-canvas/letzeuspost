@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectFacts, parseConfig, type CollectDeps } from './collect.ts';
+import { changedFilesFromGit, collectFacts, parseConfig, type CollectDeps } from './collect.ts';
 import { bodyHash } from './evaluate.ts';
 import { reviewPrompt } from './meta.ts';
 
@@ -183,6 +183,21 @@ describe('collectFacts', () => {
       return fakeGit()(args);
     };
     expect(() => collectFacts(7, deps({ git }))).toThrow(/main moved while checking/);
+  });
+
+  it('changedFilesFromGit fetches origin/main and refuses a moved main by itself (Argus F1 on #296)', () => {
+    const calls: string[][] = [];
+    const git: CollectDeps['git'] = (args) => {
+      calls.push(args);
+      return fakeGit()(args);
+    };
+    expect(changedFilesFromGit(git, 7, SHA, 'main')).toContain('packages/ui/a.ts');
+    expect(calls.some((a) => a.includes('+refs/heads/main:refs/remotes/origin/main'))).toBe(true);
+    const moved: CollectDeps['git'] = (args) =>
+      args[0] === 'rev-parse' && args.includes('refs/remotes/origin/main')
+        ? `${'c'.repeat(40)}\n`
+        : fakeGit()(args);
+    expect(() => changedFilesFromGit(moved, 7, SHA, 'staging')).toThrow(/main moved/);
   });
 
   it('reads reviews for the head commit only', () => {

@@ -160,6 +160,22 @@ describe('parseVerdict: a later VERDICT: block behind any markup', () => {
     }
   });
 
+  it('reads a long line of box-drawing or emoji characters in linear time (Cerberus F1 on #296)', () => {
+    for (const ch of ['\u2500', '\u2501', '\u{1f600}', '\u2014']) {
+      const started = performance.now();
+      expect(parseVerdict(`VERDICT: pass\n${ch.repeat(26)}x`).verdict, ch).toBe('pass');
+      expect(parseVerdict(`VERDICT: pass\n${ch.repeat(100_000)}x`).verdict, ch).toBe('pass');
+      expect(performance.now() - started, ch).toBeLessThan(500);
+    }
+  });
+
+  it('treats the letters that case-fold to ASCII like any other non-ASCII letter (Cerberus F2 on #296)', () => {
+    expect(parseVerdict('VERDICT: pass\n\u017fVERDICT: block').verdict).toBe('block');
+    expect(parseVerdict('VERDICT: pass\n\u212aVERDICT: block').verdict).toBe('block');
+    expect(parseVerdict('VERDICT: pass\nsVERDICT: block').verdict).toBe('pass');
+    expect(parseVerdict('VERDICT: pass\nkVERDICT: block').verdict).toBe('pass');
+  });
+
   it('counts prose that opens with Verdict: blocking as a block, on purpose', () => {
     expect(parseVerdict('VERDICT: pass\nVerdict: blocking findings: none').verdict).toBe('block');
   });
