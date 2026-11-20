@@ -14,18 +14,13 @@ import { isMissingArtifact } from './lib/journey-artifact.ts';
 import { collectFacts, REPO } from './merge-gate/collect.ts';
 import { evaluate, kindOf } from './merge-gate/evaluate.ts';
 import { transcriptPath } from './merge-gate/meta.ts';
-import {
-  listReviewedShas,
-  logMerge,
-  readMergeLog,
-  readReviews,
-  STATE_DIR,
-} from './merge-gate/reviews.ts';
+import { listReviewedShas, logMerge, readReviews, STATE_DIR } from './merge-gate/reviews.ts';
 import {
   issueFromBranch,
   mergeArgs,
-  toStagingLogEntry,
-  type StagingLogEntry,
+  readStagingLog,
+  syncStaging,
+  unreadMergeCommitNote,
 } from './merge-gate/staging.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -71,43 +66,12 @@ function readJourneyReport(runId: number): Record<string, string> | null {
   }
 }
 
-/**
- * After a merge into main, main is merged into staging on GitHub (never the other way outside a batch PR), so builders
- * always start from main's harness. A conflict is reported for Athena to settle; dispatch refuses until staging
- * contains main again.
- */
-function syncStaging(): boolean {
-  try {
-    // 201 with the new merge commit, or 204 with no body when staging already contains main.
-    const out = run('gh', [
-      'api',
-      '-X',
-      'POST',
-      `repos/${REPO}/merges`,
-      '-f',
-      'base=staging',
-      '-f',
-      'head=main',
-      '-f',
-      'commit_message=Merge main into staging (merge gate)',
-    ]).trim();
-    const parsed = out === '' ? {} : (JSON.parse(out) as { sha?: unknown });
-    const sha = typeof parsed.sha === 'string' ? parsed.sha : '';
-    console.log(
-      sha === ''
-        ? 'staging already contains main.'
-        : `Merged main into staging as ${sha.slice(0, 7)}.`,
-    );
-    logMerge({ at: new Date().toISOString(), result: 'staging-sync', mergeCommit: sha });
-    return true;
-  } catch (error) {
-    const stderr = (error as { stderr?: unknown }).stderr;
-    console.error(
-      `Couldn't merge main into staging: ${typeof stderr === 'string' ? stderr.trim() : 'unknown'}. Settle it before dispatching builders.`,
-    );
-    logMerge({ at: new Date().toISOString(), result: 'staging-sync-failed' });
-    return false;
-  }
+/** After a merge into main, main is merged into staging (staging.ts), logged either way; false when it needs settling. */
+function syncStagingAndLog(): boolean {
+  const result = syncStaging(run, REPO);
+  (result.ok ? console.log : console.error)(result.message);
+  logMerge({ at: new Date().toISOString(), ...result.entry });
+  return result.ok;
 }
 
 function main(argv: string[], pr: number): number {
@@ -119,7 +83,7 @@ function main(argv: string[], pr: number): number {
     readMainFile: (path) => readMainFile(run, path),
     readReviews: (n, sha) => readReviews(n, sha),
     listReviewedShas: (n) => listReviewedShas(n),
-    readMergeLog: () => readMergeLog().map((e) => toStagingLogEntry(e)) satisfies StagingLogEntry[],
+    readMergeLog: () => readStagingLog(),
     // The gate re-verifies every runner-made review against Claude Code's own transcript.
     readJourneyReport,
     readTranscript: (sessionId) => {
@@ -198,7 +162,7 @@ function main(argv: string[], pr: number): number {
   ]);
   logMerge({ ...entry, result: 'merged' });
   // The merge stands either way; a failed sync makes the gate exit non-zero so it gets settled before dispatch.
-  const synced = facts.baseRef !== 'main' || syncStaging();
+  const synced = facts.baseRef !== 'main' || syncStagingAndLog();
   try {
     const merged = run('gh', [
       'pr',
@@ -221,9 +185,7 @@ function main(argv: string[], pr: number): number {
     });
     console.log(`Merged as ${merged.slice(0, 7)}.`);
   } catch {
-    console.log(
-      'Merged (the merge commit could not be read back; the weekly audit will match it by PR).',
-    );
+    console.log(unreadMergeCommitNote(facts.baseRef, pr, facts.headSha));
   }
   return synced ? 0 : 1;
 }
