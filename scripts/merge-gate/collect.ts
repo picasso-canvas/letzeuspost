@@ -4,6 +4,7 @@ import { changeId, reviewsAt } from './carry.ts';
 import { issueFromBranch, ungatedStagingCommits, type StagingLogEntry } from './staging.ts';
 import { featureOf } from '../lib/features.ts';
 import {
+  followUpLinks,
   followUpOf,
   landingProblem,
   wantsComments,
@@ -297,6 +298,23 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   const mergedBatches = mergeLog
     .filter((e) => e.result === 'merged' && e.kind === 'batch' && typeof e.pr === 'number')
     .map((e) => e.pr as number);
+  // Athena's `Follow-up: #N` lines on each earlier batch (#277), with their authors: the issues they name are checked
+  // even when the issue's own line was edited out. The gate keeps only Zeus's account's lines.
+  const earlierBatchComments = isBatch
+    ? [...new Set(mergedBatches)]
+        .filter((batch) => batch !== pr)
+        .map((batch) => ({
+          batch,
+          comments: (
+            JSON.parse(gh(['pr', 'view', String(batch), '-R', repo, '--json', 'comments'])) as {
+              comments: { author: { login: string } | null; body: string }[];
+            }
+          ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body })),
+        }))
+    : [];
+  const linkedEarlier = new Set(
+    earlierBatchComments.flatMap((b) => followUpLinks(b.comments.map((c) => c.body))),
+  );
   // Every open issue's text (a planned task's follow-up item); the comments, with their authors, of a follow-up and of a
   // task with an unticked follow-up item, for an exception (Argus F2 in round 2 on #170). A list that reaches its limit
   // may be cut off, and the gate refuses then (#170).
@@ -320,13 +338,16 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   const openIssuesCutOff = listed.length >= ISSUE_LIMIT;
   const openIssues: OpenIssue[] = listed.map((i) => {
     const labels = i.labels.map((l) => l.name);
-    const comments = wantsComments(labels, i.body)
-      ? (
-          JSON.parse(gh(['issue', 'view', String(i.number), '-R', repo, '--json', 'comments'])) as {
-            comments: { author: { login: string } | null; body: string }[];
-          }
-        ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body }))
-      : [];
+    const comments =
+      wantsComments(labels, i.body) || linkedEarlier.has(i.number)
+        ? (
+            JSON.parse(
+              gh(['issue', 'view', String(i.number), '-R', repo, '--json', 'comments']),
+            ) as {
+              comments: { author: { login: string } | null; body: string }[];
+            }
+          ).comments.map((c) => ({ author: c.author?.login ?? '', body: c.body }))
+        : [];
     return { number: i.number, labels, body: i.body, comments };
   });
   // Closed issues that carry a **Follow-up of:** line (#275): a follow-up closed by hand or as not planned hasn't landed.
@@ -358,7 +379,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
   // The whole closed list, read directly (a search index lags behind a close), then narrowed here by the line.
   // A reference to another repository's pull request is no closer of ours, whatever its number.
   const closedFollowUps: ClosedFollowUp[] = closedListed
-    .filter((i) => followUpOf(i.body).length > 0)
+    .filter((i) => followUpOf(i.body).length > 0 || linkedEarlier.has(i.number))
     .map((i) => {
       const mergedClosers = i.closedByPullRequestsReferences
         .filter((ref) => ref.url.startsWith(`https://github.com/${repo}/pull/`))
@@ -539,6 +560,7 @@ export function collectFacts(pr: number, deps: CollectDeps, repo = REPO): Facts 
     openIssuesCutOff,
     closedFollowUps,
     closedCutOff,
+    earlierBatchComments,
     mergedBatches,
     prComments,
     ...handoverFacts(pr, sha, base, deps),

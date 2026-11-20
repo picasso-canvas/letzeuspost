@@ -226,6 +226,7 @@ export function evaluate(f: Facts): GateResult {
         mergedBatches: f.mergedBatches,
         openIssues: f.openIssues,
         closedIssues: f.closedFollowUps,
+        earlierBatchComments: f.earlierBatchComments,
         comments: f.prComments,
         zeusLogin: ZEUS_LOGIN,
         listCutOff: f.openIssuesCutOff,

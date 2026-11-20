@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  followUpLinks,
   followUpRefusals,
   landingProblem,
   wantsComments,
@@ -35,6 +36,7 @@ const base = {
   openIssues: [] as OpenIssue[],
   closedIssues: [] as ClosedFollowUp[],
   closedCutOff: false,
+  earlierBatchComments: [] as { batch: number; comments: { author: string; body: string }[] }[],
   comments: [] as { author: string; body: string }[],
   zeusLogin: ZEUS,
   listCutOff: false,
@@ -330,5 +332,94 @@ describe('an exception counts only when the grant ends the decision (#275)', () 
       ', but only if it lands',
     ])
       expect(grant(tail), JSON.stringify(tail)).toHaveLength(1);
+  });
+});
+
+// #277: an earlier batch's `Follow-up: #N` lines are Athena's own record of what was promised. The gate reads them, so a
+// follow-up whose **Follow-up of:** line was edited out before it was closed is still checked.
+describe('a follow-up an earlier batch linked, whatever its text says now (#277)', () => {
+  const said = (...bodies: string[]) => [
+    { batch: 130, comments: bodies.map((body) => ({ author: ZEUS, body })) },
+  ];
+  const noLine = (over: Partial<ClosedFollowUp> = {}) =>
+    closed({ number: 300, body: 'the line was edited out', ...over });
+  const run = (o: Partial<Parameters<typeof followUpRefusals>[0]>) =>
+    followUpRefusals({ ...base, earlierBatchComments: said('Follow-up: #300'), ...o });
+
+  it('reads the numbers of every Follow-up line, once each', () => {
+    expect(
+      followUpLinks(['Follow-up: #5\nFollow-ups: #6, #5 and #7', 'in prose: follow-up #8']),
+    ).toEqual([5, 6, 7]);
+  });
+
+  it('refuses a linked follow-up closed without landing even though its line is gone', () => {
+    const refusals = run({
+      closedIssues: [noLine({ stateReason: 'NOT_PLANNED', mergedClosers: 0 })],
+    });
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toContain('#300');
+    expect(refusals[0]).toContain('batch #130');
+    expect(refusals[0]).toContain('closed as not planned');
+  });
+
+  it('refuses a linked follow-up whose label was taken off, closed by a merged PR or not', () => {
+    expect(run({ closedIssues: [noLine({ labels: ['build-task'] })] })[0]).toContain(
+      'label was removed',
+    );
+  });
+
+  it('lets through a linked follow-up that landed, with no line, and one an exception covers', () => {
+    expect(run({ closedIssues: [noLine()] })).toEqual([]);
+    const excused = noLine({
+      stateReason: 'NOT_PLANNED',
+      mergedClosers: 0,
+      comments: [
+        {
+          author: ZEUS,
+          body: '🦉 Athena: Zeus decided (2026-11-20, in chat): exception granted for #300.',
+        },
+      ],
+    });
+    expect(run({ closedIssues: [excused] })).toEqual([]);
+  });
+
+  it('refuses a linked follow-up that is still open, even with its line and label gone', () => {
+    const refusals = run({ openIssues: [issue(300, ['build-task'], 'the line was edited out')] });
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toContain('#300');
+    expect(refusals[0]).toContain('still open');
+    // This batch closing it, or an exception, lets it through.
+    expect(run({ closes: [300], openIssues: [issue(300, [], 'x')] })).toEqual([]);
+    const excused = issue(300, [], 'x', [
+      {
+        author: ZEUS,
+        body: '🦉 Athena: Zeus decided (2026-11-20, in chat): exception granted for #300.',
+      },
+    ]);
+    expect(run({ openIssues: [excused] })).toEqual([]);
+  });
+
+  it("refuses a link to a number the gate can't find, rather than skipping it", () => {
+    const refusals = run({});
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toContain('#300');
+    expect(refusals[0]).toContain("can't");
+  });
+
+  it('says nothing twice about a follow-up the older checks already refuse', () => {
+    const both = closed({ number: 300, stateReason: 'NOT_PLANNED', mergedClosers: 0 });
+    expect(run({ closedIssues: [both] })).toHaveLength(1);
+    const open = issue(300, ['follow-up'], '**Follow-up of:** #130');
+    expect(run({ openIssues: [open] })).toHaveLength(1);
+  });
+
+  it("counts only Zeus's own lines, and only on a batch that merged before this one", () => {
+    const unlanded = [noLine({ stateReason: 'NOT_PLANNED', mergedClosers: 0 })];
+    const other = [{ batch: 130, comments: [{ author: 'someone-else', body: 'Follow-up: #300' }] }];
+    expect(run({ closedIssues: unlanded, earlierBatchComments: other })).toEqual([]);
+    const unmerged = [{ batch: 131, comments: [{ author: ZEUS, body: 'Follow-up: #300' }] }];
+    expect(run({ closedIssues: unlanded, earlierBatchComments: unmerged })).toEqual([]);
+    const own = [{ batch: 170, comments: [{ author: ZEUS, body: 'Follow-up: #300' }] }];
+    expect(run({ closedIssues: unlanded, earlierBatchComments: own })).toEqual([]);
   });
 });

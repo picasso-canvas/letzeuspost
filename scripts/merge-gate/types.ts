@@ -106,6 +106,8 @@ export interface Facts {
   /** For a batch: closed issues with a **Follow-up of:** line, and whether that list hit its limit (#275). */
   closedFollowUps: ClosedFollowUp[];
   closedCutOff: boolean;
+  /** The comments of each earlier merged batch, with authors: Athena's `Follow-up: #N` lines there are checked (#277). */
+  earlierBatchComments: { batch: number; comments: { author: string; body: string }[] }[];
   mergedBatches: number[];
   /** A batch PR's comments with their authors: only Zeus's account links a follow-up (#154). */
   prComments: { author: string; body: string }[];
