@@ -24,8 +24,11 @@ export function parseVerdict(
     };
   }
   if (match[1] === 'block') return { verdict: 'block', reason: 'the reviewer blocked' };
-  // A later block counts on the raw line (a leading `[` or `<`) and behind any markup; "blocked" and "blocking" too.
-  const laterBlock = /^[^\p{L}\p{N}]*VERDICT[^\p{L}\p{N}]*block(?:ed|ing)?(?![\p{L}\p{N}])/iu;
+  // A later block counts on the raw line (a leading `[` or `<`) and behind any markup or non-ASCII character (a letter
+  // included: main's old `\W*` skipped one too); "blocked" and "blocking" count. So prose that opens with
+  // "Verdict: blocking findings: none" after a pass is a block, on purpose: a false block costs a re-run, a missed one a merge.
+  const laterBlock =
+    /^(?:[^\p{L}\p{N}]|[\u{80}-\u{10ffff}])*VERDICT[^\p{L}\p{N}]*block(?:ed|ing)?(?![\p{L}\p{N}])/iu;
   if (
     lines
       .slice(1)

@@ -212,6 +212,12 @@ export function changedFilesFromGit(git: Run, pr: number, sha: string, base = 'm
     throw new Error(`the gate merges into main or staging, not ${base}`);
   const ref = `refs/lzp/pr-${String(pr)}`;
   git(['fetch', '--quiet', '--no-tags', 'origin', `+refs/pull/${String(pr)}/head:${ref}`]);
+  // Every diff and change id below reads `origin/main`: take it as GitHub has it now, and refuse when it isn't the
+  // checkout the caller verified (assertCleanMain), so nothing is compared against a stale or moved main.
+  git(['fetch', '--quiet', '--no-tags', 'origin', '+refs/heads/main:refs/remotes/origin/main']);
+  const main = git(['rev-parse', 'refs/remotes/origin/main']).trim();
+  const checkout = git(['rev-parse', 'HEAD']).trim();
+  if (main !== checkout) throw new Error(`main moved while checking (${main.slice(0, 7)})`);
   if (base === 'staging')
     git([
       'fetch',
