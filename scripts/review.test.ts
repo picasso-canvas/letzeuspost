@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reviewPrompt } from './merge-gate/meta.ts';
-import { planReviewers, resultText, reviewerModel } from './review.ts';
+import { failureReason, planReviewers, resultText, reviewerModel } from './review.ts';
 
 const CONFIG = { requireIris: false, uiPaths: ['packages/ui/**'] };
 
@@ -112,5 +112,29 @@ describe('reviewerModel', () => {
     expect(reviewerModel('iris')).toBe('claude-sonnet-5-5');
     expect(reviewerModel('cerberus')).toBeNull();
     expect(reviewerModel('cerberus')).toBeNull();
+  });
+});
+
+describe('failureReason', () => {
+  it('says what to do when claude printed more than the buffer holds', () => {
+    const error = Object.assign(new Error('stdout maxBuffer length exceeded'), {
+      code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
+      stdout: 'x'.repeat(50),
+    });
+    expect(failureReason(error)).toBe('its output passed the buffer limit (64 MB)');
+  });
+
+  it('still reports a timeout, the failure in claude\'s JSON, and a bare failed command', () => {
+    expect(failureReason(Object.assign(new Error('t'), { signal: 'SIGTERM' }))).toBe('it timed out');
+    expect(
+      failureReason(
+        Object.assign(new Error('Command failed: claude -p secret-path'), {
+          stdout: JSON.stringify({ is_error: true, result: 'Usage limit reached\nmore' }),
+        }),
+      ),
+    ).toBe('Usage limit reached');
+    expect(failureReason(new Error('Command failed: claude --add-dir /Users/x'))).toBe(
+      'the claude command failed',
+    );
   });
 });

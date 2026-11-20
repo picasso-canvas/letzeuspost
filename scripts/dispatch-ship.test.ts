@@ -644,6 +644,8 @@ describe('resuming an interrupted builder (#157)', () => {
       'core.hooksPath': '/dev/null',
     });
     expect(env.LZP_RESUMED).toBeUndefined();
+    // The account's claude.ai connectors stay out of a builder's session, as in a reviewer's (review.ts).
+    expect(env.ENABLE_CLAUDEAI_MCP_SERVERS).toBe('false');
     expect(
       runEnvExtra({
         lzp: `${clone}/.lzp`,

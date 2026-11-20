@@ -80,6 +80,8 @@ describe('accepted advisories stay on their accepted path', () => {
     expect(all.some((e) => e.from === 'importer:packages/ui' && e.to === 'react')).toBe(true);
     expect(all.some((e) => e.from === 'importer:.' && e.group === 'devDependencies')).toBe(true);
     expect(all.filter((e) => !e.from.startsWith('importer:')).length).toBeGreaterThan(100);
+    // One known edge of the accepted path, so a pnpm layout change can't leave an empty graph that passes.
+    expect(all).toContainEqual({ from: '@shadcn/registry', group: 'dependencies', to: 'deepmerge' });
   });
 
   it('GHSA-gcqx-w48m-w2h4: deepmerge comes only through the shadcn CLI, a dev dependency of packages/ui', () => {

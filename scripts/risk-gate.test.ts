@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { safeName } from './lib/safe-name.ts';
 import { judge, parseJsonLines } from './risk-gate.ts';
@@ -62,6 +63,10 @@ describe('safeName format characters', () => {
   it('replaces bidi and zero-width characters', () => {
     expect(safeName('a\u202eb\u200bc.ts')).toBe('a?b?c.ts');
   });
+
+  it('replaces the line and paragraph separators, which end a line in a comment or a JSON string', () => {
+    expect(safeName('a\u2028b\u2029c.ts')).toBe('a?b?c.ts');
+  });
 });
 
 describe('the harness line', () => {
@@ -82,5 +87,14 @@ describe('the harness list cap', () => {
     expect(summary).toContain('.husky/h9');
     expect(summary).not.toContain('.husky/h10');
     expect(summary).toContain('… and 2 more');
+  });
+});
+
+describe("the repo's own sensitive-paths list", () => {
+  const list = readFileSync(new URL('../.github/sensitive-paths.txt', import.meta.url), 'utf8');
+
+  it('holds .gitignore at any depth: it decides what a commit leaves out (Cerberus on #51)', () => {
+    expect(judge(['.gitignore'], list).tier).toBe('sensitive');
+    expect(judge(['packages/ui/.gitignore'], list).tier).toBe('sensitive');
   });
 });
