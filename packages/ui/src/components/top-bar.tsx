@@ -25,9 +25,15 @@ import {
 } from '@lzp/ui/components/dropdown-menu';
 import { Skeleton } from '@lzp/ui/components/skeleton';
 
-/** `bn` for a name written in Bangla, so it gets its font, its shaping and the right voice (Zeus, 2026-11-11). */
+/**
+ * `bn` for a name written mostly in Bangla, so it gets its font, its shaping and the right voice (Zeus, 2026-11-11).
+ * "Mostly" is more than half of its letters and marks (digits, spaces and punctuation don't count either way): a
+ * Bangla word in an English name doesn't make a screen reader speak the whole name in Bangla (Argus F2, round 2).
+ */
 export function langOf(name: string): 'bn' | undefined {
-  return /\p{Script=Bengali}/u.test(name) ? 'bn' : undefined;
+  const marks = name.match(/[\p{L}\p{M}]/gu) ?? [];
+  const bengali = marks.filter((c) => /\p{Script=Bengali}/u.test(c));
+  return bengali.length * 2 > marks.length ? 'bn' : undefined;
 }
 
 // §04's top bar, as the v1 mockup's `.top` draws it: the workspace's name and switcher at the start, and at the end what
@@ -93,13 +99,15 @@ function workspaceRows(
 /**
  * A workspace's mark, as the mockup's `.ws-btn` draws it: its logo, or its initials on the muted token surface while
  * there is no logo or it hasn't loaded (Zeus, #75, 2026-11-11). Decorative: the name is beside it, so the logo's `alt`
- * is empty and a screen reader skips the mark.
+ * is empty and a screen reader skips the mark. A Bangla initial is marked `lang="bn"` all the same, for its font and
+ * shaping (Argus F3, round 2).
  */
 function WorkspaceMark({ name, logo }: Pick<Workspace, 'name' | 'logo'>) {
+  const initials = initialsOf(name);
   return (
     <Avatar aria-hidden="true" className="after:border-0">
       {logo !== undefined && <AvatarImage src={logo} alt="" />}
-      <AvatarFallback>{initialsOf(name)}</AvatarFallback>
+      <AvatarFallback lang={langOf(initials)}>{initials}</AvatarFallback>
     </Avatar>
   );
 }

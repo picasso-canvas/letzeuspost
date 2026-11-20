@@ -56,6 +56,15 @@ describe('globals.css', () => {
     expect(css).toMatch(/--font-sans:\s*'?"?Inter/);
   });
 
+  // Argus F2, round 3 on #230: Inter also has spaces, punctuation and joiners, so after Inter in `--font-sans` they'd
+  // come from Inter inside Bangla text. `:lang(bn)` puts Hind Siliguri first, as the mockup's `.lang.bn` does.
+  it('sets :lang(bn) text in Hind Siliguri before Inter, so its spaces and joiners come from the same face', async () => {
+    const css = await build([]);
+    expect(css).toMatch(
+      /:lang\(bn\)\s*\{[^}]*font-family:\s*['"]Hind Siliguri['"],\s*var\(--font-sans\)/,
+    );
+  });
+
   it('self-hosts its fonts: Inter, and Hind Siliguri for Bangla, from files that exist, nothing from the web', () => {
     const faces = [...source.matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1] ?? '');
     expect(faces.length).toBeGreaterThan(0);
