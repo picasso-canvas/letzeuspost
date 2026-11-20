@@ -109,7 +109,7 @@ export interface ReportData {
   guardrailHits: Record<string, number>;
   /** The month's Actions minutes so far, estimated from run times (#160). */
   actionsMinutes?: { month: string; minutes: number; capped?: boolean };
-  /** Reviews that needed a retry this week (#158): a line before the verdict. */
+  /** Review answers that needed a retry this week (#158): the answer didn't start with its verdict line. */
   reviewRetries?: number;
   /** The learning loop's repeated finding types (scripts/lessons.ts). */
   lessons?: LessonRow[];
@@ -131,11 +131,28 @@ export function monthDays(now: Date): string[] {
  * a day at a time; a day whose `total_count` is above what came back makes the estimate "at least" (Argus F1 on #168).
  */
 export function monthEstimate(
-  days: readonly { runs: readonly { started: string; updated: string }[]; total: number }[],
+  days: readonly {
+    runs: readonly { id?: number; started: string; updated: string }[];
+    total: number;
+  }[],
 ): { minutes: number; capped: boolean } {
+  // A run can come back on two pages when runs start while the pages are read: each id counts once, the first time
+  // (Argus F1 on #168). A row with no id can't be matched, so it counts.
+  const counted = days.map((d) => {
+    const seen = new Set<number>();
+    return {
+      total: d.total,
+      runs: d.runs.filter((r) => {
+        if (r.id === undefined) return true;
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      }),
+    };
+  });
   return {
-    minutes: days.reduce((sum, d) => sum + estimateMinutes(d.runs), 0),
-    capped: days.some((d) => d.total > d.runs.length),
+    minutes: counted.reduce((sum, d) => sum + estimateMinutes(d.runs), 0),
+    capped: counted.some((d) => d.total > d.runs.length),
   };
 }
 
@@ -154,12 +171,16 @@ function monthMinutes(): { month: string; minutes: number; capped: boolean } | u
         ]),
       ) as {
         total_count: number;
-        workflow_runs: { run_started_at: string; updated_at: string }[];
+        workflow_runs: { id: number; run_started_at: string; updated_at: string }[];
       }[];
       return {
         total: pages[0]?.total_count ?? 0,
         runs: pages.flatMap((p) =>
-          p.workflow_runs.map((r) => ({ started: r.run_started_at, updated: r.updated_at })),
+          p.workflow_runs.map((r) => ({
+            id: r.id,
+            started: r.run_started_at,
+            updated: r.updated_at,
+          })),
         ),
       };
     });
@@ -260,7 +281,7 @@ export function renderReport(d: ReportData): string {
   if (d.reviewRetries !== undefined)
     lines.push(
       '',
-      `Review answers that needed a retry (a line before the verdict): ${String(d.reviewRetries)}.`,
+      `Review answers that needed a retry (didn't start with its verdict line): ${String(d.reviewRetries)}.`,
     );
   if (d.lessons !== undefined) {
     lines.push('', '## Lessons', '');
