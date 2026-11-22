@@ -125,10 +125,11 @@
   }
 
   /*
-   * Bangla text takes Hind Siliguri first, as the mockup's `.lang.bn` does: Inter also has spaces, punctuation and
-   * joiners, and after Inter in `--font-sans` those would come from Inter in the middle of a Bangla word or line.
+   * Bangla text takes the `--font-bangla` token (base.css, #303), Hind Siliguri first, as the mockup's `.lang.bn` does:
+   * Inter also has spaces, punctuation and joiners, and after Inter in `--font-sans` those would come from Inter in the
+   * middle of a Bangla word or line.
    */
   :lang(bn) {
-    font-family: 'Hind Siliguri', var(--font-sans);
+    font-family: var(--font-bangla);
   }
 }
