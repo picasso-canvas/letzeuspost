@@ -3,10 +3,10 @@ import { Suspense } from 'react';
 import { messages } from '../messages.ts';
 import { INBOX, openWorkspace } from './app/workspace.ts';
 
-// `/`, where the proxy and an opened sign-in link send a signed-in person (#78). With a workspace they go on to the
-// Inbox, under /app (Q13, #79); with none yet (an invite comes later), they stay on this placeholder. It never sends
-// anyone back to /sign-in, so the redirects can't loop: /app sends a person with no workspace here, and here sends only
-// one with a workspace there.
+// `/`, where /app sends a signed-in person who has no workspace yet (an invite comes later): they stay on this
+// placeholder. Sign-in lands on /app itself (#250); a person with a workspace who opens `/` goes on to the Inbox, under
+// /app (Q13, #79). It never sends anyone back to /sign-in, so the redirects can't loop: /app sends a person with no
+// workspace here, and here sends only one with a workspace there.
 //
 // The placeholder is built only from the tokens, so it shows the theme in light and dark; every word comes from
 // messages/en.json.

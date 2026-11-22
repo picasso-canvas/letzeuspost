@@ -2,7 +2,7 @@
 //
 // 1. A content security policy with a fresh nonce on every response (#76).
 // 2. One optimistic redirect (#78): a visitor with no session cookie who opens an app page goes to /sign-in, and one
-//    with a session cookie who opens /sign-in goes to the Inbox.
+//    with a session cookie who opens /sign-in goes to the Inbox, /app (#250: straight there, not through `/`).
 //
 // It only looks for the cookie; it never asks whether the session is real, and it never holds the only check on
 // anything: every page, action and route checks the session itself (§13). A forged cookie gets a visitor past this
@@ -18,7 +18,7 @@ const HTTPS_ENVIRONMENTS: readonly string[] = ['staging', 'production'];
 
 /** Where a signed-out visitor goes, and where a signed-in one goes from there: fixed, never taken from the request. */
 const SIGN_IN = '/sign-in';
-const INBOX = '/';
+const INBOX = '/app';
 
 // Better Auth's session cookie (packages/auth, #77): `better-auth.session_token`, with `__Secure-` in front where the
 // app is HTTPS. The session cache cookie (`session_data`) is not a session and isn't read.
