@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@lzp/ui/components/dropdown-menu';
+import { LogOutIcon } from '@lzp/ui/components/icons';
 import { langOf } from '@lzp/ui/components/top-bar';
 import { initialsOf } from '@lzp/ui/lib/initials';
 import { messages } from '../messages.ts';
@@ -82,7 +83,10 @@ export function AccountMenu({ name, role }: { name: string; role: string }) {
             </DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => void signOut()}>{account.signOut}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void signOut()}>
+            <LogOutIcon aria-hidden="true" />
+            {account.signOut}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </>
