@@ -39,6 +39,17 @@ describe('base.css (#70)', () => {
     );
   });
 
+  // Zeus, 2026-11-22 (#303): Bangla text takes the `--font-bangla` token, the mockup's `.lang.bn` stack (Hind Siliguri,
+  // then the interface stack, which the mockup calls `--ui` and base.css `--font-sans`), and DESIGN.md names it.
+  it("defines --font-bangla as the mockup's .lang.bn stack: Hind Siliguri, then the interface stack", () => {
+    const rule = /\.lang\.bn\s*\{[^}]*font-family:\s*([^;}]+)/.exec(mockup)?.[1];
+    if (rule === undefined) throw new Error("no font-family in the mockup's .lang.bn");
+    expect(norm(rule)).toBe('"HindSiliguri",var(--ui)');
+    expect(norm(declared(base, '@theme', 'font-bangla'))).toBe('"HindSiliguri",var(--font-sans)');
+    const design = readFileSync(new URL('../../../../DESIGN.md', import.meta.url), 'utf8');
+    expect(design).toMatch(/`--font-bangla`: Hind Siliguri first, then the interface stack/);
+  });
+
   it('gives body and meta text a 1.5 line height and the numbers style tabular figures', () => {
     expect(declared(base, '@theme', 'text-body--line-height')).toBe('1.5');
     expect(declared(base, '@theme', 'text-meta--line-height')).toBe('1.5');

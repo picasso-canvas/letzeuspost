@@ -122,8 +122,9 @@ describe('the font check', () => {
         @font-face { font-family: 'Hind Siliguri'; font-weight: 400;
           src: url('../../node_modules/@fontsource/hind-siliguri/files/hind-siliguri-bengali-400-normal.woff2') format('woff2'); }
         @theme { --font-sans: 'Inter', 'Hind Siliguri', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+          --font-bangla: 'Hind Siliguri', var(--font-sans);
           --font-body: 'Inter'; --font-weight-body: 400; --font-numbers--font-feature-settings: 'tnum'; }
-        :lang(bn) { font-family: 'Hind Siliguri', var(--font-sans); }
+        :lang(bn) { font-family: var(--font-bangla); }
         body { font-family: var(--font-sans); }`),
     ).toEqual([]);
   });
@@ -132,6 +133,9 @@ describe('the font check', () => {
     expect(problems('.card { font-family: Roboto; }')).not.toEqual([]);
     expect(problems(".card { font-family: 'Inter', Roboto, sans-serif; }")).not.toEqual([]);
     expect(problems(':root { --font-display: "Roboto", sans-serif; }')).not.toEqual([]);
+    expect(problems("@theme { --font-bangla: 'Noto Sans Bengali', var(--font-sans); }")).toEqual([
+      "--font-bangla names 'Noto Sans Bengali'",
+    ]);
     expect(problems('.card { font: 14px/1.5 Roboto; }')).not.toEqual([]);
   });
 

@@ -57,12 +57,21 @@ describe('globals.css', () => {
   });
 
   // Argus F2, round 3 on #230: Inter also has spaces, punctuation and joiners, so after Inter in `--font-sans` they'd
-  // come from Inter inside Bangla text. `:lang(bn)` puts Hind Siliguri first, as the mockup's `.lang.bn` does.
-  it('sets :lang(bn) text in Hind Siliguri before Inter, so its spaces and joiners come from the same face', async () => {
+  // come from Inter inside Bangla text. `:lang(bn)` takes `--font-bangla` (Zeus, 2026-11-22, #303), whose stack puts
+  // Hind Siliguri first, as the mockup's `.lang.bn` does.
+  it('sets :lang(bn) text in the --font-bangla token, Hind Siliguri before Inter', async () => {
     const css = await build([]);
+    expect(css).toMatch(/:lang\(bn\)\s*\{\s*font-family:\s*var\(--font-bangla\);?\s*\}/);
     expect(css).toMatch(
-      /:lang\(bn\)\s*\{[^}]*font-family:\s*['"]Hind Siliguri['"],\s*var\(--font-sans\)/,
+      /:root[^{]*\{[^}]*--font-bangla:\s*['"]Hind Siliguri['"],\s*var\(--font-sans\)/,
     );
+  });
+
+  it('writes no font family as a literal in the :lang(bn) rule (Iris F1 on #301)', () => {
+    const rule = /:lang\(bn\)\s*\{([^}]*)\}/.exec(source)?.[1];
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/font-family:\s*var\(--font-bangla\)/);
+    expect(rule).not.toMatch(/Hind Siliguri|Inter|['"]/);
   });
 
   it('self-hosts its fonts: Inter, and Hind Siliguri for Bangla, from files that exist, nothing from the web', () => {
@@ -143,6 +152,7 @@ describe('globals.css', () => {
 
   it('uses no other interface font', () => {
     const families = [...source.matchAll(/font-family:\s*([^;]+);/g)].map((m) => m[1] ?? '');
-    for (const family of families) expect(family).toMatch(/Inter|Hind Siliguri|var\(--font-sans\)/);
+    for (const family of families)
+      expect(family).toMatch(/Inter|Hind Siliguri|var\(--font-sans\)|var\(--font-bangla\)/);
   });
 });
