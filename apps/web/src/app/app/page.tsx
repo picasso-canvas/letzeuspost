@@ -1,5 +1,12 @@
 import type { Metadata } from 'next';
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@lzp/ui/components/empty';
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@lzp/ui/components/empty';
+import { CoffeeIcon } from '@lzp/ui/components/icons';
 import { messages } from '../../messages.ts';
 import { inWorkspace } from './workspace.ts';
 
@@ -22,6 +29,9 @@ export default async function InboxPage() {
       </div>
       <Empty className="border">
         <EmptyHeader>
+          <EmptyMedia variant="icon" className="size-11">
+            <CoffeeIcon aria-hidden="true" />
+          </EmptyMedia>
           <EmptyTitle>{inbox.empty.heading}</EmptyTitle>
           <EmptyDescription>{inbox.empty.body}</EmptyDescription>
         </EmptyHeader>
