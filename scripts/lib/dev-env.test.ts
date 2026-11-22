@@ -74,3 +74,29 @@ describe('checkEnv', () => {
     expect(text).not.toContain('short-secret-value');
   });
 });
+
+describe('checkEnv, local only', () => {
+  const local = () => parseEnvFile(devEnvText(randomBytes));
+
+  it('refuses a .env for another environment, naming LZP_ENV and no value', () => {
+    const problems = checkEnv({ ...local(), LZP_ENV: 'staging' }).join('\n');
+    expect(problems).toContain('LZP_ENV');
+    expect(problems).toContain('local');
+    expect(problems).not.toContain('staging');
+  });
+
+  it.each(['DATABASE_URL', 'DATABASE_OWNER_URL', 'STORAGE_ENDPOINT', 'SMTP_URL'])(
+    'refuses a remote host in %s, naming the setting and not the host',
+    (name) => {
+      const env = { ...local(), [name]: 'https://db.remote-host.example:5432/letzeuspost' };
+      const problems = checkEnv(env).join('\n');
+      expect(problems).toContain(name);
+      expect(problems).not.toContain('remote-host');
+    },
+  );
+
+  it('accepts localhost as well as 127.0.0.1', () => {
+    const env = { ...local(), SMTP_URL: 'smtp://localhost:1025' };
+    expect(checkEnv(env)).toEqual([]);
+  });
+});
