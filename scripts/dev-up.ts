@@ -43,7 +43,7 @@ function main(argv: string[]): void {
   const problems = checkEnv(fileEnv);
   if (problems.length > 0) {
     throw new Error(
-      `${problems.join('\n')}\nThe .env here is out of date: delete it and run this again.`,
+      `${problems.join('\n')}\nThis .env can't be used by dev:up: delete it and run this again to get a local one.`,
     );
   }
   const env = { ...process.env, ...fileEnv };

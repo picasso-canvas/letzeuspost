@@ -65,9 +65,14 @@ export function parseEnvFile(text: string): Record<string, string> {
   return env;
 }
 
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
+const ADDRESS_SETTINGS = ['DATABASE_URL', 'DATABASE_OWNER_URL', 'STORAGE_ENDPOINT', 'SMTP_URL'];
+
 /**
- * What is wrong with a `.env` the four local processes would read: one message per process that can't start, each
- * naming its missing or malformed settings and never a value (loadEnv's own messages). Empty when all is well.
+ * What is wrong with a `.env` the four local processes would read: one message per process that can't start (each
+ * naming its missing or malformed settings, as loadEnv words them), and one for each setting that points beyond this
+ * machine. `dev:up` migrates and seeds with the owner role, so a `.env` for staging must never reach it. A message
+ * names a setting and never a value. Empty when all is well.
  */
 export function checkEnv(env: Readonly<Record<string, string | undefined>>): string[] {
   const problems: string[] = [];
@@ -76,6 +81,15 @@ export function checkEnv(env: Readonly<Record<string, string | undefined>>): str
       loadEnv(name, env);
     } catch (error) {
       problems.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (env.LZP_ENV !== undefined && env.LZP_ENV !== 'development') {
+    problems.push('LZP_ENV is not development: dev:up works on a local setup only.');
+  }
+  for (const name of ADDRESS_SETTINGS) {
+    const host = URL.parse(env[name] ?? '')?.hostname;
+    if (host !== undefined && !LOCAL_HOSTS.has(host)) {
+      problems.push(`${name} points beyond this machine: dev:up works on a local setup only.`);
     }
   }
   return problems;
