@@ -161,6 +161,15 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
   ).toBeVisible();
   await settled(page);
 
+  // The icons the mockup's 03-inbox draws (Iris F1 on #249): Lucide `inbox` on the sidebar link and `coffee` in the empty
+  // state's box. They are decoration beside words, so they are hidden from assistive technology.
+  await expect(
+    page.getByRole('link', { name: 'Inbox' }).locator('svg.lucide-inbox[aria-hidden="true"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-slot="empty-icon"] svg.lucide-coffee[aria-hidden="true"]'),
+  ).toHaveCount(1);
+
   // The workspace's mark, as the mockup's 03-inbox draws it: a filled dark disc with light initials (Iris F2). The tokens
   // are the ink pair, so it is the same classes in light and dark.
   const mark = await markColours(page);
@@ -178,6 +187,10 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
   await expect(menu.getByText(`${person.name} (${role})`)).toBeVisible();
   await capture(page, testInfo, 'account-menu');
   expect(await seriousIssues(page)).toEqual([]);
+  // Sign out carries Lucide `log-out` (DESIGN.md's icon rules; the mockup's avatar opens no menu).
+  await expect(
+    menu.getByRole('menuitem', { name: 'Sign out' }).locator('svg.lucide-log-out[aria-hidden="true"]'),
+  ).toHaveCount(1);
   await menu.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(new URL('/sign-in', origin).href);
   expect(sessionCookies(await page.context().cookies())).toEqual([]);
