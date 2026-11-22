@@ -256,7 +256,7 @@ test('the request is the one packages/auth serves, and it holds only what the pa
   expect(asked).toEqual([
     {
       method: 'POST',
-      body: { email: address, callbackURL: '/', errorCallbackURL: '/sign-in' },
+      body: { email: address, callbackURL: '/app', errorCallbackURL: '/sign-in' },
     },
   ]);
 });
