@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
-import { devEnvText, parseEnvFile, WEB_PORT } from './dev-env.ts';
+import { devEnvText, parseEnvFile, WEB_PORT, webDevArgs } from './dev-env.ts';
 
 // Different bytes on every call, so two secrets are never equal.
 let n = 0;
@@ -47,5 +47,13 @@ describe('devEnvText', () => {
 describe('parseEnvFile', () => {
   it('reads KEY=value lines, skips comments and blanks, and keeps an = inside a value', () => {
     expect(parseEnvFile('# note\n\nA=1\nB=x=y\n  C = 3 \n')).toEqual({ A: '1', B: 'x=y', C: '3' });
+  });
+});
+
+describe('webDevArgs', () => {
+  it('binds the dev server to 127.0.0.1 on the web port, never to every interface', () => {
+    const args = webDevArgs();
+    expect(args[args.indexOf('--hostname') + 1]).toBe('127.0.0.1');
+    expect(args[args.indexOf('--port') + 1]).toBe(String(WEB_PORT));
   });
 });

@@ -33,6 +33,24 @@ export function devEnvText(randomBytes: (size: number) => Uint8Array): string {
   return `${lines.join('\n')}\n`;
 }
 
+/**
+ * The arguments for the dev web server. It listens on this machine only: `next dev` otherwise listens on every
+ * network interface, and the seeded app would be reachable from the local network.
+ */
+export function webDevArgs(): string[] {
+  return [
+    '--filter',
+    '@lzp/web',
+    'exec',
+    'next',
+    'dev',
+    '--hostname',
+    '127.0.0.1',
+    '--port',
+    String(WEB_PORT),
+  ];
+}
+
 /** `KEY=value` lines to an object; comments and blank lines are skipped, and only the first `=` splits. */
 export function parseEnvFile(text: string): Record<string, string> {
   const env: Record<string, string> = {};

@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isEntryPoint } from './lib/entry.ts';
-import { devEnvText, parseEnvFile, WEB_PORT } from './lib/dev-env.ts';
+import { devEnvText, parseEnvFile, WEB_PORT, webDevArgs } from './lib/dev-env.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const COMPOSE = ['compose', '-f', 'docker/compose.yml', '--env-file', '.env'];
@@ -21,18 +21,23 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv = process.e
 
 function main(argv: string[]): void {
   const envFile = join(root, '.env');
-  if (!existsSync(envFile)) {
-    writeFileSync(envFile, devEnvText(randomBytes), { mode: 0o600 });
-    console.log('Wrote .env with fresh local secrets (it stays on this machine).');
-  }
+  // Docker first: a machine without it (a builder's clone) gets the message and no `.env`.
   if (spawnSync('docker', ['info'], { stdio: 'ignore' }).status !== 0) {
     throw new Error(
       'Docker is not running: start Docker Desktop or OrbStack, then run this again.',
     );
   }
   if (argv.includes('--down')) {
-    run('docker', [...COMPOSE, 'down', ...(argv.includes('--reset') ? ['--volumes'] : [])]);
+    if (existsSync(envFile)) {
+      run('docker', [...COMPOSE, 'down', ...(argv.includes('--reset') ? ['--volumes'] : [])]);
+    } else {
+      console.log('Nothing to stop: there is no .env, so dev:up never ran here.');
+    }
     return;
+  }
+  if (!existsSync(envFile)) {
+    writeFileSync(envFile, devEnvText(randomBytes), { mode: 0o600 });
+    console.log('Wrote .env with fresh local secrets (it stays on this machine).');
   }
   const env = { ...process.env, ...parseEnvFile(readFileSync(envFile, 'utf8')) };
   run('docker', [...COMPOSE, 'up', '--detach', '--wait']);
@@ -41,11 +46,7 @@ function main(argv: string[]): void {
 
   const children: ChildProcess[] = [
     spawn('pnpm', ['--filter', '@lzp/worker', 'start'], { cwd: root, env, stdio: 'inherit' }),
-    spawn('pnpm', ['--filter', '@lzp/web', 'exec', 'next', 'dev', '--port', String(WEB_PORT)], {
-      cwd: root,
-      env,
-      stdio: 'inherit',
-    }),
+    spawn('pnpm', webDevArgs(), { cwd: root, env, stdio: 'inherit' }),
   ];
   const stop = () => {
     for (const child of children) child.kill('SIGTERM');
