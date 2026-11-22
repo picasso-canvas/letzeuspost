@@ -8,6 +8,7 @@ import {
   type Locator,
   type Page,
   type Request,
+  type Response,
   type Route,
   type TestInfo,
 } from '@playwright/test';
@@ -34,6 +35,19 @@ const PHONE = { width: 390, height: 844 } as const;
 
 const themeOf = (projectName: string) => (projectName === 'app-dark' ? 'dark' : 'light');
 
+/** The paths a navigation went through, from the address opened to the one that answered, each redirect between. */
+function redirectChain(response: Response | null): string[] {
+  const paths: string[] = [];
+  for (
+    let request = response?.request() ?? null;
+    request !== null;
+    request = request.redirectedFrom()
+  ) {
+    paths.unshift(new URL(request.url()).pathname);
+  }
+  return paths;
+}
+
 /**
  * Signs `address` in on `page` and waits for the Inbox. Like tests/lib/sign-in.ts's `signInWithLink`, but it opens the
  * email that arrives after asking, not the newest one there, so an earlier run's used link is never the one opened.
@@ -52,8 +66,10 @@ async function signIn(page: Page, address: string) {
     )
     .toBe(true);
   const body = await (arrived?.text() ?? Promise.reject(new Error('no email')));
-  await page.goto(signInLink(body, origin));
-  // The link leads to `/`, which sends a person with a workspace on to the Inbox.
+  const link = signInLink(body, origin);
+  const landed = await page.goto(link);
+  // The link leads straight to the Inbox: one redirect, from the link to /app, and no hop through `/` (#250).
+  expect(redirectChain(landed)).toEqual([new URL(link).pathname, INBOX]);
   await expect(page).toHaveURL(new URL(INBOX, origin).href);
   await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
 }
@@ -154,6 +170,14 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
   await signIn(page, person.email);
   await showsWorkspace(page, seed.workspace.name);
   await expect(avatar(page)).toHaveAccessibleName(`${person.name} (${role})`);
+
+  // Signed in, /sign-in sends them to the Inbox in one redirect, straight to /app (#250): the running server's own
+  // answer, not followed, and then the same in the browser.
+  const fromSignIn = await page.request.get('/sign-in', { maxRedirects: 0 });
+  expect(fromSignIn.status()).toBe(307);
+  expect(fromSignIn.headers()['location']).toMatch(/^(http:\/\/[^/]+)?\/app$/);
+  expect(redirectChain(await page.goto('/sign-in'))).toEqual(['/sign-in', INBOX]);
+  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Inbox' })).toHaveAttribute('aria-current', 'page');
   await expect(
