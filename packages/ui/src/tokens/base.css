@@ -1,8 +1,9 @@
 /*
  * Design values DESIGN.md's format can't carry into its export (#70), written by hand: the interface font stack (the
- * export names Inter alone; Hind Siliguri follows it for Bangla, #228), line heights and tabular numbers (the export drops them), the frame shadow and the
- * transition time, none under reduced motion (the format only describes them in prose). base.test.ts checks each
- * against the approved mockup's CSS and DESIGN.md. Changing one is a design change: Zeus approves it first (§21).
+ * export names Inter alone; Hind Siliguri follows it for Bangla, #228), line heights and tabular numbers (the export
+ * drops them), the frame shadow and the transition time, none under reduced motion (the format only describes them in
+ * prose). base.test.ts checks each against the approved mockup's CSS and DESIGN.md. Changing one is a design change:
+ * Zeus approves it first (§21).
  */
 @theme {
   /* Hind Siliguri, right after Inter, carries Bangla: Inter has no Bengali letters (Zeus, 2026-11-11, #228). */

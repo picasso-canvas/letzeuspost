@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { InboxIcon } from '@lzp/ui/components/icons';
 import { LogoMark } from '@lzp/ui/components/logo-mark';
 import {
   Sidebar,
@@ -62,7 +63,11 @@ export function AppFrame({ person, current, workspaces, children }: AppFrameProp
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <NavLink href={INBOX} label={frame.nav.inbox} />
+                    <NavLink
+                      href={INBOX}
+                      label={frame.nav.inbox}
+                      icon={<InboxIcon aria-hidden="true" />}
+                    />
                   </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
