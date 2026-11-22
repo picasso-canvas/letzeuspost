@@ -9,7 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isEntryPoint } from './lib/entry.ts';
-import { devEnvText, parseEnvFile, WEB_PORT, webDevArgs } from './lib/dev-env.ts';
+import { checkEnv, devEnvText, parseEnvFile, WEB_PORT, webDevArgs } from './lib/dev-env.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const COMPOSE = ['compose', '-f', 'docker/compose.yml', '--env-file', '.env'];
@@ -39,7 +39,14 @@ function main(argv: string[]): void {
     writeFileSync(envFile, devEnvText(randomBytes), { mode: 0o600 });
     console.log('Wrote .env with fresh local secrets (it stays on this machine).');
   }
-  const env = { ...process.env, ...parseEnvFile(readFileSync(envFile, 'utf8')) };
+  const fileEnv = parseEnvFile(readFileSync(envFile, 'utf8'));
+  const problems = checkEnv(fileEnv);
+  if (problems.length > 0) {
+    throw new Error(
+      `${problems.join('\n')}\nThe .env here is out of date: delete it and run this again.`,
+    );
+  }
+  const env = { ...process.env, ...fileEnv };
   run('docker', [...COMPOSE, 'up', '--detach', '--wait']);
   run('pnpm', ['--filter', '@lzp/db', 'migrate'], env);
   run('pnpm', ['--filter', '@lzp/db', 'seed:dev'], env);
@@ -48,12 +55,20 @@ function main(argv: string[]): void {
     spawn('pnpm', ['--filter', '@lzp/worker', 'start'], { cwd: root, env, stdio: 'inherit' }),
     spawn('pnpm', webDevArgs(), { cwd: root, env, stdio: 'inherit' }),
   ];
+  let stopping = false;
   const stop = () => {
+    stopping = true;
     for (const child of children) child.kill('SIGTERM');
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
-  for (const child of children) child.on('exit', stop);
+  for (const child of children) {
+    child.on('exit', (code) => {
+      // A child that stops on its own with an error fails the command too; Ctrl-C is a normal stop.
+      if (!stopping && code !== 0) process.exitCode = code ?? 1;
+      stop();
+    });
+  }
   console.log(
     [
       '',

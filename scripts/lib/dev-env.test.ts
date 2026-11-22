@@ -65,7 +65,8 @@ describe('checkEnv', () => {
 
   it('names a setting that is missing or malformed in an older .env, without printing a value', () => {
     const env = parseEnvFile(devEnvText(randomBytes));
-    const { STORAGE_BUCKET: _dropped, ...older } = env;
+    const older: Record<string, string> = { ...env };
+    delete older.STORAGE_BUCKET;
     const problems = checkEnv({ ...older, AUTH_SECRET: 'short-secret-value' });
     const text = problems.join('\n');
     expect(text).toContain('STORAGE_BUCKET');

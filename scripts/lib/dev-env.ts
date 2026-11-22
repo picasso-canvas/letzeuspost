@@ -1,6 +1,8 @@
 // The local `.env` for `pnpm dev:up` (#311): every setting the web, worker, migrate and seed processes read
 // (config/env.ts), pointed at the compose services on 127.0.0.1, with a fresh secret for each one.
 
+import { loadEnv } from '../../config/env.ts';
+
 /** The port the dev web server listens on; `APP_URL` is built from it so sign-in links open the same server. */
 export const WEB_PORT = 3100;
 
@@ -61,4 +63,20 @@ export function parseEnvFile(text: string): Record<string, string> {
     if (at > 0) env[line.slice(0, at).trim()] = line.slice(at + 1).trim();
   }
   return env;
+}
+
+/**
+ * What is wrong with a `.env` the four local processes would read: one message per process that can't start, each
+ * naming its missing or malformed settings and never a value (loadEnv's own messages). Empty when all is well.
+ */
+export function checkEnv(env: Readonly<Record<string, string | undefined>>): string[] {
+  const problems: string[] = [];
+  for (const name of ['web', 'worker', 'migrate', 'seed'] as const) {
+    try {
+      loadEnv(name, env);
+    } catch (error) {
+      problems.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return problems;
 }
