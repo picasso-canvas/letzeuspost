@@ -85,15 +85,17 @@ describe('checkEnv, local only', () => {
     expect(problems).not.toContain('staging');
   });
 
-  it.each(['DATABASE_URL', 'DATABASE_OWNER_URL', 'STORAGE_ENDPOINT', 'SMTP_URL'])(
-    'refuses a remote host in %s, naming the setting and not the host',
-    (name) => {
-      const env = { ...local(), [name]: 'https://db.remote-host.example:5432/letzeuspost' };
-      const problems = checkEnv(env).join('\n');
-      expect(problems).toContain(name);
-      expect(problems).not.toContain('remote-host');
-    },
-  );
+  // Each value is well formed for its setting, so only the host check can refuse it.
+  it.each([
+    ['DATABASE_URL', 'postgres://lzp_app:pw@db.remote-host.example:5432/letzeuspost'],
+    ['DATABASE_OWNER_URL', 'postgres://lzp_owner:pw@db.remote-host.example:5432/letzeuspost'],
+    ['STORAGE_ENDPOINT', 'https://files.remote-host.example'],
+    ['SMTP_URL', 'smtp://mail.remote-host.example:587'],
+  ])('refuses a remote host in %s, naming the setting and not the host', (name, value) => {
+    const problems = checkEnv({ ...local(), [name]: value }).join('\n');
+    expect(problems).toContain(name);
+    expect(problems).not.toContain('remote-host');
+  });
 
   it('accepts localhost as well as 127.0.0.1', () => {
     const env = { ...local(), SMTP_URL: 'smtp://localhost:1025' };
