@@ -189,7 +189,9 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
   expect(await seriousIssues(page)).toEqual([]);
   // Sign out carries Lucide `log-out` (DESIGN.md's icon rules; the mockup's avatar opens no menu).
   await expect(
-    menu.getByRole('menuitem', { name: 'Sign out' }).locator('svg.lucide-log-out[aria-hidden="true"]'),
+    menu
+      .getByRole('menuitem', { name: 'Sign out' })
+      .locator('svg.lucide-log-out[aria-hidden="true"]'),
   ).toHaveCount(1);
   await menu.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(new URL('/sign-in', origin).href);
