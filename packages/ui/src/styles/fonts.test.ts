@@ -168,6 +168,9 @@ describe('the font check', () => {
       '.x { font-family: Roboto; }\n@import url("https://fonts.googleapis.com/x");',
     );
     expect(existsSync(file)).toBe(true);
-    expect(fontProblems(readFileSync(file, 'utf8'), temp).length).toBeGreaterThanOrEqual(2);
+    const found = fontProblems(readFileSync(file, 'utf8'), temp);
+    // Each planted case is reported on its own: missing either one fails, whatever else is found.
+    expect(found).toContain('font-family names Roboto');
+    expect(found).toContain('web URL: //fonts.googleapis.com/x');
   });
 });
