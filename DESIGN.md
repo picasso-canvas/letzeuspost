@@ -287,8 +287,8 @@ Light and dark are both first-class: the app follows the system, with a switch i
 page (no account) follows the phone's setting, with the same tokens (Zeus, 2026-11-08, #70); the mockup draws it in
 light only. Every colour below has a light value and a dark partner named `<name>-dark`; `pnpm tokens` turns the pairs
 into CSS variables in `packages/ui/src/tokens/` that switch under `.dark`. What this format can't carry into its export
-(the font stack, line heights, tabular numbers, the shadow and the motion) is written by hand in
-`packages/ui/src/tokens/base.css`, and a test checks it against the mockup.
+(the font stacks `--font-sans` and `--font-bangla`, line heights, tabular numbers, the shadow and the motion) is
+written by hand in `packages/ui/src/tokens/base.css`, and a test checks it against the mockup.
 
 ## Colors
 
@@ -320,12 +320,14 @@ into CSS variables in `packages/ui/src/tokens/` that switch under `.dark`. What 
 
 Inter is the interface font (self-hosted), with the mockup's system sans stack behind it in case it doesn't load.
 Inter has no Bengali letters, so Bangla text in the interface uses Hind Siliguri (self-hosted, OFL), right after Inter
-in the stack and for the Bengali range only, in the same sizes. Its faces have fixed weights (400, 500, 600, 700), so
-the scale's 550 and 650 show as 600 and 700, a little heavier than Inter beside them. Text in Bangla is marked
-`lang="bn"`, and the font covers all Bengali letters (Zeus, 2026-11-11; recorded on #223 and #228). 14 px base, 13 px
-meta, both at 1.5 line height; field labels 12.5 px at 550 in the muted colour (`label`), button text 14 px at 550
-(`button`); headings 22 / 16 / 14 px at 650–600 weight with slight negative tracking; eyebrows 11 px, 600, uppercase,
-wide tracking; tabular numbers in meters, counters and tables. Post previews use each brand's own fonts, not these.
+in the general stack (`--font-sans`) and for the Bengali range only, in the same sizes. Its faces have fixed weights
+(400, 500, 600, 700), so the scale's 550 and 650 show as 600 and 700, a little heavier than Inter beside them. Text in
+Bangla is marked `lang="bn"`, and the font covers all Bengali letters (Zeus, 2026-11-11; recorded on #223 and #228).
+Text marked that way takes the Bangla font token, `--font-bangla`: Hind Siliguri first, then the interface stack, so its
+spaces and joiners come from the same face (the mockup's `.lang.bn`; Zeus, 2026-11-22, #303). 14 px base, 13 px meta,
+both at 1.5 line height; field labels 12.5 px at 550 in the muted colour (`label`), button text 14 px at 550 (`button`);
+headings 22 / 16 / 14 px at 650–600 weight with slight negative tracking; eyebrows 11 px, 600, uppercase, wide tracking;
+tabular numbers in meters, counters and tables. Post previews use each brand's own fonts, not these.
 
 ## Layout
 
