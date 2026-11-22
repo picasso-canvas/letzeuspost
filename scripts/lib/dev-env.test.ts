@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
-import { devEnvText, parseEnvFile, WEB_PORT, webDevArgs } from './dev-env.ts';
+import { checkEnv, devEnvText, parseEnvFile, WEB_PORT, webDevArgs } from './dev-env.ts';
 
 // Different bytes on every call, so two secrets are never equal.
 let n = 0;
@@ -55,5 +55,21 @@ describe('webDevArgs', () => {
     const args = webDevArgs();
     expect(args[args.indexOf('--hostname') + 1]).toBe('127.0.0.1');
     expect(args[args.indexOf('--port') + 1]).toBe(String(WEB_PORT));
+  });
+});
+
+describe('checkEnv', () => {
+  it('finds nothing wrong with a generated .env', () => {
+    expect(checkEnv(parseEnvFile(devEnvText(randomBytes)))).toEqual([]);
+  });
+
+  it('names a setting that is missing or malformed in an older .env, without printing a value', () => {
+    const env = parseEnvFile(devEnvText(randomBytes));
+    const { STORAGE_BUCKET: _dropped, ...older } = env;
+    const problems = checkEnv({ ...older, AUTH_SECRET: 'short-secret-value' });
+    const text = problems.join('\n');
+    expect(text).toContain('STORAGE_BUCKET');
+    expect(text).toContain('AUTH_SECRET');
+    expect(text).not.toContain('short-secret-value');
   });
 });
