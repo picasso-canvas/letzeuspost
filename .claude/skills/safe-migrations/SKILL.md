@@ -66,8 +66,8 @@ automatically (§14). Builders never deploy; Zeus starts production deploys, and
 
 - Integration tests against real Postgres ([§17](../../../docs/plan/17-testing.md#the-layers)): the migrations run on an
   empty database, and each new workspace table's row-level security hides another workspace's rows from the app's role.
-- They need Postgres, so they run in CI, or with `pnpm check:services` when dispatch has handed you the ports. **CI is
-  what counts** ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
+- They need Postgres, so they run in CI's `services` job: you get no service containers or ports, and a failure there
+  comes back to you as a finding. **CI is what counts** ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
 
 ## What reviewers check
 

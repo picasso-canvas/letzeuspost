@@ -46,7 +46,7 @@ through the studio's route (images to Dropbox links with rclone, then the Metric
 on the free plan: when the CSV is built, check that the plan accepts a CSV import.
 
 **Picasso's instance is not a build environment.** It runs as its own Compose project (own volumes and database) on
-OrbStack, apart from the Docker Desktop engine dispatch uses for builders' service containers. It publishes no host
+OrbStack. Builders get no service containers (§20), so nothing else shares its engine. It publishes no host
 ports: Zeus reaches it through OrbStack's container domain names (`*.orb.local`), which aren't on the builder allowlist.
 A nightly `pg_dump` backs it up. Updating it is a deploy: from a `main` commit with green checks, and Athena asks Zeus first.
 
