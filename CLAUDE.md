@@ -24,8 +24,8 @@ Build only from approved sections (all are, since 2026-11-07). The first build m
 minimum guardrails in section 20 (builders without GitHub access, sandbox, settings, hooks, H0 checks, the risk gate,
 the merge gate, agent files, the core skills). It must pass its red-team checklist before any other milestone starts.
 
-**H0 freeze:** no new H0 task unless it unblocks a product task; review nits go into the weekly nit batch (§19), not one
-issue each.
+**H0 freeze:** no new H0 task unless it unblocks a product task (a should-fix follow-up is still opened, as §19 says);
+review nits go into the weekly nit batch (§19), not one issue each.
 
 ## Building (builders)
 

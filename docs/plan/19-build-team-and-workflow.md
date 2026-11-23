@@ -246,8 +246,8 @@ recorded (4). The checklist hadn't changed since 2026-11-07. So every finding no
 
 The first preventions (from the 2026-11-10 count): ship refuses a hand-over whose Done-when evidence doesn't name the
 head commit, a fix round whose PR text doesn't answer every numbered finding, and a branch that changes a file
-outside the task's Areas; the merge gate refuses the same on Athena's own PRs (#138). Numbered, typed findings and
-the count: #137.
+outside the task's Areas (a listed file, or a file under a listed directory glob); the merge gate refuses the same on
+Athena's own PRs (#138). Numbered, typed findings and the count: #137.
 
 ### Conventions
 
