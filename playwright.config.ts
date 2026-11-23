@@ -71,8 +71,8 @@ export default defineConfig({
       use: { ...desktop, colorScheme: 'light', baseURL: 'http://localhost:3000' },
     },
     {
-      // The render engine's browser tests (§08, #327): they open their own Chromium through packages/render and need
-      // no server, so no web server starts for them.
+      // The render engine's browser tests (§08, #327): they will open their own Chromium (through packages/render
+      // once it exists) and need no server, so no web server starts for them.
       name: 'render',
       testDir: 'tests/render',
       testMatch: '**/*.spec.ts',
@@ -81,7 +81,8 @@ export default defineConfig({
       outputDir: 'tests/render-output',
     },
     {
-      // The golden renders (§08, §17): baselines live beside the specs; only Athena commits them, after Zeus's look.
+      // The golden renders (§08, §17): baselines live in tests/golden/baselines/; only Athena commits them, after
+      // Zeus's look.
       name: 'golden',
       testDir: 'tests/golden',
       testMatch: '**/*.spec.ts',
