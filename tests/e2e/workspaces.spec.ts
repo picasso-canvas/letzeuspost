@@ -117,8 +117,9 @@ async function capture(page: Page, testInfo: TestInfo, state: string) {
 }
 
 /**
- * The switcher's workspace mark, as drawn: its fill and its initials' colour, beside the theme's ink (`foreground`) and
- * paper (`background`) tokens, all as the browser computes them (`rgb(…)`), so they compare whatever the notation.
+ * The switcher's workspace mark, as drawn: its fill and its initials' colour, beside DESIGN.md's `workspace-mark` and
+ * `workspace-mark-foreground` tokens, all as the browser computes them (`rgb(…)`), so they compare whatever the
+ * notation.
  */
 async function markColours(page: Page) {
   return switcher(page)
@@ -136,8 +137,8 @@ async function markColours(page: Page) {
       return {
         fill: drawn.backgroundColor,
         initials: drawn.color,
-        ink: token('--color-foreground'),
-        paper: token('--color-background'),
+        navy: token('--color-workspace-mark'),
+        white: token('--color-workspace-mark-foreground'),
       };
     });
 }
@@ -194,11 +195,11 @@ test('a seeded Northwind person signs in through Mailpit and lands in Northwind 
     page.locator('[data-slot="empty-icon"] svg.lucide-coffee[aria-hidden="true"]'),
   ).toHaveCount(1);
 
-  // The workspace's mark, as the mockup's 03-inbox draws it: a filled dark disc with light initials (Iris F2). The tokens
-  // are the ink pair, so it is the same classes in light and dark.
+  // The workspace's mark, as the mockup's 03-inbox draws it: a filled navy disc with white initials (Iris F2, #254), from
+  // DESIGN.md's `workspace-mark` token pair, the same in light and dark.
   const mark = await markColours(page);
-  expect(mark.fill).toBe(mark.ink);
-  expect(mark.initials).toBe(mark.paper);
+  expect(mark.fill).toBe(mark.navy);
+  expect(mark.initials).toBe(mark.white);
 
   // The frame, drawn in the project's theme, for Iris (and, once approved, compared with its baseline).
   await capture(page, testInfo, 'inbox');
@@ -447,20 +448,78 @@ test('the frame’s states: long and Bangla names, the switcher open, switching,
 /** Every `<script>` element in an HTML document, inline or not, with its content. */
 const SCRIPTS = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
 
+/** The `<html …>` start tag of a document. */
+const HTML_TAG = /<html\b[^>]*>/i;
+
+/** The `class` attributes on a document's `<html>` start tag, as written. */
+const htmlClassAttributes = (html: string) =>
+  (HTML_TAG.exec(html)?.[0] ?? '').match(/\sclass\s*=/gi) ?? [];
+
+/**
+ * `html` with the theme's class on its `<html>` element, as the layout's script puts it there: in dark, `dark` goes into
+ * the element's `class` if it has one, or a `class` is added; in light, the document is left as it is.
+ */
+function withThemeClass(html: string, theme: 'light' | 'dark') {
+  if (theme === 'light') return html;
+  return html.replace(HTML_TAG, (tag) => {
+    // The element's `class` attribute, its value double-quoted, single-quoted or bare.
+    const attribute = /\sclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i.exec(tag);
+    if (attribute === null) return tag.replace(/^<html\b/i, '<html class="dark"');
+    const classes = (attribute[1] ?? attribute[2] ?? attribute[3] ?? '')
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!classes.includes('dark')) classes.push('dark');
+    // A function, so a `$` in a class name is never read as a replacement pattern.
+    return tag.replace(attribute[0], () => ` class="${classes.join(' ')}"`);
+  });
+}
+
+test.describe('the theme class on <html>', () => {
+  /** A whole document whose `<html>` start tag is `tag`. */
+  const documentWith = (tag: string) => `<!DOCTYPE html>${tag}<head></head><body></body></html>`;
+
+  test('in dark, a document with no class gets one class attribute, `dark`', () => {
+    const html = withThemeClass(documentWith('<html lang="en">'), 'dark');
+    expect(htmlClassAttributes(html)).toHaveLength(1);
+    expect(HTML_TAG.exec(html)?.[0]).toBe('<html class="dark" lang="en">');
+  });
+
+  test('in dark, `dark` goes into the class the <html> element already has, never a second class attribute', () => {
+    for (const [tag, merged] of [
+      ['<html lang="en" class="font-sans">', '<html lang="en" class="font-sans dark">'],
+      ['<html class=\'a b\' lang="en">', '<html class="a b dark" lang="en">'],
+      ['<html class=a lang="en">', '<html class="a dark" lang="en">'],
+      ['<html lang="en" class="">', '<html lang="en" class="dark">'],
+      ['<html lang="en" class="dark">', '<html lang="en" class="dark">'],
+    ] as const) {
+      const html = withThemeClass(documentWith(tag), 'dark');
+      expect(htmlClassAttributes(html)).toHaveLength(1);
+      expect(HTML_TAG.exec(html)?.[0]).toBe(merged);
+    }
+  });
+
+  test('in light, the document is left as it is', () => {
+    for (const tag of ['<html lang="en">', '<html lang="en" class="font-sans">']) {
+      expect(withThemeClass(documentWith(tag), 'light')).toBe(documentWith(tag));
+    }
+  });
+});
+
 /**
  * Loads the Inbox's document as the server sends it, without its scripts, and with the theme's class on <html> (the
  * class is put there by a script too). The browser draws the HTML as it arrives: the skeleton first, and the guarded
  * frame after it in a hidden element, which only React's scripts swap in. With none of them in the page, it stays in
  * the state a person sees while the guard opens the workspace. The page itself still runs script, so the screenshot,
- * the font wait and axe work as on every other page (a context with JavaScript off stalls them).
+ * the font wait and axe work as on every other page (a context with JavaScript off stalls them). Each document it
+ * serves goes into `served`, so the test can check its <html> tag as written: a browser keeps only the first of two
+ * `class` attributes, without a word, so the drawn page can't show a second one.
  */
-function withoutScripts(theme: 'light' | 'dark') {
+function withoutScripts(theme: 'light' | 'dark', served: string[]) {
   return async (route: Route) => {
     if (route.request().resourceType() !== 'document') return route.fallback();
     const response = await route.fetch();
-    const html = (await response.text())
-      .replace(SCRIPTS, '')
-      .replace(/<html\b/, theme === 'dark' ? '<html class="dark"' : '<html');
+    const html = withThemeClass((await response.text()).replace(SCRIPTS, ''), theme);
+    served.push(html);
     // The body is new and decoded: the original's length and encoding no longer describe it.
     const headers = Object.fromEntries(
       Object.entries(response.headers()).filter(
@@ -497,11 +556,18 @@ async function showsLoading(page: Page, testInfo: TestInfo, signedIn = false) {
   await test.step(
     'load /app without its scripts',
     async () => {
-      await page.route(atInbox, withoutScripts(theme));
+      const served: string[] = [];
+      await page.route(atInbox, withoutScripts(theme, served));
       await page.goto(INBOX);
       await expect(page.locator('script')).toHaveCount(0);
-      if (theme === 'dark') await expect(page.locator('html')).toHaveClass('dark');
-      else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+      // The document as served has one `class` attribute on <html> in dark (none, or the layout's one, in light).
+      expect(served).toHaveLength(1);
+      const classes = htmlClassAttributes(served[0] ?? '');
+      if (theme === 'dark') expect(classes).toHaveLength(1);
+      else expect(classes.length).toBeLessThanOrEqual(1);
+      const dark = /(^|\s)dark(\s|$)/;
+      if (theme === 'dark') await expect(page.locator('html')).toHaveClass(dark);
+      else await expect(page.locator('html')).not.toHaveClass(dark);
     },
     { timeout: 10_000 },
   );
