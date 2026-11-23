@@ -40,6 +40,10 @@ export default defineConfig({
   forbidOnly: true,
   // Never write baselines into tests/visual/approved: only Athena moves approved ones there (Q11).
   updateSnapshots: 'none',
+  // Any changed pixel fails (§21, #129): Playwright's default per-pixel colour threshold of 0.2 would let a small
+  // colour regression through. CI renders on one image, so the same page gives the same pixels.
+  // scripts/playwright-config.test.ts holds both at 0.
+  expect: { toHaveScreenshot: { threshold: 0, maxDiffPixels: 0 } },
   reporter: ci ? 'github' : 'list',
   projects: [
     {
