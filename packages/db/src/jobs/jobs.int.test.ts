@@ -22,12 +22,7 @@ import { createDb, type Db } from '../db.ts';
 import { migrate } from '../migrate.ts';
 import { emailMessage } from '../schema/email-message.ts';
 import { createJobs, installJobs, JOBS_SCHEMA, type Jobs } from './boss.ts';
-import {
-  emailOutbox,
-  interruptStale,
-  INTERRUPTED,
-  SENDING_STALE_AFTER_SECONDS,
-} from './email-outbox.ts';
+import { emailOutbox, INTERRUPTED, SENDING_STALE_AFTER_SECONDS } from './email-outbox.ts';
 import { JobPayloadError, queueNames, queues } from './queues.ts';
 
 const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
@@ -670,7 +665,7 @@ describe('the email outbox (§13 Data model)', () => {
 // alone, so what it finds there is this describe's.
 describe('the email outbox sweep (#210)', () => {
   const runs = () => ({ first: randomUUID(), other: randomUUID() });
-  const sweepC = () => interruptStale(db.forWorkspace({ workspaceId: ids.c }));
+  const sweepC = () => emailOutbox(db.forWorkspace({ workspaceId: ids.c })).interruptStale();
 
   /** A row of C that `job` claimed `seconds` ago. */
   async function claimedRow(name: string, seconds: number, job: string): Promise<string> {
@@ -749,7 +744,9 @@ describe('the email outbox sweep (#210)', () => {
     await age(id, SENDING_STALE_AFTER_SECONDS + 1);
     expect(await sweepC()).toEqual([]);
     expect(await statusOf(id)).toEqual({ status: 'sending', failure: null });
-    expect(await interruptStale(db.forWorkspace({ workspaceId: ids.b }))).toEqual([id]);
+    expect(await emailOutbox(db.forWorkspace({ workspaceId: ids.b })).interruptStale()).toEqual([
+      id,
+    ]);
     expect(await statusOf(id)).toEqual({ status: 'failed', failure: INTERRUPTED });
   });
 
@@ -775,10 +772,12 @@ describe('the email outbox sweep (#210)', () => {
     });
 
     it('are those of email jobs that failed for good, read by the app role from pg-boss', async () => {
-      const [failed, failedTwice, completed, cancelled, otherQueue, regrouped] = Array.from(
-        { length: 6 },
-        () => randomUUIDv7(),
-      );
+      const failed = randomUUIDv7();
+      const failedTwice = randomUUIDv7();
+      const completed = randomUUIDv7();
+      const cancelled = randomUUIDv7();
+      const otherQueue = randomUUIDv7();
+      const regrouped = randomUUIDv7();
       const email = (workspaceId: string) => ({ workspaceId, emailMessageId: randomUUIDv7() });
       await plantJob('email', 'failed', email(failed), failed);
       await plantJob('email', 'failed', email(failedTwice), failedTwice);

@@ -1,17 +1,11 @@
 import { randomUUIDv7 } from 'node:crypto';
-import type { Db, JobContext, Scoped } from '@lzp/db';
+import type { Db, Scoped } from '@lzp/db';
 import { describe, expect, it } from 'vitest';
-import { emailSweepJob } from './email-sweep-job.ts';
+import { emailSweep } from './email-sweep.ts';
 import type { LogFields } from './log.ts';
 
 const jobId = randomUUIDv7();
-const job: JobContext<'email-sweep'> = {
-  jobId,
-  payload: {},
-  db: null,
-  retryCount: 0,
-  lastAttempt: false,
-};
+const job = { jobId };
 
 /** A database whose scoped handles say which workspace they were opened for. */
 function fakeDb() {
@@ -30,10 +24,10 @@ function fakeDb() {
   return { db, opened, workspaceOf: (scoped: Scoped) => handles.get(scoped) };
 }
 
-describe('the email sweep job (#210)', () => {
+describe('the email outbox sweep (#210)', () => {
   it("marks each failed email job's workspace's stale rows interrupted, through that workspace's own handle", async () => {
     const [a, b] = [randomUUIDv7(), randomUUIDv7()];
-    const rows = new Map([
+    const rows = new Map<string, string[]>([
       [a, [randomUUIDv7(), randomUUIDv7()]],
       [b, []],
     ]);
@@ -42,7 +36,7 @@ describe('the email sweep job (#210)', () => {
     const swept: (string | undefined)[] = [];
     const lines: { event: string; fields: LogFields }[] = [];
 
-    await emailSweepJob({
+    await emailSweep({
       db,
       jobs: {
         failedWorkspaces: (queue) => {
@@ -73,7 +67,7 @@ describe('the email sweep job (#210)', () => {
   it('does nothing but say so when no email job has failed', async () => {
     const { db, opened } = fakeDb();
     const lines: string[] = [];
-    await emailSweepJob({
+    await emailSweep({
       db,
       jobs: { failedWorkspaces: () => Promise.resolve([]) },
       interrupt: () => Promise.reject(new Error('no workspace to sweep')),
@@ -83,10 +77,10 @@ describe('the email sweep job (#210)', () => {
     expect(lines).toEqual(['email.swept']);
   });
 
-  it('fails the run, for pg-boss to retry, when a workspace could not be swept', async () => {
+  it('rejects the run when a workspace could not be swept', async () => {
     const { db } = fakeDb();
     await expect(
-      emailSweepJob({
+      emailSweep({
         db,
         jobs: { failedWorkspaces: () => Promise.resolve([randomUUIDv7()]) },
         interrupt: () => Promise.reject(new Error('Connection terminated unexpectedly')),
