@@ -67,6 +67,14 @@ const NUNITO_400 = FONT_MANIFEST.fonts
   .find((font) => font.family === 'Nunito')
   ?.files.find((file) => file.weight === 400 && file.subset === 'latin')?.sha256;
 
+/** A plain page whose paragraphs and headings are set in the manifest’s Nunito 400 (Latin only). */
+const inNunito = (body: string) =>
+  plain(
+    body,
+    `<style>@font-face { font-family: 'Nunito'; src: url(${PAGE_ORIGIN}/font/${String(NUNITO_400)}) format('woff2'); }
+      p, h1 { font-family: 'Nunito'; font-weight: 400; }</style>`,
+  );
+
 /** A renderer as the worker makes it: its own launch, with the fixed flags. */
 function plainSetup() {
   const logged: Logged = [];
@@ -163,6 +171,56 @@ test('a remote link in a post’s text stays text: the slide makes no request', 
   }
 });
 
+test('an asset is never served as a page: a frame that opens one is blocked', async () => {
+  const { renderer } = setup();
+  try {
+    // An SVG opened as a document would run its scripts on the page's origin; any asset opened that way is refused.
+    const result = await render(
+      renderer,
+      plain(`<p>Frame</p><iframe src="${PAGE_ORIGIN}/image/logo_light_1"></iframe>`),
+    );
+    expect(result.blocked).toEqual([
+      { url: `${PAGE_ORIGIN}/image/logo_light_1`, type: 'document' },
+    ]);
+    expect(result.served).not.toContain('image/logo_light_1');
+  } finally {
+    await renderer.close();
+  }
+});
+
+// Gathers WebRTC's candidates for a STUN server at an IP address, which neither the request filter nor the proxy
+// sees, and returns the UDP ones. A string, so the page's code needs no DOM types here.
+const UDP_CANDIDATES = `(async () => {
+  const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:192.0.2.1:3478' }] });
+  const udp = [];
+  const gathered = new Promise((done) => {
+    connection.onicegatheringstatechange = () => {
+      if (connection.iceGatheringState === 'complete') done();
+    };
+    setTimeout(done, 5000);
+  });
+  connection.onicecandidate = (event) => {
+    if (event.candidate !== null && event.candidate.protocol === 'udp')
+      udp.push(event.candidate.candidate);
+  };
+  connection.createDataChannel('probe');
+  await connection.setLocalDescription(await connection.createOffer());
+  await gathered;
+  connection.close();
+  return udp;
+})()`;
+
+test('WebRTC in the render browser gathers no UDP candidate, so a STUN server at an IP address is never reached', async () => {
+  const browser = await chromium.launch(LAUNCH_OPTIONS);
+  try {
+    const page = await browser.newPage();
+    const udp: unknown = await page.evaluate(UDP_CANDIDATES);
+    expect(udp).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('a font that fails to load fails the render with the font’s name', async () => {
   const { renderer } = setup();
   const face = (family: string, sha: string) =>
@@ -201,12 +259,10 @@ test('Chrome’s report of the fonts that drew each block: a fallback is an erro
   const { renderer } = setup();
   try {
     // Nunito has no Bangla: Chrome draws the Bangla with a system font.
-    const latinOnly = plain(
-      '<p>Latin text</p><h1 lang="bn">বাংলা লেখা</h1>',
-      `<style>@font-face { font-family: 'Nunito'; src: url(${PAGE_ORIGIN}/font/${String(NUNITO_400)}) format('woff2'); }
-        p, h1 { font-family: 'Nunito'; font-weight: 400; }</style>`,
+    const fellBack = await render(
+      renderer,
+      inNunito('<p>Latin text</p><h1 lang="bn">বাংলা লেখা</h1>'),
     );
-    const fellBack = await render(renderer, latinOnly);
     // One system font or more drew the Bangla, and only there.
     expect(fellBack.errors.length).toBeGreaterThan(0);
     for (const error of fellBack.errors) {
@@ -260,11 +316,15 @@ test('a browser crash is retried once in a new browser', async () => {
     },
   });
   try {
-    const busy = plain(
+    // Its text is set in one of the page's own fonts, so the render that succeeds has no font error either.
+    const busy = inNunito(
       '<p>Slow</p><script>const t = Date.now(); while (Date.now() - t < 3000) {}</script>',
     );
     const result = await render(renderer, busy);
     expect(result.errors).toEqual([]);
+    expect(result.fonts).toEqual([
+      { block: 'p', fonts: [expect.objectContaining({ family: 'Nunito', custom: true })] },
+    ]);
     expect(launched).toHaveLength(2);
   } finally {
     await renderer.close();

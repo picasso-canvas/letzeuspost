@@ -37,6 +37,15 @@ describe('the fixed flags (§08 Chrome in Docker)', () => {
     expect(LAUNCH_OPTIONS.headless).toBe(true);
   });
 
+  it('lets WebRTC send no UDP outside the proxy, so a STUN server at an IP address can’t be reached', () => {
+    expect(CHROMIUM_ARGS).toEqual(
+      expect.arrayContaining([
+        '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+        '--webrtc-ip-handling-policy=disable_non_proxied_udp',
+      ]),
+    );
+  });
+
   it.each(SIZE_NAMES)(
     'opens a %s page at its pixel size, at 1x, the same way every time',
     (size) => {

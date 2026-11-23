@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fallbacks, fontLoadFailure, textBlocks, type DomNode } from './fonts.ts';
+import { fallbacks, fontLoadFailure, manifestFamily, textBlocks, type DomNode } from './fonts.ts';
 
 let next = 1;
 const text = (value: string): DomNode => ({ nodeId: next++, nodeType: 3, nodeValue: value });
@@ -88,6 +88,25 @@ describe('fallbacks: a font the page didn’t ask for is an error', () => {
       fallbacks([{ block: 'p', fonts: [{ family: 'Nunito', custom: true, glyphs: 12 }] }]),
     ).toEqual([]);
     expect(fallbacks([])).toEqual([]);
+  });
+});
+
+describe('manifestFamily: a web font named as the manifest names it, not by its file’s own name', () => {
+  const families = ['Nunito', 'Hind Siliguri', 'Baloo 2', 'Baloo Da 2', 'Bagel Fat One'];
+
+  it('drops the weight the file’s name table adds (what Chrome reports, as in CI run 45242681331)', () => {
+    expect(manifestFamily('Nunito ExtraLight', families)).toBe('Nunito');
+    expect(manifestFamily('Hind Siliguri Light', families)).toBe('Hind Siliguri');
+    expect(manifestFamily('Hind Siliguri', families)).toBe('Hind Siliguri');
+    expect(manifestFamily('Baloo Da 2 ExtraBold', families)).toBe('Baloo Da 2');
+    expect(manifestFamily('Baloo 2 SemiBold', families)).toBe('Baloo 2');
+  });
+
+  it('keeps the name of a font the manifest doesn’t have, even one that starts like a manifest family', () => {
+    expect(manifestFamily('Nunito Sans', families)).toBe('Nunito Sans');
+    expect(manifestFamily('Brand Display Bold', families)).toBe('Brand Display Bold');
+    expect(manifestFamily('NunitoExtraLight', families)).toBe('NunitoExtraLight');
+    expect(manifestFamily('Nunito', [])).toBe('Nunito');
   });
 });
 
