@@ -1,9 +1,11 @@
 // What the scoped helper promises before it ever reaches Postgres (§13 Keeping workspaces apart, #71). Nothing here
 // connects: pg's pool opens a connection only for a query, and every case below is refused before one.
+import { Duplex } from 'node:stream';
+import type pg from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as authModule from './auth.ts';
 import { authUrl, createAuthDb } from './auth.ts';
-import { createDb, NOBODY, scoped, type Orm } from './db.ts';
+import { createDb, dbOnPool, LIMITS, NOBODY, openPool, scoped, type Orm } from './db.ts';
 import * as index from './index.ts';
 
 const URL = 'postgres://lzp_app:unused@127.0.0.1:1/letzeuspost';
@@ -61,6 +63,81 @@ describe('db.forWorkspace(ctx)', () => {
     expect(() =>
       db.forWorkspace({ workspaceId: '019a6c3e-8f2b-7c4d-9e1f-0123456789ab' }),
     ).not.toThrow();
+  });
+});
+
+describe('openPool(): a hung database (Cerberus on #208, #217)', () => {
+  // pg's own client over a stand-in for the network: a database that takes the connection and then answers nothing,
+  // or answers the startup (AuthenticationOk, ReadyForQuery) and then no query. db.int.test.ts runs against Postgres.
+  const STARTUP_ANSWER = Buffer.from([0x52, 0, 0, 0, 8, 0, 0, 0, 0, 0x5a, 0, 0, 0, 5, 0x49]);
+  const streams: Duplex[] = [];
+  const pools: pg.Pool[] = [];
+
+  function hung(pool: pg.Pool, answers: 'nothing' | 'the startup only'): pg.Pool {
+    pools.push(pool);
+    pool.options.stream = () => {
+      let started = false;
+      const stream: Duplex = new Duplex({
+        read: () => undefined,
+        write: (_chunk, _encoding, done) => {
+          if (answers === 'the startup only' && !started) stream.push(STARTUP_ANSWER);
+          started = true;
+          done();
+        },
+        final: (done) => {
+          stream.push(null);
+          done();
+        },
+      });
+      Object.assign(stream, {
+        setNoDelay: () => stream,
+        connect: () => {
+          process.nextTick(() => stream.emit('connect'));
+          return stream;
+        },
+      });
+      streams.push(stream);
+      return stream;
+    };
+    return pool;
+  }
+
+  afterEach(async () => {
+    for (const stream of streams.splice(0)) stream.destroy();
+    await Promise.all(pools.splice(0).map((pool) => pool.end()));
+  });
+
+  it('builds every pool with a connect limit and a statement limit', () => {
+    const pool = openPool(URL);
+    pools.push(pool);
+    expect(pool.options).toMatchObject({
+      connectionTimeoutMillis: LIMITS.connectMs,
+      statement_timeout: LIMITS.statementMs,
+    });
+    expect(Math.min(LIMITS.connectMs, LIMITS.statementMs, LIMITS.pingMs)).toBeGreaterThan(0);
+  });
+
+  it('gives up on a connection the database never answers, after the connect limit', async () => {
+    const pool = hung(openPool(URL, { ...LIMITS, connectMs: 50 }), 'nothing');
+    await expect(pool.query('select 1')).rejects.toThrow(/timeout/i);
+    expect(pool.totalCount).toBe(0);
+  });
+
+  it('lets a query wait for a free connection only up to the connect limit, so the queue cannot grow', async () => {
+    const pool = hung(openPool(URL, { ...LIMITS, connectMs: 50 }), 'the startup only');
+    const stuck = Array.from({ length: pool.options.max }, () =>
+      pool.query('select 1').catch(() => 'dropped'),
+    );
+    await expect(pool.query('select 1')).rejects.toThrow(/timeout/i);
+    expect(pool.waitingCount).toBe(0);
+    for (const stream of streams) stream.destroy();
+    expect(await Promise.all(stuck)).toEqual(stuck.map(() => 'dropped'));
+  });
+
+  it('gives up on a ping the database never answers, after the ping limit, and drops its connection', async () => {
+    const pool = hung(openPool(URL), 'the startup only');
+    await expect(dbOnPool(pool, { ...LIMITS, pingMs: 50 }).ping()).rejects.toThrow(/timeout/i);
+    expect(pool.totalCount).toBe(0);
   });
 });
 
