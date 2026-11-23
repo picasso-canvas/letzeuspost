@@ -6,6 +6,8 @@
 // - Print-safe only: no filter, backdrop blur or blend mode, and no image (`color-mix` and plain borders only).
 // - No sizes, margins, gaps or line-heights: the base owns geometry, type scale and safe zones (§07, not adjustable),
 //   and Bangla keeps the manifest's line-heights and balanced headings.
+// - The English kicker is uppercase and letter-spaced, as in the approved mockup; the Bangla kicker stays plain, with no
+//   case or spacing (Zeus, 2026-11-24, recorded on #335 and #352).
 // - Every colour that text sits on is one the contrast check knows (`contrast.ts`): the ground, the shape, the pill.
 // - Every switch class has a rule (§07: corners, frame, highlight, decorations, logo).
 
@@ -21,6 +23,10 @@ export const CLEAN_CSS = `
   z-index: 0;
 }
 .look-clean .kicker { color: var(--primary); }
+.look-clean:lang(en) .kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
 
 .corners-sharp { --clean-radius: var(--clean-radius-sharp); --clean-shape-radius: var(--clean-shape-radius-sharp); }
 .corners-soft { --clean-radius: var(--clean-radius-soft); --clean-shape-radius: var(--clean-shape-radius-soft); }
