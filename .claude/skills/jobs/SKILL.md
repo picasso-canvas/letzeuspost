@@ -78,8 +78,8 @@ renders or emails** ([§13, Done when](../../../docs/plan/13-architecture.md#don
 - Integration tests against real Postgres ([§17, The layers](../../../docs/plan/17-testing.md#the-layers)): the job
   run twice leaves no duplicates, and the job killed halfway and retried leaves no duplicate posts, renders or emails.
 - A tenancy test tries the job with workspace B's ids (the `tenant-isolation` skill).
-- Integration and tenancy tests run in CI, or with `pnpm check:services` when dispatch has handed you the ports. **CI
-  is what counts** ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
+- Integration and tenancy tests run in CI's `services` job: you get no service containers or ports, and a failure
+  there comes back to you as a finding. **CI is what counts** ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
 
 ## What reviewers check
 
