@@ -77,6 +77,7 @@ describe('servedHtml: the page’s asset addresses point at the page’s own ori
     expect(before).toContain('lzp-asset:');
     expect(served).not.toContain('lzp-asset:');
     expect(served).toContain(`src="${PAGE_ORIGIN}/image/logo_light_1"`);
+    expect(served).toContain(`href="${PAGE_ORIGIN}/image/logo_light_1"`);
     expect(styleOf(served)).toMatch(new RegExp(`url\\(${PAGE_ORIGIN}/font/[0-9a-f]{64}\\)`));
 
     const policy = policyOf(served);
