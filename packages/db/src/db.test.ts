@@ -1,5 +1,6 @@
 // What the scoped helper promises before it ever reaches Postgres (§13 Keeping workspaces apart, #71). Nothing here
-// connects: pg's pool opens a connection only for a query, and every case below is refused before one.
+// connects: pg's pool opens a connection only for a query, and every case below is refused before one, or talks to a
+// stand-in stream (the hung database).
 import { Duplex } from 'node:stream';
 import type pg from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
