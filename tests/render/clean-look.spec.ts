@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import { chromium, expect, test, type Browser } from '@playwright/test';
 import type { Post, SizeName } from '../../packages/core/src/index.ts';
 import { createRenderer, type RenderAsset } from '../../packages/render/src/browser/index.ts';
@@ -12,7 +13,8 @@ import { renderPostSlide, slidePage } from './slides.ts';
 // The Clean look in a real Chromium (#335; §07 The four looks, §08 Looks in the renderer and The fit check). These run
 // in CI's services job, the `render` Playwright project: a `text` slide in the Clean look at every size, in English
 // and Bangla, through the page runner and the fit script, and the look's colours and Bangla rules as Chrome computes
-// them.
+// them. Each drawn slide is kept as `clean-<lang>-<size>.png` in the test's output folder, which CI uploads as the
+// `render-output` artifact for Iris's review.
 
 const fonts = FONT_MANIFEST.looks.clean;
 if (fonts === undefined) throw new Error('no Clean fonts in the manifest');
@@ -60,6 +62,7 @@ test.describe('a text slide in the Clean look fits', () => {
             drawn.render.fonts.flatMap((block) => block.fonts.map((used) => used.family)),
           );
           expect([...families]).toEqual(lang === 'en' ? ['Nunito'] : ['Hind Siliguri']);
+          await writeFile(test.info().outputPath(`clean-${lang}-${size}.png`), drawn.png);
         } finally {
           await renderer.close();
         }
@@ -80,7 +83,7 @@ type Computed = {
   ground: string;
   title: { lineHeight: number; fontSize: number; wrap: string; colour: string };
   body: { lineHeight: number; fontSize: number };
-  kicker: string;
+  kicker: { colour: string; transform: string; spacing: string };
   mark: { line: string; colour: string; decoration: string };
 };
 
@@ -95,6 +98,7 @@ async function computed(lang: 'en' | 'bn', size: SizeName): Promise<Computed> {
       const title = style('.title');
       const body = style('.body');
       const mark = style('mark.hl');
+      const kicker = style('.kicker');
       return {
         ground: getComputedStyle(document.body).backgroundColor,
         title: {
@@ -104,7 +108,7 @@ async function computed(lang: 'en' | 'bn', size: SizeName): Promise<Computed> {
           colour: title.color,
         },
         body: { lineHeight: parseFloat(body.lineHeight), fontSize: parseFloat(body.fontSize) },
-        kicker: style('.kicker').color,
+        kicker: { colour: kicker.color, transform: kicker.textTransform, spacing: kicker.letterSpacing },
         mark: { line: mark.textDecorationLine, colour: mark.color, decoration: mark.textDecorationColor },
       };
     })()`);
@@ -137,10 +141,22 @@ test.describe('the Clean look as Chrome draws it', () => {
     const page = await computed('en', 'portrait');
     expectColour(page.ground, cleanTints(KIT).ground);
     expectColour(page.title.colour, KIT.colors.ink);
-    expectColour(page.kicker, KIT.colors.primary);
+    expectColour(page.kicker.colour, KIT.colors.primary);
     expect(page.mark.line).toBe('underline');
     expectColour(page.mark.colour, KIT.colors.primary);
     expectColour(page.mark.decoration, KIT.colors.primary);
+  });
+
+  test('the English kicker is uppercase and letter-spaced, as in the approved mockup', async () => {
+    const { kicker } = await computed('en', 'portrait');
+    expect(kicker.transform).toBe('uppercase');
+    expect(parseFloat(kicker.spacing)).toBeGreaterThan(0);
+  });
+
+  test('the Bangla kicker stays plain: no uppercase, no letter-spacing', async () => {
+    const { kicker } = await computed('bn', 'portrait');
+    expect(kicker.transform).toBe('none');
+    expect(['normal', '0px']).toContain(kicker.spacing);
   });
 
   for (const size of SIZE_NAMES)

@@ -129,10 +129,27 @@ describe('Bangla in the Clean look (§07, §08)', () => {
     expect(CLEAN_CSS).not.toMatch(/text-wrap\s*:\s*(?!balance|pretty)/);
   });
 
-  it('has no letter-spacing, uppercase or italic', () => {
-    expect(CLEAN_CSS).not.toMatch(/letter-spacing|word-spacing/i);
-    expect(CLEAN_CSS).not.toMatch(/uppercase|capitalize|text-transform/i);
+  it('sets letter-spacing and case only on the English kicker, so Bangla keeps neither, and nothing is italic', () => {
+    const cased = [...CLEAN_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, , body]) =>
+      /letter-spacing|word-spacing|text-transform|uppercase|capitalize/i.test(body ?? ''),
+    );
+    expect(cased.length).toBeGreaterThan(0);
+    for (const [, list] of cased) {
+      for (const selector of (list ?? '').split(',')) {
+        expect(selector.trim()).toMatch(/:lang\(en\) \.kicker$/);
+      }
+    }
+    expect(CLEAN_CSS).not.toMatch(/:lang\(bn\)/);
     expect(CLEAN_CSS).not.toMatch(/italic|oblique/i);
+  });
+});
+
+describe('the English kicker (the approved Clean mockup; Zeus, 2026-11-24, on #335 and #352)', () => {
+  it('is uppercase and letter-spaced', () => {
+    const kicker = declarationsFor(CLEAN_CSS, /:lang\(en\) \.kicker$/);
+    expect(kicker).toMatch(/text-transform:\s*uppercase/);
+    const spacing = /letter-spacing:\s*([\d.]+)em/.exec(kicker)?.[1];
+    expect(Number(spacing)).toBeGreaterThan(0);
   });
 });
 
