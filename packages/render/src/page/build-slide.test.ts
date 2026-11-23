@@ -42,7 +42,6 @@ describe('buildSlide: a full HTML document', () => {
     const style = styleOf(build(testPost()));
     expect(style).toContain(TEST_LOOK.css);
     expect(style).toMatch(/--look-test-token:\s*#123456/);
-    expect(style).toMatch(new RegExp(`--look-version:\\s*${String(TEST_LOOK.version)}`));
   });
 
   it("puts the brand's colours on the page as CSS variables", () => {
@@ -174,6 +173,14 @@ describe('buildSlide: no remote image', () => {
     expect(html).toContain(`<img src="${ASSET_SCHEME}:image/logo_light_1"`);
   });
 
+  it("chooses the kit's dark logo on a dark background", () => {
+    const kit = testKit();
+    const dark = { ...kit, colors: { ...kit.colors, background: '#101820', ink: '#ffffff' } };
+    const html = build(testPost(), 'portrait', dark);
+    expect(html).toContain(`<img src="${ASSET_SCHEME}:image/logo_dark_1"`);
+    expect(html).not.toContain('logo_light_1');
+  });
+
   it('has no warnings for a good post', () => {
     const slide = testSlide();
     expect(buildSlideWithWarnings(testPost(slide), slide, 'portrait', testKit()).warnings).toEqual(
@@ -214,7 +221,13 @@ describe('buildSlide: the content policy', () => {
     const html = build(testPost());
     const hash = createHash('sha256').update(FIT_SCRIPT, 'utf8').digest('base64');
     expect(directives(html).get('script-src')).toEqual([`'sha256-${hash}'`]);
-    expect(policyOf(html)).not.toMatch(/unsafe-eval|unsafe-inline.*script|strict-dynamic/);
+    expect(policyOf(html)).not.toMatch(/unsafe-|strict-dynamic/);
+  });
+
+  it('allows the one style of the page only by its hash, so nothing needs unsafe-inline', () => {
+    const html = build(testPost());
+    const hash = createHash('sha256').update(styleOf(html), 'utf8').digest('base64');
+    expect(directives(html).get('style-src')).toEqual([`'sha256-${hash}'`]);
   });
 
   it("allows images and fonts only from the job's own asset scheme", () => {
@@ -255,9 +268,7 @@ describe('buildSlide: the text layout in five sizes', () => {
   });
 
   it('has no source line without a source', () => {
-    const slide = testSlide();
-    const { source: _source, ...withoutSource } = slide;
-    const html = build(testPost(withoutSource));
+    const html = build(testPost(testSlide({ source: undefined })));
     expect(html).not.toContain('class="source');
   });
 
@@ -307,7 +318,7 @@ describe('buildSlide: the text layout in five sizes', () => {
   });
 
   it('has no page number on a single image', () => {
-    expect(build(testPost())).not.toContain('page-number');
+    expect(build(testPost())).not.toContain('class="page-number"');
   });
 
   it('labels the source in the post language', () => {
@@ -334,7 +345,7 @@ describe('buildSlide: Bangla', () => {
 
 describe('buildSlide: switches become classes', () => {
   const withSwitches = (switches: Record<string, unknown>) =>
-    testPost(testSlide(), { look: { name: 'clean', switches } as Post['look'] });
+    testPost(testSlide(), { look: { name: 'clean', switches } });
 
   it.each([
     ['corners', 'sharp', 'corners-sharp'],

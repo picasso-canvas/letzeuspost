@@ -12,3 +12,20 @@ export {
   type FontManifest,
   type FontSubset,
 } from './fonts/manifest.ts';
+export {
+  SIZES,
+  SIZE_NAMES,
+  SMALL_PRINT_PX,
+  type Edges,
+  type SizeName,
+  type SizeSpec,
+} from './sizes.ts';
+export {
+  LookDefinitionSchema,
+  RenderKitSchema,
+  type LookDefinition,
+  type RenderKit,
+} from './kit.ts';
+export { buildSlide, buildSlideWithWarnings, type BuildResult } from './page/build-slide.ts';
+export { ASSET_SCHEME, assetUrl, type AssetKind, type BuildWarning } from './page/assets.ts';
+export { registerLook } from './page/looks.ts';
