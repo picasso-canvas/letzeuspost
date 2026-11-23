@@ -112,6 +112,7 @@ interface FakeRun {
 const WORKFLOW: Record<string, string> = {
   'gallery-screenshots': '.github/workflows/design.yml',
   'e2e-screenshots': '.github/workflows/services.yml',
+  'render-output': '.github/workflows/services.yml',
 };
 
 /**
@@ -191,6 +192,21 @@ describe('collectScreenshots', () => {
     expect(text).toContain('  components-sheet--open-dark.png');
     expect(text).toContain('e2e-screenshots: none on ddddddd.');
     expect(gh.fetched).toEqual([120]);
+  });
+
+  // #335: the render engine's slides are screens for Iris too (§21), from the services workflow's render-output.
+  it('collects the render output beside the end-to-end screens', () => {
+    const out = into();
+    const gh = fakeGitHub(
+      { 7: { artifacts: ['e2e-screenshots', 'render-output'] } },
+      {
+        70: zip([{ name: 'home-light.png', data: PNG }]),
+        71: zip([{ name: 'render-output/clean-en-portrait.png', data: PNG }]),
+      },
+    );
+    const text = collectScreenshots(SHA, out, gh.deps);
+    expect(readdirSync(join(out, 'render-output'))).toEqual(['clean-en-portrait.png']);
+    expect(text).toContain('render-output: run 7 (run7), 1 in screenshots/render-output/');
   });
 
   it('keeps only plainly named, intact, regular PNG entries within the limits, and says why each other one was dropped', () => {
@@ -581,7 +597,7 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     );
   });
 
-  // Argus F1 on #220: once both artifacts are found, listing stops without looking at the clock, so a slow listing
+  // Argus F1 on #220: once every artifact is found, listing stops without looking at the clock, so a slow listing
   // ends as "not fetched" for each artifact (the step is past its limit), never as a failed listing.
   it('stops listing once both artifacts are found, even past the time limit', () => {
     const out = into();
@@ -589,7 +605,7 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     const github = fakeGitHub(
       {
         49: { artifacts: ['gallery-screenshots'] },
-        50: { artifacts: ['e2e-screenshots'] },
+        50: { artifacts: ['e2e-screenshots', 'render-output'] },
         51: { artifacts: ['gallery-screenshots'] },
       },
       {},
@@ -606,6 +622,9 @@ describe('collectScreenshots: what a hostile artifact can cost', () => {
     );
     expect(text).toContain(
       "e2e-screenshots: not fetched: the screenshot step's 10-minute limit ran out.",
+    );
+    expect(text).toContain(
+      "render-output: not fetched: the screenshot step's 10-minute limit ran out.",
     );
     expect(github.calls.some((c) => c.includes('actions/runs/49/artifacts'))).toBe(false);
   });

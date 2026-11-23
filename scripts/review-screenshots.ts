@@ -15,10 +15,14 @@ import { crc32, inflateRawSync } from 'node:zlib';
 import { REPO } from './merge-gate/collect.ts';
 import { safeName } from './lib/safe-name.ts';
 
-/** Each artifact with screenshots, and the workflow that uploads it (design.yml's gallery, services.yml's app). */
+/**
+ * Each artifact with screenshots, and the workflow that uploads it (design.yml's gallery, services.yml's app and the
+ * render engine's slides, which Iris judges as the post looks, §21).
+ */
 export const SCREENSHOT_ARTIFACTS = {
   'gallery-screenshots': '.github/workflows/design.yml',
   'e2e-screenshots': '.github/workflows/services.yml',
+  'render-output': '.github/workflows/services.yml',
 } as const;
 type ArtifactName = keyof typeof SCREENSHOT_ARTIFACTS;
 export const MAX_ARTIFACT_BYTES = 200 * 1024 * 1024;
