@@ -108,15 +108,47 @@ describe('openPool(): a hung database (Cerberus on #208, #217)', () => {
     await Promise.all(pools.splice(0).map((pool) => pool.end()));
   });
 
+  /** The startup options the pool's connections ask Postgres for, and every one of them (pg reads the last). */
+  const startupOptions = (pool: pg.Pool) =>
+    new globalThis.URL(pool.options.connectionString ?? '').searchParams.getAll('options');
+  const asDefault = `-c statement_timeout=${String(LIMITS.statementMs)}`;
+
   it('builds every pool with a connect limit and a statement limit', () => {
     const pool = openPool(URL);
     pools.push(pool);
-    expect(pool.options).toMatchObject({
-      connectionTimeoutMillis: LIMITS.connectMs,
-      statement_timeout: LIMITS.statementMs,
-    });
+    expect(pool.options).toMatchObject({ connectionTimeoutMillis: LIMITS.connectMs });
+    expect(startupOptions(pool)).toEqual([asDefault]);
     expect(Math.min(LIMITS.connectMs, LIMITS.statementMs, LIMITS.pingMs)).toBeGreaterThan(0);
   });
+
+  // CI F1 on #217: Postgres applies the startup options in order, then each startup parameter, so the default goes
+  // first in the options and never as a parameter of its own; the auth handle's role, added after, keeps its place.
+  it.each([
+    [
+      'in its options',
+      'options=-c%20statement_timeout%3D4321',
+      `${asDefault} -c statement_timeout=4321`,
+    ],
+    [
+      'in options the auth handle added its role to',
+      'options=-c%20statement_timeout%3D4321%20-c%20role%3Dlzp_auth',
+      `${asDefault} -c statement_timeout=4321 -c role=lzp_auth`,
+    ],
+    ['as a parameter of its own', 'statement_timeout=4321', asDefault],
+  ])(
+    'lets a statement limit already in the URL %s win over the default',
+    (_label, query, options) => {
+      const pool = openPool(`${URL}?${query}&sslmode=disable`);
+      pools.push(pool);
+      expect(pool.options).not.toHaveProperty('statement_timeout');
+      expect(startupOptions(pool)).toEqual([options]);
+      const url = new globalThis.URL(pool.options.connectionString ?? '');
+      expect(url.searchParams.get('sslmode')).toBe('disable');
+      expect(`${url.username}:${url.password}@${url.host}${url.pathname}`).toBe(
+        'lzp_app:unused@127.0.0.1:1/letzeuspost',
+      );
+    },
+  );
 
   it('gives up on a connection the database never answers, after the connect limit', async () => {
     const pool = hung(openPool(URL, { ...LIMITS, connectMs: 50 }), 'nothing');

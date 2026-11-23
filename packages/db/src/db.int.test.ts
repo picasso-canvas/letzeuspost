@@ -75,3 +75,31 @@ describe('the pool openPool builds, against Postgres', () => {
     expect(inside).toBe(workspaceId);
   });
 });
+
+describe("the pool's statement limit beside DATABASE_URL's own (CI F1 on #217)", () => {
+  /** The statement limit a connection of a pool on `url` runs with. */
+  async function statementLimit(url: string): Promise<string | undefined> {
+    const own = openPool(url);
+    try {
+      const { rows } = await own.query<{ limit: string }>(
+        "select current_setting('statement_timeout') as limit",
+      );
+      return rows[0]?.limit;
+    } finally {
+      await own.end();
+    }
+  }
+
+  it('gives a connection the default when DATABASE_URL sets none', async () => {
+    expect(await statementLimit(appUrl)).toBe(`${String(LIMITS.statementMs / 1000)}s`);
+  });
+
+  it.each([
+    ['in its startup options', 'options', '-c statement_timeout=4321'],
+    ['as a parameter of its own', 'statement_timeout', '4321'],
+  ])('keeps a statement limit DATABASE_URL sets %s', async (_label, name, value) => {
+    const url = new URL(appUrl);
+    url.searchParams.set(name, value);
+    expect(await statementLimit(url.href)).toBe('4321ms');
+  });
+});
