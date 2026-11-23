@@ -110,7 +110,8 @@ export const LIMITS: Limits = { connectMs: 5_000, statementMs: 10_000, pingMs: 3
  * A pool on `url`, with `limits`, so a database that hangs can't pile up connections or waiting queries:
  * - opening a connection, or waiting for a free one, gives up after `connectMs`;
  * - Postgres cancels a statement after `statementMs`. The cancel comes back as the query's error, so the connection
- *   goes back to the pool in order: a transaction rolls back first, as for any other error.
+ *   goes back to the pool in order: a transaction rolls back first, as for any other error. It is a default: a statement
+ *   limit `url` sets already wins (`withStatementLimit`).
  * The pool sets no client-side `query_timeout`: pg would refuse the query but leave its connection waiting for the
  * answer, and the pool hands that connection, mid-query, to the next request (still inside a transaction that never
  * rolled back, which the next request's commit would commit); Drizzle never gives back one whose `begin` timed out.
@@ -120,14 +121,27 @@ export const LIMITS: Limits = { connectMs: 5_000, statementMs: 10_000, pingMs: 3
  */
 export function openPool(url: string, limits: Limits = LIMITS): pg.Pool {
   const pool = new pg.Pool({
-    connectionString: url,
+    connectionString: withStatementLimit(url, limits.statementMs),
     connectionTimeoutMillis: limits.connectMs,
-    statement_timeout: limits.statementMs,
   });
   pool.on('error', (error) => {
     console.error(`database: an idle connection failed: ${error.message}`);
   });
   return pool;
+}
+
+/**
+ * `url` with the statement limit `ms` at the front of its startup options (CI F1 on #217). Postgres applies the
+ * startup options in order, then each startup parameter, so a limit the URL sets itself, in its options or as a
+ * `statement_timeout` parameter (pg sends that one as a parameter), comes later and wins; so does any other setting
+ * there, the auth handle's role among them (auth.ts). pg reads only the last `options` in a URL, so that is the one kept.
+ */
+function withStatementLimit(url: string, ms: number): string {
+  const withLimit = new URL(url);
+  const given = withLimit.searchParams.getAll('options').at(-1);
+  const limit = `-c statement_timeout=${String(ms)}`;
+  withLimit.searchParams.set('options', given === undefined ? limit : `${limit} ${given}`);
+  return withLimit.href;
 }
 
 /**

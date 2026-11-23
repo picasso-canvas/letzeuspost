@@ -122,7 +122,8 @@ describe('openPool(): a hung database (Cerberus on #208, #217)', () => {
   });
 
   // CI F1 on #217: Postgres applies the startup options in order, then each startup parameter, so the default goes
-  // first in the options and never as a parameter of its own; the auth handle's role, added after, keeps its place.
+  // first in the options and never as a parameter of its own; every setting the URL gives keeps its place after it
+  // (the auth handle's role among them: rls.int.test.ts).
   it.each([
     [
       'in its options',
@@ -130,9 +131,14 @@ describe('openPool(): a hung database (Cerberus on #208, #217)', () => {
       `${asDefault} -c statement_timeout=4321`,
     ],
     [
-      'in options the auth handle added its role to',
-      'options=-c%20statement_timeout%3D4321%20-c%20role%3Dlzp_auth',
-      `${asDefault} -c statement_timeout=4321 -c role=lzp_auth`,
+      'in its options, beside another setting',
+      'options=-c%20statement_timeout%3D4321%20-c%20lock_timeout%3D1000',
+      `${asDefault} -c statement_timeout=4321 -c lock_timeout=1000`,
+    ],
+    [
+      'in the last of two options, the one pg reads',
+      'options=-c%20lock_timeout%3D1000&options=-c%20statement_timeout%3D4321',
+      `${asDefault} -c statement_timeout=4321`,
     ],
     ['as a parameter of its own', 'statement_timeout=4321', asDefault],
   ])(
@@ -143,6 +149,9 @@ describe('openPool(): a hung database (Cerberus on #208, #217)', () => {
       expect(pool.options).not.toHaveProperty('statement_timeout');
       expect(startupOptions(pool)).toEqual([options]);
       const url = new globalThis.URL(pool.options.connectionString ?? '');
+      expect(url.searchParams.get('statement_timeout')).toBe(
+        query.startsWith('statement_timeout') ? '4321' : null,
+      );
       expect(url.searchParams.get('sslmode')).toBe('disable');
       expect(`${url.username}:${url.password}@${url.host}${url.pathname}`).toBe(
         'lzp_app:unused@127.0.0.1:1/letzeuspost',
