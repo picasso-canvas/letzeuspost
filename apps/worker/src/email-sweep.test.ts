@@ -1,11 +1,17 @@
 import { randomUUIDv7 } from 'node:crypto';
-import type { Db, Scoped } from '@lzp/db';
-import { describe, expect, it } from 'vitest';
-import { emailSweep } from './email-sweep.ts';
+import { SENDING_STALE_AFTER_SECONDS, type Db, type Scoped } from '@lzp/db';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import {
+  EMAIL_SWEEP_EVERY_MS,
+  emailSweep,
+  scheduleEmailSweep,
+  type EmailSweep,
+} from './email-sweep.ts';
 import type { LogFields } from './log.ts';
 
-const jobId = randomUUIDv7();
-const job = { jobId };
+const runId = randomUUIDv7();
+const job = { runId };
 
 /** A database whose scoped handles say which workspace they were opened for. */
 function fakeDb() {
@@ -58,9 +64,9 @@ describe('the email outbox sweep (#210)', () => {
     expect(lines).toEqual([
       ...(rows.get(a) ?? []).map((emailMessageId) => ({
         event: 'email.interrupted',
-        fields: { jobId, workspaceId: a, emailMessageId },
+        fields: { runId, workspaceId: a, emailMessageId },
       })),
-      { event: 'email.swept', fields: { jobId, workspaces: 2, interrupted: 2 } },
+      { event: 'email.swept', fields: { runId, workspaces: 2, interrupted: 2 } },
     ]);
   });
 
@@ -87,5 +93,108 @@ describe('the email outbox sweep (#210)', () => {
         log: () => undefined,
       })(job),
     ).rejects.toThrow('Connection terminated unexpectedly');
+  });
+});
+
+describe("the email sweep's timer (#210, Zeus's option D on #322)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A sweep whose runs the test ends: each call waits until `finish` is called. */
+  function heldSweep() {
+    const runs: string[] = [];
+    const pending: { resolve: () => void; reject: (error: Error) => void }[] = [];
+    const sweep: EmailSweep = ({ runId: id }) => {
+      runs.push(id);
+      return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+    };
+    return { sweep, runs, pending };
+  }
+
+  it('runs the sweep every EMAIL_SWEEP_EVERY_MS, each run named by a new id, and not at once', async () => {
+    const runs: string[] = [];
+    const timer = scheduleEmailSweep(
+      ({ runId: id }) => {
+        runs.push(id);
+        return Promise.resolve();
+      },
+      () => undefined,
+    );
+
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS - 1);
+    expect(runs).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runs).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
+    expect(runs).toHaveLength(2);
+    expect(new Set(runs).size).toBe(2);
+    for (const id of runs) expect(z.uuidv7().safeParse(id).success).toBe(true);
+    await timer.stop();
+  });
+
+  it('sweeps often enough to catch a row soon after its staleness window', () => {
+    expect(EMAIL_SWEEP_EVERY_MS).toBeGreaterThan(0);
+    expect(EMAIL_SWEEP_EVERY_MS).toBeLessThan(SENDING_STALE_AFTER_SECONDS * 1000);
+  });
+
+  it('never starts a run while the last one is still going', async () => {
+    const { sweep, runs, pending } = heldSweep();
+    const timer = scheduleEmailSweep(sweep, () => undefined);
+
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS * 3);
+    expect(runs).toHaveLength(1);
+    pending[0]?.resolve();
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
+    expect(runs).toHaveLength(2);
+    pending[1]?.resolve();
+    await timer.stop();
+  });
+
+  it('logs a failed run by its error name only, and the next run still comes', async () => {
+    const { sweep, runs, pending } = heldSweep();
+    const lines: { event: string; fields: LogFields }[] = [];
+    const timer = scheduleEmailSweep(sweep, (event, fields = {}) => lines.push({ event, fields }));
+
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
+    pending[0]?.reject(new TypeError('relation "email_message" for nadia@agency.test'));
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
+
+    expect(lines).toEqual([
+      { event: 'email.sweep-failed', fields: { runId: runs[0], error: 'TypeError' } },
+    ]);
+    expect(runs).toHaveLength(2);
+    pending[1]?.resolve();
+    await timer.stop();
+  });
+
+  it('stops: no run after stop, and stop waits for the run in flight', async () => {
+    const { sweep, runs, pending } = heldSweep();
+    const timer = scheduleEmailSweep(sweep, () => undefined);
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
+
+    let stopped = false;
+    const stopping = timer.stop().then(() => {
+      stopped = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stopped).toBe(false);
+    pending[0]?.resolve();
+    await stopping;
+    expect(stopped).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS * 3);
+    expect(runs).toHaveLength(1);
+  });
+
+  it('stops at once when no run is going', async () => {
+    const { sweep, runs } = heldSweep();
+    const timer = scheduleEmailSweep(sweep, () => undefined);
+    await timer.stop();
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS * 3);
+    expect(runs).toHaveLength(0);
   });
 });

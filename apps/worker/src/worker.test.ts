@@ -10,6 +10,8 @@ const seen = vi.hoisted(() => ({
   loaded: [] as string[],
   closed: [] as string[],
   openedWith: [] as string[],
+  swept: [] as string[],
+  sweepHeld: undefined as Promise<string[]> | undefined,
 }));
 
 vi.mock('@lzp/db', () => ({
@@ -29,6 +31,10 @@ vi.mock('@lzp/db', () => ({
     work: (queue: string, handler: unknown) => {
       seen.handlers.set(queue, handler);
       return Promise.resolve();
+    },
+    failedWorkspaces: (queue: string) => {
+      seen.swept.push(queue);
+      return seen.sweepHeld ?? Promise.resolve([]);
     },
   }),
 }));
@@ -72,10 +78,13 @@ beforeEach(() => {
   seen.loaded.length = 0;
   seen.closed.length = 0;
   seen.openedWith.length = 0;
+  seen.swept.length = 0;
+  seen.sweepHeld = undefined;
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true); // the worker's log lines
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -110,5 +119,40 @@ describe('startWorker', () => {
     const worker = await startWorker(env);
     await worker.stop();
     expect(seen.closed).toEqual(['jobs', 'account emails', 'db']);
+  });
+
+  it('sweeps the email outbox on a timer, with no queue (#210)', async () => {
+    vi.useFakeTimers();
+    const { startWorker } = await import('./worker.ts');
+    const { EMAIL_SWEEP_EVERY_MS } = await import('./email-sweep.ts');
+    const worker = await startWorker(env);
+    expect(seen.swept).toEqual([]);
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
+    expect(seen.swept).toEqual(['email']);
+    expect([...seen.handlers.keys()]).toEqual(['email', 'account-email']);
+    await worker.stop();
+  });
+
+  it('stops the sweep first on stop: a run in flight ends before the queue and the database close', async () => {
+    vi.useFakeTimers();
+    const { startWorker } = await import('./worker.ts');
+    const { EMAIL_SWEEP_EVERY_MS } = await import('./email-sweep.ts');
+    let finish: (workspaces: string[]) => void = () => undefined;
+    seen.sweepHeld = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const worker = await startWorker(env);
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
+    expect(seen.swept).toEqual(['email']);
+
+    const stopping = worker.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen.closed).toEqual([]);
+    finish([]);
+    await stopping;
+    expect(seen.closed).toEqual(['jobs', 'account emails', 'db']);
+
+    await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS * 3);
+    expect(seen.swept).toEqual(['email']);
   });
 });
