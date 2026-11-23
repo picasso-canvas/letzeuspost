@@ -13,7 +13,7 @@ beforeAll(() => {
 
 const PNG = new Uint8Array([137, 80, 78, 71]);
 
-const result = (fit?: unknown): RenderResult & { fit?: unknown } => ({
+const result = (fit?: unknown): Omit<RenderResult, 'fit'> & { fit?: unknown } => ({
   png: PNG,
   width: 1080,
   height: 1350,

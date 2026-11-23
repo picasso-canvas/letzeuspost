@@ -12,7 +12,7 @@ import { buildFitReport, PageFitSchema, type FitReport } from './report.ts';
  * before it takes the screenshot. A type of its own, so this entry never loads Playwright (the editor loads it too).
  */
 export type FitRenderer = {
-  renderPage: (input: RenderPageInput) => Promise<RenderResult & { fit?: unknown }>;
+  renderPage: (input: RenderPageInput) => Promise<Omit<RenderResult, 'fit'> & { fit?: unknown }>;
 };
 
 export type RenderSlideInput = {
@@ -35,7 +35,7 @@ export type RenderedSlide = {
   /** What `buildSlide` left out of the page. */
   warnings: BuildWarning[];
   /** The rest of what the runner returned: the assets served and blocked, the fonts that drew each block, the errors. */
-  render: Omit<RenderResult, 'png'>;
+  render: Omit<RenderResult, 'png' | 'fit'>;
 };
 
 /**

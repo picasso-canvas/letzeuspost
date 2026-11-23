@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { z } from 'zod';
+import { PageFitSchema, type PageFit } from '../fit/report.ts';
 import { FONT_MANIFEST } from '../fonts/library.ts';
 import { loadFonts } from '../fonts/load.ts';
 import { SIZES, type SizeName } from '../sizes.ts';
@@ -79,6 +80,8 @@ export type RenderResult = {
   fonts: BlockFonts[];
   /** A font the page didn't load drew some of its text (§08 No silent fallbacks). */
   errors: FontFallback[];
+  /** What the page's fit script reported, awaited before the screenshot; none for a page without the script. */
+  fit?: PageFit;
 };
 
 export type Renderer = {
@@ -100,6 +103,21 @@ const SETTLE = `(async () => {
 })()`;
 
 const FailedFonts = z.array(z.object({ family: z.string(), weight: z.string() }));
+
+// What the page's fit script published: `window.lzpFit`, a promise `evaluate` waits for. A page without the script (any
+// page the runner is given) has none.
+const FIT = 'window.lzpFit';
+
+/** What the page's fit script reported, checked; nothing for a page without the script. */
+export function pageFit(reported: unknown): PageFit | undefined {
+  if (reported === undefined || reported === null) return undefined;
+  const parsed = PageFitSchema.safeParse(reported);
+  if (!parsed.success)
+    throw new RenderFailure('The page’s fit result is not one the fit script makes', {
+      cause: parsed.error,
+    });
+  return parsed.data;
+}
 
 /** How long a render waits for its context to close after it ends. */
 const CLOSE_MS = 2_000;
@@ -234,6 +252,9 @@ async function draw(
   const failed = fontLoadFailure(FailedFonts.parse(await page.evaluate(SETTLE)));
   if (failed !== undefined) throw new RenderFailure(failed);
 
+  // The fit script has set `--k` by now: the screenshot is drawn at the scale it picked.
+  const fit = pageFit(await page.evaluate(FIT));
+
   const { width, height } = SIZES[input.size];
   const png = await page.screenshot({
     type: 'png',
@@ -251,6 +272,7 @@ async function draw(
     blocked: facts.blocked,
     fonts,
     errors: fallbacks(fonts),
+    ...(fit === undefined ? {} : { fit }),
   };
 }
 
