@@ -12,11 +12,13 @@
 //   session's active workspace, and the person themself. Nothing else, and it writes nothing there: writes go through
 //   `db.forWorkspace(ctx)`.
 // - Sign-in's own tables (#77), lzp_auth's alone: the account emails' outbox (`queueAccountEmail`,
-//   `accountEmailOutbox`) and the rate-limit log (`hitRateLimit`).
+//   `accountEmailOutbox`) and the rate-limit log (`hitRateLimit`), and their scheduled prune (`pruneRateLimitHits`,
+//   `pruneAccountEmails`, #323).
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type pg from 'pg';
 import { checkedId, NOBODY, openPool, scoped, type Orm, type Scoped } from './db.ts';
+import { RATE_LIMIT_LOCK, RATE_LIMIT_LONGEST_WINDOW_SECONDS } from './jobs/auth-prune.ts';
 import * as schema from './schema/accounts.ts';
 import { rateLimitHit } from './schema/auth-only.ts';
 
@@ -28,6 +30,13 @@ export {
   queueAccountEmail,
   type NewAccountEmail,
 } from './jobs/account-email-outbox.ts';
+export {
+  ACCOUNT_EMAIL_KEEP_DAYS,
+  pruneAccountEmails,
+  pruneRateLimitHits,
+  RATE_LIMIT_LONGEST_WINDOW_SECONDS,
+  type PruneOptions,
+} from './jobs/auth-prune.ts';
 export type { Orm, Scoped, Tx } from './db.ts';
 
 /** The signed-in person a call acts for, from the verified session. */
@@ -40,26 +49,31 @@ export interface AuthDb {
   forUser: (ctx: UserCtx) => Scoped;
   /**
    * Counts a request in `bucket` if it holds fewer than `limit` requests from the last `windowSeconds`, and says
-   * whether it did: false means refused (§13's rate limits, in Postgres).
+   * whether it did: false means refused (§13's rate limits, in Postgres). A window longer than
+   * RATE_LIMIT_LONGEST_WINDOW_SECONDS is refused: the prune would delete hits inside it.
    */
   hitRateLimit: (bucket: string, limit: number, windowSeconds: number) => Promise<boolean>;
   close: () => Promise<void>;
 }
 
-/** Advisory locks keyed (RATE_LIMIT_LOCK, hashtext(bucket)): two-key locks never meet the migrations' one-key ones. */
-const RATE_LIMIT_LOCK = 77;
-
 /**
  * A sliding window over `rate_limit_hit`. The bucket's lock makes two requests at once take turns, so neither sees the
  * other's count before it is written; the bucket's rows older than the window go in the same transaction. Times are
- * the database's, the one clock every request shares.
+ * the database's, the one clock every request shares. Every bucket's hits older than the longest window go on the
+ * worker's timer (`pruneRateLimitHits`), so no window may be longer than that; the prune only tries the bucket's lock,
+ * and leaves a bucket held here alone.
  */
-export function hitRateLimit(
+export async function hitRateLimit(
   orm: Orm,
   bucket: string,
   limit: number,
   windowSeconds: number,
 ): Promise<boolean> {
+  if (!(windowSeconds <= RATE_LIMIT_LONGEST_WINDOW_SECONDS)) {
+    throw new Error(
+      'hitRateLimit: refused: a window longer than the longest (RATE_LIMIT_LONGEST_WINDOW_SECONDS); the prune would delete hits inside it',
+    );
+  }
   return orm.transaction(async (tx) => {
     const since = sql`now() - make_interval(secs => ${windowSeconds})`;
     await tx.execute(sql`select pg_advisory_xact_lock(${RATE_LIMIT_LOCK}, hashtext(${bucket}))`);

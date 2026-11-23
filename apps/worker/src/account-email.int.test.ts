@@ -15,7 +15,7 @@ import {
   type AccountEmails,
   type AuthServer,
 } from '@lzp/auth';
-import { loadEnv } from '@lzp/config';
+import { loadEnv, signInLimits } from '@lzp/config';
 import { createDb, installJobs, migrate, type Db, type JobContext } from '@lzp/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { accountEmailJob, type AccountEmailJobDeps } from './account-email-job.ts';
@@ -179,5 +179,61 @@ describe('the account-email job (Argus F2 on #229)', { timeout: 60_000 }, () => 
     expect(await inbox()).toHaveLength(1);
     // Sent, the row keeps no link.
     expect((await outboxRows())[0]?.data).toEqual({});
+  });
+});
+
+// #323: the worker's prune, through packages/auth's account emails, runs on the auth handle (as the app role, Postgres
+// would refuse it) and beside a live sign-in. The rows here are this run's: the sent one from above, and its buckets.
+describe("the auth tables' prune, through packages/auth (#323)", { timeout: 60_000 }, () => {
+  const buckets = text`bucket in (${signInBucket(secret, 'ip', ip)}, ${signInBucket(secret, 'address', to)})`;
+  const hitsLeft = async () =>
+    (
+      await asOwner<{ hits: number }>(
+        `select count(*)::int as hits from rate_limit_hit where ${buckets}`,
+      )
+    )[0]?.hits;
+
+  it('runs beside a live sign-in, and keeps every hit inside its window and every email not yet expired', async () => {
+    const [response] = await Promise.all([
+      server.handler(
+        new Request(`${env.APP_URL}/api/auth/sign-in/magic-link`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            origin: env.APP_URL,
+            'x-forwarded-for': ip,
+          },
+          body: JSON.stringify({ email: to, callbackURL: '/app' }),
+        }),
+        () => undefined,
+      ),
+      accountEmails.prune.rateLimitHits(),
+      accountEmails.prune.accountEmails(),
+    ]);
+    expect(response.status).toBe(200);
+    const before = await hitsLeft();
+    expect(before).toBeGreaterThan(0);
+    const emails = (await outboxRows()).length;
+    expect(emails).toBeGreaterThan(0);
+
+    await accountEmails.prune.rateLimitHits();
+    await accountEmails.prune.accountEmails();
+    expect(await hitsLeft()).toBe(before);
+    expect(await outboxRows()).toHaveLength(emails);
+  });
+
+  it('deletes the hits once past the longest window, and the sent email once past its retention', async () => {
+    await asOwner(
+      `update rate_limit_hit set created_at = now() - make_interval(secs => ${String(signInLimits.windowSeconds + 60)}) where ${buckets}`,
+    );
+    // Further back than any retention window: this checks the wiring; packages/db's tests check the window's edges.
+    await asOwner(
+      text`update account_email set updated_at = now() - interval '400 days' where to_address = ${to} and status = 'sent'`,
+    );
+
+    expect(await accountEmails.prune.rateLimitHits()).toBeGreaterThan(0);
+    expect(await accountEmails.prune.accountEmails()).toBeGreaterThan(0);
+    expect(await hitsLeft()).toBe(0);
+    expect((await outboxRows()).filter((row) => row.status === 'sent')).toEqual([]);
   });
 });

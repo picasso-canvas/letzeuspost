@@ -43,6 +43,13 @@
       "when": 1794397153477,
       "tag": "0005_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795441680000,
+      "tag": "0006_account_email_delete",
+      "breakpoints": true
     }
   ]
 }

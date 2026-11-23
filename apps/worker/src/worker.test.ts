@@ -11,6 +11,7 @@ const seen = vi.hoisted(() => ({
   closed: [] as string[],
   openedWith: [] as string[],
   swept: [] as string[],
+  pruned: [] as string[],
   sweepHeld: undefined as Promise<string[]> | undefined,
 }));
 
@@ -53,6 +54,16 @@ vi.mock('@lzp/auth', () => ({
     };
     return {
       outbox,
+      prune: {
+        rateLimitHits: () => {
+          seen.pruned.push('rate_limit_hit');
+          return Promise.resolve(0);
+        },
+        accountEmails: () => {
+          seen.pruned.push('account_email');
+          return Promise.resolve(0);
+        },
+      },
       close: () => {
         seen.closed.push('account emails');
         return Promise.resolve();
@@ -82,6 +93,7 @@ beforeEach(() => {
   seen.closed.length = 0;
   seen.openedWith.length = 0;
   seen.swept.length = 0;
+  seen.pruned.length = 0;
   seen.sweepHeld = undefined;
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true); // the worker's log lines
 });
@@ -157,5 +169,20 @@ describe('startWorker', () => {
 
     await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS * 3);
     expect(seen.swept).toEqual(['email']);
+  });
+
+  it("prunes the auth tables on a timer, through packages/auth's account emails (#323)", async () => {
+    vi.useFakeTimers();
+    const { startWorker } = await import('./worker.ts');
+    const { AUTH_PRUNE_EVERY_MS } = await import('./auth-prune.ts');
+    const worker = await startWorker(env);
+    await vi.advanceTimersByTimeAsync(AUTH_PRUNE_EVERY_MS - 1);
+    expect(seen.pruned).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(seen.pruned).toEqual(['rate_limit_hit', 'account_email']);
+    await worker.stop();
+    expect(seen.closed).toEqual(['jobs', 'account emails', 'db']);
+    await vi.advanceTimersByTimeAsync(AUTH_PRUNE_EVERY_MS * 3);
+    expect(seen.pruned).toEqual(['rate_limit_hit', 'account_email']);
   });
 });
