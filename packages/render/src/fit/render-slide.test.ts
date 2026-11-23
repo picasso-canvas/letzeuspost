@@ -97,9 +97,9 @@ describe('renderSlide', () => {
 
   it('refuses a slide that is not in the post', async () => {
     const { renderer, calls } = fake({ k: 1, fits: true, fields: [] });
-    await expect(
-      renderSlide(renderer, { ...input(), slide: testSlide() }),
-    ).rejects.toThrow(/not in the post/);
+    await expect(renderSlide(renderer, { ...input(), slide: testSlide() })).rejects.toThrow(
+      /not in the post/,
+    );
     expect(calls).toHaveLength(0);
   });
 });

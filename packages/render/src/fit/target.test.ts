@@ -7,7 +7,7 @@ describe('targetGraphemes', () => {
     expect(targetGraphemes(52, 600, 780)).toBe(38);
   });
 
-  it('keeps 95% of the length when the text needs exactly the room it has, scaled by the ratio', () => {
+  it('scales the length by the room ratio and the 95% margin, and rounds down', () => {
     // 40 × (900 ÷ 1000) × 0.95 = 34.2, and a target is never rounded up past the room: 34
     expect(targetGraphemes(40, 900, 1000)).toBe(34);
     // 50 × (500 ÷ 1000) × 0.95 = 23.75: 23, not 24

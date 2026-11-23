@@ -32,7 +32,10 @@ describe('FitReportSchema', () => {
     ['an unknown size', { ...EXAMPLE, size: 'banner' }],
     ['a slide number of 0 (slides count from 1)', { ...EXAMPLE, slide: 0 }],
     ['a status that is neither pass nor fail', { ...EXAMPLE, status: 'warn' }],
-    ['a field that is not a path into the post', { ...EXAMPLE, fields: [{ ...field(), field: 'title' }] }],
+    [
+      'a field that is not a path into the post',
+      { ...EXAMPLE, fields: [{ ...field(), field: 'title' }] },
+    ],
     ['a half line', { ...EXAMPLE, fields: [{ ...field(), lines: 1.5 }] }],
     ['a negative overflow', { ...EXAMPLE, fields: [{ ...field(), overflowPx: -1 }] }],
     ['a target of 0', { ...EXAMPLE, fields: [{ ...field(), targetGraphemes: 0 }] }],
@@ -100,8 +103,6 @@ describe('buildFitReport', () => {
     const post = testPost(testSlide(), {
       slides: [testSlide(), testSlide({ body: 'x'.repeat(100) })],
     });
-    const second = post.slides[1];
-    if (second === undefined) throw new Error('no second slide');
     const report = buildFitReport(post, 1, 'story', {
       k: 0.85,
       fits: false,

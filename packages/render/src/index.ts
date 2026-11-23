@@ -30,6 +30,21 @@ export {
 export { buildSlide, buildSlideWithWarnings, type BuildResult } from './page/build-slide.ts';
 export { ASSET_SCHEME, assetUrl, type AssetKind, type BuildWarning } from './page/assets.ts';
 export { registerLook } from './page/looks.ts';
+export { fitOrder } from './fit/order.ts';
+export {
+  buildFitReport,
+  FitReportSchema,
+  PageFitSchema,
+  type FitReport,
+  type PageFit,
+} from './fit/report.ts';
+export {
+  renderSlide,
+  type FitRenderer,
+  type RenderedSlide,
+  type RenderSlideInput,
+} from './fit/render-slide.ts';
+export { targetGraphemes } from './fit/target.ts';
 export { applyContrast, type ContrastResult, type ContrastWarning } from './contrast/apply.ts';
 export { contrastRatio } from './contrast/colour.ts';
 export {

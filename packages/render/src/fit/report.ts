@@ -1,16 +1,105 @@
-import type { Post, SizeName } from '@lzp/core';
+import { parseHighlights, type Post } from '@lzp/core';
 import { z } from 'zod';
+import { SIZE_NAMES, type SizeName } from '../sizes.ts';
+import { targetGraphemes } from './target.ts';
 
-export const FitReportSchema = z.unknown();
-export const PageFitSchema = z.unknown();
-export type FitReport = { size: SizeName; slide: number; k: number; status: string; fields: unknown[] };
-export type PageFit = {
-  k: number;
-  fits: boolean;
-  fields: { name: string; lines: number; needed: number; available: number; overflowPx: number }[];
-};
+// The fit report (§08 The fit check): per slide and size, the scale the text needed, whether it fits, and for a slide
+// that doesn't, each field to shorten with a target length for the AI (`fitFix`, §09). The page measures boxes and
+// the rest is made here, in Node: grapheme counts must come from the worker's pinned ICU (§08 Bangla), not from the
+// browser's.
 
-export function buildFitReport(post: Post, index: number, size: SizeName, page: PageFit): never {
-  void [post, index, size, page];
-  throw new Error('not built yet');
+/** The smallest scale the fit script goes down to, and the largest. */
+export const K_MIN = 0.85;
+export const K_MAX = 1;
+
+const FieldSchema = z.strictObject({
+  /** A path into the post: `slides[0].title`. */
+  field: z
+    .string()
+    .regex(/^slides\[\d+\]\.[A-Za-z]+$/, 'a path into the post, like slides[0].title'),
+  lines: z.int().min(1),
+  graphemes: z.int().min(0),
+  overflowPx: z.number().min(0),
+  targetGraphemes: z.int().min(1),
+});
+
+export const FitReportSchema = z.strictObject({
+  size: z.enum(SIZE_NAMES),
+  /** The slide's place in the post, from 1. */
+  slide: z.int().min(1),
+  k: z.number().min(K_MIN).max(K_MAX),
+  status: z.enum(['pass', 'fail']),
+  /** The fields to shorten; none when the slide passes. */
+  fields: z.array(FieldSchema),
+});
+
+export type FitReport = z.infer<typeof FitReportSchema>;
+
+/**
+ * What the fit script measured in the page: the scale it picked, whether the text fits at it, and, when it doesn't,
+ * the blocks to shorten by the class they carry (`title`), their lines, the height they need and the height they
+ * would have if the text fitted, and how far they stick out.
+ */
+export const PageFitSchema = z.strictObject({
+  k: z.number().min(K_MIN).max(K_MAX),
+  fits: z.boolean(),
+  fields: z.array(
+    z.strictObject({
+      name: z.string(),
+      lines: z.int().min(1),
+      needed: z.number().min(0),
+      available: z.number().min(0),
+      overflowPx: z.number().min(0),
+    }),
+  ),
+});
+
+export type PageFit = z.infer<typeof PageFitSchema>;
+
+// 'und' like `@lzp/core`'s grapheme counter, so the count is the same on every machine (§08).
+const segmenter = new Intl.Segmenter('und', { granularity: 'grapheme' });
+
+/** The length of what is drawn: the highlight marks (`*older*`) are not part of it. */
+function drawnGraphemes(text: string): number {
+  const drawn = parseHighlights(text)
+    .segments.map((segment) => segment.text)
+    .join('');
+  return Array.from(segmenter.segment(drawn)).length;
+}
+
+/**
+ * The report for one slide at one size, from what the page measured. Throws for what is a bug in the caller: a slide
+ * that isn't in the post, or a block the page named that the slide has no text for.
+ */
+export function buildFitReport(
+  post: Post,
+  slideIndex: number,
+  size: SizeName,
+  page: PageFit,
+): FitReport {
+  const slide = post.slides[slideIndex];
+  if (slide === undefined) throw new Error(`The post has no slide ${String(slideIndex + 1)}`);
+  const texts = new Map<string, unknown>(Object.entries(slide));
+
+  const fields = page.fields.map((block) => {
+    const text = texts.get(block.name);
+    if (typeof text !== 'string')
+      throw new Error(`The page named the block "${block.name}", but the slide has no such text`);
+    const graphemes = drawnGraphemes(text);
+    return {
+      field: `slides[${String(slideIndex)}].${block.name}`,
+      lines: block.lines,
+      graphemes,
+      overflowPx: block.overflowPx,
+      targetGraphemes: targetGraphemes(graphemes, block.available, block.needed),
+    };
+  });
+
+  return FitReportSchema.parse({
+    size,
+    slide: slideIndex + 1,
+    k: page.k,
+    status: page.fits ? 'pass' : 'fail',
+    fields,
+  });
 }

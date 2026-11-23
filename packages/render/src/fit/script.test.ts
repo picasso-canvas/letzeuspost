@@ -44,7 +44,8 @@ function fakePage(spec: Spec, gates: { font?: Promise<void>; image?: Promise<voi
   const state = { k: 1 };
   const dataset: Record<string, string> = {};
 
-  const scaled = (block: Block) => (block.name === 'source' ? block.height : block.height * state.k ** 2);
+  const scaled = (block: Block) =>
+    block.name === 'source' ? block.height : block.height * state.k ** 2;
   const heights = () => [
     ...(spec.image === undefined ? [] : [spec.image(state.k)]),
     ...spec.blocks.map(scaled),
@@ -76,7 +77,7 @@ function fakePage(spec: Spec, gates: { font?: Promise<void>; image?: Promise<voi
         styleLog.push(`${name}:${value}`);
       },
       removeProperty: (name: string) => {
-        delete own[name];
+        Reflect.deleteProperty(own, name);
       },
     };
   };
@@ -154,7 +155,7 @@ function fakePage(spec: Spec, gates: { font?: Promise<void>; image?: Promise<voi
 async function run(spec: Spec, gates?: Parameters<typeof fakePage>[1]) {
   const page = fakePage(spec, gates);
   runInNewContext(FIT_SCRIPT, page.sandbox);
-  const reported = (await page.sandbox.lzpFit) as unknown;
+  const reported = await page.sandbox.lzpFit;
   return { reported, page };
 }
 
@@ -218,7 +219,13 @@ describe('the fit script: a slide that does not fit at 0.85', () => {
   it('names the blocks that can be shortened with their lines, and shares the overflow out between them', async () => {
     const { reported } = await run({ blocks: TEXT, area });
     const { fields } = reported as {
-      fields: { name: string; lines: number; needed: number; available: number; overflowPx: number }[];
+      fields: {
+        name: string;
+        lines: number;
+        needed: number;
+        available: number;
+        overflowPx: number;
+      }[];
     };
     // The one-line kicker and the fixed source can't give back a line; the title and the body can.
     expect(fields.map((f) => f.name)).toEqual(['title', 'body']);
@@ -278,7 +285,9 @@ describe('the fit script: no line overflows', () => {
     const wide: Block = { ...SOURCE, wide: () => 1200 };
     const { reported } = await run({ blocks: [KICKER, TITLE, wide], area: 1000 });
     expect(reported).toMatchObject({ k: 0.85, fits: false });
-    const { fields } = reported as { fields: { name: string; overflowPx: number; available: number; needed: number }[] };
+    const { fields } = reported as {
+      fields: { name: string; overflowPx: number; available: number; needed: number }[];
+    };
     // Small print never shrinks, but a source whose line runs out of the block is named, with the width it lacks
     expect(fields.map((f) => f.name)).toEqual(['source']);
     const [source] = fields;
@@ -319,7 +328,11 @@ describe('the fit script: image boxes', () => {
 
   it('counts the image box as room the text cannot take (it is not a field)', async () => {
     const image = () => 0.3 * 1350;
-    const { reported } = await run({ blocks: [KICKER, TITLE, BODY], area: roomFor(0.9, [KICKER, TITLE, BODY]) + image() + 20 + 0.1, image });
+    const { reported } = await run({
+      blocks: [KICKER, TITLE, BODY],
+      area: roomFor(0.9, [KICKER, TITLE, BODY]) + image() + 20 + 0.1,
+      image,
+    });
     expect(reported).toEqual({ k: 0.9, fits: true, fields: [] });
   });
 });
@@ -328,7 +341,10 @@ describe('the fit script: waiting', () => {
   it('measures nothing until the fonts are loaded and the images decoded', async () => {
     const font = deferred();
     const image = deferred();
-    const page = fakePage({ blocks: TEXT, area: 1000 }, { font: font.promise, image: image.promise });
+    const page = fakePage(
+      { blocks: TEXT, area: 1000 },
+      { font: font.promise, image: image.promise },
+    );
     runInNewContext(FIT_SCRIPT, page.sandbox);
     const flush = async () => {
       for (let i = 0; i < 20; i += 1) await Promise.resolve();
@@ -348,7 +364,10 @@ describe('the fit script: waiting', () => {
 
   it('still reports when a font or an image failed to load (the runner fails the render for a font by name)', async () => {
     const page = fakePage({ blocks: TEXT, area: 1000 });
-    const document = page.sandbox.document as { fonts: { load: () => Promise<void> }[]; images: { decode: () => Promise<void> }[] };
+    const document = page.sandbox.document as {
+      fonts: { load: () => Promise<void> }[];
+      images: { decode: () => Promise<void> }[];
+    };
     document.fonts[0] = { load: () => Promise.reject(new Error('font')) };
     document.images[0] = { decode: () => Promise.reject(new Error('image')) };
     runInNewContext(FIT_SCRIPT, page.sandbox);
@@ -356,10 +375,14 @@ describe('the fit script: waiting', () => {
   });
 
   it('uses no timer and no animation frame', () => {
-    expect(FIT_SCRIPT).not.toMatch(/setTimeout|setInterval|requestAnimationFrame|requestIdleCallback/);
+    expect(FIT_SCRIPT).not.toMatch(
+      /setTimeout|setInterval|requestAnimationFrame|requestIdleCallback/,
+    );
   });
 
   it('needs no eval and no inline style: nothing the content policy would refuse', () => {
-    expect(FIT_SCRIPT).not.toMatch(/\beval\b|new Function|setAttribute\(\s*['"]style|innerHTML|document\.write/);
+    expect(FIT_SCRIPT).not.toMatch(
+      /\beval\b|new Function|setAttribute\(\s*['"]style|innerHTML|document\.write/,
+    );
   });
 });
