@@ -31,4 +31,6 @@
   --color-qc-pass: #4ade80;
   --color-qc-warn: #fbbf24;
   --color-qc-fail: #f87171;
+  --color-workspace-mark: #23395b;
+  --color-workspace-mark-foreground: #ffffff;
 }

@@ -64,4 +64,10 @@ describe.each([
   it.each(pairs(EDGES))('the %s edge on %s reaches 3:1 (1.4.11)', (edge, surface) => {
     expect(contrast(hex(edge), hex(surface))).toBeGreaterThanOrEqual(3);
   });
+
+  it('the workspace mark initials pass AA on the navy disc (#254)', () => {
+    expect(
+      contrast(hex('workspace-mark-foreground'), hex('workspace-mark')),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
 });

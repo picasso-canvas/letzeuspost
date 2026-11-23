@@ -19,3 +19,5 @@ test-results/
 auth.json
 *.auth.json
 next-env.d.ts
+# Next.js writes this when `next dev` starts (agentRules); it is not ours.
+apps/web/AGENTS.md
