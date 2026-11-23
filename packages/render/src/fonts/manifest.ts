@@ -11,7 +11,10 @@ export const FONT_SUBSETS = ['latin', 'bengali'] as const;
 export type FontSubset = (typeof FONT_SUBSETS)[number];
 
 /** The subset a font needs for each language it is set for. */
-export const SUBSET_FOR: Readonly<Record<FontLanguage, FontSubset>> = { en: 'latin', bn: 'bengali' };
+export const SUBSET_FOR: Readonly<Record<FontLanguage, FontSubset>> = {
+  en: 'latin',
+  bn: 'bengali',
+};
 
 /** §07's Bangla minimums: body at least 1.65, headings at least 1.3. */
 export const BANGLA_LINE_HEIGHT_MIN = { body: 1.65, heading: 1.3 } as const;
@@ -92,7 +95,6 @@ export const FontManifestSchema = z
     if (families.size !== fonts.length)
       ctx.addIssue({ code: 'custom', message: 'a family is listed twice', path: ['fonts'] });
     for (const [look, pair] of Object.entries(looks)) {
-      if (pair === undefined) continue;
       for (const language of FONT_LANGUAGES) {
         for (const role of ['heading', 'body'] as const) {
           const family = pair[language][role];

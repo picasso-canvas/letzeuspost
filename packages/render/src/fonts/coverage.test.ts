@@ -1,11 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { missingLetters } from './coverage.ts';
 import { mappedCodePoints } from './woff2.ts';
 
-const require = createRequire(import.meta.url);
-const font = (path: string) => new Uint8Array(readFileSync(require.resolve(path)));
+const font = (path: string) => new Uint8Array(readFileSync(new URL(import.meta.resolve(path))));
 const hindBengali = font('@fontsource/hind-siliguri/files/hind-siliguri-bengali-400-normal.woff2');
 const hindLatin = font('@fontsource/hind-siliguri/files/hind-siliguri-latin-400-normal.woff2');
 const balooDaBengali = font('@fontsource/baloo-da-2/files/baloo-da-2-bengali-800-normal.woff2');

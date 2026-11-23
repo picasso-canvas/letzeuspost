@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { missingLetters } from './coverage.ts';
 import { FontManifestSchema, type Font, type FontFile, type FontManifest } from './manifest.ts';
 
@@ -16,12 +16,10 @@ export interface LoadedFont extends Omit<Font, 'files'> {
   files: LoadedFontFile[];
 }
 
-const require = createRequire(import.meta.url);
-
 /** The file's place on disk, or undefined when its package or the file isn't installed. */
 async function locate(path: string): Promise<string | undefined> {
   try {
-    const file = require.resolve(path);
+    const file = fileURLToPath(import.meta.resolve(path));
     await access(file);
     return file;
   } catch {

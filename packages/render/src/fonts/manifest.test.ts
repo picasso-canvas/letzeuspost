@@ -3,7 +3,11 @@ import { FONT_MANIFEST } from './library.ts';
 import { FontManifestSchema } from './manifest.ts';
 
 const HASH = 'a'.repeat(64);
-const file = (weight: number, subset: 'latin' | 'bengali', fields: Record<string, unknown> = {}) => ({
+const file = (
+  weight: number,
+  subset: 'latin' | 'bengali',
+  fields: Record<string, unknown> = {},
+) => ({
   weight,
   style: 'normal',
   subset,
@@ -25,7 +29,9 @@ const english = (fields: Record<string, unknown> = {}) => ({
   weights: [400],
   languages: ['en'],
   licence: { spdx: 'OFL-1.1', path: '@fontsource/nunito/LICENSE' },
-  files: [{ ...file(400, 'latin'), path: '@fontsource/nunito/files/nunito-latin-400-normal.woff2' }],
+  files: [
+    { ...file(400, 'latin'), path: '@fontsource/nunito/files/nunito-latin-400-normal.woff2' },
+  ],
   ...fields,
 });
 const pair = (en: string, bn: string) => ({
@@ -45,18 +51,34 @@ describe('FontManifestSchema', () => {
   });
 
   it("refuses Bangla line-heights under §07's minimums (body 1.65, headings 1.3)", () => {
-    expect(ok(manifest({ fonts: [english(), bangla({ banglaLineHeight: { body: 1.64, heading: 1.3 } })] }))).toBe(false);
-    expect(ok(manifest({ fonts: [english(), bangla({ banglaLineHeight: { body: 1.65, heading: 1.29 } })] }))).toBe(false);
+    expect(
+      ok(
+        manifest({
+          fonts: [english(), bangla({ banglaLineHeight: { body: 1.64, heading: 1.3 } })],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      ok(
+        manifest({
+          fonts: [english(), bangla({ banglaLineHeight: { body: 1.65, heading: 1.29 } })],
+        }),
+      ),
+    ).toBe(false);
   });
 
   it('refuses a Bangla font without Bangla line-heights', () => {
-    expect(ok(manifest({ fonts: [english(), bangla({ banglaLineHeight: undefined })] }))).toBe(false);
+    expect(ok(manifest({ fonts: [english(), bangla({ banglaLineHeight: undefined })] }))).toBe(
+      false,
+    );
   });
 
   it('refuses a licence other than OFL-1.1, and a licence with no text path', () => {
     const licence = { spdx: 'GPL-3.0-only', path: '@fontsource/nunito/LICENSE' };
     expect(ok(manifest({ fonts: [english({ licence }), bangla()] }))).toBe(false);
-    expect(ok(manifest({ fonts: [english({ licence: { spdx: 'OFL-1.1' } }), bangla()] }))).toBe(false);
+    expect(ok(manifest({ fonts: [english({ licence: { spdx: 'OFL-1.1' } }), bangla()] }))).toBe(
+      false,
+    );
   });
 
   it('refuses a file without a sha256, or with a malformed one', () => {
@@ -80,7 +102,9 @@ describe('FontManifestSchema', () => {
 
   it('refuses a Bangla font with no Bengali file for one of its weights', () => {
     expect(ok(manifest({ fonts: [english(), bangla({ weights: [400, 700] })] }))).toBe(false);
-    expect(ok(manifest({ fonts: [english(), bangla({ files: [file(400, 'latin')] })] }))).toBe(false);
+    expect(ok(manifest({ fonts: [english(), bangla({ files: [file(400, 'latin')] })] }))).toBe(
+      false,
+    );
   });
 
   it('refuses a file for a weight the font does not list, and the same file twice', () => {
