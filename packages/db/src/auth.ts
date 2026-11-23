@@ -60,7 +60,8 @@ export interface AuthDb {
  * A sliding window over `rate_limit_hit`. The bucket's lock makes two requests at once take turns, so neither sees the
  * other's count before it is written; the bucket's rows older than the window go in the same transaction. Times are
  * the database's, the one clock every request shares. Every bucket's hits older than the longest window go on the
- * worker's timer (`pruneRateLimitHits`), so no window may be longer than that.
+ * worker's timer (`pruneRateLimitHits`), so no window may be longer than that; the prune only tries the bucket's lock,
+ * and leaves a bucket held here alone.
  */
 export async function hitRateLimit(
   orm: Orm,
