@@ -21,7 +21,6 @@ export const CLEAN_CSS = `
   z-index: 0;
 }
 .look-clean .kicker { color: var(--primary); }
-.look-clean .title, .look-clean .body, .look-clean .small-print, .look-clean .page-number { color: var(--ink); }
 
 .corners-sharp { --clean-radius: var(--clean-radius-sharp); --clean-shape-radius: var(--clean-shape-radius-sharp); }
 .corners-soft { --clean-radius: var(--clean-radius-soft); --clean-shape-radius: var(--clean-shape-radius-soft); }

@@ -22,7 +22,7 @@ function page(lang: 'en' | 'bn'): string {
   return buildSlide(post, slide, 'portrait', testKit({ fonts: CLEAN_FONTS }));
 }
 
-/** The declarations of every rule whose selector list has a selector that ends in `.cls` or `cls`. */
+/** The declarations of every rule whose selector list has a selector that matches `target` (`/\.title$/`). */
 function declarationsFor(css: string, target: RegExp): string {
   return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .filter(([, list]) => (list ?? '').split(',').some((selector) => target.test(selector.trim())))
