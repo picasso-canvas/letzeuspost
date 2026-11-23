@@ -18,7 +18,7 @@ import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type pg from 'pg';
 import { checkedId, NOBODY, openPool, scoped, type Orm, type Scoped } from './db.ts';
-import { RATE_LIMIT_LONGEST_WINDOW_SECONDS } from './jobs/auth-prune.ts';
+import { RATE_LIMIT_LOCK, RATE_LIMIT_LONGEST_WINDOW_SECONDS } from './jobs/auth-prune.ts';
 import * as schema from './schema/accounts.ts';
 import { rateLimitHit } from './schema/auth-only.ts';
 
@@ -55,9 +55,6 @@ export interface AuthDb {
   hitRateLimit: (bucket: string, limit: number, windowSeconds: number) => Promise<boolean>;
   close: () => Promise<void>;
 }
-
-/** Advisory locks keyed (RATE_LIMIT_LOCK, hashtext(bucket)): two-key locks never meet the migrations' one-key ones. */
-const RATE_LIMIT_LOCK = 77;
 
 /**
  * A sliding window over `rate_limit_hit`. The bucket's lock makes two requests at once take turns, so neither sees the

@@ -8,10 +8,19 @@ import { describe, expect, it } from 'vitest';
 import { accountEmail, rateLimitHit } from './auth-only.ts';
 
 const folder = new URL('../../migrations/', import.meta.url);
-const migration = readdirSync(folder)
+const migrations = readdirSync(folder)
   .filter((file) => file.endsWith('.sql'))
-  .map((file) => readFileSync(new URL(file, folder), 'utf8'))
-  .find((text) => text.includes('CREATE TABLE IF NOT EXISTS "account_email"'));
+  .map((file) => readFileSync(new URL(file, folder), 'utf8'));
+const migration = migrations.find((text) =>
+  text.includes('CREATE TABLE IF NOT EXISTS "account_email"'),
+);
+/** Every GRANT statement any migration makes on `table`. */
+const grantsOn = (table: string) =>
+  migrations.flatMap((text) =>
+    [...text.matchAll(/GRANT[^;]*;/g)]
+      .map(([statement]) => statement)
+      .filter((statement) => statement.includes(`"${table}"`)),
+  );
 
 describe('the account_email table (the sign-in emails’ outbox)', () => {
   const columns = getTableColumns(accountEmail);
@@ -52,6 +61,13 @@ describe('the account_email table (the sign-in emails’ outbox)', () => {
     expect(migration).toContain('GRANT SELECT, INSERT, UPDATE ON "account_email" TO lzp_auth;');
     expect(migration).not.toMatch(/GRANT[^;]*"account_email"[^;]*lzp_app/);
   });
+
+  it('lets lzp_auth delete its rows, for the prune (#323, CI F1), and grants nothing more', () => {
+    expect(grantsOn('account_email')).toEqual([
+      'GRANT SELECT, INSERT, UPDATE ON "account_email" TO lzp_auth;',
+      'GRANT DELETE ON "account_email" TO lzp_auth;',
+    ]);
+  });
 });
 
 describe('the rate_limit_hit table (§13: rate limits live in a Postgres table)', () => {
@@ -70,5 +86,11 @@ describe('the rate_limit_hit table (§13: rate limits live in a Postgres table)'
     ]);
     expect(migration).toContain('GRANT SELECT, INSERT, DELETE ON "rate_limit_hit" TO lzp_auth;');
     expect(migration).not.toMatch(/GRANT[^;]*"rate_limit_hit"[^;]*lzp_app/);
+  });
+
+  it('is never granted UPDATE: the prune takes no row lock on it (#323, CI F1)', () => {
+    expect(grantsOn('rate_limit_hit')).toEqual([
+      'GRANT SELECT, INSERT, DELETE ON "rate_limit_hit" TO lzp_auth;',
+    ]);
   });
 });

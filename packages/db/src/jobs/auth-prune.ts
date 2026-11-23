@@ -23,6 +23,12 @@ import { accountEmail, rateLimitHit } from '../schema/auth-only.ts';
 export const RATE_LIMIT_LONGEST_WINDOW_SECONDS = signInLimits.windowSeconds;
 
 /**
+ * A bucket's advisory lock is keyed (RATE_LIMIT_LOCK, hashtext(bucket)), in `hitRateLimit` and in the prune: two-key
+ * locks never meet the migrations' one-key ones.
+ */
+export const RATE_LIMIT_LOCK = 77;
+
+/**
  * How long a sent or failed account email is kept, from its last move: 30 days, as long as the server logs that record
  * the same send (§16 Keeping and deleting, §14). Proposed in #323, pending Zeus's answer there.
  */

@@ -1,8 +1,8 @@
 // The auth tables' prune against real Postgres (#323), in `pnpm check:services` and CI's `services` job: on the auth
 // handle (lzp_auth), every rate-limit hit older than the longest window goes, in every bucket, and every hit inside it
 // stays; sent and failed account emails go once they are older than the retention window, and nothing that may still
-// be sent does. Run twice, it deletes nothing more; beside live sign-ins, it never waits on a row they hold, and the
-// limits still count exactly.
+// be sent does. Run twice, it deletes nothing more; beside live sign-ins, it never waits on a bucket or a row they
+// hold (so it cannot deadlock with them), and the limits still count exactly.
 //
 // Other files share this database, so a prune here may delete their old rows too (as the worker's would): every check
 // below reads this run's rows alone, and the counts returned only from below.
@@ -20,6 +20,7 @@ import {
   type AuthDb,
 } from '../auth.ts';
 import { migrate } from '../migrate.ts';
+import { RATE_LIMIT_LOCK } from './auth-prune.ts';
 
 const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('migrate');
 const { DATABASE_URL: appUrl } = loadEnv('worker');
@@ -132,20 +133,69 @@ describe('pruneRateLimitHits (#323)', () => {
     expect(await hitsLeft()).toEqual(sorted(inside));
   });
 
-  it('never waits on a hit a live sign-in holds: it leaves it for the next run', async () => {
+  it('holds no UPDATE on the table, so it takes no row lock there (CI F1)', async () => {
+    const { rows } = await owner.query<{ update: boolean; del: boolean }>(
+      `select has_table_privilege('lzp_auth', 'rate_limit_hit', 'UPDATE') as update,
+              has_table_privilege('lzp_auth', 'rate_limit_hit', 'DELETE') as del`,
+    );
+    expect(rows).toEqual([{ update: false, del: true }]);
+  });
+
+  it('never waits on a bucket a live sign-in holds, so it cannot deadlock with hitRateLimit', async () => {
     await owner.query('delete from rate_limit_hit where bucket like $1', [`test:${run}:%`]);
-    const [held = '', free = ''] = await hits(bucketOf('held'), [W + 60, W + 60]);
-    // A sign-in's transaction holding the row, as hitRateLimit's own delete does while it counts.
+    const bucket = bucketOf('held');
+    const [first = '', ...rest] = await hits(bucket, [W + 60, W + 120, W + 180]);
+    const inside = await hits(bucket, [60]);
+    await hits(bucketOf('free'), [W + 60, W + 120]);
+
+    // A sign-in halfway through hitRateLimit: its bucket's lock taken, one expired hit of its bucket deleted (so that
+    // row is locked until it commits), the rest still to go. A prune that deleted this bucket's rows would wait on it.
     const signIn = new pg.Client({ connectionString: ownerUrl });
     await signIn.connect();
     try {
       await signIn.query('begin');
-      await signIn.query('select id from rate_limit_hit where id = $1 for update', [held]);
+      await signIn.query('select pg_advisory_xact_lock($1, hashtext($2))', [
+        RATE_LIMIT_LOCK,
+        bucket,
+      ]);
+      await signIn.query('delete from rate_limit_hit where id = $1', [first]);
 
+      // The prune returns while the sign-in still holds its bucket: it waited on nothing.
+      const pruned = await Promise.race([
+        pruneRateLimitHits(authDb.db, { batch: 50 }).then(() => 'returned'),
+        new Promise((resolve) => setTimeout(resolve, 10_000, 'waited')),
+      ]);
+      expect(pruned).toBe('returned');
+      // The other bucket's expired hits went; the held bucket's are all still there.
+      expect(await hitsLeft()).toEqual(sorted([first, ...rest, ...inside]));
+
+      // The sign-in finishes its own delete: none of its rows is locked by the prune, so it doesn't wait either.
+      const finished = await signIn.query(
+        'delete from rate_limit_hit where bucket = $1 and created_at <= now() - make_interval(secs => $2)',
+        [bucket, W],
+      );
+      expect(finished.rowCount).toBe(rest.length);
+      await signIn.query('commit');
+    } finally {
+      await signIn.end();
+    }
+    expect(await hitsLeft()).toEqual(sorted(inside));
+  });
+
+  it('leaves a held bucket to the next run, and that run deletes it', async () => {
+    await owner.query('delete from rate_limit_hit where bucket like $1', [`test:${run}:%`]);
+    const bucket = bucketOf('held-later');
+    await hits(bucket, [W + 60, W + 120]);
+    const signIn = new pg.Client({ connectionString: ownerUrl });
+    await signIn.connect();
+    try {
+      await signIn.query('begin');
+      await signIn.query('select pg_advisory_xact_lock($1, hashtext($2))', [
+        RATE_LIMIT_LOCK,
+        bucket,
+      ]);
       await pruneRateLimitHits(authDb.db);
-      expect(await hitsLeft()).toEqual([held]);
-      expect(await hitsLeft()).not.toContain(free);
-
+      expect(await hitsLeft()).toHaveLength(2);
       await signIn.query('commit');
     } finally {
       await signIn.end();
@@ -154,37 +204,52 @@ describe('pruneRateLimitHits (#323)', () => {
     expect(await hitsLeft()).toEqual([]);
   });
 
-  it('runs beside live sign-ins: nothing fails, and each bucket still counts exactly to its limit', async () => {
+  it('runs beside live sign-ins in many buckets: nothing fails, and each still counts exactly to its limit', async () => {
     await owner.query('delete from rate_limit_hit where bucket like $1', [`test:${run}:%`]);
-    const bucket = bucketOf('live');
-    // Three hits inside the window and many outside: a limit of 5 leaves room for exactly 2 more.
-    await hits(bucket, [W - 60, W - 120, W - 180]);
-    await hits(
-      bucket,
-      Array.from({ length: 40 }, (_, i) => W + 1 + i),
-    );
+    const live = Array.from({ length: 6 }, (_, i) => bucketOf(`live-${String(i)}`));
+    for (const bucket of live) {
+      // Three hits inside the window and many outside: a limit of 5 leaves room for exactly 2 more.
+      await hits(bucket, [W - 60, W - 120, W - 180]);
+      await hits(
+        bucket,
+        Array.from({ length: 20 }, (_, i) => W + 1 + i),
+      );
+    }
     await hits(
       bucketOf('live-other'),
       Array.from({ length: 40 }, (_, i) => W + 1 + i),
     );
 
+    // Each sign-in deletes its bucket's expired hits, the very rows the prunes are after.
     const [answers] = await Promise.all([
-      Promise.all(Array.from({ length: 10 }, () => authDb.hitRateLimit(bucket, 5, W))),
+      Promise.all(
+        live.flatMap((bucket) =>
+          Array.from({ length: 5 }, () => authDb.hitRateLimit(bucket, 5, W)),
+        ),
+      ),
       pruneRateLimitHits(authDb.db, { batch: 3 }),
-      pruneRateLimitHits(authDb.db, { batch: 5 }),
+      pruneRateLimitHits(authDb.db, { batch: 7 }),
+      pruneRateLimitHits(authDb.db),
     ]);
 
-    expect(answers.filter(Boolean)).toHaveLength(2);
+    expect(answers.filter(Boolean)).toHaveLength(2 * live.length);
     await pruneRateLimitHits(authDb.db);
     const { rows } = await owner.query<{ bucket: string; hits: number }>(
-      'select bucket, count(*)::int as hits from rate_limit_hit where bucket like $1 group by bucket',
+      'select bucket, count(*)::int as hits from rate_limit_hit where bucket like $1 group by bucket order by bucket',
       [`test:${run}:%`],
     );
-    expect(rows).toEqual([{ bucket, hits: 5 }]);
+    expect(rows).toEqual([...live].sort().map((bucket) => ({ bucket, hits: 5 })));
   });
 });
 
 describe('pruneAccountEmails (#323)', () => {
+  it('runs on a DELETE grant of its own (CI F1): lzp_auth may delete account emails', async () => {
+    const { rows } = await owner.query<{ del: boolean }>(
+      "select has_table_privilege('lzp_auth', 'account_email', 'DELETE') as del",
+    );
+    expect(rows).toEqual([{ del: true }]);
+  });
+
   it('deletes sent and failed emails older than the retention window, and keeps every other', async () => {
     await email('sent', KEEP + 60);
     await email('failed', KEEP + 60);
