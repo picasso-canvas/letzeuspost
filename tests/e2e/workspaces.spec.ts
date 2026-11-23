@@ -475,10 +475,11 @@ function withThemeClass(html: string, theme: 'light' | 'dark') {
 }
 
 test.describe('the theme class on <html>', () => {
-  const page = (tag: string) => `<!DOCTYPE html>${tag}<head></head><body></body></html>`;
+  /** A whole document whose `<html>` start tag is `tag`. */
+  const documentWith = (tag: string) => `<!DOCTYPE html>${tag}<head></head><body></body></html>`;
 
   test('in dark, a document with no class gets one class attribute, `dark`', () => {
-    const html = withThemeClass(page('<html lang="en">'), 'dark');
+    const html = withThemeClass(documentWith('<html lang="en">'), 'dark');
     expect(htmlClassAttributes(html)).toHaveLength(1);
     expect(HTML_TAG.exec(html)?.[0]).toBe('<html class="dark" lang="en">');
   });
@@ -491,7 +492,7 @@ test.describe('the theme class on <html>', () => {
       ['<html lang="en" class="">', '<html lang="en" class="dark">'],
       ['<html lang="en" class="dark">', '<html lang="en" class="dark">'],
     ] as const) {
-      const html = withThemeClass(page(tag), 'dark');
+      const html = withThemeClass(documentWith(tag), 'dark');
       expect(htmlClassAttributes(html)).toHaveLength(1);
       expect(HTML_TAG.exec(html)?.[0]).toBe(merged);
     }
@@ -499,7 +500,7 @@ test.describe('the theme class on <html>', () => {
 
   test('in light, the document is left as it is', () => {
     for (const tag of ['<html lang="en">', '<html lang="en" class="font-sans">']) {
-      expect(withThemeClass(page(tag), 'light')).toBe(page(tag));
+      expect(withThemeClass(documentWith(tag), 'light')).toBe(documentWith(tag));
     }
   });
 });
