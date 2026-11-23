@@ -24,7 +24,7 @@ const schemaClasses = (): string[] =>
   ORDER.flatMap((name, at) => {
     const inner = SCHEMA_SWITCHES[name].unwrap();
     const values: readonly unknown[] = inner instanceof z.ZodEnum ? inner.options : [true, false];
-    return values.map((value) => switchClasses({ ...BASE, [name]: value } as Switches)[at] ?? '');
+    return values.map((value) => switchClasses({ ...BASE, [name]: value })[at] ?? '');
   });
 
 /** The selectors of every rule in the CSS (at-rules' own blocks included). */

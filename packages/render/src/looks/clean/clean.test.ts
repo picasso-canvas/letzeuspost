@@ -145,7 +145,14 @@ describe('what the look may not change (§07: layout geometry, type scale, safe 
   });
 
   it('gives the slide, the text area and the text blocks no padding, margin, width or height', () => {
-    for (const block of [/\.slide$/, /\.text-area$/, /\.col$/, /\.title$/, /\.body$/, /\.kicker$/]) {
+    for (const block of [
+      /\.slide$/,
+      /\.text-area$/,
+      /\.col$/,
+      /\.title$/,
+      /\.body$/,
+      /\.kicker$/,
+    ]) {
       expect(declarationsFor(CLEAN_CSS, block)).not.toMatch(
         /(^|[;\s])(padding|margin|width|height|gap|flex)[\w-]*\s*:/,
       );

@@ -46,29 +46,38 @@ describe('the Clean tints', () => {
 describe("the Clean look's text pairs", () => {
   it.each(SIZE_NAMES)('%s: every text the look draws, on every ground it can sit on', (size) => {
     const names = cleanPairs(SAMPLE, size).map((pair) => pair.name);
-    for (const text of ['title', 'title highlight', 'kicker', 'body', 'body highlight', 'small print'])
-      for (const on of ['ground', 'shape'])
-        expect(names).toContain(`clean: ${text} on ${on}`);
+    for (const text of [
+      'title',
+      'title highlight',
+      'kicker',
+      'body',
+      'body highlight',
+      'small print',
+    ])
+      for (const on of ['ground', 'shape']) expect(names).toContain(`clean: ${text} on ${on}`);
     expect(names).toContain('clean: title highlight on pill');
     expect(names).toContain('clean: body highlight on pill');
   });
 
-  it.each(SIZE_NAMES)('%s: at their real sizes, the smallest the fit check can set them', (size) => {
-    const pairs = cleanPairs(SAMPLE, size);
-    const px = (name: string) => pairs.find((pair) => pair.name === `clean: ${name}`)?.px;
-    expect(px('small print on ground')).toBe(SMALL_PRINT_PX);
-    expect(px('body on ground')).toBeGreaterThanOrEqual(SIZES[size].bodyFloor);
-    expect(px('title on ground')).toBeGreaterThan(px('kicker on ground') ?? Infinity);
-    for (const pair of pairs) expect(pair.width).toBe(SIZES[size].width);
-    // The title is the headline; the rest is text
-    expect(pairs.filter((pair) => pair.headline === true).map((pair) => pair.name)).toEqual([
-      'clean: title on ground',
-      'clean: title on shape',
-      'clean: title highlight on ground',
-      'clean: title highlight on shape',
-      'clean: title highlight on pill',
-    ]);
-  });
+  it.each(SIZE_NAMES)(
+    '%s: at their real sizes, the smallest the fit check can set them',
+    (size) => {
+      const pairs = cleanPairs(SAMPLE, size);
+      const px = (name: string) => pairs.find((pair) => pair.name === `clean: ${name}`)?.px;
+      expect(px('small print on ground')).toBe(SMALL_PRINT_PX);
+      expect(px('body on ground')).toBeGreaterThanOrEqual(SIZES[size].bodyFloor);
+      expect(px('title on ground')).toBeGreaterThan(px('kicker on ground') ?? Infinity);
+      for (const pair of pairs) expect(pair.width).toBe(SIZES[size].width);
+      // The title is the headline; the rest is text
+      expect(pairs.filter((pair) => pair.headline === true).map((pair) => pair.name)).toEqual([
+        'clean: title on ground',
+        'clean: title on shape',
+        'clean: title highlight on ground',
+        'clean: title highlight on shape',
+        'clean: title highlight on pill',
+      ]);
+    },
+  );
 
   it('holds a title to 3:1 where it stays 48 px at 1080 even at 85%, and to 4.5:1 on landscape where it does not', () => {
     const limit = (size: (typeof SIZE_NAMES)[number]) =>
