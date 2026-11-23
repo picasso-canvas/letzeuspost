@@ -31,6 +31,8 @@
   --color-qc-pass: #13773d;
   --color-qc-warn: #a15c00;
   --color-qc-fail: #c2261f;
+  --color-workspace-mark: #23395b;
+  --color-workspace-mark-foreground: #ffffff;
   --font-body: 'Inter';
   --font-meta: 'Inter';
   --font-h1: 'Inter';
