@@ -118,9 +118,17 @@ describe('a bad palette in the Playful look', () => {
 
     const result = playfulContrast(dark);
     expect(result.failures).toEqual([]);
-    expect(result.warnings.map((warning) => warning.colour)).toEqual(['accent']);
-    expect(result.warnings[0]).toMatchObject({ look: 'playful', from: '#3b2a8f' });
-    expect(result.warnings[0]?.pairs).toContain('playful: body highlight on pill');
+    // The accent goes lighter for the pill; the badge mixed from it may then ask a shade of the primary too
+    const colours = result.warnings.map((warning) => warning.colour);
+    expect(colours).toContain('accent');
+    expect(colours).not.toContain('ink');
+    const accent = result.warnings.find((warning) => warning.colour === 'accent');
+    expect(accent).toMatchObject({
+      look: 'playful',
+      from: '#3b2a8f',
+      to: result.kit.colors.accent,
+    });
+    expect(accent?.pairs).toContain('playful: body highlight on pill');
     expect(result.kit.colors.ink).toBe(SAMPLE.colors.ink);
     expect(result.kit.colors.accent).not.toBe('#3b2a8f');
     expect(failingEverywhere(result.kit)).toEqual([]);

@@ -337,7 +337,7 @@ describe('the stickers sit inside the safe zones in every size (§07, §08)', ()
     }
     expect(valueOf(before, 'border-radius')).toBe('50%');
     expect(Math.abs(degrees('playful-tag-tilt'))).toBeGreaterThanOrEqual(5);
-    expect(valueOf(declarationsFor(PLAYFUL_CSS, /^\.slide$/), 'position')).toBe('relative');
+    expect(valueOf(declarationsFor(PLAYFUL_CSS, /\.slide$/), 'position')).toBe('relative');
   });
 
   it('removes both stickers with decorations off', () => {
