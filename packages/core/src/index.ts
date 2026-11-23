@@ -18,6 +18,16 @@ export {
   type Slide,
 } from './post/index.ts';
 export {
+  parseHighlights,
+  validateText,
+  type HighlightSegment,
+  type ParsedHighlights,
+  type TextIssue,
+  type TextIssueCode,
+  type ValidateTextOptions,
+  type ValidateTextResult,
+} from './text/index.ts';
+export {
   ACTIONS,
   can,
   PERMISSION_MATRIX,
