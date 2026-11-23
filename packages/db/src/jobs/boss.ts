@@ -1,12 +1,13 @@
 // pg-boss on the same Postgres (§13 Jobs, #72). Its tables live in their own `pgboss` schema, which the owner role
 // installs (`installJobs`, beside the migrations) and the app role only uses (`createJobs`): the app role can't create
-// a schema or change pg-boss's tables, nor a queue's policy or the commands pg-boss runs (`appGrants`), so a job can't
-// change the queue's structure or policy either. pg-boss stays inside this package, like the database client; the
+// a schema or change pg-boss's tables, nor a queue's policy or the commands pg-boss runs (`appGrants`; on `bam`, from
+// before pg-boss starts, `bamGuard`), so a job can't change the queue's structure or policy either. pg-boss stays inside this package, like the database client; the
 // worker gets `send` and `work`.
 //
 // A handler gets the payload and `db.forWorkspace` for the payload's workspace, the only database handle it has, so
 // every row it reads or writes is that workspace's (row-level security, the tenant-isolation skill).
 import { sql } from 'drizzle-orm';
+import pg from 'pg';
 import { fromDrizzle, PgBoss } from 'pg-boss';
 import type { Db, Scoped, Tx } from '../db.ts';
 import {
@@ -214,7 +215,11 @@ const VERSION_BOOKKEEPING = [
  * `subscribe()` and `unsubscribe()`. createJobs calls none of them. It still reads them (its start-up check reads
  * `bam`: `getIncompleteBamCommands`).
  *
- * Every write is taken back first, so an install brings an older database's grants down to these.
+ * Every write is taken back first, so an install brings an older database's grants down to these. When lzp_app is
+ * narrowed: on `bam`, before pg-boss starts its bam runner, at every install (`bamGuard`, #211), so from the first
+ * install that runs it that runner meets no row lzp_app could still write, nor one it wrote while it could; on the
+ * other tables, here, once pg-boss has started (a fresh database has no tables to narrow before). Each statement list
+ * runs in one transaction, so lzp_app never holds, between two installs, more than this.
  *
  * The job tables are cross-workspace by design: one queue serves every workspace, so they carry no row-level security,
  * and lzp_app can read and change any workspace's jobs. That is acceptable because a payload holds ids only (never
@@ -235,11 +240,58 @@ export function appGrants(): string {
 }
 
 /**
+ * What `installJobs` runs as the owner before pg-boss starts (#211, Cerberus F1 on #209), as one statement list (one
+ * transaction), under the grants' lock.
+ *
+ * pg-boss 12.38 starts its bam runner inside start() (index.js: `if (this.#config.migrate) await this.#bam.start()`);
+ * the runner polls at once (bam.js: `setImmediate(() => this.#onPoll())`) and claims a pending, failed or stale row
+ * (plans.js, getNextBamCommand: `c.status IN ('pending', 'failed') OR (c.status = 'in_progress' AND …)`) to run its
+ * command as SQL. A row lzp_app planted while it could write to `bam` (its grants before #203) is already there, so
+ * taking those writes back, before start() or after it (`appGrants`), doesn't keep the runner from it. So, first:
+ * - `bam` is locked against writers: SHARE ROW EXCLUSIVE waits out every transaction writing there and holds off the
+ *   next until this one commits, so every row lzp_app wrote is in sight;
+ * - while lzp_app can still write to `bam`, every row not completed goes. Any of a row's columns could be lzp_app's, so
+ *   none tells pg-boss's rows from lzp_app's. pg-boss writes them only in its migrations (migrationStore.js:
+ *   `job_table_run_async`, or an INSERT into bam), and 12.38's fresh install writes none (plans.js `create`): this repo
+ *   has run no other pg-boss (12.38.1 since #82), so none of those rows is pg-boss's. The backup a deploy takes before
+ *   it migrates (§14) keeps them;
+ * - lzp_app's writes on `bam` are taken back, so it can't plant another before the runner starts.
+ * From then on only the owner writes to `bam`, and no install refuses a row: a later pg-boss's migrations write theirs
+ * inside start(), after this, and its runner runs them. A database without `bam` yet (a fresh one) has nothing to refuse.
+ */
+function bamGuard(): string {
+  const bam = `${JOBS_SCHEMA}.bam`;
+  return `SELECT pg_advisory_xact_lock(${String(GRANTS_LOCK)});
+    DO $$
+    BEGIN
+      IF to_regclass('${bam}') IS NULL THEN
+        RETURN;
+      END IF;
+      LOCK TABLE ${bam} IN SHARE ROW EXCLUSIVE MODE;
+      IF has_table_privilege('lzp_app', '${bam}', 'INSERT')
+        OR has_any_column_privilege('lzp_app', '${bam}', 'UPDATE') THEN
+        DELETE FROM ${bam} WHERE status <> 'completed';
+      END IF;
+      REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ${bam} FROM lzp_app;
+    END
+    $$;`;
+}
+
+/**
  * Installs or migrates pg-boss in the `pgboss` schema as the owner role (DATABASE_OWNER_URL), declares the queues with
  * their retry bounds, and lets the app role (lzp_app) use them: rows only, never the schema. Safe to run again and
  * at the same time as another run (pg-boss and the grants each take an advisory lock). Run it with the migrations.
  */
 export async function installJobs(ownerUrl: string): Promise<void> {
+  // Before pg-boss starts its bam runner (`bamGuard`), in a session of its own that ends before pg-boss opens its pool.
+  const owner = new pg.Client({ connectionString: ownerUrl, application_name: 'lzp-jobs-install' });
+  await owner.connect();
+  try {
+    await owner.query(bamGuard());
+  } finally {
+    await owner.end();
+  }
+
   const boss = new PgBoss({
     connectionString: ownerUrl,
     schema: JOBS_SCHEMA,

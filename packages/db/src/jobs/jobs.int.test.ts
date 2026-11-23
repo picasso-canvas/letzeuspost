@@ -109,6 +109,16 @@ async function claimedBy(id: string): Promise<string | null> {
   return row.job;
 }
 
+/** Runs `change` holding the lock installJobs grants under, so no other file's install grants at the same time. */
+async function withGrantsLock<T>(change: () => Promise<T>): Promise<T> {
+  await owner.query('select pg_advisory_lock(72)');
+  try {
+    return await change();
+  } finally {
+    await owner.query('select pg_advisory_unlock(72)');
+  }
+}
+
 /** The owner of the `pgboss` schema and of each of its tables. */
 async function jobsOwners(): Promise<{ schema: string[]; tables: string[] }> {
   const schema = await owner.query<{ owner: string }>(
@@ -254,6 +264,81 @@ describe('pg-boss in the pgboss schema (§13)', () => {
       await app.end();
     }
   });
+
+  // #211 (Cerberus F1 on #209): an install starts pg-boss's bam runner, which runs each row's command as the owner. A
+  // row the app role wrote while it still could (its grants before #203) is refused before that runner starts.
+  it('does not run a bam command the app role planted under its old grants, at the next install or later', async () => {
+    const name = `planted-${run}`;
+    const marker = `lzp_planted_${run.replaceAll('-', '')}`;
+    const app = new pg.Client({ connectionString: appUrl });
+    await app.connect();
+    try {
+      // lzp_app's writes on bam before #203, and the row it plants with them. Under the grants' lock, so no other
+      // file's install takes them back before the row is in.
+      const planted = await withGrantsLock(async () => {
+        await owner.query(`grant insert, update, delete on ${JOBS_SCHEMA}.bam to lzp_app`);
+        const { rows } = await app.query<{ id: string }>(
+          `insert into ${JOBS_SCHEMA}.bam (name, version, status, table_name, command)
+           values ($1, 1, 'pending', 'job_common', $2) returning id`,
+          [name, `create table public.${marker} ()`],
+        );
+        return rows[0]?.id;
+      });
+      expect(planted).toBeDefined();
+      // The runner's turn comes at once, not up to a minute after the last install's.
+      await owner.query(`update ${JOBS_SCHEMA}.version set bam_on = null`);
+
+      await installJobs(ownerUrl);
+
+      const ran = await owner.query<{ table: string | null }>(
+        'select to_regclass($1)::text as table',
+        [`public.${marker}`],
+      );
+      expect(ran.rows).toEqual([{ table: null }]);
+      // Nor is it left for a later install's runner.
+      const left = await owner.query(`select status from ${JOBS_SCHEMA}.bam where id = $1`, [
+        planted,
+      ]);
+      expect(left.rows).toEqual([]);
+      // And the app role can't plant another.
+      expect(
+        await refusalCode(
+          app.query(
+            `insert into ${JOBS_SCHEMA}.bam (name, version, status, table_name, command)
+             values ($1, 1, 'pending', 'job_common', 'select 1')`,
+            [name],
+          ),
+        ),
+      ).toBe('42501');
+    } finally {
+      await app.end();
+      await withGrantsLock(() =>
+        owner.query(`revoke insert, update, delete on ${JOBS_SCHEMA}.bam from lzp_app`),
+      );
+      await owner.query(`delete from ${JOBS_SCHEMA}.bam where name = $1`, [name]);
+      await owner.query(`drop table if exists public.${marker}`);
+    }
+  }, 60_000);
+
+  it("leaves a bam row the owner wrote to pg-boss's runner once the app role can't write there", async () => {
+    const name = `owners-${run}`;
+    const { rows } = await owner.query<{ id: string }>(
+      `insert into ${JOBS_SCHEMA}.bam (name, version, status, table_name, command)
+       values ($1, 1, 'pending', 'job_common', 'select 1') returning id`,
+      [name],
+    );
+    const id = rows[0]?.id;
+    try {
+      await installJobs(ownerUrl);
+      const kept = await owner.query<{ id: string }>(
+        `select id from ${JOBS_SCHEMA}.bam where id = $1`,
+        [id],
+      );
+      expect(kept.rows).toEqual([{ id }]);
+    } finally {
+      await owner.query(`delete from ${JOBS_SCHEMA}.bam where name = $1`, [name]);
+    }
+  }, 60_000);
 
   it("lets the app role run pg-boss's maintenance pass (expiry, retries, counts) with no permission refused", async () => {
     const boss = new PgBoss({
