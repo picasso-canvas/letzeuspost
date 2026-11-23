@@ -3,12 +3,15 @@
 // table; and workspaces through `db.forWorkspace` and `forUser` (./workspaces.ts).
 //
 // The web app takes `authServer()`, one per process. The worker takes `createAccountEmails`, the outbox steps it
-// delivers a sign-in email with: it never imports @lzp/db/auth itself (Athena's decision 3, 2026-11-11).
+// delivers a sign-in email with and the sign-in tables' prune it runs on a timer (#323): it never imports @lzp/db/auth
+// itself (Athena's decision 3, 2026-11-11).
 import { loadEnv, type Env } from '@lzp/config';
 import { createDb, createJobs, type EmailOutbox, type Jobs } from '@lzp/db';
 import {
   accountEmailOutbox,
   createAuthDb,
+  pruneAccountEmails,
+  pruneRateLimitHits,
   queueAccountEmail,
   schema,
   type UserCtx,
@@ -128,14 +131,31 @@ export function authServer(): AuthServer {
   return holder.lzpAuth;
 }
 
-/** What the worker delivers sign-in emails with: the account emails' outbox, on the auth handle. */
+/**
+ * What the worker delivers sign-in emails with, the account emails' outbox, and the prune of sign-in's two tables
+ * (#323), all on the auth handle (lzp_auth).
+ */
 export interface AccountEmails {
   readonly outbox: EmailOutbox;
+  /** Each step deletes what has expired and says how many rows it deleted (@lzp/db/auth's prune). */
+  readonly prune: {
+    /** Every rate-limit hit older than the longest window, in every bucket. */
+    readonly rateLimitHits: () => Promise<number>;
+    /** Every sent or failed account email past its retention window. */
+    readonly accountEmails: () => Promise<number>;
+  };
   close: () => Promise<void>;
 }
 
 /** The worker's way to the account emails (`url` is its DATABASE_URL). */
 export function createAccountEmails(url: string): AccountEmails {
   const authDb = createAuthDb(url);
-  return { outbox: accountEmailOutbox(authDb.db), close: () => authDb.close() };
+  return {
+    outbox: accountEmailOutbox(authDb.db),
+    prune: {
+      rateLimitHits: () => pruneRateLimitHits(authDb.db),
+      accountEmails: () => pruneAccountEmails(authDb.db),
+    },
+    close: () => authDb.close(),
+  };
 }
