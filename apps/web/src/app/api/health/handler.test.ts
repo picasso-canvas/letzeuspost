@@ -83,6 +83,33 @@ describe('the health check', () => {
     expect(await responses[24]?.json()).toEqual({ status: 'ok' });
   });
 
+  it('logs one line per failed check, not one per request sharing it, so an outage does not flood the log', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    const down = dbThat(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const handler = createHealthHandler(down);
+      const flood = Array.from({ length: 25 }, () => handler());
+      fail(new Error('connect ECONNREFUSED'));
+      const responses = await Promise.all(flood);
+      expect(responses.map((r) => r.status)).toEqual(Array.from({ length: 25 }, () => 503));
+      expect(log.mock.calls).toEqual([['health: the database did not answer (error)']]);
+
+      // The next failed check is a new one, and logs its own line.
+      const again = handler();
+      fail(new Error('connect ECONNREFUSED'));
+      expect((await again).status).toBe(503);
+      expect(log).toHaveBeenCalledTimes(2);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('pings again once the running ping is over, so a recovered database is seen', async () => {
     let calls = 0;
     const flaky = dbThat(() => {
