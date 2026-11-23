@@ -14,15 +14,29 @@ const workspaceId = randomUUIDv7();
 const emailMessageId = randomUUIDv7();
 
 describe('the queues (§13 Jobs)', () => {
-  it("declares §13's five queues and the account emails' queue (#77)", () => {
+  it("declares §13's five queues, the account emails' queue (#77) and the outbox's sweep (#210)", () => {
     expect([...queueNames].sort()).toEqual([
       'account-email',
       'ai',
       'email',
+      'email-sweep',
       'export',
       'fetch',
       'render',
     ]);
+  });
+
+  it('runs the email sweep with an empty payload: it works in each workspace it finds, never one it is given', () => {
+    expect(checkPayload('email-sweep', {})).toEqual({});
+    expect(workspaceQueueNames).not.toContain('email-sweep');
+    for (const payload of [
+      { workspaceId },
+      { emailMessageId },
+      { to: 'nadia@example.com' },
+      null,
+    ]) {
+      expect(() => checkPayload('email-sweep', payload)).toThrow(JobPayloadError);
+    }
   });
 
   it('takes an account email by its id alone: it belongs to a person, not a workspace', () => {

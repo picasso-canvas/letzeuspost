@@ -1,5 +1,6 @@
 // What the worker runs (§13 What runs), checked without services: startWorker registers the `email` job and, from
-// #77, the `account-email` job on packages/auth's account emails (Argus F2 on #229), and closes them on stop. The
+// #77, the `account-email` job on packages/auth's account emails (Argus F2 on #229), and from #210 the outbox's sweep,
+// and closes them on stop. The
 // queue, the database and the templates are stand-ins; account-email.int.test.ts runs the real ones.
 import { randomUUIDv7 } from 'node:crypto';
 import type { EmailOutbox, JobContext, JobHandler, QueueName } from '@lzp/db';
@@ -80,10 +81,10 @@ afterEach(() => {
 });
 
 describe('startWorker', () => {
-  it('runs the email job and the account-email job', async () => {
+  it('runs the email job, the account-email job and the email outbox sweep', async () => {
     const { startWorker } = await import('./worker.ts');
     const worker = await startWorker(env);
-    expect([...seen.handlers.keys()]).toEqual(['email', 'account-email']);
+    expect([...seen.handlers.keys()]).toEqual(['email', 'account-email', 'email-sweep']);
     await worker.stop();
   });
 
