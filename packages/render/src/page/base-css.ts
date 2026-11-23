@@ -1,3 +1,4 @@
+import { IMAGE_BOX_MIN_SHARE } from '../fit/script.ts';
 import { SIZES, SMALL_PRINT_PX, type SizeName } from '../sizes.ts';
 
 // The CSS every slide shares, under the look's own (§08 Looks in the renderer). Print-safe only: no filter, backdrop
@@ -84,6 +85,11 @@ body {
   margin: 0;
   font-size: ${String(SMALL_PRINT_PX)}px;
   line-height: var(--lh-body);
+}
+.image-box {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: calc(var(--h) * ${String(IMAGE_BOX_MIN_SHARE)});
 }
 .page-number {
   font-size: ${String(SMALL_PRINT_PX)}px;

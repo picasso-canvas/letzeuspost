@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FIT_SCRIPT, IMAGE_BOX_MIN_SHARE } from '../fit/script.ts';
 import { BANGLA_LINE_HEIGHT_MIN } from '../fonts/manifest.ts';
 import { SIZES } from '../sizes.ts';
 import { BASE_CSS, sizeCss } from './base-css.ts';
@@ -57,6 +58,14 @@ describe('the base CSS', () => {
     expect(declarations(BASE_CSS, '.body')).toMatch(/font-size:\s*max\(var\(--body-floor\)/);
     expect(declarations(BASE_CSS, '.small-print')).toMatch(/font-size:\s*28px/);
     expect(declarations(BASE_CSS, '.page-number')).toMatch(/font-size:\s*28px|small-print/);
+  });
+
+  it('keeps an image box at 26% of the page height at least, and the fit script checks the same share', () => {
+    expect(declarations(BASE_CSS, '.image-box')).toMatch(
+      /min-height:\s*calc\(var\(--h\) \* 0\.26\)/,
+    );
+    expect(IMAGE_BOX_MIN_SHARE).toBe(0.26);
+    expect(FIT_SCRIPT).toContain('const IMAGE_BOX_SHARE = 0.26;');
   });
 });
 

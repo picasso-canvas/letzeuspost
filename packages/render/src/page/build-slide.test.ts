@@ -5,7 +5,7 @@ import { FONT_MANIFEST } from '../fonts/library.ts';
 import { SIZES } from '../sizes.ts';
 import { ASSET_SCHEME } from './assets.ts';
 import { buildSlide, buildSlideWithWarnings } from './build-slide.ts';
-import { FIT_SCRIPT } from './fit-script.ts';
+import { FIT_SCRIPT } from '../fit/script.ts';
 import { registerLook } from './looks.ts';
 import { TEST_LOOK, testBanglaPost, testKit, testPost, testSlide } from './test-fixtures.ts';
 
