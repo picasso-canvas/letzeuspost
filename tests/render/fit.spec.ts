@@ -302,7 +302,7 @@ test.describe('image boxes', () => {
         const { page: height, heights } = await page.evaluate<{ page: number; heights: number[] }>(
           IMAGE_BOX_AT_EVERY_K,
         );
-        expect(height).toBe(SIZES[size].height);
+        expect(height).toBeCloseTo(SIZES[size].height, 1);
         for (const box of heights) expect(box).toBeGreaterThanOrEqual(0.26 * height - 0.5);
         // The text is what gives way: with too much of it the page doesn't fit, and the photo is still there
         expect(fit.fits).toBe(title === 'Pitha');
@@ -349,8 +349,9 @@ test.describe('Bangla', () => {
     const [tall, plain] = boxes;
     if (tall === undefined || plain === undefined) throw new Error('no boxes');
     // The same box either way: lines × line height, whatever the glyphs reach to above and below
-    expect(tall.height).toBe(plain.height);
-    expect(tall.height).toBe(tall.lineHeight);
+    // (Chromium lays text out in 1/64 px, so a height and a line height written in decimals differ by a rounding)
+    expect(tall.height).toBeCloseTo(plain.height, 1);
+    expect(tall.height).toBeCloseTo(tall.lineHeight, 1);
     // And the line height leaves room for the stacked conjuncts: at least 1.3 for headings (§07)
     expect(tall.lineHeight / tall.fontSize).toBeGreaterThanOrEqual(1.3);
   });
