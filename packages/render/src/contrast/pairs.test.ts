@@ -83,14 +83,22 @@ describe('the layout registry', () => {
       },
     ]);
     expect(pairsFor('quote', kit, 'editorial', 'landscape')).toEqual([
-      { name: 'quote: editorial landscape quote', text: 'ink', on: 'background', px: 40, width: 1200 },
+      {
+        name: 'quote: editorial landscape quote',
+        text: 'ink',
+        on: 'background',
+        px: 40,
+        width: 1200,
+      },
     ]);
     expect(pairsFor('quote', kit, 'bold', 'pin')[0]?.width).toBe(1000);
   });
 
   it('refuses to register a layout twice, and refuses to check one that declared nothing', () => {
     registerPairs('stat', () => []);
-    expect(() => registerPairs('stat', () => [])).toThrow(/already/);
+    expect(() => {
+      registerPairs('stat', () => []);
+    }).toThrow(/already/);
     expect(() => pairsFor('offer', kit, 'bold', 'square')).toThrow(/offer/);
   });
 });

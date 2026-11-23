@@ -84,7 +84,12 @@ describe('applyContrast', () => {
 
   it('fixes kit-coloured text on a photo, whatever the scrim ends up being', () => {
     const kit = withColors({ accent: '#808080' });
-    const onPhoto: TextPair = { name: 'accent on photo', text: 'accent', on: { photo: true }, px: 40 };
+    const onPhoto: TextPair = {
+      name: 'accent on photo',
+      text: 'accent',
+      on: { photo: true },
+      px: 40,
+    };
     const result = applyContrast(kit, 'playful', [onPhoto]);
     expect(allPass(result.kit, [onPhoto])).toBe(true);
     expect(result.warnings[0]?.colour).toBe('accent');

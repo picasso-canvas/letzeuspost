@@ -83,7 +83,8 @@ export function resolveColour(kit: RenderKit, colour: TextColour): string {
   if (typeof colour === 'string') return kit.colors[colour];
   if ('hex' in colour) return toHex(parseHex(colour.hex));
   const extra = kit.colors.extras[colour.extra];
-  if (extra === undefined) throw new Error(`The kit has no extra colour number ${colour.extra}`);
+  if (extra === undefined)
+    throw new Error(`The kit has no extra colour number ${String(colour.extra)}`);
   return extra;
 }
 

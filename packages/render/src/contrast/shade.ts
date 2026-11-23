@@ -53,7 +53,9 @@ export function shadeToPass(colour: string, against: string, limit: number): str
       .map((l) => fromHsl({ ...start, l }))
       .filter((hex) => contrastRatio(hex, against) >= limit);
     // Both directions can pass at the same distance: take the one with more contrast.
-    const best = candidates.sort((a, b) => contrastRatio(b, against) - contrastRatio(a, against))[0];
+    const best = candidates.sort(
+      (a, b) => contrastRatio(b, against) - contrastRatio(a, against),
+    )[0];
     if (best !== undefined) return best;
   }
   return null;
