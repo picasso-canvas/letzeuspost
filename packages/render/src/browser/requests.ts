@@ -1,6 +1,10 @@
 import { ASSET_KEY } from '../kit.ts';
-import { ASSET_SCHEME, type AssetKind } from '../page/assets.ts';
 import { sha256Base64 } from '../page/sha256.ts';
+
+// `page/assets.ts`'s scheme and kinds, restated so the render browser doesn't load React (that file draws `<img>`s);
+// requests.test.ts holds them equal.
+export const ASSET_SCHEME = 'lzp-asset';
+export type AssetKind = 'image' | 'font';
 
 // The render browser's only source of bytes (§08 Security: the render browser has no internet). The page is served
 // from an address that exists nowhere, every request from it is intercepted, and only the job's own assets on that
@@ -93,7 +97,10 @@ export function servedHtml(html: string): string {
       .replace(`img-src ${scheme}`, `img-src ${PAGE_ORIGIN}`)
       .replace(`font-src ${scheme}`, `font-src ${PAGE_ORIGIN}`);
     if (style !== undefined && served !== undefined && served !== style)
-      rewritten = rewritten.replace(`sha256-${sha256Base64(style)}`, `sha256-${sha256Base64(served)}`);
+      rewritten = rewritten.replace(
+        `sha256-${sha256Base64(style)}`,
+        `sha256-${sha256Base64(served)}`,
+      );
     return meta.replace(policy, rewritten);
   });
 }

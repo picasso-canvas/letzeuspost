@@ -24,7 +24,13 @@ describe('textBlocks: the elements that hold text of their own', () => {
         el(
           'body',
           ['class', 'look-clean'],
-          el('main', ['id', 'slide'], title, el('p', [], text('   \n  ')), el('p', [], text('Body'))),
+          el(
+            'main',
+            ['id', 'slide'],
+            title,
+            el('p', [], text('   \n  ')),
+            el('p', [], text('Body')),
+          ),
           el('script', [], text('/* fit */')),
         ),
       ),
@@ -64,7 +70,8 @@ describe('fallbacks: a font the page didn’t ask for is an error', () => {
         block: 'main > h1',
         family: 'Noto Sans Bengali',
         glyphs: 6,
-        message: 'main > h1: 6 glyphs were drawn by "Noto Sans Bengali", a font the page didn’t load',
+        message:
+          'main > h1: 6 glyphs were drawn by "Noto Sans Bengali", a font the page didn’t load',
       },
       {
         code: 'font-fallback',

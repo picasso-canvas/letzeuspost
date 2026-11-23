@@ -1,5 +1,6 @@
 // What the editor and the worker share. `loadFonts` reads files with node:fs, so it has its own entry,
-// `@lzp/render/fonts/load`, kept out of this one: the slide builder also runs in the editor (§08).
+// `@lzp/render/fonts/load`, kept out of this one: the slide builder also runs in the editor (§08). The worker's render
+// browser (Playwright) is `@lzp/render/browser`, for the same reason.
 export { FONT_MANIFEST } from './fonts/library.ts';
 export {
   BANGLA_LINE_HEIGHT_MIN,

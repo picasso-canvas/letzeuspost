@@ -72,7 +72,7 @@ describe('createBrowserPool: the browser restarts', () => {
 
   it('closes a retired browser only once the renders still running on it finish', async () => {
     const { pool, browsers, idOf } = setup({ rendersPerBrowser: 1 });
-    let finish = () => undefined as void;
+    let finish: () => void = () => undefined;
     const slow = pool.use(
       (browser) =>
         new Promise<number>((resolve) => {
@@ -124,9 +124,12 @@ describe('createBrowserPool: a crash retries once in a new browser', () => {
     expect(await once.pool.use(once.idOf)).toBe(1);
 
     const twice = setup({ failLaunches: 2 });
-    await expect(twice.pool.use(twice.idOf)).rejects.toThrow(
+    const error: unknown = await twice.pool.use(twice.idOf).catch((e: unknown) => e);
+    expect((error as RenderFailure).reason).toBe(
       'The render browser didn’t start, so the slide wasn’t rendered',
     );
+    // The launch's own error is kept, for whoever reads the worker's error.
+    expect(((error as RenderFailure).cause as Error).message).toBe('Chromium didn’t start');
   });
 
   it('doesn’t retry an error that isn’t a crash', async () => {

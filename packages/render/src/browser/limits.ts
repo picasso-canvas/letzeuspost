@@ -11,8 +11,8 @@ export const RENDER_LIMITS = {
 /** A render that failed for a reason a person can read: the reason is shown as it is (§11 `Failed`). */
 export class RenderFailure extends Error {
   readonly reason: string;
-  constructor(reason: string) {
-    super(reason);
+  constructor(reason: string, options?: ErrorOptions) {
+    super(reason, options);
     this.name = 'RenderFailure';
     this.reason = reason;
   }
@@ -39,7 +39,10 @@ export function slideBudget(input: { now: number; deadline?: number; slideMs: nu
       ms: Math.max(0, deadline - now),
       reason: `The post didn’t finish rendering within ${formatLimit(RENDER_LIMITS.postMs)}`,
     };
-  return { ms: slideMs, reason: `The slide didn’t finish rendering within ${formatLimit(slideMs)}` };
+  return {
+    ms: slideMs,
+    reason: `The slide didn’t finish rendering within ${formatLimit(slideMs)}`,
+  };
 }
 
 /** `work`, or a `RenderFailure` with `reason` once `ms` have passed (at once when there are none). */

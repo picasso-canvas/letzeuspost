@@ -42,9 +42,11 @@ const attribute = (node: DomNode, name: string): string | undefined => {
 function step(node: DomNode): string {
   const id = attribute(node, 'id');
   const classes = (attribute(node, 'class') ?? '').split(/\s+/).filter((name) => name !== '');
-  return [node.localName ?? '', id === undefined ? '' : `#${id}`, ...classes.map((c) => `.${c}`)].join(
-    '',
-  );
+  return [
+    node.localName ?? '',
+    id === undefined ? '' : `#${id}`,
+    ...classes.map((c) => `.${c}`),
+  ].join('');
 }
 
 const findBody = (node: DomNode): DomNode | undefined =>

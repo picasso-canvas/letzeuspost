@@ -85,6 +85,7 @@ export function createBrowserPool<B>(options: PoolOptions<B>): BrowserPool<B> {
   return {
     async use(job) {
       let last: 'crash' | 'launch' = 'crash';
+      let cause: unknown;
       for (let attempt = 0; attempt < 2; attempt++) {
         let slot: Slot<B>;
         try {
@@ -92,6 +93,7 @@ export function createBrowserPool<B>(options: PoolOptions<B>): BrowserPool<B> {
         } catch (error) {
           if (!(error instanceof LaunchFailed)) throw error;
           last = 'launch';
+          cause = error.cause;
           continue;
         }
         let crashed = false;
@@ -101,6 +103,7 @@ export function createBrowserPool<B>(options: PoolOptions<B>): BrowserPool<B> {
           if (!(error instanceof BrowserCrashed)) throw error;
           crashed = true;
           last = 'crash';
+          cause = error;
         } finally {
           await finish(slot, crashed);
         }
@@ -109,6 +112,7 @@ export function createBrowserPool<B>(options: PoolOptions<B>): BrowserPool<B> {
         last === 'launch'
           ? 'The render browser didn’t start, so the slide wasn’t rendered'
           : 'The render browser crashed twice on this slide, so it wasn’t rendered',
+        { cause },
       );
     },
 

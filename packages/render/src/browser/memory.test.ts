@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { residentBytes } from './memory.ts';
 
-const status = (kb: number) => `Name:\tchrome\nVmPeak:\t  999999 kB\nVmRSS:\t ${String(kb)} kB\nThreads:\t12\n`;
+const status = (kb: number) =>
+  `Name:\tchrome\nVmPeak:\t  999999 kB\nVmRSS:\t ${String(kb)} kB\nThreads:\t12\n`;
 
 describe('residentBytes: the memory the browser’s processes hold', () => {
   it('adds up the resident memory of every process', async () => {

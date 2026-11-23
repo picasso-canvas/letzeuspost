@@ -3,15 +3,48 @@ import { buildSlide } from '../page/build-slide.ts';
 import { registerLook } from '../page/looks.ts';
 import { sha256Base64 } from '../page/sha256.ts';
 import { TEST_LOOK, testKit, testPost, testSlide } from '../page/test-fixtures.ts';
-import { assetIndex, findAsset, loggedUrl, PAGE_ORIGIN, PAGE_URL, servedHtml } from './requests.ts';
+import { ASSET_SCHEME as BUILDER_SCHEME, type AssetKind as BuilderKind } from '../page/assets.ts';
+import {
+  ASSET_SCHEME,
+  assetIndex,
+  findAsset,
+  loggedUrl,
+  PAGE_ORIGIN,
+  PAGE_URL,
+  servedHtml,
+  type AssetKind,
+} from './requests.ts';
+
+describe('the asset addresses the runner serves', () => {
+  it('are the page builder’s: the same scheme and kinds', () => {
+    expect(ASSET_SCHEME).toBe(BUILDER_SCHEME);
+    // The typecheck fails here when the kinds differ.
+    const sameKinds: [AssetKind] extends [BuilderKind]
+      ? [BuilderKind] extends [AssetKind]
+        ? true
+        : false
+      : false = true;
+    expect(sameKinds).toBe(true);
+  });
+});
 
 beforeAll(() => {
   registerLook(TEST_LOOK);
 });
 
 const FONT_SHA = 'a'.repeat(64);
-const png = { kind: 'image', key: 'logo_light_1', contentType: 'image/png', data: new Uint8Array([1]) } as const;
-const woff2 = { kind: 'font', key: FONT_SHA, contentType: 'font/woff2', data: new Uint8Array([2]) } as const;
+const png = {
+  kind: 'image',
+  key: 'logo_light_1',
+  contentType: 'image/png',
+  data: new Uint8Array([1]),
+} as const;
+const woff2 = {
+  kind: 'font',
+  key: FONT_SHA,
+  contentType: 'font/woff2',
+  data: new Uint8Array([2]),
+} as const;
 
 describe('loggedUrl: a blocked request is logged by its origin and path only', () => {
   it('drops the query string, the fragment and any user name or password', () => {
@@ -86,7 +119,7 @@ describe('servedHtml: the page’s asset addresses point at the page’s own ori
     // The style is allowed by the hash of what it now says, and only by that.
     expect(policy).toContain(`sha256-${sha256Base64(styleOf(served))}`);
     expect(policy).not.toContain(`sha256-${sha256Base64(styleOf(before))}`);
-    expect(policy).toContain("default-src &#x27;none&#x27;");
+    expect(policy).toContain('default-src &#x27;none&#x27;');
   });
 
   it('leaves the text of a post alone, even when it spells out an asset address', () => {

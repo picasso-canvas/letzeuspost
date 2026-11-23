@@ -37,20 +37,23 @@ describe('the fixed flags (§08 Chrome in Docker)', () => {
     expect(LAUNCH_OPTIONS.headless).toBe(true);
   });
 
-  it.each(SIZE_NAMES)('opens a %s page at its pixel size, at 1x, the same way every time', (size) => {
-    const options = contextOptions(size);
-    expect(options.viewport).toEqual({ width: SIZES[size].width, height: SIZES[size].height });
-    expect(options.deviceScaleFactor).toBe(1);
-    expect(options).toMatchObject({
-      colorScheme: 'light',
-      reducedMotion: 'reduce',
-      timezoneId: 'UTC',
-      locale: 'en-US',
-      serviceWorkers: 'block',
-      acceptDownloads: false,
-      bypassCSP: false,
-      isMobile: false,
-    });
-    expect(options.storageState).toBeUndefined();
-  });
+  it.each(SIZE_NAMES)(
+    'opens a %s page at its pixel size, at 1x, the same way every time',
+    (size) => {
+      const options = contextOptions(size);
+      expect(options.viewport).toEqual({ width: SIZES[size].width, height: SIZES[size].height });
+      expect(options.deviceScaleFactor).toBe(1);
+      expect(options).toMatchObject({
+        colorScheme: 'light',
+        reducedMotion: 'reduce',
+        timezoneId: 'UTC',
+        locale: 'en-US',
+        serviceWorkers: 'block',
+        acceptDownloads: false,
+        bypassCSP: false,
+        isMobile: false,
+      });
+      expect(options.storageState).toBeUndefined();
+    },
+  );
 });
