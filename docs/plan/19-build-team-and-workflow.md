@@ -36,6 +36,11 @@ Reviewers never review their own work and always start from a fresh context. The
    template: Goal · Section links · Spec excerpt · **Done when** (testable) · predicted tier (`routine` /
    `sensitive`) · **Areas** (paths it may touch) · Depends on · Milestone · **Feature**. One task = one small PR
    (aim for under ~400 changed lines).
+   **Areas are directories:** list the directories the work lives in as a glob (`packages/ui/src/tokens/**`; a bare
+   `packages/ui/src/tokens/` matches no file, because ship matches whole paths), not single files, so a task doesn't
+   stop on a neighbouring file it needs. A task that needs a guardrail file a builder can't edit
+   (`DESIGN.md`, `docs/plan/`, `.claude/`) gets that edit first: Athena lands it in her own PR, and the task lists that
+   PR under **Depends on**.
    **Features** ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/136)): a milestone's tasks
    are grouped into features, each a small vertical slice of 3–5 tasks, aiming at ~1,500 changed lines (one that
    outgrows it is batched in parts, below), labelled `feature:<slug>`. A feature's first task writes its journey
@@ -108,12 +113,13 @@ Reviewers never review their own work and always start from a fresh context. The
    own recorded verdicts count (§ merge gate, item 5). Blocking findings go back to a builder: on a task PR, a new
    dispatch on the same branch; on a batch, a fix task on `staging`, then the batch is reviewed again. **What holds a
    batch** ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/136)): blocking findings and
-   Cerberus's should-fixes. For each of Argus's and Iris's should-fixes and every nit, Athena opens a follow-up task,
-   labelled `follow-up`, with a **Follow-up of:** line naming the batch PR (or adds it to the Done-when of a planned
-   task in the open feature; never to a later feature's, which would bring the deadlock back), and links it on the
-   batch, which answers it. A follow-up must land by the next batch: the gate refuses a batch while a follow-up from
-   an earlier batch is still open, unless Zeus makes an exception on the record. At most 3 rounds, then `needs-zeus`
-   with a summary. The card moves to In review, and stays there until its batch merges.
+   Cerberus's should-fixes. For each of Argus's and Iris's should-fixes, Athena opens a follow-up task, and the nits of a
+   week go into one more (the weekly nit batch, one task however many nits), each labelled `follow-up`, with a
+   **Follow-up of:** line naming the batch PR (or adds it to the Done-when of a planned task in the open feature; never
+   to a later feature's, which would bring the deadlock back), and links it on the batch, which answers it. A follow-up
+   must land by the next batch: the gate refuses a batch while a follow-up from an earlier batch is still open, unless
+   Zeus makes an exception on the record. At most 3 rounds, then `needs-zeus` with a summary. The card moves to In
+   review, and stays there until its batch merges.
 7. **Merge gate.** Athena runs `scripts/merge-gate.ts <pr>` from `main`. It checks every item in
    [the merge gate](#the-merge-gate) and only then squash-merges. After every merge into `main` it merges `main` into
    `staging`, so builders always start from main's harness. **Builders can't merge.** Only `main` is ever deployed
@@ -240,8 +246,8 @@ recorded (4). The checklist hadn't changed since 2026-11-07. So every finding no
 
 The first preventions (from the 2026-11-10 count): ship refuses a hand-over whose Done-when evidence doesn't name the
 head commit, a fix round whose PR text doesn't answer every numbered finding, and a branch that changes a file
-outside the task's Areas; the merge gate refuses the same on Athena's own PRs (#138). Numbered, typed findings and
-the count: #137.
+outside the task's Areas (a listed file, or a file under a listed directory glob); the merge gate refuses the same on
+Athena's own PRs (#138). Numbered, typed findings and the count: #137.
 
 ### Conventions
 
