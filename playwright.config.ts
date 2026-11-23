@@ -70,6 +70,25 @@ export default defineConfig({
       testIgnore: '**/*.int.*',
       use: { ...desktop, colorScheme: 'light', baseURL: 'http://localhost:3000' },
     },
+    {
+      // The render engine's browser tests (§08, #327): they will open their own Chromium (through packages/render
+      // once it exists) and need no server, so no web server starts for them.
+      name: 'render',
+      testDir: 'tests/render',
+      testMatch: '**/*.spec.ts',
+      // Its own folder: a run empties the output folder of the projects it runs, and the end-to-end screens for Iris
+      // and Zeus are collected from tests/visual/output (Q11).
+      outputDir: 'tests/render-output',
+    },
+    {
+      // The golden renders (§08, §17): baselines live in tests/golden/baselines/; only Athena commits them, after
+      // Zeus's look.
+      name: 'golden',
+      testDir: 'tests/golden',
+      testMatch: '**/*.spec.ts',
+      snapshotPathTemplate: 'tests/golden/baselines/{testFilePath}/{arg}{ext}',
+      outputDir: 'tests/golden-output',
+    },
   ],
   webServer: [
     ...(gallery
