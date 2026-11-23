@@ -17,8 +17,8 @@
 //   least 30 s more), so it too is marked failed as interrupted.
 // A run that outlived its job and did send it still records the send (`sent` moves an interrupted row too), so the
 // row says what happened. A send whose outcome is unknown fails the row at once (apps/worker's email job).
-// What this doesn't resolve: a row whose job's last run lost the database after claiming it. No retry comes, so the
-// row stays `sending`; a scheduled sweep for such rows is #210.
+// A row whose job's last run lost the database after claiming it gets no retry, so it stays `sending`: the email
+// sweep (#210, `interruptStale`) marks it failed as interrupted once it is older than that, by the same rule.
 import { and, eq, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
@@ -47,6 +47,14 @@ export const INTERRUPTED =
 /** A `sending` row older than this lost its run: the email job's expiry, after which pg-boss retries the job. */
 export const SENDING_STALE_AFTER_SECONDS = queues.email.queue.expireInSeconds;
 
+const sending = eq(emailMessage.status, 'sending');
+/** A `sending` row past this lost its run (above). Read from the database's clock, as `updated_at` is written. */
+const stale = lt(
+  emailMessage.updatedAt,
+  sql`now() - make_interval(secs => ${SENDING_STALE_AFTER_SECONDS})`,
+);
+const interrupted = { status: 'failed', failure: INTERRUPTED } as const;
+
 export interface EmailOutbox {
   /**
    * The row if it is waiting to be sent; otherwise why not. A `sending` row that `jobId` claimed, or that is older
@@ -66,9 +74,20 @@ export interface EmailOutbox {
   fail: (id: string, reason: string) => Promise<void>;
 }
 
-export function emailOutbox(db: Scoped): EmailOutbox {
+/** A workspace's outbox: the job's steps, and the email sweep's. */
+export interface WorkspaceEmailOutbox extends EmailOutbox {
+  /**
+   * The email sweep's step in this workspace (#210): every row left `sending` for longer than
+   * SENDING_STALE_AFTER_SECONDS is marked failed as interrupted, as `load` marks one; returns their ids. It never
+   * sends, nor puts a row back in the queue: an interrupted row may have gone out, so it waits for a person. One
+   * conditional update, so a sweep running twice, or beside a run that has just claimed a row again, marks each row
+   * once and never a live run's; a run past its expiry that did send still records it (`sent`).
+   */
+  interruptStale: () => Promise<string[]>;
+}
+
+export function emailOutbox(db: Scoped): WorkspaceEmailOutbox {
   const now = sql`now()`;
-  const sending = eq(emailMessage.status, 'sending');
   /** Moves the row when `from` holds; true if it moved. One conditional update, so two runs can't both move it. */
   const move = async (
     id: string,
@@ -104,16 +123,9 @@ export function emailOutbox(db: Scoped): EmailOutbox {
       if (row.status === 'sending') {
         // Whose claim and how old are checked in the update itself, so a row another run has just claimed again is
         // never caught.
-        const stale = lt(
-          emailMessage.updatedAt,
-          sql`now() - make_interval(secs => ${SENDING_STALE_AFTER_SECONDS})`,
-        );
         const ours = eq(emailMessage.claimedByJob, jobId);
-        const interrupted = await move(id, sql`(${sending} and (${ours} or ${stale}))`, {
-          status: 'failed',
-          failure: INTERRUPTED,
-        });
-        return { skip: interrupted ? 'interrupted' : 'sending' };
+        const marked = await move(id, sql`(${sending} and (${ours} or ${stale}))`, interrupted);
+        return { skip: marked ? 'interrupted' : 'sending' };
       }
       if (row.status !== 'queued') return { skip: row.status };
       return {
@@ -142,6 +154,16 @@ export function emailOutbox(db: Scoped): EmailOutbox {
         status: 'failed',
         failure: reason,
       });
+    },
+    interruptStale: async () => {
+      const rows = await db.transaction((tx) =>
+        tx
+          .update(emailMessage)
+          .set({ ...interrupted, updatedAt: now })
+          .where(and(sending, stale))
+          .returning({ id: emailMessage.id }),
+      );
+      return rows.map((row) => row.id);
     },
   };
 }

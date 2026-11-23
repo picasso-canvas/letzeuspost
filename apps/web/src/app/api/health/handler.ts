@@ -41,16 +41,19 @@ export function createHealthHandler(
 ): () => Promise<Response> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   // The check that is running now. Requests that arrive while it runs share it, so a flood of health requests during
-  // an outage costs the app's pool one ping, not one per request.
+  // an outage costs the app's pool one ping and the log one line, not one per request.
   let running: Promise<Outcome> | undefined;
   return async () => {
-    running ??= check(getDb, timeoutMs).finally(() => {
-      running = undefined;
-    });
+    running ??= check(getDb, timeoutMs)
+      .then((outcome) => {
+        // Only a fixed category is logged: a driver's message can carry a host name or a password.
+        if (outcome !== 'ok') console.error(`health: the database did not answer (${outcome})`);
+        return outcome;
+      })
+      .finally(() => {
+        running = undefined;
+      });
     const outcome = await running;
-    if (outcome === 'ok') return answer('ok', 200);
-    // Only a fixed category is logged: a driver's message can carry a host name or a password.
-    console.error(`health: the database did not answer (${outcome})`);
-    return answer('unavailable', 503);
+    return outcome === 'ok' ? answer('ok', 200) : answer('unavailable', 503);
   };
 }

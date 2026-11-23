@@ -1,9 +1,12 @@
 // What the scoped helper promises before it ever reaches Postgres (§13 Keeping workspaces apart, #71). Nothing here
-// connects: pg's pool opens a connection only for a query, and every case below is refused before one.
+// connects: pg's pool opens a connection only for a query, and every case below is refused before one, or talks to a
+// stand-in stream (the hung database).
+import { Duplex } from 'node:stream';
+import type pg from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as authModule from './auth.ts';
 import { authUrl, createAuthDb } from './auth.ts';
-import { createDb, NOBODY, scoped, type Orm } from './db.ts';
+import { createDb, dbOnPool, LIMITS, NOBODY, openPool, scoped, type Orm } from './db.ts';
 import * as index from './index.ts';
 
 const URL = 'postgres://lzp_app:unused@127.0.0.1:1/letzeuspost';
@@ -61,6 +64,122 @@ describe('db.forWorkspace(ctx)', () => {
     expect(() =>
       db.forWorkspace({ workspaceId: '019a6c3e-8f2b-7c4d-9e1f-0123456789ab' }),
     ).not.toThrow();
+  });
+});
+
+describe('openPool(): a hung database (Cerberus on #208, #217)', () => {
+  // pg's own client over a stand-in for the network: a database that takes the connection and then answers nothing,
+  // or answers the startup (AuthenticationOk, ReadyForQuery) and then no query. db.int.test.ts runs against Postgres.
+  const STARTUP_ANSWER = Buffer.from([0x52, 0, 0, 0, 8, 0, 0, 0, 0, 0x5a, 0, 0, 0, 5, 0x49]);
+  const streams: Duplex[] = [];
+  const pools: pg.Pool[] = [];
+
+  function hung(pool: pg.Pool, answers: 'nothing' | 'the startup only'): pg.Pool {
+    pools.push(pool);
+    pool.options.stream = () => {
+      let started = false;
+      const stream: Duplex = new Duplex({
+        read: () => undefined,
+        write: (_chunk, _encoding, done) => {
+          if (answers === 'the startup only' && !started) stream.push(STARTUP_ANSWER);
+          started = true;
+          done();
+        },
+        final: (done) => {
+          stream.push(null);
+          done();
+        },
+      });
+      Object.assign(stream, {
+        setNoDelay: () => stream,
+        connect: () => {
+          process.nextTick(() => stream.emit('connect'));
+          return stream;
+        },
+      });
+      streams.push(stream);
+      return stream;
+    };
+    return pool;
+  }
+
+  afterEach(async () => {
+    for (const stream of streams.splice(0)) stream.destroy();
+    await Promise.all(pools.splice(0).map((pool) => pool.end()));
+  });
+
+  /** The startup options the pool's connections ask Postgres for, and every one of them (pg reads the last). */
+  const startupOptions = (pool: pg.Pool) =>
+    new globalThis.URL(pool.options.connectionString ?? '').searchParams.getAll('options');
+  const asDefault = `-c statement_timeout=${String(LIMITS.statementMs)}`;
+
+  it('builds every pool with a connect limit and a statement limit', () => {
+    const pool = openPool(URL);
+    pools.push(pool);
+    expect(pool.options).toMatchObject({ connectionTimeoutMillis: LIMITS.connectMs });
+    expect(startupOptions(pool)).toEqual([asDefault]);
+    expect(Math.min(LIMITS.connectMs, LIMITS.statementMs, LIMITS.pingMs)).toBeGreaterThan(0);
+  });
+
+  // CI F1 on #217: Postgres applies the startup options in order, then each startup parameter, so the default goes
+  // first in the options and never as a parameter of its own; every setting the URL gives keeps its place after it
+  // (the auth handle's role among them: rls.int.test.ts).
+  it.each([
+    [
+      'in its options',
+      'options=-c%20statement_timeout%3D4321',
+      `${asDefault} -c statement_timeout=4321`,
+    ],
+    [
+      'in its options, beside another setting',
+      'options=-c%20statement_timeout%3D4321%20-c%20lock_timeout%3D1000',
+      `${asDefault} -c statement_timeout=4321 -c lock_timeout=1000`,
+    ],
+    [
+      'in the last of two options, the one pg reads',
+      'options=-c%20lock_timeout%3D1000&options=-c%20statement_timeout%3D4321',
+      `${asDefault} -c statement_timeout=4321`,
+    ],
+    ['as a parameter of its own', 'statement_timeout=4321', asDefault],
+  ])(
+    'lets a statement limit already in the URL %s win over the default',
+    (_label, query, options) => {
+      const pool = openPool(`${URL}?${query}&sslmode=disable`);
+      pools.push(pool);
+      expect(pool.options).not.toHaveProperty('statement_timeout');
+      expect(startupOptions(pool)).toEqual([options]);
+      const url = new globalThis.URL(pool.options.connectionString ?? '');
+      expect(url.searchParams.get('statement_timeout')).toBe(
+        query.startsWith('statement_timeout') ? '4321' : null,
+      );
+      expect(url.searchParams.get('sslmode')).toBe('disable');
+      expect(`${url.username}:${url.password}@${url.host}${url.pathname}`).toBe(
+        'lzp_app:unused@127.0.0.1:1/letzeuspost',
+      );
+    },
+  );
+
+  it('gives up on a connection the database never answers, after the connect limit', async () => {
+    const pool = hung(openPool(URL, { ...LIMITS, connectMs: 50 }), 'nothing');
+    await expect(pool.query('select 1')).rejects.toThrow(/timeout/i);
+    expect(pool.totalCount).toBe(0);
+  });
+
+  it('lets a query wait for a free connection only up to the connect limit, so the queue cannot grow', async () => {
+    const pool = hung(openPool(URL, { ...LIMITS, connectMs: 50 }), 'the startup only');
+    const stuck = Array.from({ length: pool.options.max }, () =>
+      pool.query('select 1').catch(() => 'dropped'),
+    );
+    await expect(pool.query('select 1')).rejects.toThrow(/timeout/i);
+    expect(pool.waitingCount).toBe(0);
+    for (const stream of streams) stream.destroy();
+    expect(await Promise.all(stuck)).toEqual(stuck.map(() => 'dropped'));
+  });
+
+  it('gives up on a ping the database never answers, after the ping limit, and drops its connection', async () => {
+    const pool = hung(openPool(URL), 'the startup only');
+    await expect(dbOnPool(pool, { ...LIMITS, pingMs: 50 }).ping()).rejects.toThrow(/timeout/i);
+    expect(pool.totalCount).toBe(0);
   });
 });
 

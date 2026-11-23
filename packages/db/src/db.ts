@@ -94,26 +94,75 @@ export function scoped(orm: Orm, settings: { workspaceId: string; userId: string
   };
 }
 
+/** How long the database gets before the app gives up on it (Cerberus on #208, #217). */
+export interface Limits {
+  /** To open a connection, and to wait for a free one when all are busy (pg's `connectionTimeoutMillis`). */
+  readonly connectMs: number;
+  /** For one statement; Postgres cancels it after that (`statement_timeout`). */
+  readonly statementMs: number;
+  /** For the health route's ping to be answered, the route's own 3 s. */
+  readonly pingMs: number;
+}
+
+export const LIMITS: Limits = { connectMs: 5_000, statementMs: 10_000, pingMs: 3_000 };
+
 /**
- * A pool on `url`. A pooled connection that fails while idle (Postgres restarting) is logged, not left to crash the
- * process; pg drops it and opens a new one for the next query.
+ * A pool on `url`, with `limits`, so a database that hangs can't pile up connections or waiting queries:
+ * - opening a connection, or waiting for a free one, gives up after `connectMs`;
+ * - Postgres cancels a statement after `statementMs`. The cancel comes back as the query's error, so the connection
+ *   goes back to the pool in order: a transaction rolls back first, as for any other error. It is a default: a statement
+ *   limit `url` sets already wins (`withStatementLimit`).
+ * The pool sets no client-side `query_timeout`: pg would refuse the query but leave its connection waiting for the
+ * answer, and the pool hands that connection, mid-query, to the next request (still inside a transaction that never
+ * rolled back, which the next request's commit would commit); Drizzle never gives back one whose `begin` timed out.
+ * Only the ping has one (`dbOnPool`): `pool.query` drops a connection whose query failed.
+ * A pooled connection that fails while idle (Postgres restarting) is logged, not left to crash the process; pg drops
+ * it and opens a new one for the next query.
  */
-export function openPool(url: string): pg.Pool {
-  const pool = new pg.Pool({ connectionString: url });
+export function openPool(url: string, limits: Limits = LIMITS): pg.Pool {
+  const pool = new pg.Pool({
+    connectionString: withStatementLimit(url, limits.statementMs),
+    connectionTimeoutMillis: limits.connectMs,
+  });
   pool.on('error', (error) => {
     console.error(`database: an idle connection failed: ${error.message}`);
   });
   return pool;
 }
 
+/**
+ * `url` with the statement limit `ms` at the front of its startup options (CI F1 on #217). Postgres applies the
+ * startup options in order, then each startup parameter, so a limit the URL sets itself, in its options or as a
+ * `statement_timeout` parameter (pg sends that one as a parameter), comes later and wins; so does any other setting
+ * there, the auth handle's role among them (auth.ts). pg reads only the last `options` in a URL, so that is the one kept.
+ */
+function withStatementLimit(url: string, ms: number): string {
+  const withLimit = new URL(url);
+  const given = withLimit.searchParams.getAll('options').at(-1);
+  const limit = `-c statement_timeout=${String(ms)}`;
+  withLimit.searchParams.set('options', given === undefined ? limit : `${limit} ${given}`);
+  return withLimit.href;
+}
+
+/**
+ * The ping: `select 1`, refused after `pingMs` even when the database never answers, and its connection dropped, so a
+ * hung database costs the pool no connection per health check (pg reads `query_timeout` on a query too; its types
+ * leave it out of QueryConfig, so the object isn't written inline).
+ */
+function pingQuery(limits: Pick<Limits, 'pingMs'>): pg.QueryConfig {
+  const query = { text: 'select 1', query_timeout: limits.pingMs };
+  return query;
+}
+
 /** The helper on a given pool (the tests use a one-connection pool to watch a connection being reused). */
-export function dbOnPool(pool: pg.Pool): Db {
+export function dbOnPool(pool: pg.Pool, limits: Pick<Limits, 'pingMs'> = LIMITS): Db {
   const orm = drizzle({ client: pool, schema });
+  const ping = pingQuery(limits);
   return {
     forWorkspace: (ctx) =>
       scoped(orm, { workspaceId: checkedId('workspace', ctx.workspaceId), userId: NOBODY }),
     ping: async () => {
-      await pool.query('select 1');
+      await pool.query(ping);
     },
     close: () => pool.end(),
   };
