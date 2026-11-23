@@ -157,12 +157,20 @@ describe('proxy: signed out and signed in', () => {
     },
   );
 
-  it('sends a signed-in visitor away from /sign-in, to the Inbox', () => {
+  // The Inbox is /app (Q13, #79), and the proxy sends them straight there: not to `/`, whose own redirect to /app would
+  // be a second hop on every sign-in (#250).
+  it('sends a signed-in visitor away from /sign-in, to the Inbox at /app, in one redirect', () => {
     for (const path of ['/sign-in', '/sign-in/', '/sign-in?error=INVALID_TOKEN']) {
       const response = proxy(signedIn(path));
       expect(response.status, path).toBe(307);
-      expect(location(response), path).toBe('/');
+      expect(location(response), path).toBe('/app');
     }
+  });
+
+  it('lets a signed-in visitor through to /app, so the one redirect is the last', () => {
+    const response = proxy(signedIn('/app'));
+    expect(location(response)).toBeNull();
+    expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
   it('lets a signed-in visitor through to app pages and to the public pages other than /sign-in', () => {
@@ -175,7 +183,7 @@ describe('proxy: signed out and signed in', () => {
 
   it('counts the cookie of an HTTPS app (staging, production) as a session too', () => {
     const cookie = `__Secure-${SESSION_COOKIE}=a-session-token`;
-    expect(location(proxy(signedIn('/sign-in', cookie)))).toBe('/');
+    expect(location(proxy(signedIn('/sign-in', cookie)))).toBe('/app');
     expect(location(proxy(signedIn('/', cookie)))).toBeNull();
   });
 

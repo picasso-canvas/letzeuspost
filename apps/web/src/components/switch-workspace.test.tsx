@@ -1,6 +1,6 @@
-// The switcher's workspace mark (Iris F2 on #79): the v1 mockup's 03-inbox draws it as a filled dark disc with light
-// initials, not the pale muted avatar. DESIGN.md has no navy (the mockup's #23395B is an inline value), so the app draws
-// it with the ink token pair: `foreground` for the fill, `background` for the initials, in both themes, and no raw value.
+// The switcher's workspace mark (Iris F2 on #79, #254): the v1 mockup's 03-inbox draws it as a filled navy disc with
+// white initials, not the pale muted avatar. DESIGN.md's `workspace-mark` token pair holds those colours, the same in
+// both themes: `workspace-mark` for the fill, `workspace-mark-foreground` for the initials, and no raw value.
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { buildCss } from '@lzp/ui/lib/build-css';
@@ -42,7 +42,7 @@ describe('the workspace mark in the switcher', () => {
     expect(html).toContain('>Northwind Social<');
   });
 
-  it('fills the mark with the ink token and writes its initials in the paper token, in both themes', async () => {
+  it('fills the mark with the workspace-mark token and writes its initials in its foreground token, in both themes', async () => {
     const candidates = html.match(/class="([^"]*)"/g)?.flatMap((m) => classesIn(m.slice(7, -1)));
     const css = await buildCss(candidates ?? []);
     // The rules the switcher's own classes give the mark's initials (the avatar fallback inside the button).
@@ -56,8 +56,10 @@ describe('the workspace mark in the switcher', () => {
     );
     const declarations = rules.join('\n');
     expect(declarations).toContain('[data-slot=avatar-fallback]');
-    expect(declarations).toMatch(/background-color:\s*var\(--color-foreground\)/);
-    expect(declarations).toMatch(/(?<![-\w])color:\s*var\(--color-background\)/);
+    expect(declarations).toMatch(/background-color:\s*var\(--color-workspace-mark\)/);
+    expect(declarations).toMatch(/(?<![-\w])color:\s*var\(--color-workspace-mark-foreground\)/);
+    // The mark's colours are that pair alone: never the theme's own `foreground` or `background`, which flip in dark.
+    expect(declarations).not.toMatch(/var\(--color-(foreground|background)\)/);
     // A token, never a raw value: the same classes serve light and dark, as the tokens change with the theme.
     expect(declarations).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|oklch\(/i);
     expect(mark.some((c) => c.startsWith('dark:'))).toBe(false);

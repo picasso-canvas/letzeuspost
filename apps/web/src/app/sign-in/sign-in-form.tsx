@@ -18,8 +18,11 @@ const { signIn } = messages;
 
 /** Better Auth's endpoint for asking for a link (packages/auth's SERVED_ENDPOINTS), on the app's own origin. */
 const ASK_FOR_LINK = '/api/auth/sign-in/magic-link';
-/** Where an opened link lands a signed-in person (the Inbox), and where a refused one goes back to. */
-const AFTER_SIGN_IN = '/';
+/**
+ * Where an opened link lands a signed-in person (the Inbox, /app: straight there, not through `/`, #250), and where a
+ * refused one goes back to.
+ */
+const AFTER_SIGN_IN = '/app';
 const BACK_TO_SIGN_IN = '/sign-in';
 
 type Step =
