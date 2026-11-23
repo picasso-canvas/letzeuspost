@@ -67,9 +67,9 @@ database ([§13, Principles](../../../docs/plan/13-architecture.md#principles)).
   workspace filter, run as the app's role, sees nothing of B's. §13's Done-when asks for that broken query to be caught
   twice, by the lint rule and by row-level security
   ([§13, Done when](../../../docs/plan/13-architecture.md#done-when)).
-- These tests need Postgres, so they run in CI, or with `pnpm check:services` when dispatch has handed you the ports.
-  **CI is what counts**; a run on the Mac is your own feedback, never evidence
-  ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
+- These tests need Postgres, so they run in CI's `services` job: you get no service containers or ports, and a
+  failure there comes back to you as a finding. **CI is what counts**: output pasted into the PR text is never
+  evidence ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
 
 ## What reviewers check
 
