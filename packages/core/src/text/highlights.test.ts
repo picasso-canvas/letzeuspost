@@ -105,7 +105,10 @@ describe('parseHighlights', () => {
 
   it('rejects an empty highlight', () => {
     const { issues } = parseHighlights('a ** b');
-    expect(issues.map((issue) => issue.code)).toEqual(['highlight-unmatched', 'highlight-unmatched']);
+    expect(issues.map((issue) => issue.code)).toEqual([
+      'highlight-unmatched',
+      'highlight-unmatched',
+    ]);
   });
 
   it('rejects an odd marker among pairs and still reads the pairs', () => {
