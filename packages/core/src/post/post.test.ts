@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PostSchema, type Post } from './post.ts';
 import { LOOK_NAMES } from './look.ts';
 import { SIZE_NAMES, SIZES } from './sizes.ts';
-import { banglaCarousel, slides } from './test-fixtures.ts';
+import { banglaCarousel, omit, slides } from './test-fixtures.ts';
 
 const ok = (post: unknown) => PostSchema.safeParse(post).success;
 const issuePaths = (post: unknown) =>
@@ -39,13 +39,12 @@ describe("§07's Bangla carousel example", () => {
   it.each(['brand', 'lang', 'kind', 'networks', 'date', 'look', 'slides', 'captions', 'flags'])(
     'is refused without %s',
     (key) => {
-      const { [key]: _gone, ...rest } = banglaCarousel as Record<string, unknown>;
-      expect(ok(rest)).toBe(false);
+      expect(ok(omit(banglaCarousel, key))).toBe(false);
     },
   );
 
   it('may leave out linkedTo, sources and credits for a post with no linked version', () => {
-    const { linkedTo: _l, sources: _s, credits: _c, ...rest } = banglaCarousel;
+    const rest = omit(banglaCarousel, 'linkedTo', 'sources', 'credits');
     expect(ok({ ...rest, lang: 'en' })).toBe(true);
   });
 });

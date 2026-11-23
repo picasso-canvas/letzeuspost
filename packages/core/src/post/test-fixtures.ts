@@ -1,6 +1,10 @@
 // Valid sample content for the post tests: one slide per layout, and §07's Bangla carousel example.
 import type { LayoutName } from './slide.ts';
 
+/** The object without the given keys. */
+export const omit = (object: Record<string, unknown>, ...keys: string[]): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(object).filter(([key]) => !keys.includes(key)));
+
 export const image = { asset: 'ast_9f2', crop: [0, 120, 1080, 900], focus: 'center' };
 
 export const slides: Record<LayoutName, Record<string, unknown>> = {

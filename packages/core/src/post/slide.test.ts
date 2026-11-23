@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { image, slides } from './test-fixtures.ts';
+import { image, omit, slides } from './test-fixtures.ts';
 import { LAYOUT_NAMES, SlideSchema, slideSchemas } from './slide.ts';
 
 const ok = (slide: unknown) => SlideSchema.safeParse(slide).success;
@@ -38,13 +38,12 @@ describe.each(LAYOUT_NAMES)('the %s slide', (layout) => {
   const sample = slides[layout];
 
   it('accepts its sample content, through its own schema and through SlideSchema', () => {
-    expect(slideSchemas[layout]?.safeParse(sample).success).toBe(true);
+    expect(slideSchemas[layout].safeParse(sample).success).toBe(true);
     expect(ok(sample)).toBe(true);
   });
 
   it('rejects a missing, empty or blank alt', () => {
-    const { alt: _alt, ...noAlt } = sample;
-    expect(ok(noAlt)).toBe(false);
+    expect(ok(omit(sample, 'alt'))).toBe(false);
     expect(ok({ ...sample, alt: '' })).toBe(false);
     expect(ok({ ...sample, alt: '   ' })).toBe(false);
   });
@@ -78,8 +77,7 @@ describe('required fields', () => {
     ['testimonial', 'customer'],
     ['beforeafter', 'after'],
   ] as const)('%s needs %s', (layout, field) => {
-    const { [field]: _gone, ...rest } = slides[layout];
-    expect(ok(rest)).toBe(false);
+    expect(ok(omit(slides[layout], field))).toBe(false);
     expect(ok({ ...slides[layout], [field]: '' })).toBe(false);
   });
 
@@ -178,8 +176,7 @@ describe('quote: a public quote needs a source', () => {
   });
 
   it('needs the public flag to be said', () => {
-    const { public: _p, ...noFlag } = slides.quote;
-    expect(ok(noFlag)).toBe(false);
+    expect(ok(omit(slides.quote, 'public'))).toBe(false);
   });
 });
 
