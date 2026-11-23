@@ -460,7 +460,18 @@ const htmlClassAttributes = (html: string) =>
  * the element's `class` if it has one, or a `class` is added; in light, the document is left as it is.
  */
 function withThemeClass(html: string, theme: 'light' | 'dark') {
-  return html.replace(/<html\b/, theme === 'dark' ? '<html class="dark"' : '<html');
+  if (theme === 'light') return html;
+  return html.replace(HTML_TAG, (tag) => {
+    // The element's `class` attribute, its value double-quoted, single-quoted or bare.
+    const attribute = /\sclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i.exec(tag);
+    if (attribute === null) return tag.replace(/^<html\b/i, '<html class="dark"');
+    const classes = (attribute[1] ?? attribute[2] ?? attribute[3] ?? '')
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!classes.includes('dark')) classes.push('dark');
+    // A function, so a `$` in a class name is never read as a replacement pattern.
+    return tag.replace(attribute[0], () => ` class="${classes.join(' ')}"`);
+  });
 }
 
 test.describe('the theme class on <html>', () => {

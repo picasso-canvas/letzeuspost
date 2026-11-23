@@ -58,7 +58,7 @@ describe('the workspace mark in the switcher', () => {
     expect(declarations).toContain('[data-slot=avatar-fallback]');
     expect(declarations).toMatch(/background-color:\s*var\(--color-workspace-mark\)/);
     expect(declarations).toMatch(/(?<![-\w])color:\s*var\(--color-workspace-mark-foreground\)/);
-    // Nothing of the ink pair it used before (round 5 of #79) is left on the mark.
+    // The mark's colours are that pair alone: never the theme's own `foreground` or `background`, which flip in dark.
     expect(declarations).not.toMatch(/var\(--color-(foreground|background)\)/);
     // A token, never a raw value: the same classes serve light and dark, as the tokens change with the theme.
     expect(declarations).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|oklch\(/i);
