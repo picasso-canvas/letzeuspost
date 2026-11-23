@@ -13,6 +13,8 @@ CLAUDE.local.md
 .lzp/
 storybook-static/
 tests/visual/output/
+tests/render-output/
+tests/golden-output/
 playwright-report/
 test-results/
 .playwright-cli/
