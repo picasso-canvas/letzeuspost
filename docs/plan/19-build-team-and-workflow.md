@@ -36,8 +36,9 @@ Reviewers never review their own work and always start from a fresh context. The
    template: Goal · Section links · Spec excerpt · **Done when** (testable) · predicted tier (`routine` /
    `sensitive`) · **Areas** (paths it may touch) · Depends on · Milestone · **Feature**. One task = one small PR
    (aim for under ~400 changed lines).
-   **Areas are directories:** list the directories the work lives in (`packages/ui/src/tokens/`), not single files, so a
-   task doesn't stop on a neighbouring file it needs. A task that needs a guardrail file a builder can't edit
+   **Areas are directories:** list the directories the work lives in as a glob (`packages/ui/src/tokens/**`; a bare
+   `packages/ui/src/tokens/` matches no file, because ship matches whole paths), not single files, so a task doesn't
+   stop on a neighbouring file it needs. A task that needs a guardrail file a builder can't edit
    (`DESIGN.md`, `docs/plan/`, `.claude/`) gets that edit first: Athena lands it in her own PR, and the task lists that
    PR under **Depends on**.
    **Features** ([Zeus, 2026-11-10](https://github.com/picasso-canvas/letzeuspost/issues/136)): a milestone's tasks
