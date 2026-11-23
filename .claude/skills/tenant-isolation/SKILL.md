@@ -68,8 +68,8 @@ database ([§13, Principles](../../../docs/plan/13-architecture.md#principles)).
   twice, by the lint rule and by row-level security
   ([§13, Done when](../../../docs/plan/13-architecture.md#done-when)).
 - These tests need Postgres, so they run in CI's `services` job: you get no service containers or ports, and a
-  failure there comes back to you as a finding. **CI is what counts**
-  ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
+  failure there comes back to you as a finding. **CI is what counts**: output pasted into the PR text is never
+  evidence ([§17, When things run](../../../docs/plan/17-testing.md#when-things-run)).
 
 ## What reviewers check
 

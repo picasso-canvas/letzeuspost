@@ -110,7 +110,8 @@ real sites, 5 of them Bangladeshi, and file reading on 5 Facebook-only businesse
 **Where they run (2026-11-07):** builders have no Docker (§20), so the local `pnpm check` holds static, unit and the
 checks that need no services. Integration, tenancy, end-to-end, visual and golden tests run in CI's `services` job:
 builders get no service containers or ports (#67), and a failure there comes back to the builder as a finding. The
-builder's Stop hook asks only for a green `pnpm check`. **CI is what counts:** the merge gate trusts only check runs.
+builder's Stop hook asks only for a green `pnpm check`. **CI is what counts:** the merge gate trusts only check
+runs, so output pasted into the PR text is never evidence.
 
 **GitHub Actions budget:** about 1,400 of the free ~2,000 minutes a month at the expected pace (about 60 PRs a month
 at ~10 minutes, plus nightly runs). If it runs over, a self-hosted runner on its own small server takes the heavy
