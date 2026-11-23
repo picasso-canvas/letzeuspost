@@ -41,4 +41,15 @@ describe('the output folders in playwright.config.ts', () => {
     expect(own('golden')).not.toBe(shared);
     expect(own('render')).not.toBe(own('golden'));
   });
+
+  // The projects that write to the shared folder (the screens Iris and Zeus approve) are the ones the end-to-end step
+  // runs; any other project must have a folder of its own, different from every other project's (Cerberus F2 on #343).
+  const sharing = ['gallery', 'app-light', 'app-dark', 'journeys'];
+
+  it('give every other project a folder of its own, different from the rest', () => {
+    const others = (config.projects ?? []).filter((p) => !sharing.includes(p.name ?? ''));
+    const folders = others.map((p) => p.outputDir);
+    expect(folders.every((folder) => folder !== undefined && folder !== shared)).toBe(true);
+    expect(new Set(folders).size).toBe(folders.length);
+  });
 });

@@ -217,6 +217,29 @@ jobs:
             --project app-light --project app-dark --project journeys --pass-with-no-tests \
             --reporter=github,./scripts/ci/journey-reporter-playwright.ts
 
+      # No step that runs the PR's code may sit between a step and the upload of its output: the two uploads below
+      # follow the end-to-end step at once, ahead of the render and golden step (Cerberus F1 on #343).
+      # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
+      # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
+      - name: Upload the end-to-end screenshots
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.e2e.outcome != 'skipped' && hashFiles('tests/visual/output/**') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-screenshots
+          path: tests/visual/output
+          retention-days: 14
+
+      # Rendered from the PR's code, like the screenshots: the gate reads both reports as data and checks their shape
+      # (#156). Only when the end-to-end step ran, from the folder it started empty.
+      - name: Upload the Playwright journey report
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.e2e.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: journeys-playwright
+          path: ${{ runner.temp }}/journeys-playwright
+          if-no-files-found: warn
+          retention-days: 30
+
       # The render engine's browser tests and the golden renders (§08, §17, #327): their own Chromium, no web server.
       # The step starts once a spec exists under tests/render/ or tests/golden/, since builders can't change this file.
       - name: Render and golden tests
@@ -238,27 +261,6 @@ jobs:
             tests/render-output
             tests/golden-output
           retention-days: 14
-
-      # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
-      # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
-      - name: Upload the end-to-end screenshots
-        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.e2e.outcome != 'skipped' && hashFiles('tests/visual/output/**') != '' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: e2e-screenshots
-          path: tests/visual/output
-          retention-days: 14
-
-      # Rendered from the PR's code, like the screenshots: the gate reads both reports as data and checks their shape
-      # (#156). Only when the end-to-end step ran, from the folder it started empty.
-      - name: Upload the Playwright journey report
-        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' && steps.e2e.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: journeys-playwright
-          path: ${{ runner.temp }}/journeys-playwright
-          if-no-files-found: warn
-          retention-days: 30
 
       # The gate reads this step (#264): a `(proof: ci:<job>)` box counts only when the checks ran, and this step runs only
       # when the scope step said so and every step before it passed. A job the scope step skipped passes without it.
