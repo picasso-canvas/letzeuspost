@@ -70,6 +70,20 @@ export default defineConfig({
       testIgnore: '**/*.int.*',
       use: { ...desktop, colorScheme: 'light', baseURL: 'http://localhost:3000' },
     },
+    {
+      // The render engine's browser tests (§08, #327): they open their own Chromium through packages/render and need
+      // no server, so no web server starts for them.
+      name: 'render',
+      testDir: 'tests/render',
+      testMatch: '**/*.spec.ts',
+    },
+    {
+      // The golden renders (§08, §17): baselines live beside the specs; only Athena commits them, after Zeus's look.
+      name: 'golden',
+      testDir: 'tests/golden',
+      testMatch: '**/*.spec.ts',
+      snapshotPathTemplate: 'tests/golden/baselines/{testFilePath}/{arg}{ext}',
+    },
   ],
   webServer: [
     ...(gallery

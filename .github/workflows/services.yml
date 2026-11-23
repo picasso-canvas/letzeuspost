@@ -217,6 +217,16 @@ jobs:
             --project app-light --project app-dark --project journeys --pass-with-no-tests \
             --reporter=github,./scripts/ci/journey-reporter-playwright.ts
 
+      # The render engine's browser tests and the golden renders (§08, §17, #327): their own Chromium, no web server.
+      # The step starts once a spec exists under tests/render/ or tests/golden/, since builders can't change this file.
+      - name: Render and golden tests
+        id: render
+        if: ${{ steps.scope.outputs.run == 'true' && hashFiles('tests/render/**/*.spec.ts', 'tests/golden/**/*.spec.ts') != '' }}
+        run: |
+          set -euo pipefail
+          pnpm exec playwright install --with-deps chromium
+          pnpm exec playwright test --project render --project golden --pass-with-no-tests
+
       # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
       # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
       - name: Upload the end-to-end screenshots
