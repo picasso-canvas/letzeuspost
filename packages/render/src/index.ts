@@ -29,3 +29,24 @@ export {
 export { buildSlide, buildSlideWithWarnings, type BuildResult } from './page/build-slide.ts';
 export { ASSET_SCHEME, assetUrl, type AssetKind, type BuildWarning } from './page/assets.ts';
 export { registerLook } from './page/looks.ts';
+export { applyContrast, type ContrastResult, type ContrastWarning } from './contrast/apply.ts';
+export { contrastRatio } from './contrast/colour.ts';
+export {
+  HEADLINE_LIMIT,
+  HEADLINE_PX,
+  TEXT_LIMIT,
+  checkPairs,
+  pairsFor,
+  registerPairs,
+  registeredLayouts,
+  type Backdrop,
+  type KitColour,
+  type LayoutPair,
+  type PairContext,
+  type PairResult,
+  type PairsFn,
+  type TextColour,
+  type TextPair,
+} from './contrast/pairs.ts';
+export { SCRIM_ALPHA, scrimFor, type Scrim } from './contrast/scrim.ts';
+export { shadeToPass } from './contrast/shade.ts';
