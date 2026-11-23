@@ -1,11 +1,13 @@
 // The worker (§13 What runs): pg-boss on the same Postgres, as the app role, running every job's handler. For now
-// the `email` job and the `account-email` job (#77), whose outbox packages/auth gives it, and the email outbox's sweep
-// on a timer (#210); the ai, render, fetch and export handlers and the scheduled jobs come with their features.
+// the `email` job and the `account-email` job (#77), whose outbox packages/auth gives it, and on timers the email
+// outbox's sweep (#210) and the auth tables' prune (#323); the ai, render, fetch and export handlers and the scheduled
+// jobs come with their features.
 import { createAccountEmails } from '@lzp/auth';
 import type { Env } from '@lzp/config';
 import { createDb, createJobs } from '@lzp/db';
 import { renderTemplate } from '@lzp/email';
 import { accountEmailJob } from './account-email-job.ts';
+import { authPrune, scheduleAuthPrune } from './auth-prune.ts';
 import { emailJob } from './email-job.ts';
 import { emailSweep, scheduleEmailSweep } from './email-sweep.ts';
 import { log } from './log.ts';
@@ -43,11 +45,12 @@ export async function startWorker(
   await jobs.work('email', emailJob(delivery));
   await jobs.work('account-email', accountEmailJob({ ...delivery, outbox: accountEmails.outbox }));
   const sweep = scheduleEmailSweep(emailSweep({ db, jobs, log }), log);
+  const prune = scheduleAuthPrune(authPrune({ prune: accountEmails.prune, log }), log);
   log('worker.started');
   return {
     stop: async () => {
-      // The sweep first: a run in flight ends before the queue and the database close under it.
-      await sweep.stop();
+      // The timers first: a run in flight ends before the queue and the databases close under it.
+      await Promise.all([sweep.stop(), prune.stop()]);
       await jobs.stop();
       transport.close();
       await accountEmails.close();

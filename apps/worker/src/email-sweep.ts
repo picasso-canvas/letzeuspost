@@ -10,13 +10,13 @@
 // - It never sends, nor puts a row back in the queue: an interrupted row may have gone out, so it waits for a person.
 // A workspace that fails is logged and skipped, the others are still swept, and the run then rejects; what it marked
 // stays marked, and the next run carries on.
-// - What runs it: a timer in the worker (`scheduleEmailSweep`), with no queue and no job (Zeus, option D on #322):
-//   pg-boss's cron pass can't start as the app role. Every worker runs its own timer, which is harmless, since the
-//   sweep is safe to run twice.
+// - What runs it: a timer in the worker (`scheduleEmailSweep`, on ./schedule.ts), with no queue and no job (Zeus,
+//   option D on #322): pg-boss's cron pass can't start as the app role. Every worker runs its own timer, which is
+//   harmless, since the sweep is safe to run twice.
 // The log names runs, rows and workspaces by id: never an address or content.
-import { randomUUIDv7 } from 'node:crypto';
 import { emailOutbox, SENDING_STALE_AFTER_SECONDS, type Db, type Jobs, type Scoped } from '@lzp/db';
 import type { Log } from './log.ts';
+import { errorName, every, type Run, type Timer } from './schedule.ts';
 
 export interface EmailSweepDeps {
   /** The worker's database: the sweep opens `forWorkspace` for each workspace it finds. */
@@ -27,10 +27,8 @@ export interface EmailSweepDeps {
   readonly interrupt?: (db: Scoped) => Promise<string[]>;
 }
 
-const errorName = (error: unknown): string => (error instanceof Error ? error.name : 'unknown');
-
 /** One sweep run; `runId` names the run in the log. */
-export type EmailSweep = (run: { readonly runId: string }) => Promise<void>;
+export type EmailSweep = Run;
 
 export function emailSweep(deps: EmailSweepDeps): EmailSweep {
   const interrupt = deps.interrupt ?? ((db: Scoped) => emailOutbox(db).interruptStale());
@@ -65,35 +63,9 @@ export function emailSweep(deps: EmailSweepDeps): EmailSweep {
  */
 export const EMAIL_SWEEP_EVERY_MS = (SENDING_STALE_AFTER_SECONDS * 1000) / 3;
 
-export interface EmailSweepTimer {
-  /** No run starts after this; resolves once the run in flight, if any, has ended. */
-  readonly stop: () => Promise<void>;
-}
+export type EmailSweepTimer = Timer;
 
-/**
- * Runs `sweep` every EMAIL_SWEEP_EVERY_MS, the first one interval after the start, and never two at once: a tick that
- * finds a run still going is skipped. A failed run is logged by its error's name only (a database error's message may
- * quote a statement) and the next tick tries again.
- */
+/** Runs `sweep` every EMAIL_SWEEP_EVERY_MS on the worker's timer (./schedule.ts); a failed run logs `email.sweep-failed`. */
 export function scheduleEmailSweep(sweep: EmailSweep, log: Log): EmailSweepTimer {
-  let running: Promise<void> | undefined;
-  const timer = setInterval(() => {
-    if (running) return;
-    const runId = randomUUIDv7();
-    running = sweep({ runId })
-      .catch((error: unknown) => {
-        log('email.sweep-failed', { runId, error: errorName(error) });
-      })
-      .finally(() => {
-        running = undefined;
-      });
-  }, EMAIL_SWEEP_EVERY_MS);
-  // The queue keeps the worker alive; the timer alone never holds the process open.
-  timer.unref();
-  return {
-    stop: async () => {
-      clearInterval(timer);
-      await running;
-    },
-  };
+  return every(EMAIL_SWEEP_EVERY_MS, 'email.sweep-failed', sweep, log);
 }
