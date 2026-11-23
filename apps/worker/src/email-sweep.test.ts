@@ -66,7 +66,7 @@ describe('the email outbox sweep (#210)', () => {
         event: 'email.interrupted',
         fields: { runId, workspaceId: a, emailMessageId },
       })),
-      { event: 'email.swept', fields: { runId, workspaces: 2, interrupted: 2 } },
+      { event: 'email.swept', fields: { runId, workspaces: 2, interrupted: 2, failed: 0 } },
     ]);
   });
 
@@ -83,16 +83,64 @@ describe('the email outbox sweep (#210)', () => {
     expect(lines).toEqual(['email.swept']);
   });
 
-  it('rejects the run when a workspace could not be swept', async () => {
-    const { db } = fakeDb();
+  it('sweeps the other workspaces when one fails, logs it by id and error name only, then rejects the run', async () => {
+    const [a, b, c] = [randomUUIDv7(), randomUUIDv7(), randomUUIDv7()];
+    const rowOfC = randomUUIDv7();
+    const { db, workspaceOf } = fakeDb();
+    const swept: (string | undefined)[] = [];
+    const lines: { event: string; fields: LogFields }[] = [];
+
+    const run = emailSweep({
+      db,
+      jobs: { failedWorkspaces: () => Promise.resolve([a, b, c]) },
+      interrupt: (scoped) => {
+        const workspaceId = workspaceOf(scoped);
+        swept.push(workspaceId);
+        if (workspaceId === b) {
+          class LockNotAvailable extends Error {
+            override name = 'LockNotAvailable';
+          }
+          return Promise.reject(
+            new LockNotAvailable(
+              'canceling statement: update "email_message" for nadia@agency.test',
+            ),
+          );
+        }
+        return Promise.resolve(workspaceId === c ? [rowOfC] : []);
+      },
+      log: (event, fields = {}) => lines.push({ event, fields }),
+    })(job);
+
+    const rejected = await run.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(rejected).toBeInstanceOf(Error);
+    expect((rejected as Error).message).not.toMatch(/nadia|email_message|update/);
+    expect(swept).toEqual([a, b, c]);
+    expect(lines).toEqual([
+      {
+        event: 'email.sweep-workspace-failed',
+        fields: { runId, workspaceId: b, error: 'LockNotAvailable' },
+      },
+      { event: 'email.interrupted', fields: { runId, workspaceId: c, emailMessageId: rowOfC } },
+      { event: 'email.swept', fields: { runId, workspaces: 3, interrupted: 1, failed: 1 } },
+    ]);
+  });
+
+  it('rejects the run when listing the workspaces fails', async () => {
+    const { db, opened } = fakeDb();
     await expect(
       emailSweep({
         db,
-        jobs: { failedWorkspaces: () => Promise.resolve([randomUUIDv7()]) },
-        interrupt: () => Promise.reject(new Error('Connection terminated unexpectedly')),
+        jobs: {
+          failedWorkspaces: () => Promise.reject(new Error('Connection terminated unexpectedly')),
+        },
+        interrupt: () => Promise.resolve([]),
         log: () => undefined,
       })(job),
     ).rejects.toThrow('Connection terminated unexpectedly');
+    expect(opened).toEqual([]);
   });
 });
 
