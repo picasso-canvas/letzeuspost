@@ -227,6 +227,18 @@ jobs:
           pnpm exec playwright install --with-deps chromium
           pnpm exec playwright test --project render --project golden --pass-with-no-tests
 
+      # What the render and golden tests wrote (their own folders, apart from the screens above): a failed golden's
+      # actual and diff images. Rendered from the PR's code, so untrusted like the screenshots.
+      - name: Upload the render and golden output
+        if: ${{ !cancelled() && steps.render.outcome != 'skipped' && hashFiles('tests/render-output/**', 'tests/golden-output/**') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: render-output
+          path: |
+            tests/render-output
+            tests/golden-output
+          retention-days: 14
+
       # New screenshots and their diffs, for Iris and Zeus to approve (Q11); only Athena commits baselines. Rendered
       # from the PR's code: anything that ever downloads this artifact treats it as untrusted.
       - name: Upload the end-to-end screenshots

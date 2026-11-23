@@ -76,6 +76,9 @@ export default defineConfig({
       name: 'render',
       testDir: 'tests/render',
       testMatch: '**/*.spec.ts',
+      // Its own folder: a run empties the output folder of the projects it runs, and the end-to-end screens for Iris
+      // and Zeus are collected from tests/visual/output (Q11).
+      outputDir: 'tests/render-output',
     },
     {
       // The golden renders (§08, §17): baselines live beside the specs; only Athena commits them, after Zeus's look.
@@ -83,6 +86,7 @@ export default defineConfig({
       testDir: 'tests/golden',
       testMatch: '**/*.spec.ts',
       snapshotPathTemplate: 'tests/golden/baselines/{testFilePath}/{arg}{ext}',
+      outputDir: 'tests/golden-output',
     },
   ],
   webServer: [

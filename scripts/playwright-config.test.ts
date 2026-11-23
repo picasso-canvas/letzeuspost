@@ -27,3 +27,18 @@ describe('the screenshot comparison in playwright.config.ts', () => {
       expect(project.expect?.toHaveScreenshot, `project ${String(project.name)}`).toBeUndefined();
   });
 });
+
+// A run empties the output folder of every project it runs, and CI collects the end-to-end screens from the shared
+// one (Q11): the render and golden projects, which run in a later step, must not share it (Cerberus F1 on #343).
+describe('the output folders in playwright.config.ts', () => {
+  const shared = config.outputDir;
+  const own = (name: string) => config.projects?.find((p) => p.name === name)?.outputDir;
+
+  it('give the render and golden projects folders of their own', () => {
+    expect(own('render')).toBeDefined();
+    expect(own('golden')).toBeDefined();
+    expect(own('render')).not.toBe(shared);
+    expect(own('golden')).not.toBe(shared);
+    expect(own('render')).not.toBe(own('golden'));
+  });
+});
