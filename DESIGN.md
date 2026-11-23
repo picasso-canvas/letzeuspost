@@ -37,6 +37,8 @@ colors:
   qc-pass: "#13773D"
   qc-warn: "#A15C00"
   qc-fail: "#C2261F"
+  workspace-mark: "#23395B"
+  workspace-mark-foreground: "#FFFFFF"
   # Dark
   background-dark: "#11100E"
   foreground-dark: "#F3F1EC"
@@ -69,6 +71,8 @@ colors:
   qc-pass-dark: "#4ADE80"
   qc-warn-dark: "#FBBF24"
   qc-fail-dark: "#F87171"
+  workspace-mark-dark: "#23395B"
+  workspace-mark-foreground-dark: "#FFFFFF"
 typography:
   body:
     fontFamily: Inter
@@ -313,6 +317,9 @@ written by hand in `packages/ui/src/tokens/base.css`, and a test checks it again
   (amber), fail (red).
 - **Faint** `#6F6A62` (dark `#8C877E`): the quietest text grey, for eyebrows, counts and small meta. Darkened from the
   mockup's `#8E8A82` / `#847F76` so it passes AA as text (Zeus, 2026-11-08, #70).
+- **Workspace mark** `#23395B` with white initials `#FFFFFF`: the filled navy disc that stands for a workspace
+  (the mockup's inline `#23395B`), the same in both themes (white on it is about 11:1). Navy is for that mark only, not a
+  second accent (Zeus, 2026-11-23, #254).
 - Each client brand appears with its own primary colour (calendar chips, tiles); those come from the brand kit, not
   from this file.
 
