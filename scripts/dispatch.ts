@@ -11,7 +11,7 @@
 // and the next dispatch refuses until it's gone. An old clone is moved into ~/.letzeuspost/trash/ before deletion. While it runs,
 // AGENTS_PAUSED is copied into ~/.letzeuspost/paused every minute for the hooks (#29). Once the builder has started,
 // nothing here runs git inside its clone (its .git could point git at config the builder wrote); the builder hands its
-// work over as .lzp/branch.bundle, which ship.ts reads. Services (database, storage, mail) arrive in M0.
+// work over as .lzp/branch.bundle, which ship.ts reads. Builders get no services (#67): those tests run in CI.
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import {

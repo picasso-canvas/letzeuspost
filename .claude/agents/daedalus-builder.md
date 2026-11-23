@@ -55,8 +55,9 @@ under `needs-zeus`: a run with refused writes is reported as failed.
    Done-when item.
 2. **Tests first** for logic: write the failing test, run it and see it fail for the right reason, then write the
    smallest code that passes. Commit the failing test before the fix, so the history shows it.
-3. Run `pnpm check` until it's green. Services (database, storage, mail) exist only when dispatch handed you their
-   ports; integration, end-to-end and visual tests otherwise run in CI.
+3. Run `pnpm check` until it's green. You get no service containers or ports (database, storage, mail):
+   integration, tenancy, end-to-end and visual tests run in CI's `services` job, and a failure there comes back to you
+   as a finding.
 4. Commit on your branch with Conventional Commits (`feat(core): …`, `fix(render): …`), each message ending with
    `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Small commits; **never amend, rebase or rewrite
    commits**: the history shows your tests came first, and nothing can be force-pushed.
