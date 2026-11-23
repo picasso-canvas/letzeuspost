@@ -13,6 +13,10 @@ export const CHROMIUM_ARGS: readonly string[] = [
   // The render browser has no internet (§08 Security). The request filter (`requests.ts`) is the wall; behind it, no
   // host name resolves and every connection goes to a proxy that isn't there (the discard port on loopback).
   '--host-resolver-rules=MAP * ~NOTFOUND',
+  // WebRTC passes neither the filter nor the resolver: it may send no UDP except through the proxy, so no STUN to an IP
+  // address. The switch under both of the names Chromium's builds read.
+  '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+  '--webrtc-ip-handling-policy=disable_non_proxied_udp',
   // Nothing the page doesn't draw: no background work, updates, sync or crash uploads.
   '--disable-background-networking',
   '--disable-component-update',

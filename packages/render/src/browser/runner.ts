@@ -8,6 +8,7 @@ import { contextOptions, LAUNCH_OPTIONS } from './flags.ts';
 import {
   fallbacks,
   fontLoadFailure,
+  manifestFamily,
   textBlocks,
   type BlockFonts,
   type FontFallback,
@@ -52,7 +53,7 @@ export type RendererOptions = {
 };
 
 export type RenderPageInput = {
-  /** A page from `buildSlide`, or any page: it runs with no network either way. */
+  /** A page from `buildSlide`, or any page: its requests, WebSockets and WebRTC reach no network either way. */
   html: string;
   /** The job's own images and uploaded fonts; the manifest fonts are always served. */
   assets: readonly RenderAsset[];
@@ -99,6 +100,9 @@ const SETTLE = `(async () => {
 })()`;
 
 const FailedFonts = z.array(z.object({ family: z.string(), weight: z.string() }));
+
+/** How long a render waits for its context to close after it ends. */
+const CLOSE_MS = 2_000;
 
 const CLOSED =
   /Target crashed|Page crashed|has been closed|Browser closed|browser has disconnected/i;
@@ -157,7 +161,8 @@ async function guard(
         });
         return;
       }
-      const asset = findAsset(input.index, url);
+      // An asset is never a page: opened as a document (a frame, a link), an SVG's scripts would run on the page origin.
+      const asset = request.isNavigationRequest() ? undefined : findAsset(input.index, url);
       if (asset !== undefined) {
         facts.served.push(`${asset.kind}/${asset.key}`);
         await route.fulfill({
@@ -185,7 +190,9 @@ async function guard(
   });
 }
 
-/** The fonts Chrome used for each text block, from the DevTools protocol. */
+const MANIFEST_FAMILIES = FONT_MANIFEST.fonts.map((font) => font.family);
+
+/** The fonts Chrome used for each text block, from the DevTools protocol; a manifest font by its manifest family. */
 async function usedFonts(context: BrowserContext, page: Page): Promise<BlockFonts[]> {
   const session = await context.newCDPSession(page);
   await session.send('DOM.enable');
@@ -197,7 +204,9 @@ async function usedFonts(context: BrowserContext, page: Page): Promise<BlockFont
     blocks.push({
       block,
       fonts: fonts.map((font) => ({
-        family: font.familyName,
+        family: font.isCustomFont
+          ? manifestFamily(font.familyName, MANIFEST_FAMILIES)
+          : font.familyName,
         custom: font.isCustomFont,
         glyphs: font.glyphCount,
       })),
@@ -292,7 +301,10 @@ export function createRenderer(options: RendererOptions): Renderer {
       throw new RenderFailure('The render browser failed on this slide', { cause: error });
     } finally {
       state.finished = true;
-      await context?.close().catch(() => undefined);
+      // Closing a context whose page is stuck in a loop is waited for a short while only, so the render ends near its
+      // limit; Chrome still tears the context down.
+      if (context !== undefined)
+        await withTimeout(context.close(), CLOSE_MS, 'close').catch(() => undefined);
     }
   }
 

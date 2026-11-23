@@ -98,6 +98,25 @@ export function fallbacks(blocks: readonly BlockFonts[]): FontFallback[] {
   );
 }
 
+/** The weight and style words a font file adds to its family's name: "Nunito ExtraLight", "Hind Siliguri Light". */
+const STYLE_WORDS =
+  /^(?: (?:Thin|Hairline|ExtraLight|UltraLight|Light|Regular|Normal|Book|Medium|SemiBold|DemiBold|Bold|ExtraBold|UltraBold|Black|Heavy|Italic))*$/;
+
+/**
+ * A web font's family as the manifest names it. Chrome names a font by its file's own name table, which can add a
+ * weight to the family (every Nunito file says "Nunito ExtraLight"); the manifest family it starts with, followed only by
+ * weight and style words, is its name. A font the manifest doesn't have keeps the name Chrome gave.
+ */
+export function manifestFamily(reported: string, families: readonly string[]): string {
+  // The longest first, so "Baloo Da 2 Bold" can never be read as a weight of a shorter family.
+  const longestFirst = [...families].sort((a, b) => b.length - a.length);
+  return (
+    longestFirst.find(
+      (family) => reported.startsWith(family) && STYLE_WORDS.test(reported.slice(family.length)),
+    ) ?? reported
+  );
+}
+
 /** The reason a render fails when fonts didn't load, naming each one; undefined when all loaded. */
 export function fontLoadFailure(
   failed: readonly { family: string; weight: string }[],
@@ -105,9 +124,8 @@ export function fontLoadFailure(
   if (failed.length === 0) return undefined;
   return failed
     .map(
-      ({ family, weight }) =>
-        `the font "${family.replace(/^(["'])(.*)\1$/, '$2')}" (weight ${weight}) didn’t load`,
+      ({ family, weight }, i) =>
+        `${i === 0 ? 'The' : 'the'} font "${family.replace(/^(["'])(.*)\1$/, '$2')}" (weight ${weight}) didn’t load`,
     )
-    .join('; ')
-    .replace(/^t/, 'T');
+    .join('; ');
 }
