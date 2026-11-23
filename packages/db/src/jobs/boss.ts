@@ -2,13 +2,14 @@
 // installs (`installJobs`, beside the migrations) and the app role only uses (`createJobs`): the app role can't create
 // a schema or change pg-boss's tables, nor a queue's policy or the commands pg-boss runs (`appGrants`; on `bam`, from
 // before pg-boss starts, `bamGuard`), so a job can't change the queue's structure or policy either. pg-boss stays inside this package, like the database client; the
-// worker gets `send` and `work`.
+// worker gets `send`, `work` and, for the email sweep, `failedWorkspaces`.
 //
 // A handler gets the payload and `db.forWorkspace` for the payload's workspace, the only database handle it has, so
 // every row it reads or writes is that workspace's (row-level security, the tenant-isolation skill).
 import { sql } from 'drizzle-orm';
 import pg from 'pg';
 import { fromDrizzle, PgBoss } from 'pg-boss';
+import { z } from 'zod';
 import type { Db, Scoped, Tx } from '../db.ts';
 import {
   checkPayload,
@@ -23,6 +24,8 @@ import {
 
 /** §13: the job queue keeps its own tables in a separate schema. */
 export const JOBS_SCHEMA = 'pgboss';
+
+const uuidv7 = z.uuidv7();
 
 /** What a handler is given for one job. */
 export interface JobContext<Q extends QueueName> {
@@ -57,6 +60,14 @@ export interface Jobs {
   ) => Promise<string>;
   /** Runs `handler` for each job of the queue, with the queue's concurrency (§13: `ai` 4 per workspace). */
   work: <Q extends QueueName>(queue: Q, handler: JobHandler<Q>) => Promise<void>;
+  /**
+   * The workspaces of the queue's jobs that failed for good and that pg-boss still keeps (7 days after, its default),
+   * each once: where a job's last run may have left work half done (the email sweep, #210). Only a job as `send`
+   * writes it counts: its payload's workspace is its group (`payloadOf`), and a UUIDv7. lzp_app can write any job, so
+   * a forged one can name a workspace whose jobs never failed; the caller's work there must be what that workspace
+   * needs anyway (the sweep's is: it marks only rows past their job's expiry).
+   */
+  failedWorkspaces: (queue: WorkspaceQueue) => Promise<string[]>;
 }
 
 export interface JobsOptions {
@@ -127,6 +138,18 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
           }
         },
       );
+    },
+    failedWorkspaces: async (queue) => {
+      // The job tables carry every workspace's jobs (`appGrants`): this reads their ids only, never a row of a
+      // workspace's own tables, which the caller then reaches through `db.forWorkspace` for each.
+      const { rows } = await boss.getDb().executeSql(
+        `SELECT DISTINCT group_id AS "workspaceId" FROM ${JOBS_SCHEMA}.job
+         WHERE name = $1 AND state = 'failed' AND group_id = data->>'workspaceId'`,
+        [queue],
+      );
+      return (rows as { workspaceId: string }[])
+        .map((row) => row.workspaceId)
+        .filter((workspaceId) => uuidv7.safeParse(workspaceId).success);
     },
   };
 }

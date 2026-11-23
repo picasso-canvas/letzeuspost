@@ -1,7 +1,7 @@
 // pg-boss on the same Postgres (§13 Jobs, #72), against real Postgres in `pnpm check:services` and CI's `services`
 // job: the owner role installs the `pgboss` schema and the app role only uses it; payloads hold ids only; a job runs
-// in its own workspace; the ai queue runs at most 4 of a workspace's jobs at once; retries stop at the limit; and the
-// email outbox's steps.
+// in its own workspace; the ai queue runs at most 4 of a workspace's jobs at once; retries stop at the limit; the
+// email outbox's steps; and its sweep (#210).
 //
 // Vitest runs the services files side by side on one database (Argus F1 on #202), so nothing here touches another
 // file's rows or jobs: every workspace and row is this run's, made and removed here. pg-boss's tables are shared,
@@ -32,7 +32,7 @@ const run = randomUUID();
 const owner = new pg.Client({ connectionString: ownerUrl });
 let db: Db;
 let jobs: Jobs;
-const ids = { a: '', b: '', rowA: '', rowB: '' };
+const ids = { a: '', b: '', c: '', rowA: '', rowB: '' };
 
 /** Polls `check` until it returns something truthy; fails after `timeoutMs`. */
 async function waitFor<T>(
@@ -141,7 +141,7 @@ beforeAll(async () => {
   // Two installs at once take turns, and a third changes nothing.
   await Promise.all([installJobs(ownerUrl), installJobs(ownerUrl)]);
   await installJobs(ownerUrl);
-  for (const key of ['a', 'b'] as const) {
+  for (const key of ['a', 'b', 'c'] as const) {
     const { rows } = await owner.query<{ id: string }>(
       'insert into workspace (name, slug) values ($1, $2) returning id',
       [`Jobs ${key} ${run}`, `jobs-${key}-${run}`],
@@ -165,7 +165,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await jobs.stop();
   await db.close();
-  await owner.query('delete from workspace where id = any($1::uuid[])', [[ids.a, ids.b]]);
+  await owner.query('delete from workspace where id = any($1::uuid[])', [[ids.a, ids.b, ids.c]]);
   await owner.end();
 });
 
@@ -657,5 +657,144 @@ describe('the email outbox (§13 Data model)', () => {
     expect(await statusOf(ids.rowB)).toEqual({ status: 'queued', failure: null });
     expect(await providerIdOf(ids.rowB)).toBeNull();
     expect(await claimedBy(ids.rowB)).toBeNull();
+  });
+});
+
+// #210: a row whose job's last run lost the database after claiming it stays `sending`, and no retry loads it again.
+// The sweep marks such rows interrupted, a workspace at a time, as a retry's `load` would. Workspace C is the sweep's
+// alone, so what it finds there is this describe's.
+describe('the email outbox sweep (#210)', () => {
+  const runs = () => ({ first: randomUUID(), other: randomUUID() });
+  const sweepC = () => emailOutbox(db.forWorkspace({ workspaceId: ids.c })).interruptStale();
+
+  /** A row of C that `job` claimed `seconds` ago. */
+  async function claimedRow(name: string, seconds: number, job: string): Promise<string> {
+    const id = await insertRow(ids.c, `${name}-${run}@example.test`);
+    expect(await emailOutbox(db.forWorkspace({ workspaceId: ids.c })).claim(id, job)).toBe(true);
+    await age(id, seconds);
+    return id;
+  }
+
+  const emailJobsOf = async (workspaceId: string) =>
+    (
+      await owner.query<{ n: number }>(
+        `select count(*)::int as n from ${JOBS_SCHEMA}.job where name = 'email' and data->>'workspaceId' = $1`,
+        [workspaceId],
+      )
+    ).rows[0]?.n;
+
+  it("marks only the rows left sending past the job's expiry interrupted, and sends nothing", async () => {
+    const { first, other } = runs();
+    const stale = await claimedRow('swept', SENDING_STALE_AFTER_SECONDS + 1, first);
+    const live = await claimedRow('live', SENDING_STALE_AFTER_SECONDS - 60, other);
+    const queued = await insertRow(ids.c, `queued-${run}@example.test`);
+    await age(queued, SENDING_STALE_AFTER_SECONDS * 4);
+    const sent = await claimedRow('sent', 0, randomUUID());
+    await emailOutbox(db.forWorkspace({ workspaceId: ids.c })).sent(sent, '<sent@example.test>');
+    await age(sent, SENDING_STALE_AFTER_SECONDS * 4);
+    const jobsBefore = await emailJobsOf(ids.c);
+
+    expect(await sweepC()).toEqual([stale]);
+
+    expect(await statusOf(stale)).toEqual({ status: 'failed', failure: INTERRUPTED });
+    expect(await statusOf(live)).toEqual({ status: 'sending', failure: null });
+    expect(await statusOf(queued)).toEqual({ status: 'queued', failure: null });
+    expect(await statusOf(sent)).toEqual({ status: 'sent', failure: null });
+    expect(await providerIdOf(stale)).toBeNull();
+    expect(await emailJobsOf(ids.c)).toBe(jobsBefore); // nothing queued to send it again
+    // The live run finishes, so no later test finds its row.
+    await emailOutbox(db.forWorkspace({ workspaceId: ids.c })).sent(live, '<live@example.test>');
+  });
+
+  it('is safe to run twice, and two at once: each row is marked once, and a later sweep finds nothing', async () => {
+    const { first } = runs();
+    const stale = await claimedRow('twice', SENDING_STALE_AFTER_SECONDS + 1, first);
+    const [one, two] = await Promise.all([sweepC(), sweepC()]);
+    expect([...one, ...two]).toEqual([stale]);
+    expect(await sweepC()).toEqual([]);
+    expect(await statusOf(stale)).toEqual({ status: 'failed', failure: INTERRUPTED });
+  });
+
+  it("leaves a live job's row to it, and a slow run's send after the sweep is still recorded", async () => {
+    const { first, other } = runs();
+    const live = await claimedRow('alongside', 0, first); // a run sending it now
+    const slow = await claimedRow('slow', SENDING_STALE_AFTER_SECONDS + 1, other); // a run past its expiry
+    expect(await sweepC()).toEqual([slow]);
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.c }));
+    expect(await outbox.sent(live, '<alongside@example.test>')).toBe(true);
+    expect(await statusOf(live)).toEqual({ status: 'sent', failure: null });
+    expect(await outbox.sent(slow, '<slow@example.test>')).toBe(true); // its send went out after all
+    expect(await statusOf(slow)).toEqual({ status: 'sent', failure: null });
+    expect(await providerIdOf(slow)).toBe('<slow@example.test>');
+  });
+
+  it("is never sent again by its job's retry once swept", async () => {
+    const { first } = runs();
+    const stale = await claimedRow('retry', SENDING_STALE_AFTER_SECONDS + 1, first);
+    expect(await sweepC()).toEqual([stale]);
+    const outbox = emailOutbox(db.forWorkspace({ workspaceId: ids.c }));
+    expect(await outbox.load(stale, first)).toEqual({ skip: 'failed' });
+    expect(await outbox.claim(stale, first)).toBe(false);
+  });
+
+  it("sweeps only the workspace it is given: another's stale row waits for that workspace's sweep", async () => {
+    const { first } = runs();
+    const id = await insertRow(ids.b, `other-workspace-${run}@example.test`);
+    expect(await emailOutbox(db.forWorkspace({ workspaceId: ids.b })).claim(id, first)).toBe(true);
+    await age(id, SENDING_STALE_AFTER_SECONDS + 1);
+    expect(await sweepC()).toEqual([]);
+    expect(await statusOf(id)).toEqual({ status: 'sending', failure: null });
+    expect(await emailOutbox(db.forWorkspace({ workspaceId: ids.b })).interruptStale()).toEqual([
+      id,
+    ]);
+    expect(await statusOf(id)).toEqual({ status: 'failed', failure: INTERRUPTED });
+  });
+
+  describe('the workspaces it sweeps', () => {
+    // Job rows written as the owner, in states no worker fetches, so no other file's handler takes them.
+    const planted: string[] = [];
+    async function plantJob(
+      name: string,
+      state: string,
+      data: Record<string, string>,
+      group: string,
+    ): Promise<void> {
+      const { rows } = await owner.query<{ id: string }>(
+        `insert into ${JOBS_SCHEMA}.job (name, data, state, group_id, completed_on)
+         values ($1, $2, $3, $4, now()) returning id`,
+        [name, data, state, group],
+      );
+      planted.push(rows[0]?.id ?? '');
+    }
+
+    afterAll(async () => {
+      await owner.query(`delete from ${JOBS_SCHEMA}.job where id = any($1::uuid[])`, [planted]);
+    });
+
+    it('are those of email jobs that failed for good, read by the app role from pg-boss', async () => {
+      const failed = randomUUIDv7();
+      const failedTwice = randomUUIDv7();
+      const completed = randomUUIDv7();
+      const cancelled = randomUUIDv7();
+      const otherQueue = randomUUIDv7();
+      const regrouped = randomUUIDv7();
+      const email = (workspaceId: string) => ({ workspaceId, emailMessageId: randomUUIDv7() });
+      await plantJob('email', 'failed', email(failed), failed);
+      await plantJob('email', 'failed', email(failedTwice), failedTwice);
+      await plantJob('email', 'failed', email(failedTwice), failedTwice);
+      await plantJob('email', 'completed', email(completed), completed);
+      await plantJob('email', 'cancelled', email(cancelled), cancelled);
+      await plantJob('render', 'failed', { workspaceId: otherQueue }, otherQueue);
+      // Not as `send` writes them: a group that isn't the payload's workspace, and a workspace that isn't an id.
+      await plantJob('email', 'failed', email(regrouped), randomUUIDv7());
+      await plantJob('email', 'failed', email('not-an-id'), 'not-an-id');
+
+      const found = await jobs.failedWorkspaces('email');
+      expect(found).toEqual(expect.arrayContaining([failed, failedTwice]));
+      expect(found.filter((id) => id === failedTwice)).toHaveLength(1);
+      for (const absent of [completed, cancelled, otherQueue, regrouped, 'not-an-id']) {
+        expect(found).not.toContain(absent);
+      }
+    });
   });
 });
