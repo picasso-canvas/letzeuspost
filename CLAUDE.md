@@ -24,6 +24,9 @@ Build only from approved sections (all are, since 2026-11-07). The first build m
 minimum guardrails in section 20 (builders without GitHub access, sandbox, settings, hooks, H0 checks, the risk gate,
 the merge gate, agent files, the core skills). It must pass its red-team checklist before any other milestone starts.
 
+**H0 freeze:** no new H0 task unless it unblocks a product task (a should-fix follow-up is still opened, as §19 says);
+review nits go into the weekly nit batch (§19), not one issue each.
+
 ## Building (builders)
 
 1. `scripts/dispatch.ts` starts you in your own clone of the repo, on your task's branch `<issue-number>-<short-slug>`. Your
