@@ -14,7 +14,10 @@ const seen = vi.hoisted(() => ({
   sweepHeld: undefined as Promise<string[]> | undefined,
 }));
 
-vi.mock('@lzp/db', () => ({
+vi.mock('@lzp/db', async (importOriginal) => ({
+  // The sweep's timer is set from the email job's real staleness window.
+  SENDING_STALE_AFTER_SECONDS: (await importOriginal<typeof import('@lzp/db')>())
+    .SENDING_STALE_AFTER_SECONDS,
   emailOutbox: () => ({}),
   createDb: () => ({
     close: () => {
