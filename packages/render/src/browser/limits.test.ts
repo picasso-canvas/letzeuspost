@@ -47,6 +47,19 @@ describe('slideBudget: a slide gets its own limit, or what is left of the post�
     expect(slideBudget({ now: 121_000, deadline, slideMs }).ms).toBe(0);
     expect(slideBudget({ now: 130_000, deadline, slideMs }).ms).toBe(0);
   });
+
+  it('names the PDF when the post’s document is what ran out of its own limit', () => {
+    expect(slideBudget({ now: 0, slideMs, what: 'PDF' })).toEqual({
+      ms: 20_000,
+      reason: 'The PDF didn’t finish rendering within 20 s',
+    });
+    expect(
+      slideBudget({ now: 115_000, deadline: postDeadline(1_000), slideMs, what: 'PDF' }),
+    ).toEqual({
+      ms: 6_000,
+      reason: 'The post didn’t finish rendering within 2 minutes',
+    });
+  });
 });
 
 describe('withTimeout: work that never finishes stops at its limit', () => {
