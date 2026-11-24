@@ -47,8 +47,12 @@ const build = (overrides: Partial<Parameters<typeof buildDocument>[0]> = {}) =>
   });
 
 const styleOf = (html: string) => /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
+/** The policy as the browser reads it (React writes its quotes as `&#x27;`). */
 const policyOf = (html: string) =>
-  /<meta http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(html)?.[1] ?? '';
+  (/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(html)?.[1] ?? '').replaceAll(
+    '&#x27;',
+    "'",
+  );
 /** The `<main>` of a page `buildSlide` made: the slide as the image shows it. */
 const mainOf = (html: string) => /<main[\s\S]*<\/main>/.exec(html)?.[0] ?? '';
 
@@ -59,10 +63,12 @@ describe('buildDocument', () => {
       ...html.matchAll(/<section class="pdf-page pdf-page-(\d+)">([\s\S]*?)<\/section>/g),
     ];
     expect(pages.map((page) => page[1])).toEqual(['1', '2', '3']);
-    post().slides.forEach((slide, index) => {
-      const page = buildSlide(post(), slide, 'portrait', testKit());
+    const document = post();
+    document.slides.forEach((slide, index) => {
+      const page = buildSlide(document, slide, 'portrait', testKit());
       expect(pages[index]?.[2]).toBe(mainOf(page));
     });
+    expect(html).toContain('<span class="page-number">3/3</span>');
   });
 
   it('uses the image pages’ own style, body classes and language', () => {
