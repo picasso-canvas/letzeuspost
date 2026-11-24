@@ -36,7 +36,7 @@ const LOGO: RenderAsset = {
 const HOOK = 'Pitha is older than tea';
 // Long enough that the fit script lowers its `k`, so the page can only match its JPEG at that `k`.
 const LONGER =
-  'Rice, jaggery and coconut, folded by hand in every kitchen of the village each winter';
+  'Rice, jaggery and coconut, folded by hand in every kitchen of the village each winter, steamed in clay pots and shared with every neighbour on the lane';
 
 const carousel = (): Post =>
   testPost(testSlide(), {
@@ -286,9 +286,12 @@ test('each page matches its JPEG within the tolerance, and the English text can 
     expect(each.compared.farShare).toBeLessThanOrEqual(TOLERANCE.farShare);
   });
 
-  // Selectable text: every word of each slide, as pdf.js copies it out of the page.
+  // Selectable text: every word of each slide that fits (one that doesn't is cut at the page's edge), as pdf.js copies
+  // it out of the page. The hook's slide and the last one always fit.
+  expect([reports[0]?.status, reports[2]?.status]).toEqual(['pass', 'pass']);
   post.slides.forEach((slide, index) => {
     if (slide.layout !== 'text') throw new Error('a text slide');
+    if (reports[index]?.status !== 'pass') return;
     const copied = words(facts.each[index]?.text ?? '');
     for (const word of words(`${slide.title.replaceAll('*', '')} ${slide.body}`))
       expect(copied).toContain(word);
