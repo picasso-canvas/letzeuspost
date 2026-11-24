@@ -142,9 +142,11 @@ test.describe('the longest allowed text fits, or fails naming the field and a ta
 });
 
 test.describe('a call to action or a sticker that is too wide is named by its own field', () => {
+  // One word, twice over: wider than the widest column at every size even at the smallest scale (a single copy
+  // fits the pin's 880 px, and Bangla's landscape column, once the fit script has lowered `--k` to 0.85)
   const CTA_TOO_WIDE: Record<Lang, string> = {
-    en: 'Supercalifragilisticexpialidociousappointmentsbookingtodayplease',
-    bn: 'অনুগ্রহপূর্বকআজকেইআমাদেরসঙ্গেযোগাযোগকরেএকটিবুকিংনিশ্চিতকরুন',
+    en: 'Supercalifragilisticexpialidociousappointmentsbookingtodayplease'.repeat(2),
+    bn: 'অনুগ্রহপূর্বকআজকেইআমাদেরসঙ্গেযোগাযোগকরেএকটিবুকিংনিশ্চিতকরুন'.repeat(2),
   };
   const STICKER_TOO_WIDE: Record<Lang, string> = {
     en: 'Limited time only: our big launch special offer ends this very Sunday at midnight, so hurry',
