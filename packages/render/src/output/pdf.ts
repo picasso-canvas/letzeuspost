@@ -1,8 +1,10 @@
+import { readFile } from 'node:fs/promises';
 import { chromium, type Browser, type BrowserContext } from 'playwright-core';
 import { z } from 'zod';
 import { contextOptions, LAUNCH_OPTIONS } from '../browser/flags.ts';
 import { fontLoadFailure } from '../browser/fonts.ts';
 import { RENDER_LIMITS, RenderFailure, slideBudget, withTimeout } from '../browser/limits.ts';
+import { residentBytes } from '../browser/memory.ts';
 import { BrowserCrashed, createBrowserPool } from '../browser/pool.ts';
 import {
   assetIndex,
@@ -51,11 +53,13 @@ export type DocumentPrinterOptions = {
   documentMs?: number;
   /** Starts the browser; `chromium.launch` with the fixed flags by default. */
   launch?: () => Promise<Browser>;
+  /** Reads `/proc/<pid>/status` of one of the browser's processes, for its memory; `readFile` by default. */
+  readProcessStatus?: (pid: number) => Promise<string>;
   now?: () => number;
 };
 
-// `SETTLE`, `fontAssets`, `guard` and `attempt` (with its timeout) below repeat the runner's (`browser/runner.ts`); the
-// follow-up #357 gives the runner a print mode and drops this copy.
+// `SETTLE`, `fontAssets`, `browserMemory`, `guard` and `attempt` (with its timeout) below repeat the runner's
+// (`browser/runner.ts`); the follow-up #357 gives the runner a print mode and drops this copy.
 
 // Runs in the page once it has loaded: loads every font it declares, waits for its images, and names the fonts that
 // failed (the runner's own settle step). A string, so the page's code needs no DOM types here.
@@ -93,6 +97,23 @@ function fontAssets(): Promise<RenderAsset[]> {
     manifestFonts = undefined;
   });
   return manifestFonts;
+}
+
+/** The resident memory of all the browser's processes, from `/proc`; undefined where there is none. */
+async function browserMemory(
+  browser: Browser,
+  read: (pid: number) => Promise<string>,
+): Promise<number | undefined> {
+  const session = await browser.newBrowserCDPSession();
+  try {
+    const { processInfo } = await session.send('SystemInfo.getProcessInfo');
+    return await residentBytes(
+      processInfo.map((info) => info.id),
+      read,
+    );
+  } finally {
+    await session.detach().catch(() => undefined);
+  }
 }
 
 /** Answers the page's requests: the page itself once, the job's assets, and nothing else (WebSockets included). */
@@ -180,11 +201,13 @@ async function printIn(
 export function createDocumentPrinter(options: DocumentPrinterOptions): DocumentPrinter {
   const now = options.now ?? Date.now;
   const documentMs = options.documentMs ?? RENDER_LIMITS.slideMs;
+  const readStatus =
+    options.readProcessStatus ?? ((pid: number) => readFile(`/proc/${String(pid)}/status`, 'utf8'));
   const pool = createBrowserPool<Browser>({
     launch: options.launch ?? (() => chromium.launch(LAUNCH_OPTIONS)),
     close: (browser) => browser.close(),
-    // The PDF browser prints a document now and then: the render count retires it, not its memory.
-    memoryBytes: () => Promise.resolve(undefined),
+    // Like the image browser, it restarts every 500 renders and whenever its memory passes the limit (§08).
+    memoryBytes: (browser) => browserMemory(browser, readStatus),
     rendersPerBrowser: RENDER_LIMITS.rendersPerBrowser,
     browserMemoryBytes: RENDER_LIMITS.browserMemoryBytes,
   });
