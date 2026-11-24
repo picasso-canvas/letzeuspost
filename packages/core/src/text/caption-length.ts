@@ -84,7 +84,8 @@ const EMOJI_PATTERN = /\p{Emoji_Presentation}|\p{Extended_Pictographic}️|\p{Re
 
 const utf8 = new TextEncoder();
 
-function isEmoji(grapheme: string): boolean {
+/** True when a grapheme is an emoji, as the caption counters and the slide text check both see it. */
+export function isEmoji(grapheme: string): boolean {
   return EMOJI_PATTERN.test(grapheme);
 }
 
