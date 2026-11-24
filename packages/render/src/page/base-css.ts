@@ -10,6 +10,11 @@ import { SIZES, SMALL_PRINT_PX, type SizeName } from '../sizes.ts';
 // The page is a flex column: an optional header (the logo, when it sits at the top), the text area, an optional
 // footer (the logo at the bottom, and the page number). The text area keeps to the margins, which are the safe zones.
 
+/** A quote is set at this share of the title's size: big enough to lead, small enough for a sentence (the contrast pairs read it too). */
+export const QUOTE_TITLE_SHARE = 0.8;
+/** List items are set a little larger than body text, since they are the slide's content. */
+const ITEM_BODY_SHARE = 1.15;
+
 export const BASE_CSS = `
 *, *::before, *::after { box-sizing: border-box; }
 html {
@@ -109,6 +114,48 @@ img.photo {
   font-size: max(var(--body-floor), calc(var(--body-size) * 1.15 * var(--k)));
   line-height: var(--lh-body);
   overflow-wrap: break-word;
+}
+.quote {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: calc(var(--title-size) * ${String(QUOTE_TITLE_SHARE)} * var(--k));
+  line-height: var(--lh-heading);
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+.person {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: max(var(--body-floor), calc(var(--body-size) * var(--k)));
+  line-height: var(--lh-body);
+  overflow-wrap: break-word;
+}
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  font-size: max(var(--body-floor), calc(var(--body-size) * ${String(ITEM_BODY_SHARE)} * var(--k)));
+  line-height: var(--lh-body);
+  overflow-wrap: break-word;
+}
+.item {
+  position: relative;
+  padding-left: 1.3em;
+}
+.item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: calc((var(--lh-body) * 1em - 0.5em) / 2);
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--primary);
 }
 .sticker, .step-label {
   font-family: var(--font-heading);

@@ -1,6 +1,6 @@
 import type { Post, Slide } from '@lzp/core';
 
-// Sample content for the cover, cta and step layouts, written for the specs: a made-up physio practice ("Stillwater
+// Sample content for the cover, cta, step, fact, list and quote layouts, written for the specs: a made-up physio practice ("Stillwater
 // Physio") in English and a made-up café ("Meghla Cafe") in Bangla. No real brand, no real person. Typical copy is what
 // the AI would write; the longest copy is §07's limits (a cover title of 8 words) and long words, to see what the fit
 // check does at the edge.
@@ -168,15 +168,15 @@ export const SAMPLE_PUBLIC_QUOTE: Record<Lang, Of<'quote'>> = {
 export const LONGEST_LIST_ITEMS: Record<Lang, string[]> = {
   en: [
     'Physiotherapy rehabilitation strengthening stretching mobility posture ergonomics recovery',
-    'Consistency matters considerably more than intensity throughout rehabilitation programmes',
+    'Consistency matters considerably more than intensity throughout rehabilitation',
     'Hydration nutrition sleep movement recovery stretching breathing mindfulness',
     'Appointments assessments diagnoses treatments exercises follow-ups referrals discharge',
     'Understanding protecting strengthening improving maintaining supporting restoring celebrating',
   ],
   bn: [
     'পরিবেশবান্ধব সম্প্রসারণশীল প্রতিষ্ঠানগুলোর সহযোগিতামূলক অংশগ্রহণে উন্নয়নশীল সম্ভাবনাময় দৃষ্টিভঙ্গি',
-    'আন্তর্জাতিক মানসম্পন্ন প্রশিক্ষণপ্রাপ্ত অভিজ্ঞ চিকিৎসকদের তত্ত্বাবধানে পরিচালিত পুনর্বাসন কার্যক্রম',
-    'স্বাস্থ্যসচেতনতা পুষ্টিকর খাদ্যাভ্যাস নিয়মিত ব্যায়াম পর্যাপ্ত বিশ্রাম মানসিক প্রশান্তি সচেতনতা',
+    'আন্তর্জাতিক মানসম্পন্ন প্রশিক্ষণপ্রাপ্ত চিকিৎসকদের তত্ত্বাবধানে পরিচালিত পুনর্বাসন কার্যক্রম',
+    'স্বাস্থ্যসচেতনতা পুষ্টিকর খাদ্যাভ্যাস নিয়মিত ব্যায়াম পর্যাপ্ত বিশ্রাম প্রশান্তি',
     'প্রাতিষ্ঠানিক সহযোগিতামূলক উদ্যোগগুলোর বাস্তবায়নযোগ্যতা নিরূপণ পদ্ধতিগত বিশ্লেষণ প্রতিবেদন',
     'সম্ভাবনাময় অভিজ্ঞতাসম্পন্ন দায়িত্বশীল পরিশ্রমী মনোযোগী সৃজনশীল উদ্ভাবনী নেতৃত্ব',
   ],
