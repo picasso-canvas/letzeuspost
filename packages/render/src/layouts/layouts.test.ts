@@ -137,7 +137,7 @@ describe('the cover layout', () => {
       'body',
       'image-box',
     ]);
-    expect(html.indexOf('col-text')).toBeLessThan(html.indexOf('image-box'));
+    expect(html.indexOf('class="col col-text"')).toBeLessThan(html.indexOf('class="image-box"'));
   });
 
   it.each(SIZE_NAMES)('%s: leaves no hole when body, image and sticker are missing', (size) => {
@@ -227,7 +227,7 @@ describe('the cta layout', () => {
 
   it('draws the logo as the mark, once: the corner logo is not repeated', () => {
     const { html } = build(SAMPLE_CTA.en, 'portrait');
-    expect(html.match(/lzp-asset:image\/logo_light_1/g)).toHaveLength(1);
+    expect(html.match(/<img [^>]*logo_light_1/g)).toHaveLength(1);
     expect(html).toMatch(/<img src="lzp-asset:image\/logo_light_1" alt="" class="cta-mark"/);
     expect(has(html, 'header')).toBe(false);
     expect(has(html, 'logo')).toBe(false);
@@ -243,7 +243,7 @@ describe('the cta layout', () => {
     const kit = testKit({ ...KIT, mascot: undefined });
     const { html } = build(SAMPLE_CTA.bn, 'portrait', 'bn', kit);
     expect(html).toMatch(/<img src="lzp-asset:image\/logo_light_1" alt="" class="cta-mark"/);
-    expect(html.match(/lzp-asset:image\/logo_light_1/g)).toHaveLength(1);
+    expect(html.match(/<img [^>]*logo_light_1/g)).toHaveLength(1);
   });
 
   it('puts the call to action in a highlight, as text', () => {
