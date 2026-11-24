@@ -1,7 +1,7 @@
 import { parseHighlights, type Post, type Slide } from '@lzp/core';
-import { cloneElement, createElement as h, isValidElement, type ReactNode } from 'react';
+import { createElement as h, type ReactNode } from 'react';
 import type { RenderKit } from '../kit.ts';
-import { assetImage } from '../page/assets.ts';
+import { assetImage, assetUrl } from '../page/assets.ts';
 import { formatNumber } from '../page/digits.ts';
 import { SIZES, type SizeName } from '../sizes.ts';
 import type { LayoutProps } from './types.ts';
@@ -90,8 +90,8 @@ function sizedImage(
   className: string,
   attributes: { width?: string; height: string },
 ): ReactNode {
-  const image = assetImage(props.context, field, key, className);
-  return isValidElement(image) ? cloneElement(image, attributes) : null;
+  if (assetImage(props.context, field, key, className) === null) return null;
+  return h('img', { src: assetUrl('image', key), alt: '', className, ...attributes });
 }
 
 /**
