@@ -10,7 +10,8 @@ import type { Switches } from '../../packages/render/src/page/switches.ts';
 import { SAMPLE_COVER } from '../../packages/render/src/layouts/samples.ts';
 import { testBanglaPost, testKit, testPost } from '../../packages/render/src/page/test-fixtures.ts';
 import { SIZE_NAMES, SIZES } from '../../packages/render/src/sizes.ts';
-import { renderPostSlide, slidePage } from './slides.ts';
+import { brandAssets } from '../golden/assets.ts';
+import { renderPostSlide, slidePage, type RenderedSlide } from './slides.ts';
 
 // The Playful look in a real Chromium (#336; §07 The four looks, §08 Looks in the renderer and The fit check). These
 // run in CI's services job, the `render` Playwright project: a `text` slide in the Playful look at every size, in
@@ -43,8 +44,15 @@ const LOGO: RenderAsset = {
   ),
 };
 
-/** The sample photo: the 1×1 PNG the other render specs use, stretched over the image box (a bare fill, no picture in it). */
-const PHOTO: RenderAsset = { ...LOGO, key: 'photo_sample_1' };
+/**
+ * The sample photo: the golden renders' placeholder picture (a sky, a sun and two hills, 1600 × 1200, drawn in code),
+ * kept under the key the sample cover names, so it is a real picture and not a bare fill.
+ */
+const PHOTO: RenderAsset = (() => {
+  const photo = brandAssets('kathgolap').find((asset) => asset.key === 'photo_1');
+  if (photo === undefined) throw new Error('no placeholder photo in the golden assets');
+  return { ...photo, key: 'photo_sample_1' };
+})();
 
 /** The sizes the two states below are drawn at (#378). */
 const STATE_SIZES = ['portrait', 'square', 'story'] as const satisfies readonly SizeName[];
@@ -87,58 +95,124 @@ function playfulCoverPost(lang: 'en' | 'bn', switches: Partial<Switches> = {}): 
   return { ...post, look: { name: 'playful', switches }, slides: [slide, slide] };
 }
 
+/**
+ * Draws the post's first slide as the renderer does and runs `script` in that same page, just before its screenshot, so
+ * what it reads is what the PNG shows. The renderer's browser is the real one, its `newContext` watched for the page.
+ */
+async function drawAndRead(
+  post: Post,
+  size: SizeName,
+  assets: readonly RenderAsset[],
+  script: string,
+): Promise<{ drawn: RenderedSlide; read: unknown }> {
+  let read: unknown;
+  const renderer = createRenderer({
+    log: () => undefined,
+    launch: async () => {
+      const real = await chromium.launch(LAUNCH_OPTIONS);
+      const open = real.newContext.bind(real);
+      real.newContext = async (options) => {
+        const context = await open(options);
+        context.on('page', (page) => {
+          const shoot = page.screenshot.bind(page);
+          page.screenshot = async (shot) => {
+            read = await page.evaluate<unknown>(script);
+            return shoot(shot);
+          };
+        });
+        return context;
+      };
+      return real;
+    },
+  });
+  try {
+    const drawn = await renderPostSlide(renderer, post, size, assets, 0, KIT);
+    if (read === undefined) throw new Error('the page was never read');
+    return { drawn, read };
+  } finally {
+    await renderer.close();
+  }
+}
+
+/** What the page's two stickers draw: a pseudo-element's `content` is `none` when it is off. */
+const STICKERS = `(() => {
+  const slide = document.querySelector('.slide');
+  return {
+    before: getComputedStyle(slide, '::before').content,
+    after: getComputedStyle(slide, '::after').content,
+  };
+})()`;
+
+type FrameState = {
+  tilt: number;
+  photos: number;
+  loaded: boolean;
+  photoWidth: number;
+  photoHeight: number;
+  inPage: boolean;
+};
+
+/** The print frame: its turn, the pictures inside it, and where the first one is drawn, from the page Chrome shows. */
+const FRAME = `(() => {
+  const box = document.querySelector('.image-box');
+  const photos = box === null ? [] : [...box.querySelectorAll('img')];
+  const transform = box === null ? 'none' : getComputedStyle(box).transform;
+  const m = new DOMMatrix(transform === 'none' ? undefined : transform);
+  const [first] = photos;
+  const at = first === undefined ? undefined : first.getBoundingClientRect();
+  return {
+    tilt: (Math.atan2(m.b, m.a) * 180) / Math.PI,
+    photos: photos.length,
+    loaded: first !== undefined && first.complete && first.naturalWidth > 0,
+    photoWidth: at === undefined ? 0 : at.width,
+    photoHeight: at === undefined ? 0 : at.height,
+    inPage: at !== undefined && at.left >= 0 && at.top >= 0 && at.right <= innerWidth && at.bottom <= innerHeight,
+  };
+})()`;
+
 test.describe('Playful with decorations off still fits, and is drawn without its stickers', () => {
   // The look's third state (#378, Iris F3): the badge and the tag are off, so the slide is the text and its page alone.
+  // The stickers are read from the page the PNG is taken from.
   for (const lang of ['en', 'bn'] as const)
     for (const size of STATE_SIZES)
       test(`${lang}, ${size}: passes the fit check and draws no sticker`, async () => {
-        const renderer = createRenderer({ log: () => undefined });
-        try {
-          const post = playfulPost(lang, { decorations: false });
-          const drawn = await renderPostSlide(renderer, post, size, [LOGO], 0, KIT);
-          expect(drawn.report).toMatchObject({ size, slide: 1, status: 'pass', fields: [] });
-          expect(drawn.render.errors).toEqual([]);
-          expect(drawn.render.blocked).toEqual([]);
-          await writeFile(
-            test.info().outputPath(`playful-decorations-off-${lang}-${size}.png`),
-            drawn.png,
-          );
-        } finally {
-          await renderer.close();
-        }
-        const { stickers } = await computed(lang, size, { decorations: false });
-        expect(stickers.before).toBeNull();
-        expect(stickers.after).toBeNull();
+        const post = playfulPost(lang, { decorations: false });
+        const { drawn, read } = await drawAndRead(post, size, [LOGO], STICKERS);
+        expect(drawn.report).toMatchObject({ size, slide: 1, status: 'pass', fields: [] });
+        expect(drawn.render.errors).toEqual([]);
+        expect(drawn.render.blocked).toEqual([]);
+        expect(read).toEqual({ before: 'none', after: 'none' });
+        await writeFile(
+          test.info().outputPath(`playful-decorations-off-${lang}-${size}.png`),
+          drawn.png,
+        );
       });
 });
 
 test.describe('Playful with the print frame and a real photo', () => {
   // The tilted print frame holds the cover's photo (#378, Iris F3): the photo is served and drawn inside the frame, and
-  // the frame is turned, at every size the stacked layouts use.
+  // the frame is turned, at every size the stacked layouts use. The frame is read from the page the PNG is taken from.
   for (const lang of ['en', 'bn'] as const)
     for (const size of STATE_SIZES)
       test(`${lang}, ${size}: the photo is in a tilted frame and the slide passes the fit check`, async () => {
-        const renderer = createRenderer({ log: () => undefined });
-        try {
-          const post = playfulCoverPost(lang, { frame: 'print' });
-          const drawn = await renderPostSlide(renderer, post, size, [LOGO, PHOTO], 0, KIT);
-          expect(drawn.report).toMatchObject({ size, slide: 1, status: 'pass', fields: [] });
-          expect(drawn.render.errors).toEqual([]);
-          expect(drawn.render.blocked).toEqual([]);
-          expect(drawn.render.served).toContain('image/photo_sample_1'); // the photo was loaded into the page
-          await writeFile(
-            test.info().outputPath(`playful-print-frame-${lang}-${size}.png`),
-            drawn.png,
-          );
-        } finally {
-          await renderer.close();
-        }
-        const frame = await printFrame(lang, size);
-        expect(frame.photos).toBe(1); // the photo is inside the frame's box
+        const post = playfulCoverPost(lang, { frame: 'print' });
+        const { drawn, read } = await drawAndRead(post, size, [LOGO, PHOTO], FRAME);
+        const frame = read as FrameState; // what the FRAME script returns
+        expect(drawn.report).toMatchObject({ size, slide: 1, status: 'pass', fields: [] });
+        expect(drawn.render.errors).toEqual([]);
+        expect(drawn.render.blocked).toEqual([]);
+        expect(drawn.render.served).toContain('image/photo_sample_1'); // the photo was loaded into the page
+        expect(frame.photos).toBe(1); // inside the frame's box
+        expect(frame.loaded).toBe(true); // a decoded picture, not a broken image
         expect(Math.abs(frame.tilt)).toBeGreaterThanOrEqual(2);
         expect(Math.abs(frame.tilt)).toBeLessThanOrEqual(6);
-        expect(frame.photoWidth).toBeGreaterThan(0);
-        expect(frame.photoHeight).toBeGreaterThan(0);
+        expect(frame.photoWidth).toBeGreaterThan(200); // a real size, within the page
+        expect(frame.photoHeight).toBeGreaterThan(200);
+        expect(frame.inPage).toBe(true);
+        await writeFile(
+          test.info().outputPath(`playful-print-frame-${lang}-${size}.png`),
+          drawn.png,
+        );
       });
 });
 
@@ -215,36 +289,6 @@ async function computed(
           badge: style('.slide', '::before').backgroundColor,
         },
         print: angle(getComputedStyle(frame).transform),
-      };
-    })()`);
-  } finally {
-    await context.close();
-  }
-}
-
-/** The print frame of a cover's photo as Chrome draws it: its turn, how many photos are inside it, and the photo's size. */
-async function printFrame(lang: 'en' | 'bn', size: SizeName) {
-  const context = await browser.newContext(contextOptions(size));
-  try {
-    const page = await context.newPage();
-    await page.setContent(
-      await slidePage(playfulCoverPost(lang, { frame: 'print' }), size, 0, KIT),
-    );
-    return await page.evaluate<{
-      tilt: number;
-      photos: number;
-      photoWidth: number;
-      photoHeight: number;
-    }>(`(() => {
-      const box = document.querySelector('.image-box');
-      const photos = box === null ? [] : [...box.querySelectorAll('img')];
-      const m = new DOMMatrix(box === null || getComputedStyle(box).transform === 'none' ? undefined : getComputedStyle(box).transform);
-      const [first] = photos;
-      return {
-        tilt: (Math.atan2(m.b, m.a) * 180) / Math.PI,
-        photos: photos.length,
-        photoWidth: first === undefined ? 0 : first.offsetWidth,
-        photoHeight: first === undefined ? 0 : first.offsetHeight,
       };
     })()`);
   } finally {
