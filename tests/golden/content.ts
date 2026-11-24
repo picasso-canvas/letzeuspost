@@ -177,7 +177,7 @@ export const SAMPLES: LaunchSamples = {
       badge: 'This month',
       title: 'Family check-up *Saturdays*',
       details:
-        'Bring the whole family: check-ups for children under twelve are free with a parent’s visit.',
+        'Bring the whole family: check-ups for children under twelve are free when a parent comes too.',
       price: 'BDT 1,500 per adult',
       image: photo,
       cta: 'Book a Saturday',
