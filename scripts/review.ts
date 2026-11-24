@@ -738,12 +738,14 @@ async function main(argv: string[]): Promise<number> {
             stdio: ['ignore', 'pipe', 'pipe'],
             timeout: SCREENSHOT_TIMEOUT_MS,
           }),
-        fetchZip: (artifactId) =>
+        // A zip gets what is left of the step's own limit, not a fixed 5 minutes: the 30 MB render output takes about 4
+        // minutes on the Mac, and a 5-minute limit timed out three times (#376). The step's limit still bounds the total.
+        fetchZip: (artifactId, timeoutMs) =>
           execFileSync('gh', ['api', `repos/${REPO}/actions/artifacts/${String(artifactId)}/zip`], {
             cwd: ROOT,
             maxBuffer: MAX_ARTIFACT_BYTES + 1024 * 1024,
             stdio: ['ignore', 'pipe', 'pipe'],
-            timeout: SCREENSHOT_TIMEOUT_MS,
+            timeout: timeoutMs,
           }),
       }),
   });
