@@ -26,7 +26,7 @@ describe('shipRefusals', () => {
       'packages/core/test/tsconfig.json',
       'packages/ui/eslint.config.js',
       'docs/plan/20-builder-guardrails.md',
-      'tests/golden/baselines/tests/golden/matrix.spec.ts/caption-1.png',
+      'tests/golden/baselines/matrix.spec.ts/caption-1.png',
       '.pnpmfile.cjs',
       'packages/x/.npmrc',
       '.lzp/task.md',
