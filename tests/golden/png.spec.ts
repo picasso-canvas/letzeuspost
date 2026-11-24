@@ -109,9 +109,11 @@ const grey = (): Pixels => ({ width: 4, height: 2, rgba: new Uint8Array(4 * 2 * 
 
 test('the same pixels are equal, even in differently encoded files', () => {
   const image = grey();
+  const raw = [0, 1].map((y) => [...image.rgba.subarray(y * 16, y * 16 + 16)]);
+  // Stored with the Up filter, where encodePng stores rows unfiltered: other bytes, the same pixels.
   const stored = handmade(
     { width: 4, height: 2, colour: 6 },
-    [0, 1].map((y) => filtered(2, [...image.rgba.subarray(y * 16, y * 16 + 16)], [], 4)),
+    raw.map((row, y) => filtered(2, row, raw[y - 1] ?? [], 4)),
   );
   expect(Buffer.from(stored).equals(Buffer.from(encodePng(image)))).toBe(false);
   expect(comparePng(stored, encodePng(image))).toEqual({
