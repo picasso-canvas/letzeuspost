@@ -11,6 +11,7 @@ import {
   MAX_INFLATED_BYTES,
   MAX_PIXELS_SIDE,
   MAX_SCREENSHOT_BYTES,
+  DOWNLOAD_ATTEMPTS,
   MAX_SCREENSHOTS,
   MAX_SCREENSHOTS_IN_ALL,
   inflateBudget,
@@ -440,6 +441,41 @@ describe('collectScreenshots', () => {
       `Couldn't list CI's runs or artifacts on ${SHA}: no screenshots in this bundle.\n`,
     );
     expect(readdirSync(out)).toEqual([]);
+  });
+
+  it('tries a failed download again, and keeps the artifact when a later try works', () => {
+    const out = into();
+    const gh = fakeGitHub(
+      { 3: { artifacts: ['gallery-screenshots'] } },
+      { 30: zip([{ name: 'a.png', data: PNG }]) },
+    );
+    let tries = 0;
+    const text = collectScreenshots(SHA, out, {
+      ...gh.deps,
+      fetchZip: (id) => {
+        tries += 1;
+        if (tries < DOWNLOAD_ATTEMPTS) throw new Error('timed out');
+        return gh.deps.fetchZip(id);
+      },
+    });
+    expect(tries).toBe(DOWNLOAD_ATTEMPTS);
+    expect(readdirSync(join(out, 'gallery-screenshots'))).toEqual(['a.png']);
+    expect(text).not.toContain("couldn't download");
+  });
+
+  it('says so after the last try when every download fails', () => {
+    const out = into();
+    const gh = fakeGitHub({ 3: { artifacts: ['gallery-screenshots'] } });
+    let tries = 0;
+    const text = collectScreenshots(SHA, out, {
+      ...gh.deps,
+      fetchZip: () => {
+        tries += 1;
+        throw new Error('timed out');
+      },
+    });
+    expect(tries).toBe(DOWNLOAD_ATTEMPTS);
+    expect(text).toContain("gallery-screenshots: couldn't download it from run 3 (run3).");
   });
 
   it('says so when a download fails, and still fetches the other artifact', () => {
