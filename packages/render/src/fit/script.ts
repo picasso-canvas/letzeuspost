@@ -27,7 +27,9 @@ export const FIT_SCRIPT = `(() => {
   // The blocks that are measured, by the class they carry, and the field of the slide each is the text of. The step
   // label has none (it is made from n and of), so it is measured but never named. Small print (the source, the
   // sticker, the step label, a quote's role) has a fixed size, so it is not shortened to give room back; a line too
-  // wide is named. \`items\` is the whole list of a list slide, one block, named by the slide's \`items\` field.
+  // wide is named. \`items\` is the whole list of a list slide, one block, named by the slide's \`items\` field, and
+  // \`options\` the text options of a question the same way. The stat number and the offer's price and badge are short
+  // tokens, not text to cut: they are measured and named when a line is too wide, never shortened for height.
   const FIELDS = {
     kicker: 'kicker',
     title: 'title',
@@ -40,9 +42,18 @@ export const FIT_SCRIPT = `(() => {
     person: 'person',
     role: 'role',
     items: 'items',
+    'stat-number': 'number',
+    'stat-label': 'label',
+    question: 'question',
+    options: 'options',
+    badge: 'badge',
+    details: 'details',
+    price: 'price',
   };
   const TEXT_BLOCKS = Object.keys(FIELDS);
-  const SHORTENABLE = ['kicker', 'title', 'body', 'cta-line', 'quote', 'items'];
+  const SHORTENABLE = [
+    'kicker', 'title', 'body', 'cta-line', 'quote', 'items', 'stat-label', 'question', 'options', 'details',
+  ];
   const STEPS_FROM = 100;
   const STEPS_TO = 85;
   const IMAGE_BOX_SHARE = ${String(IMAGE_BOX_MIN_SHARE)};

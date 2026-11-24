@@ -67,6 +67,14 @@ function drawnGraphemes(text: string): number {
   return Array.from(segmenter.segment(drawn)).length;
 }
 
+/** What a part of a field says: a text is itself, a text option its text, a picture option nothing (`[]`); else `undefined`. */
+function optionText(part: unknown): string[] | undefined {
+  if (typeof part === 'string') return [part];
+  if (typeof part !== 'object' || part === null) return undefined;
+  if ('text' in part && typeof part.text === 'string') return [part.text];
+  return 'image' in part ? [] : undefined;
+}
+
 /**
  * The report for one slide at one size, from what the page measured. Throws for what is a bug in the caller: a slide
  * that isn't in the post, or a block the page named that the slide has no text for.
@@ -83,10 +91,11 @@ export function buildFitReport(
 
   const fields = page.fields.map((block) => {
     const text = texts.get(block.name);
-    // A list's `items` are one block to the page, an array of texts to the post: its length is every item's
+    // A list's `items` are one block to the page, an array of texts to the post: its length is every item's. A
+    // question's `options` are the same, but an option may be a picture, which has no text to count
     const parts: unknown[] = typeof text === 'string' ? [text] : Array.isArray(text) ? text : [];
-    const strings = parts.filter((part): part is string => typeof part === 'string');
-    if (strings.length === 0 || strings.length !== parts.length)
+    const strings = parts.flatMap((part) => optionText(part) ?? []);
+    if (strings.length === 0 || parts.some((part) => optionText(part) === undefined))
       throw new Error(`The page named the block "${block.name}", but the slide has no such text`);
     const graphemes = strings.reduce((total, part) => total + drawnGraphemes(part), 0);
     return {
