@@ -67,13 +67,15 @@ describe('buildSlide: a full HTML document', () => {
   it('refuses a look that no one registered, and a layout that is not built yet', () => {
     const bold = testPost(testSlide(), { look: { name: 'bold', switches: {} } });
     expect(() => build(bold)).toThrow(/bold/);
-    const cover = {
-      layout: 'cover',
+    const fact = {
+      layout: 'fact',
       kicker: 'k',
       title: 't',
+      body: 'b',
+      source: 's',
       alt: 'a',
     } as const;
-    expect(() => buildSlide(testPost(), cover, 'portrait', testKit())).toThrow(/cover/);
+    expect(() => buildSlide(testPost(), fact, 'portrait', testKit())).toThrow(/fact/);
   });
 
   it('refuses a colour that is not hex: it would end up in CSS', () => {

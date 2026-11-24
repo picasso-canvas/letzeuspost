@@ -15,6 +15,8 @@ export type FitRenderer = { renderPage: (input: RenderPageInput) => Promise<Rend
 export type RenderedSlide = {
   png: Uint8Array;
   report: FitReport;
+  /** What `buildSlide` left out of the page (the render package's `BuildWarning`). */
+  warnings: { code: string; field: string; message: string }[];
   render: Omit<RenderResult, 'png' | 'fit'>;
 };
 

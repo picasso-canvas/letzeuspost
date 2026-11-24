@@ -87,7 +87,7 @@ describe.each(LAYOUTS)('the %s layout', (layout, samples) => {
 
   it('escapes the text it is given: nothing a post says is ever HTML', () => {
     const hostile = { ...samples.en, title: 'Hi <img src=x onerror=alert(1)> *there*' };
-    const { html } = build(hostile as Slide, 'portrait');
+    const { html } = build(hostile, 'portrait');
     expect(html).not.toContain('<img src=x');
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('<mark class="hl">there</mark>');

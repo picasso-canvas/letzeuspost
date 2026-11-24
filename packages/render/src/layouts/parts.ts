@@ -1,7 +1,7 @@
 import { parseHighlights, type Post, type Slide } from '@lzp/core';
-import { cloneElement, createElement as h, type ReactElement, type ReactNode } from 'react';
+import { createElement as h, type ReactNode } from 'react';
 import type { RenderKit } from '../kit.ts';
-import { assetImage } from '../page/assets.ts';
+import { assetImage, assetUrl } from '../page/assets.ts';
 import { formatNumber } from '../page/digits.ts';
 import { SIZES, type SizeName } from '../sizes.ts';
 import type { LayoutProps } from './types.ts';
@@ -79,16 +79,19 @@ const slidePath = (post: Post, slide: Slide): string =>
 const COLUMN_IMAGE_SHARE = 0.86;
 
 /**
- * An `<img>` that fills its box: its width and height as attributes, since a page can carry no style of its own
- * (`page/content-policy.ts`). A stacked image box takes the height the text leaves, so the image fills it; a column is
- * only as tall as its content, so a landscape image is given its height in pixels.
+ * An `<img>` of a stored asset with a size given as attributes, since a page can carry no style of its own
+ * (`page/content-policy.ts`). `assetImage` judges the key and warns for one that isn't an asset; only a key it accepts
+ * gets an image, and its address is the job's own asset scheme.
  */
-function fill(image: ReactNode, size: SizeName): ReactNode {
-  if (image === null) return null;
-  const height = isColumns(size)
-    ? String(Math.round(SIZES[size].textArea.height * COLUMN_IMAGE_SHARE))
-    : '100%';
-  return cloneElement(image as ReactElement<object>, { width: '100%', height });
+function sizedImage(
+  props: Pick<LayoutProps<Slide['layout']>, 'context'>,
+  field: string,
+  key: string,
+  className: string,
+  attributes: { width?: string; height: string },
+): ReactNode {
+  if (assetImage(props.context, field, key, className) === null) return null;
+  return h('img', { src: assetUrl('image', key), alt: '', className, ...attributes });
 }
 
 /**
@@ -99,9 +102,14 @@ export function photoBox(
   props: Pick<LayoutProps<Slide['layout']>, 'post' | 'slide' | 'size' | 'context'>,
   asset: string,
 ): ReactNode {
-  const { post, slide, size, context } = props;
+  const { post, slide, size } = props;
+  // A stacked image box takes the height the text leaves, so the image fills it; a column is only as tall as its
+  // content, so a landscape image is given its height in pixels.
+  const height = isColumns(size)
+    ? String(Math.round(SIZES[size].textArea.height * COLUMN_IMAGE_SHARE))
+    : '100%';
   const field = `${slidePath(post, slide)}.image.asset`;
-  const photo = fill(assetImage(context, field, asset, 'photo'), size);
+  const photo = sizedImage(props, field, asset, 'photo', { width: '100%', height });
   return photo === null ? null : h('div', { className: 'image-box' }, photo);
 }
 
@@ -113,15 +121,11 @@ export function brandMark(props: Pick<LayoutProps<'cta'>, 'slide' | 'kit' | 'siz
   mark: ReactNode;
   isLogo: boolean;
 } {
-  const { slide, kit, size, context } = props;
+  const { slide, kit, size } = props;
   const mascot = slide.mark === 'mascot' ? kit.mascot : undefined;
   const { field, key } = mascot === undefined ? logoKey(kit) : { field: 'kit.mascot', key: mascot };
-  const image = assetImage(context, field, key, 'cta-mark');
-  if (image === null) return { mark: null, isLogo: false };
   const share = isColumns(size) ? 0.2 : 0.16;
   const height = String(Math.round(SIZES[size].textArea.height * share));
-  return {
-    mark: cloneElement(image as ReactElement<object>, { height }),
-    isLogo: mascot === undefined,
-  };
+  const mark = sizedImage(props, field, key, 'cta-mark', { height });
+  return { mark, isLogo: mark !== null && mascot === undefined };
 }
