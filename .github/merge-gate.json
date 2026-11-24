@@ -2,7 +2,13 @@
   "requiredChecks": ["ci", "risk-gate", "design", "services"],
   "requireTierLabel": true,
   "requireIris": true,
-  "uiPaths": ["apps/web/**", "packages/ui/**", "packages/render/src/looks/**", "DESIGN.md"],
+  "uiPaths": [
+    "apps/web/**",
+    "packages/ui/**",
+    "packages/render/src/looks/**",
+    "packages/render/src/layouts/**",
+    "DESIGN.md"
+  ],
   "harnessPaths": [
     ".github/**",
     ".claude/**",
