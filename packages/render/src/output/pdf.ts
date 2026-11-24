@@ -54,6 +54,9 @@ export type DocumentPrinterOptions = {
   now?: () => number;
 };
 
+// `SETTLE`, `fontAssets`, `guard` and `attempt` (with its timeout) below repeat the runner's (`browser/runner.ts`); the
+// follow-up #357 gives the runner a print mode and drops this copy.
+
 // Runs in the page once it has loaded: loads every font it declares, waits for its images, and names the fonts that
 // failed (the runner's own settle step). A string, so the page's code needs no DOM types here.
 const SETTLE = `(async () => {
