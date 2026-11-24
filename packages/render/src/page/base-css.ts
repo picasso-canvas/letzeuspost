@@ -115,7 +115,12 @@ img.photo {
   font-weight: var(--weight-heading);
 }
 .sticker {
+  /* Clamped to its column: a line wider than that sticks out of the box (overflow hidden makes scrollWidth exceed
+     clientWidth), so the fit script measures it and names the sticker. Unclamped, the box grows with its text. */
   align-self: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   white-space: nowrap;
 }
 .page-number {
