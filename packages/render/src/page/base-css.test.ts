@@ -118,15 +118,15 @@ describe('the rules of the cover, cta and step layouts (#338)', () => {
 });
 
 describe('the rules of the fact, list and quote layouts (#339)', () => {
-  it('sets the quote in the heading font at 0.8 of the title, balanced, in ink', () => {
+  it('sets the quote in the heading font at 0.9 of the title, balanced, in ink', () => {
     const quote = declarations(BASE_CSS, '.quote');
     expect(quote).toMatch(/font-family:\s*var\(--font-heading\)/);
-    expect(quote).toMatch(/font-size:\s*calc\(var\(--title-size\) \* 0\.8 \* var\(--k\)\)/);
+    expect(quote).toMatch(/font-size:\s*calc\(var\(--title-size\) \* 0\.9 \* var\(--k\)\)/);
     expect(quote).toMatch(/line-height:\s*var\(--lh-heading\)/);
     expect(quote).toMatch(/text-wrap:\s*balance/);
     expect(quote).toMatch(/overflow-wrap:\s*break-word/);
     expect(quote).not.toMatch(/(^|[;\s])color:/); // a colour here would need a pair of its own
-    expect(QUOTE_TITLE_SHARE).toBe(0.8);
+    expect(QUOTE_TITLE_SHARE).toBe(0.9);
   });
 
   it('sets the person like body text, never under the body floor, in the heading weight', () => {
@@ -161,6 +161,18 @@ describe('the rules of the fact, list and quote layouts (#339)', () => {
     expect(dot).toMatch(/content:\s*''/);
     expect(dot).toMatch(/background:\s*var\(--primary\)/);
     expect(dot).toMatch(/border-radius:\s*50%/);
+  });
+
+  it('sets the person apart from the quote by a gap of its own, so the attribution reads as a second group', () => {
+    expect(declarations(BASE_CSS, '.person')).toMatch(/margin-top:\s*var\(--gap\)/);
+  });
+
+  it("gives landscape's text column more room than the picture beside it (fact), and the items more than the title (list)", () => {
+    // Two equal columns were too narrow for a fact's body and source, or for a list's items, at the smallest scale
+    expect(declarations(BASE_CSS, '.cols .layout-fact .col-text')).toMatch(/flex-grow:\s*3/);
+    expect(declarations(BASE_CSS, '.cols .layout-fact .image-box')).toMatch(/flex-grow:\s*2/);
+    expect(declarations(BASE_CSS, '.cols .layout-list .col-text')).toMatch(/flex-grow:\s*2/);
+    expect(declarations(BASE_CSS, '.cols .layout-list .col-detail')).toMatch(/flex-grow:\s*3/);
   });
 
   it('has the fit script measure the quote, the person, the role and the list items', () => {

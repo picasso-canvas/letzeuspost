@@ -327,10 +327,10 @@ describe('the contrast pairs they register (§07 Contrast)', () => {
     },
   );
 
-  it('judges the quote at the smallest size the fit check can set it: 0.8 of the title, at K_MIN', () => {
+  it('judges the quote at the smallest size the fit check can set it: 0.9 of the title, at K_MIN', () => {
     const px = (size: 'portrait' | 'landscape') =>
       pairsFor('quote', KIT, 'clean', size).find((pair) => pair.name === 'quote: quote')?.px;
-    expect(px('portrait')).toBeCloseTo(96 * 0.8 * K_MIN);
-    expect(px('landscape')).toBeCloseTo(60 * 0.8 * K_MIN);
+    expect(px('portrait')).toBeCloseTo(96 * 0.9 * K_MIN);
+    expect(px('landscape')).toBeCloseTo(60 * 0.9 * K_MIN);
   });
 });
