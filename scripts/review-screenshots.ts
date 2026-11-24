@@ -59,6 +59,9 @@ export interface ScreenshotDeps {
   limits?: { inflatedBytes?: number };
 }
 
+/** Tries at one artifact's download before it is said to have failed. */
+export const DOWNLOAD_ATTEMPTS = 3;
+
 /** The whole step's time limit, on top of each gh call's own (Cerberus F1 on #213, round 4). */
 export const STEP_TIME_LIMIT_MS = 10 * 60 * 1000;
 const STEP_LIMIT = `${String(STEP_TIME_LIMIT_MS / 60_000)}-minute limit`;
@@ -376,10 +379,16 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
       lines.push(`${name}: not fetched: the screenshot step's ${STEP_LIMIT} ran out.`);
       continue;
     }
-    let zip: Buffer;
-    try {
-      zip = deps.fetchZip(found.artifactId);
-    } catch {
+    let zip: Buffer | null = null;
+    // A download that fails once is tried again (#365): a reviewer who is given no render blocks on that commit for good.
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS && zip === null && !pastLimit(); attempt++) {
+      try {
+        zip = deps.fetchZip(found.artifactId);
+      } catch {
+        zip = null;
+      }
+    }
+    if (zip === null) {
       lines.push(`${name}: couldn't download it from ${from}.`);
       continue;
     }
