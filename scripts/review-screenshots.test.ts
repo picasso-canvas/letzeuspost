@@ -500,6 +500,27 @@ describe('collectScreenshots', () => {
     expect(given).toEqual([STEP_TIME_LIMIT_MS, STEP_TIME_LIMIT_MS - 4 * 60 * 1000]);
   });
 
+  it('never gives a download a limit of 0 or less, which would mean no limit at all (#376)', () => {
+    const gh = fakeGitHub(
+      { 3: { artifacts: ['gallery-screenshots'] } },
+      { 30: zip([{ name: 'a.png', data: PNG }]) },
+    );
+    // The first read of the clock (the step's start) is 0; the step's list calls read it up to the last moment.
+    const reads = [0, 0, 0, STEP_TIME_LIMIT_MS - 1, STEP_TIME_LIMIT_MS, STEP_TIME_LIMIT_MS + 1];
+    let at = 0;
+    const given: number[] = [];
+    const text = collectScreenshots(SHA, into(), {
+      ...gh.deps,
+      now: () => reads[Math.min(at++, reads.length - 1)] ?? 0,
+      fetchZip: (_id, timeoutMs) => {
+        given.push(timeoutMs);
+        throw new Error('timed out');
+      },
+    });
+    expect(given.every((ms) => ms >= 1)).toBe(true);
+    expect(text).toContain("gallery-screenshots: couldn't download it");
+  });
+
   it('says so when a download fails, and still fetches the other artifact', () => {
     const out = into();
     const gh = fakeGitHub(

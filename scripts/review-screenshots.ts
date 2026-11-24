@@ -381,9 +381,12 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
     }
     let zip: Buffer | null = null;
     // A download that fails once is tried again (#365): a reviewer who is given no render blocks on that commit for good.
-    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS && zip === null && !pastLimit(); attempt++) {
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS && zip === null; attempt++) {
+      // The clock is read once, so the try is given at least 1 ms: a limit of 0 would mean no limit at all (Cerberus F1).
+      const left = STEP_TIME_LIMIT_MS - (now() - started);
+      if (left <= 0) break;
       try {
-        zip = deps.fetchZip(found.artifactId, STEP_TIME_LIMIT_MS - (now() - started));
+        zip = deps.fetchZip(found.artifactId, left);
       } catch {
         zip = null;
       }
