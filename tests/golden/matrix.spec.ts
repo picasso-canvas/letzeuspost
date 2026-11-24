@@ -11,7 +11,7 @@ import {
 import { FONT_MANIFEST } from '../../packages/render/src/fonts/library.ts';
 import { RenderKitSchema } from '../../packages/render/src/kit.ts';
 import { brandAssets } from './assets.ts';
-import { BRAND_IDS, SAMPLE_BRANDS } from './brands.ts';
+import { BRAND_IDS, FAILING_COLORS, SAMPLE_BRANDS } from './brands.ts';
 import {
   GOLDEN_CASES,
   HARD_CASES,
@@ -29,10 +29,10 @@ import {
 
 const combo = (c: GoldenCase) => `${c.layout}/${c.size}/${c.look}/${c.lang}`;
 
-/** Every text a slide draws, its alt text left out (it is the page's title, never drawn). */
+/** Every text a slide draws: not its alt text (the page's title, never drawn), its layout or its cta's mark (names). */
 function drawnTexts(slide: Slide): string[] {
   return Object.entries(slide).flatMap(([field, value]): string[] => {
-    if (field === 'alt' || field === 'layout') return [];
+    if (field === 'alt' || field === 'layout' || field === 'mark') return [];
     if (typeof value === 'string') return [value];
     if (Array.isArray(value))
       return value.flatMap((part: unknown) =>
@@ -156,8 +156,13 @@ test('the sample palettes pass both looks as they are: only the failing-palette 
     const { contrast, kit } = caseInput(golden);
     expect(contrast.failures, golden.id).toEqual([]);
     if (golden.hard === 'contrast') {
+      // Shaded from the failing palette, and each warning says which colour moved, from what, to what.
       expect(contrast.warnings.length, golden.id).toBeGreaterThan(0);
-      expect(kit.colors).not.toEqual(SAMPLE_BRANDS[golden.brand].kit.colors);
+      expect(kit.colors, golden.id).not.toEqual(FAILING_COLORS);
+      for (const warning of contrast.warnings) {
+        expect(warning.look, golden.id).toBe(golden.look);
+        expect(warning.from, golden.id).not.toBe(warning.to);
+      }
     } else {
       expect(contrast.warnings, golden.id).toEqual([]);
     }
