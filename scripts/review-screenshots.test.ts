@@ -17,6 +17,7 @@ import {
   inflateBudget,
   readZip,
   STEP_TIME_LIMIT_MS,
+  type ScreenshotDeps,
 } from './review-screenshots.ts';
 
 const SHA = 'd'.repeat(40);
@@ -476,6 +477,27 @@ describe('collectScreenshots', () => {
     });
     expect(tries).toBe(DOWNLOAD_ATTEMPTS);
     expect(text).toContain("gallery-screenshots: couldn't download it from run 3 (run3).");
+  });
+
+  it("gives each download what is left of the step's limit, so none runs past it (#376)", () => {
+    const gh = fakeGitHub(
+      { 3: { artifacts: ['gallery-screenshots'] } },
+      { 30: zip([{ name: 'a.png', data: PNG }]) },
+    );
+    const serve: ScreenshotDeps['fetchZip'] = gh.deps.fetchZip;
+    let clock = 1_000;
+    const given: number[] = [];
+    collectScreenshots(SHA, into(), {
+      ...gh.deps,
+      now: () => clock,
+      fetchZip: (id, timeoutMs) => {
+        given.push(timeoutMs);
+        clock += 4 * 60 * 1000;
+        if (given.length < 2) throw new Error('timed out');
+        return serve(id, timeoutMs);
+      },
+    });
+    expect(given).toEqual([STEP_TIME_LIMIT_MS, STEP_TIME_LIMIT_MS - 4 * 60 * 1000]);
   });
 
   it('says so when a download fails, and still fetches the other artifact', () => {

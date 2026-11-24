@@ -32,10 +32,8 @@ import type { Reviewer } from './merge-gate/types.ts';
 type Asker = Exclude<Reviewer, 'redteam'>;
 
 const REVIEW_TIMEOUT_MS = 30 * 60 * 1000;
-/** Each gh call that lists CI's screenshots (#212). */
+/** Each gh call that fetches CI's screenshots, the download included (#212). */
 const SCREENSHOT_TIMEOUT_MS = 5 * 60 * 1000;
-/** One try at a screenshot zip: the 30 MB render output took about 4 minutes on the Mac, so 5 timed out three times (#376). */
-const ZIP_TIMEOUT_MS = 12 * 60 * 1000;
 /** The only environment a reviewer gets: enough to run Claude Code, nothing that could carry secrets or steer it. */
 const ENV_ALLOW = [
   'PATH',
@@ -740,12 +738,14 @@ async function main(argv: string[]): Promise<number> {
             stdio: ['ignore', 'pipe', 'pipe'],
             timeout: SCREENSHOT_TIMEOUT_MS,
           }),
-        fetchZip: (artifactId) =>
+        // A zip gets what is left of the step's own limit, not a fixed 5 minutes: the 30 MB render output takes about 4
+        // minutes on the Mac, and a 5-minute limit timed out three times (#376). The step's limit still bounds the total.
+        fetchZip: (artifactId, timeoutMs) =>
           execFileSync('gh', ['api', `repos/${REPO}/actions/artifacts/${String(artifactId)}/zip`], {
             cwd: ROOT,
             maxBuffer: MAX_ARTIFACT_BYTES + 1024 * 1024,
             stdio: ['ignore', 'pipe', 'pipe'],
-            timeout: ZIP_TIMEOUT_MS,
+            timeout: timeoutMs,
           }),
       }),
   });
