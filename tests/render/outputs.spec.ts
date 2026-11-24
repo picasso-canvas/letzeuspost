@@ -34,20 +34,65 @@ const LOGO: RenderAsset = {
 };
 
 const HOOK = 'Pitha is older than tea';
-// Long enough that the fit script lowers its `k`, so the page can only match its JPEG at that `k`.
-const LONGER =
-  'Rice, jaggery and coconut, folded by hand in every kitchen of the village each winter, steamed in clay pots and shared with every neighbour on the lane';
 
-const carousel = (): Post =>
+/** The post: its middle slide's title is `longTitle`. */
+const carouselWith = (longTitle: string): Post =>
   testPost(testSlide(), {
     kind: 'document',
     networks: ['linkedin'],
     slides: [
       testSlide({ title: 'Pitha is *older* than tea' }),
-      testSlide({ title: LONGER, body: 'Three things, one winter.' }),
+      testSlide({ title: longTitle, body: 'Three things, one winter.' }),
       testSlide({ title: 'Come taste it', body: 'All week at the stall.' }),
     ],
   });
+
+// The middle slide must fit only at a lowered `k`, so that its page can match its JPEG only at that `k`. No fit spec
+// has a text known to need k < 1 on its own (theirs reach a chosen k with an empty block in the text area, which a
+// printed post can't have), and the text's height comes from the real fonts in the real browser. So the title is
+// measured here, once: the shortest opening of PASSAGE whose fit report gives a k at or below LOWERED. That k is
+// clearly under 1 (a page printed at k 1 is 5% or more larger), and still well above the 0.85 floor: one more word
+// adds at most one line, which costs a few hundredths of k. PASSAGE itself is longer than the fit spec's title that
+// fails at 0.85 at this size, so it always reaches LOWERED; the measuring throws if it doesn't. The tests then assert
+// the premise: the middle slide's k is under 1 and every slide passes.
+const PASSAGE =
+  'Rice, jaggery and coconut, folded by hand in every kitchen of the village each winter, steamed in clay pots and shared with every neighbour on the lane, then carried to the fair at dawn in baskets lined with banana leaves, where the oldest cooks still argue about the right amount of salt, the right heat for the griddle and the right moment to turn each cake before the edges brown, while the children wait by the fire with their hands held out for the first warm piece, and the grandmothers count every cake twice to be sure there is enough for the whole family and for the guests who always arrive late';
+const LOWERED = 0.95;
+
+/** The shortest opening of PASSAGE, in whole words, that the fit script fits at LOWERED or below on the middle slide. */
+async function measureLongTitle(): Promise<string> {
+  const passage = PASSAGE.split(' ');
+  const opening = (count: number) => passage.slice(0, count).join(' ').replace(/,$/u, '');
+  const renderer = createRenderer({ log: () => undefined });
+  try {
+    const kOf = async (count: number) =>
+      (await renderPostSlide(renderer, carouselWith(opening(count)), 'portrait', [LOGO], 1)).report
+        .k;
+    if ((await kOf(passage.length)) > LOWERED)
+      throw new Error(`the whole passage fits above k ${String(LOWERED)}: it is too short`);
+    // Binary search: `high` always fits at LOWERED or below.
+    let low = 1;
+    let high = passage.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if ((await kOf(middle)) <= LOWERED) high = middle;
+      else low = middle + 1;
+    }
+    return opening(high);
+  } finally {
+    await renderer.close();
+  }
+}
+
+let longTitle = '';
+
+test.beforeAll(async () => {
+  // About eight slide renders in one browser, on top of the tests' own.
+  test.setTimeout(90_000);
+  longTitle = await measureLongTitle();
+});
+
+const carousel = (): Post => carouselWith(longTitle);
 
 // The tolerance a page is held to against its JPEG. The two are drawn by different rasterisers (Chrome's Skia for the
 // image, pdf.js for the page), so glyph edges differ by a fraction of a pixel, and the JPEG has its own small loss.
@@ -237,8 +282,13 @@ test('the PDF: one page per slide, each the image’s size, fonts embedded, titl
 }) => {
   const post = carousel();
   const { jpegs, reports } = await renderPost(post);
-  // The fit script lowered the long slide's `k`: the PDF has to take it from the report.
+  // The fit script lowered the long slide's `k`, and every slide fits: the PDF has to take each `k` from the report.
+  test.info().annotations.push({
+    type: 'the long slide',
+    description: `k ${String(reports[1]?.k)}, ${String(longTitle.split(' ').length)} words: "${longTitle}"`,
+  });
   expect(reports.map((report) => report.k < 1)).toEqual([false, true, false]);
+  expect(reports.map((report) => report.status)).toEqual(['pass', 'pass', 'pass']);
   const { pdf, logged } = await print(post, reports, HOOK);
 
   expect(Buffer.from(pdf).subarray(0, 5).toString('latin1')).toBe('%PDF-');
@@ -286,12 +336,11 @@ test('each page matches its JPEG within the tolerance, and the English text can 
     expect(each.compared.farShare).toBeLessThanOrEqual(TOLERANCE.farShare);
   });
 
-  // Selectable text: every word of each slide that fits (one that doesn't is cut at the page's edge), as pdf.js copies
-  // it out of the page. The hook's slide and the last one always fit.
-  expect([reports[0]?.status, reports[2]?.status]).toEqual(['pass', 'pass']);
+  // Selectable text: every word of every slide, the long one at its lowered `k` included, as pdf.js copies it out of the
+  // page. Every slide fits, so none is cut at the page's edge and none is skipped.
+  expect(reports.map((report) => report.status)).toEqual(['pass', 'pass', 'pass']);
   post.slides.forEach((slide, index) => {
     if (slide.layout !== 'text') throw new Error('a text slide');
-    if (reports[index]?.status !== 'pass') return;
     const copied = words(facts.each[index]?.text ?? '');
     for (const word of words(`${slide.title.replaceAll('*', '')} ${slide.body}`))
       expect(copied).toContain(word);
