@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FIT_SCRIPT, IMAGE_BOX_MIN_SHARE } from '../fit/script.ts';
 import { BANGLA_LINE_HEIGHT_MIN } from '../fonts/manifest.ts';
 import { SIZES } from '../sizes.ts';
-import { BASE_CSS, sizeCss } from './base-css.ts';
+import { BASE_CSS, QUOTE_TITLE_SHARE, sizeCss } from './base-css.ts';
 
 // §07 and §08 on Bangla and on print-safe CSS, read off the CSS itself.
 
@@ -113,6 +113,59 @@ describe('the rules of the cover, cta and step layouts (#338)', () => {
   it('has the fit script measure the call to action, the sticker and the step label', () => {
     for (const name of ['cta-line', 'sticker', 'step-label']) {
       expect(FIT_SCRIPT).toContain(`'${name}'`);
+    }
+  });
+});
+
+describe('the rules of the fact, list and quote layouts (#339)', () => {
+  it('sets the quote in the heading font at 0.8 of the title, balanced, in ink', () => {
+    const quote = declarations(BASE_CSS, '.quote');
+    expect(quote).toMatch(/font-family:\s*var\(--font-heading\)/);
+    expect(quote).toMatch(/font-size:\s*calc\(var\(--title-size\) \* 0\.8 \* var\(--k\)\)/);
+    expect(quote).toMatch(/line-height:\s*var\(--lh-heading\)/);
+    expect(quote).toMatch(/text-wrap:\s*balance/);
+    expect(quote).toMatch(/overflow-wrap:\s*break-word/);
+    expect(quote).not.toMatch(/(^|[;\s])color:/); // a colour here would need a pair of its own
+    expect(QUOTE_TITLE_SHARE).toBe(0.8);
+  });
+
+  it('sets the person like body text, never under the body floor, in the heading weight', () => {
+    const person = declarations(BASE_CSS, '.person');
+    expect(person).toMatch(/font-size:\s*max\(var\(--body-floor\)/);
+    expect(person).toMatch(/font-weight:\s*var\(--weight-heading\)/);
+    expect(person).toMatch(/line-height:\s*var\(--lh-body\)/);
+    expect(person).toMatch(/overflow-wrap:\s*break-word/);
+  });
+
+  it('keeps the role and the source at the fixed small-print size, wrapping, in ink', () => {
+    expect(declarations(BASE_CSS, '.small-print')).toMatch(/font-size:\s*28px/);
+    expect(declarations(BASE_CSS, '.role')).not.toMatch(/font-size|(^|[;\s])color:/);
+  });
+
+  it('sets the list items like body text, a little larger, never under the body floor', () => {
+    const items = declarations(BASE_CSS, '.items');
+    expect(items).toMatch(
+      /font-size:\s*max\(var\(--body-floor\), calc\(var\(--body-size\) \* 1\.15/,
+    );
+    expect(items).toMatch(/line-height:\s*var\(--lh-body\)/);
+    expect(items).toMatch(/list-style:\s*none/);
+    expect(items).toMatch(/margin:\s*0/);
+    expect(items).toMatch(/padding:\s*0/);
+    expect(items).toMatch(/gap:\s*var\(--gap\)/);
+    expect(items).toMatch(/overflow-wrap:\s*break-word/);
+  });
+
+  it('marks each item with a dot drawn in CSS, in the primary: no image, no glyph the font might lack', () => {
+    expect(declarations(BASE_CSS, '.item')).toMatch(/position:\s*relative/);
+    const dot = declarations(BASE_CSS, '.item::before');
+    expect(dot).toMatch(/content:\s*''/);
+    expect(dot).toMatch(/background:\s*var\(--primary\)/);
+    expect(dot).toMatch(/border-radius:\s*50%/);
+  });
+
+  it('has the fit script measure the quote, the person, the role and the list items', () => {
+    for (const name of ['quote', 'person', 'role', 'items']) {
+      expect(FIT_SCRIPT).toContain(`${name}:`);
     }
   });
 });

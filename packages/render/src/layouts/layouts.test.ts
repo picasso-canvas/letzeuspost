@@ -1,10 +1,7 @@
-import { SIZE_NAMES, SlideSchema, type Post, type SizeName, type Slide } from '@lzp/core';
+import { SIZE_NAMES, SlideSchema, type Slide } from '@lzp/core';
 import { describe, expect, it } from 'vitest';
 import { checkPairs, pairsFor, registeredLayouts } from '../contrast/pairs.ts';
-import { CLEAN_FONTS } from '../looks/clean/index.ts';
-import type { RenderKit } from '../kit.ts';
-import { buildSlideWithWarnings } from '../page/build-slide.ts';
-import { testBanglaPost, testKit, testPost } from '../page/test-fixtures.ts';
+import { testKit } from '../page/test-fixtures.ts';
 import { SIZES, SMALL_PRINT_PX } from '../sizes.ts';
 import {
   LONG_BODY,
@@ -12,47 +9,11 @@ import {
   SAMPLE_COVER,
   SAMPLE_CTA,
   SAMPLE_STEP,
-  type Lang,
 } from './samples.ts';
+import { build, has, KIT, textAreaBlocks } from './test-helpers.ts';
 
 // The cover, cta and step layouts (§07 Layouts, §08 Sizes and arrangements). These read the HTML `buildSlide` makes;
 // the browser specs in `tests/render/` draw it and run the fit check.
-
-const KIT: RenderKit = testKit({
-  colors: {
-    primary: '#1e6b74',
-    accent: '#f2a65a',
-    background: '#ffffff',
-    ink: '#1d2b36',
-    extras: [],
-  },
-  fonts: CLEAN_FONTS,
-  mascot: 'mascot_1',
-});
-
-const postWith = (slide: Slide, lang: Lang = 'en', slides: Slide[] = [slide]): Post => ({
-  ...(lang === 'en' ? testPost() : testBanglaPost()),
-  slides,
-});
-
-const build = (slide: Slide, size: SizeName, lang: Lang = 'en', kit: RenderKit = KIT) =>
-  buildSlideWithWarnings(postWith(slide, lang), slide, size, kit);
-
-/** The elements with a class, by tag, in document order: `<p class="kicker">…</p>` found by `kicker`. */
-const classes = (html: string): string[] =>
-  [...html.matchAll(/<(?:main|div|p|h1|img|header|footer|span)\b[^>]*class="([^"]*)"/g)].flatMap(
-    (match) => (match[1] ?? '').split(' '),
-  );
-const has = (html: string, name: string): boolean => classes(html).includes(name);
-
-/** The classes of the blocks inside the text area, in order (a column counts as one; the photo is inside its box). */
-function textAreaBlocks(html: string): string[] {
-  const start = html.indexOf('class="text-area"');
-  const end = html.includes('<footer') ? html.indexOf('<footer') : html.length;
-  return [...html.slice(start, end).matchAll(/<(?:div|p|h1|img)\b[^>]*class="([^"]*)"/g)]
-    .map((match) => match[1] ?? '')
-    .filter((name) => name !== 'photo' && name !== 'text-area');
-}
 
 const LAYOUTS = [
   ['cover', SAMPLE_COVER],
