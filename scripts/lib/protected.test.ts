@@ -8,6 +8,12 @@ describe('shipRefusals', () => {
     expect(shipRefusals([file('packages/core/src/a.ts'), file('package.json')])).toEqual([]);
   });
 
+  it('lets a builder write the golden harness, not its approved baselines (#341)', () => {
+    expect(
+      shipRefusals([file('tests/golden/matrix.ts'), file('tests/golden/matrix.spec.ts')]),
+    ).toEqual([]);
+  });
+
   it('refuses protected paths at any depth and in any letter case', () => {
     for (const path of [
       '.github/workflows/ci.yml',
@@ -20,6 +26,7 @@ describe('shipRefusals', () => {
       'packages/core/test/tsconfig.json',
       'packages/ui/eslint.config.js',
       'docs/plan/20-builder-guardrails.md',
+      'tests/golden/baselines/matrix.spec.ts/caption-1.png',
       '.pnpmfile.cjs',
       'packages/x/.npmrc',
       '.lzp/task.md',
