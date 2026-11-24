@@ -129,3 +129,24 @@ export function brandMark(props: Pick<LayoutProps<'cta'>, 'slide' | 'kit' | 'siz
   const mark = sizedImage(props, field, key, 'cta-mark', { height });
   return { mark, isLogo: mark !== null && mascot === undefined };
 }
+
+/** The letters that name a question's options in the comments, in the language of the post (§07: answers come in the comments). */
+const OPTION_LETTERS = { en: ['A', 'B', 'C', 'D'], bn: ['ক', 'খ', 'গ', 'ঘ'] } as const;
+
+/** The letter of the n-th option (from 0): a question has at most 4 options, so there is always one. */
+export const optionLetter = (post: Post, index: number): string =>
+  OPTION_LETTERS[post.lang][index] ?? String(index + 1);
+
+/**
+ * The picture of a question's n-th option, as the class says: `photo` fills its tile, `option-thumb` is a small square
+ * beside the letter. A key that isn't an asset leaves no picture and a warning that names the option.
+ */
+export function optionPicture(
+  props: Pick<LayoutProps<'question'>, 'post' | 'slide' | 'context'>,
+  index: number,
+  asset: string,
+  className: 'photo' | 'option-thumb',
+): ReactNode {
+  const field = `${slidePath(props.post, props.slide)}.options[${String(index)}].image.asset`;
+  return sizedImage(props, field, asset, className, { width: '100%', height: '100%' });
+}

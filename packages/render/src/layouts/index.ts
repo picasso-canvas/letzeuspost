@@ -4,7 +4,10 @@ import { CoverLayout } from './cover.ts';
 import { CtaLayout } from './cta.ts';
 import { FactLayout } from './fact.ts';
 import { ListLayout } from './list.ts';
+import { OfferLayout } from './offer.ts';
+import { QuestionLayout } from './question.ts';
 import { QuoteLayout } from './quote.ts';
+import { StatLayout } from './stat.ts';
 import { StepLayout } from './step.ts';
 import { TextLayout } from './text.ts';
 import type { LayoutProps } from './types.ts';
@@ -25,6 +28,12 @@ export function renderLayout(props: LayoutProps<Slide['layout']>): ReactNode {
       return h(ListLayout, { ...props, slide });
     case 'quote':
       return h(QuoteLayout, { ...props, slide });
+    case 'stat':
+      return h(StatLayout, { ...props, slide });
+    case 'question':
+      return h(QuestionLayout, { ...props, slide });
+    case 'offer':
+      return h(OfferLayout, { ...props, slide });
     case 'cta':
       return h(CtaLayout, { ...props, slide });
     case 'text':

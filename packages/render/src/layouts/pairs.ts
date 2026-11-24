@@ -1,6 +1,14 @@
 import type { LayoutPair } from '../contrast/pairs.ts';
 import { K_MIN } from '../fit/report.ts';
-import { QUOTE_TITLE_SHARE, sizeCss } from '../page/base-css.ts';
+import {
+  ITEM_BODY_SHARE,
+  OFFER_PRICE_SHARE,
+  QUESTION_TITLE_SHARE,
+  QUOTE_TITLE_SHARE,
+  STAT_LABEL_SHARE,
+  STAT_NUMBER_SHARE,
+  sizeCss,
+} from '../page/base-css.ts';
 import { SIZES, SMALL_PRINT_PX, type SizeName } from '../sizes.ts';
 
 // The text a layout draws, as the contrast check wants it (§07 Contrast, `contrast/README.md`): each text colour on the
@@ -29,8 +37,21 @@ export type PairParts = {
   smallPrint?: true;
   /** A call to action, drawn as a highlight at the body's size. */
   cta?: true;
-  /** What leads the slide: its title (the default), or a quote, set at `QUOTE_TITLE_SHARE` of the title (`quote`). */
-  lead?: 'quote';
+  /**
+   * What leads the slide: its title (the default), a quote set at `QUOTE_TITLE_SHARE` of the title (`quote`), a number
+   * set at `STAT_NUMBER_SHARE` of it, in the primary (`stat`), or a question at `QUESTION_TITLE_SHARE` (`question`).
+   */
+  lead?: 'quote' | 'number' | 'question';
+  /** The stat's label under the number, a step above body text. */
+  label?: true;
+  /** A badge above the title, in the primary: 28 px small print (`offer`). */
+  badge?: true;
+  /** A price under the title, in the primary, at `OFFER_PRICE_SHARE` of the title (`offer`). */
+  price?: true;
+  /** The offer's details, a body paragraph that can carry a highlight. */
+  details?: true;
+  /** A question's options: a letter in the primary and the text in ink, set like list items; and the letter on a picture. */
+  options?: true;
   /** A person's name at the body's size, in the heading weight (`quote`). */
   person?: true;
 };
@@ -43,21 +64,58 @@ export type PairParts = {
 export function layoutPairs(parts: PairParts, size: SizeName): LayoutPair[] {
   const scale = typeScale(size);
   const lead = parts.lead ?? 'title';
-  const title = scale.title * K_MIN * (lead === 'quote' ? QUOTE_TITLE_SHARE : 1);
-  const body = Math.max(SIZES[size].bodyFloor, scale.body * K_MIN);
+  const share = { title: 1, quote: QUOTE_TITLE_SHARE, number: STAT_NUMBER_SHARE, question: QUESTION_TITLE_SHARE };
+  const title = scale.title * K_MIN * share[lead];
+  const floor = (px: number) => Math.max(SIZES[size].bodyFloor, px);
+  const body = floor(scale.body * K_MIN);
+  const option = floor(scale.body * ITEM_BODY_SHARE * K_MIN);
   return [
-    { name: lead, text: 'ink', on: 'background', px: title, headline: true },
-    { name: `${lead} highlight`, text: 'primary', on: 'background', px: title, headline: true },
+    { name: lead, text: lead === 'number' ? 'primary' : 'ink', on: 'background', px: title, headline: true },
+    ...(lead === 'number'
+      ? []
+      : [{ name: `${lead} highlight`, text: 'primary', on: 'background', px: title, headline: true } as const]),
     ...(parts.person === true
       ? [{ name: 'person', text: 'ink', on: 'background', px: body } as const]
       : []),
     ...(parts.kicker === true
       ? [{ name: 'kicker', text: 'primary', on: 'background', px: scale.kicker * K_MIN } as const]
       : []),
+    ...(parts.badge === true
+      ? [{ name: 'badge', text: 'primary', on: 'background', px: SMALL_PRINT_PX } as const]
+      : []),
+    ...(parts.price === true
+      ? [
+          {
+            name: 'price',
+            text: 'primary',
+            on: 'background',
+            px: scale.title * K_MIN * OFFER_PRICE_SHARE,
+            headline: true,
+          } as const,
+        ]
+      : []),
+    ...(parts.label === true
+      ? [{ name: 'label', text: 'ink', on: 'background', px: floor(scale.body * STAT_LABEL_SHARE * K_MIN) } as const]
+      : []),
+    ...(parts.details === true
+      ? [
+          { name: 'details', text: 'ink', on: 'background', px: body } as const,
+          { name: 'details highlight', text: 'primary', on: 'background', px: body } as const,
+        ]
+      : []),
     ...(parts.body === true
       ? [
           { name: 'body', text: 'ink', on: 'background', px: body } as const,
           { name: 'body highlight', text: 'primary', on: 'background', px: body } as const,
+        ]
+      : []),
+    ...(parts.options === true
+      ? [
+          { name: 'option letter', text: 'primary', on: 'background', px: option } as const,
+          { name: 'option', text: 'ink', on: 'background', px: option } as const,
+          { name: 'option highlight', text: 'primary', on: 'background', px: option } as const,
+          // The letter on a picture: white on the scrim the CSS paints behind it (`SCRIM_ALPHA`, §08)
+          { name: 'letter on picture', text: { hex: '#ffffff' }, on: { photo: true }, px: SMALL_PRINT_PX } as const,
         ]
       : []),
     ...(parts.cta === true

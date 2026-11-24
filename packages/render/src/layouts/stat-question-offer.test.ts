@@ -205,7 +205,7 @@ describe('the question layout', () => {
 
     it('lists them in order, a picture as a thumbnail beside its letter', () => {
       const { html } = build(mixed, 'portrait');
-      expect(textAreaBlocks(html)).toEqual(['kicker', 'question', 'options']);
+      expect(textAreaBlocks(html)).toEqual(['kicker', 'question', 'options', 'option-thumb']);
       expect(html).toMatch(
         /<li class="option"><span class="option-mark">A<\/span><span class="option-text">The tall one<\/span><\/li><li class="option"><span class="option-mark">B<\/span><img [^>]*class="option-thumb"/,
       );
