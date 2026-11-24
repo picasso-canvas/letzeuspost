@@ -1,3 +1,4 @@
+import type { Slide } from '@lzp/core';
 import { describe, expect, it } from 'vitest';
 import { testBanglaPost, testPost, testSlide } from '../page/test-fixtures.ts';
 import { buildFitReport, FitReportSchema, PageFitSchema, type PageFit } from './report.ts';
@@ -137,6 +138,32 @@ describe('buildFitReport', () => {
       fields: [{ name: 'title', lines: 2, needed: 100, available: 0, overflowPx: 100 }],
     });
     expect(report.fields[0]?.targetGraphemes).toBe(1);
+  });
+
+  it("names a list slide's items by one field, counting every item's drawn graphemes", () => {
+    const slide: Slide = {
+      layout: 'list',
+      title: 'Desk habits',
+      items: ['Stand up *every* hour', 'Drink water', 'ক্ষত ক্ষমা'],
+      alt: 'A desk',
+    };
+    const report = buildFitReport({ ...testPost(), slides: [slide] }, 0, 'portrait', {
+      k: 0.85,
+      fits: false,
+      fields: [{ name: 'items', lines: 6, needed: 600, available: 300, overflowPx: 300 }],
+    });
+    // 'Stand up every hour' 19 + 'Drink water' 11 + 'ক্ষত ক্ষমা' 5 = 35; 35 × 0.5 × 0.95 = 16.6
+    expect(report.fields).toEqual([
+      { field: 'slides[0].items', lines: 6, graphemes: 35, overflowPx: 300, targetGraphemes: 16 },
+    ]);
+    expect(FitReportSchema.safeParse(report).success).toBe(true);
+  });
+
+  it('refuses a field whose value is neither a text nor a list of texts', () => {
+    const slide = { ...testSlide(), title: 5 };
+    // a slide the schema would have refused: the report still must not report a count for it
+    const post = { ...testPost(), slides: [slide as unknown as Slide] };
+    expect(() => buildFitReport(post, 0, 'portrait', page())).toThrow(/title/);
   });
 
   it('refuses a slide that is not in the post, and a field the slide has no text for', () => {

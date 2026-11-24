@@ -1,6 +1,6 @@
 import type { LayoutPair } from '../contrast/pairs.ts';
 import { K_MIN } from '../fit/report.ts';
-import { sizeCss } from '../page/base-css.ts';
+import { QUOTE_TITLE_SHARE, sizeCss } from '../page/base-css.ts';
 import { SIZES, SMALL_PRINT_PX, type SizeName } from '../sizes.ts';
 
 // The text a layout draws, as the contrast check wants it (§07 Contrast, `contrast/README.md`): each text colour on the
@@ -29,6 +29,10 @@ export type PairParts = {
   smallPrint?: true;
   /** A call to action, drawn as a highlight at the body's size. */
   cta?: true;
+  /** What leads the slide: its title (the default), or a quote, set at `QUOTE_TITLE_SHARE` of the title (`quote`). */
+  lead?: 'quote';
+  /** A person's name at the body's size, in the heading weight (`quote`). */
+  person?: true;
 };
 
 /**
@@ -38,11 +42,15 @@ export type PairParts = {
  */
 export function layoutPairs(parts: PairParts, size: SizeName): LayoutPair[] {
   const scale = typeScale(size);
-  const title = scale.title * K_MIN;
+  const lead = parts.lead ?? 'title';
+  const title = scale.title * K_MIN * (lead === 'quote' ? QUOTE_TITLE_SHARE : 1);
   const body = Math.max(SIZES[size].bodyFloor, scale.body * K_MIN);
   return [
-    { name: 'title', text: 'ink', on: 'background', px: title, headline: true },
-    { name: 'title highlight', text: 'primary', on: 'background', px: title, headline: true },
+    { name: lead, text: 'ink', on: 'background', px: title, headline: true },
+    { name: `${lead} highlight`, text: 'primary', on: 'background', px: title, headline: true },
+    ...(parts.person === true
+      ? [{ name: 'person', text: 'ink', on: 'background', px: body } as const]
+      : []),
     ...(parts.kicker === true
       ? [{ name: 'kicker', text: 'primary', on: 'background', px: scale.kicker * K_MIN } as const]
       : []),

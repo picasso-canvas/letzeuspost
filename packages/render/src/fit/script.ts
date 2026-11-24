@@ -26,7 +26,8 @@ export const FIT_SCRIPT = `(() => {
   'use strict';
   // The blocks that are measured, by the class they carry, and the field of the slide each is the text of. The step
   // label has none (it is made from n and of), so it is measured but never named. Small print (the source, the
-  // sticker, the step label) has a fixed size, so it is not shortened to give room back; a line too wide is named.
+  // sticker, the step label, a quote's role) has a fixed size, so it is not shortened to give room back; a line too
+  // wide is named. \`items\` is the whole list of a list slide, one block, named by the slide's \`items\` field.
   const FIELDS = {
     kicker: 'kicker',
     title: 'title',
@@ -35,9 +36,13 @@ export const FIT_SCRIPT = `(() => {
     'cta-line': 'cta',
     sticker: 'sticker',
     'step-label': null,
+    quote: 'quote',
+    person: 'person',
+    role: 'role',
+    items: 'items',
   };
   const TEXT_BLOCKS = Object.keys(FIELDS);
-  const SHORTENABLE = ['kicker', 'title', 'body', 'cta-line'];
+  const SHORTENABLE = ['kicker', 'title', 'body', 'cta-line', 'quote', 'items'];
   const STEPS_FROM = 100;
   const STEPS_TO = 85;
   const IMAGE_BOX_SHARE = ${String(IMAGE_BOX_MIN_SHARE)};

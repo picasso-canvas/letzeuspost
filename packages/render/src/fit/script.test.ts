@@ -8,7 +8,18 @@ import { FIT_SCRIPT } from './script.ts';
 // run, without a browser.
 
 type Block = {
-  name: 'kicker' | 'title' | 'body' | 'source' | 'cta-line' | 'sticker' | 'step-label';
+  name:
+    | 'kicker'
+    | 'title'
+    | 'body'
+    | 'source'
+    | 'cta-line'
+    | 'sticker'
+    | 'step-label'
+    | 'quote'
+    | 'person'
+    | 'role'
+    | 'items';
   /** Height at `--k` 1; a heading or body block grows and shrinks with k² (font size and line count). */
   height: number;
   /** The line height at k = 1, so `lines` is height ÷ line height. */
@@ -27,7 +38,7 @@ type Spec = {
 };
 
 /** The blocks in small print: a fixed 28 px, whatever `--k` is. */
-const FIXED: Block['name'][] = ['source', 'sticker', 'step-label'];
+const FIXED: Block['name'][] = ['source', 'sticker', 'step-label', 'role'];
 
 const AREA_TOP = 64;
 const WIDTH = 952;
@@ -355,6 +366,47 @@ describe('the fit script: the call to action, the sticker and the step label (#3
     const { page } = await run({ blocks: [STICKER, CTA, STEP_LABEL], area: 1000 });
     expect(page.styleLog.filter((entry) => entry === 'overflow-wrap:normal')).toHaveLength(3);
     for (const own of page.styles.values()) expect(own).toEqual({});
+  });
+});
+
+describe('the fit script: the quote, its person and role, and the list items (#339)', () => {
+  const QUOTE: Block = { name: 'quote', height: 500, line: 100 };
+  const PERSON: Block = { name: 'person', height: 50, line: 50 };
+  const ROLE: Block = { name: 'role', height: 40, line: 40 };
+  const ITEMS: Block = { name: 'items', height: 600, line: 60 };
+  type Named = { name: string; overflowPx: number; available: number; needed: number };
+
+  it('names a quote that is too tall by the slide field `quote`, and shares nothing with fixed small print', async () => {
+    const blocks = [QUOTE, PERSON, ROLE];
+    const { reported } = await run({ blocks, area: roomFor(0.85, blocks) - 100 });
+    const { fields } = reported as { fields: Named[] };
+    expect(fields.map((f) => f.name)).toEqual(['quote']);
+    expect(fields[0]?.overflowPx).toBeCloseTo(100, 1);
+  });
+
+  it('names list items that are too tall by the field `items`, next to a title that can give back too', async () => {
+    const blocks = [TITLE, ITEMS];
+    const { reported } = await run({ blocks, area: roomFor(0.85, blocks) - 100 });
+    const { fields } = reported as { fields: Named[] };
+    expect(fields.map((f) => f.name)).toEqual(['title', 'items']);
+    expect(fields.reduce((sum, f) => sum + f.overflowPx, 0)).toBeCloseTo(100, 1);
+  });
+
+  it('names a person whose line is too wide by the slide field `person`, and a role by `role`', async () => {
+    const wide: Block = { ...PERSON, wide: () => 1100 };
+    const person = await run({ blocks: [QUOTE, wide, ROLE], area: 1000 });
+    expect((person.reported as { fields: Named[] }).fields.map((f) => f.name)).toEqual(['person']);
+    const roleWide: Block = { ...ROLE, wide: () => 1100 };
+    const role = await run({ blocks: [QUOTE, PERSON, roleWide], area: 1000 });
+    const named = (role.reported as { fields: Named[] }).fields;
+    expect(named.map((f) => f.name)).toEqual(['role']);
+    expect(named[0]?.overflowPx).toBeCloseTo(1100 - 952, 1);
+  });
+
+  it('keeps the role at its fixed size: only k moves the quote', async () => {
+    const blocks = [QUOTE, PERSON, ROLE];
+    const { reported } = await run({ blocks, area: roomFor(0.9, blocks) + 0.1 });
+    expect(reported).toEqual({ k: 0.9, fits: true, fields: [] });
   });
 });
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FIT_SCRIPT, IMAGE_BOX_MIN_SHARE } from '../fit/script.ts';
 import { BANGLA_LINE_HEIGHT_MIN } from '../fonts/manifest.ts';
 import { SIZES } from '../sizes.ts';
-import { BASE_CSS, sizeCss } from './base-css.ts';
+import { BASE_CSS, QUOTE_TITLE_SHARE, sizeCss } from './base-css.ts';
 
 // §07 and §08 on Bangla and on print-safe CSS, read off the CSS itself.
 
@@ -113,6 +113,80 @@ describe('the rules of the cover, cta and step layouts (#338)', () => {
   it('has the fit script measure the call to action, the sticker and the step label', () => {
     for (const name of ['cta-line', 'sticker', 'step-label']) {
       expect(FIT_SCRIPT).toContain(`'${name}'`);
+    }
+  });
+});
+
+describe('the rules of the fact, list and quote layouts (#339)', () => {
+  it('sets the quote in the heading font at 0.9 of the title, balanced, in ink', () => {
+    const quote = declarations(BASE_CSS, '.quote');
+    expect(quote).toMatch(/font-family:\s*var\(--font-heading\)/);
+    expect(quote).toMatch(/font-size:\s*calc\(var\(--title-size\) \* 0\.9 \* var\(--k\)\)/);
+    expect(quote).toMatch(/line-height:\s*var\(--lh-heading\)/);
+    expect(quote).toMatch(/text-wrap:\s*balance/);
+    expect(quote).toMatch(/overflow-wrap:\s*break-word/);
+    expect(quote).not.toMatch(/(^|[;\s])color:/); // a colour here would need a pair of its own
+    expect(QUOTE_TITLE_SHARE).toBe(0.9);
+  });
+
+  it('sets the person like body text, never under the body floor, in the heading weight', () => {
+    const person = declarations(BASE_CSS, '.person');
+    expect(person).toMatch(/font-size:\s*max\(var\(--body-floor\)/);
+    expect(person).toMatch(/font-weight:\s*var\(--weight-heading\)/);
+    expect(person).toMatch(/line-height:\s*var\(--lh-body\)/);
+    expect(person).toMatch(/overflow-wrap:\s*break-word/);
+  });
+
+  it('keeps the role and the source at the fixed small-print size, wrapping, in ink', () => {
+    expect(declarations(BASE_CSS, '.small-print')).toMatch(/font-size:\s*28px/);
+    expect(declarations(BASE_CSS, '.role')).not.toMatch(/font-size|(^|[;\s])color:/);
+  });
+
+  it('sets the list items like body text, a little larger, never under the body floor', () => {
+    const items = declarations(BASE_CSS, '.items');
+    expect(items).toMatch(
+      /font-size:\s*max\(var\(--body-floor\), calc\(var\(--body-size\) \* 1\.15/,
+    );
+    expect(items).toMatch(/line-height:\s*var\(--lh-body\)/);
+    expect(items).toMatch(/list-style:\s*none/);
+    expect(items).toMatch(/margin:\s*0/);
+    expect(items).toMatch(/padding:\s*0/);
+    expect(items).toMatch(/gap:\s*var\(--gap\)/);
+    expect(items).toMatch(/overflow-wrap:\s*break-word/);
+  });
+
+  it('marks each item with a dot drawn in CSS, in the primary: no image, no glyph the font might lack', () => {
+    expect(declarations(BASE_CSS, '.item')).toMatch(/position:\s*relative/);
+    const dot = declarations(BASE_CSS, '.item::before');
+    expect(dot).toMatch(/content:\s*''/);
+    expect(dot).toMatch(/background:\s*var\(--primary\)/);
+    expect(dot).toMatch(/border-radius:\s*50%/);
+  });
+
+  it('sets the person apart from the quote by a gap of its own, so the attribution reads as a second group', () => {
+    expect(declarations(BASE_CSS, '.person')).toMatch(/margin-top:\s*var\(--gap\)/);
+  });
+
+  it("shares a stacked quote slide's free height: the quote centres above the attribution, which sits at the foot", () => {
+    // Auto margins take the free height only; with none left they are 0, so the fit numbers don't move. The quote's own
+    // block is not wrapped, because the fit script reads the text area's children to work out the height needed.
+    const margins = declarations(BASE_CSS, '.stack .layout-quote .quote');
+    expect(margins).toMatch(/margin-top:\s*auto/);
+    expect(margins).toMatch(/margin-bottom:\s*auto/);
+    expect(declarations(BASE_CSS, '.person')).toMatch(/margin-top:\s*var\(--gap\)/);
+  });
+
+  it("gives landscape's text column more room than the picture beside it (fact), and the items more than the title (list)", () => {
+    // Two equal columns were too narrow for a fact's body and source, or for a list's items, at the smallest scale
+    expect(declarations(BASE_CSS, '.cols .layout-fact .col-text')).toMatch(/flex-grow:\s*3/);
+    expect(declarations(BASE_CSS, '.cols .layout-fact .image-box')).toMatch(/flex-grow:\s*2/);
+    expect(declarations(BASE_CSS, '.cols .layout-list .col-text')).toMatch(/flex-grow:\s*2/);
+    expect(declarations(BASE_CSS, '.cols .layout-list .col-detail')).toMatch(/flex-grow:\s*3/);
+  });
+
+  it('has the fit script measure the quote, the person, the role and the list items', () => {
+    for (const name of ['quote', 'person', 'role', 'items']) {
+      expect(FIT_SCRIPT).toContain(`${name}:`);
     }
   });
 });

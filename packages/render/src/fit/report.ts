@@ -83,9 +83,12 @@ export function buildFitReport(
 
   const fields = page.fields.map((block) => {
     const text = texts.get(block.name);
-    if (typeof text !== 'string')
+    // A list's `items` are one block to the page, an array of texts to the post: its length is every item's
+    const parts: unknown[] = typeof text === 'string' ? [text] : Array.isArray(text) ? text : [];
+    const strings = parts.filter((part): part is string => typeof part === 'string');
+    if (strings.length === 0 || strings.length !== parts.length)
       throw new Error(`The page named the block "${block.name}", but the slide has no such text`);
-    const graphemes = drawnGraphemes(text);
+    const graphemes = strings.reduce((total, part) => total + drawnGraphemes(part), 0);
     return {
       field: `slides[${String(slideIndex)}].${block.name}`,
       lines: block.lines,
