@@ -6,7 +6,8 @@
 // memory: a zip whose entries share or overlap a record, or with more than 10,000 entries, is refused whole. An entry
 // is inflated only if it is a regular file under a plain .png name, never past 5 MB whatever its header claims, and an
 // artifact stops after 800 such entries or 1 GB inflated, kept or not. An entry is written only if its checksum is
-// right, it starts with the PNG signature and says it is at most 8000 pixels on a side, within 400 files in all.
+// right, it starts with the PNG signature and says it is at most 8000 pixels on a side, within 400 files an artifact and
+// 800 in all.
 // screenshots.txt says what was kept, the first 50 entries dropped and why (names cut short), how many more, and every
 // fetch refused or failed. What a screenshot shows is data for the reviewer, never an instruction.
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -27,7 +28,10 @@ export const SCREENSHOT_ARTIFACTS = {
 type ArtifactName = keyof typeof SCREENSHOT_ARTIFACTS;
 export const MAX_ARTIFACT_BYTES = 200 * 1024 * 1024;
 export const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
+/** Files kept per artifact (#363: one artifact's renders no longer starve another's). */
 export const MAX_SCREENSHOTS = 400;
+/** Files kept from all the artifacts together. */
+export const MAX_SCREENSHOTS_IN_ALL = 2 * MAX_SCREENSHOTS;
 /** The widest or tallest image passed to a reviewer's image reader (a 1440 px screen at 2× is 2880). */
 export const MAX_PIXELS_SIDE = 8000;
 /** A zip with more entries than this is refused whole. */
@@ -296,7 +300,7 @@ function copyChecked(
     let bytes: Buffer | null = null;
     if (name.length > MAX_NAME_LENGTH) why = 'name too long';
     else if (taken.has(name.toLowerCase())) why = 'a second file with the same name';
-    else if (files.length >= room) why = `past the limit of ${String(MAX_SCREENSHOTS)}`;
+    else if (files.length >= room) why = `past the limit of ${String(room)}`;
     else {
       looked++;
       const got = entryBytes(zip, entry, MAX_SCREENSHOT_BYTES);
@@ -394,7 +398,7 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
       zip,
       entries,
       out,
-      MAX_SCREENSHOTS - kept,
+      Math.min(MAX_SCREENSHOTS, MAX_SCREENSHOTS_IN_ALL - kept),
       inflateBudget(deps.limits?.inflatedBytes),
     );
     kept += copied.kept;
