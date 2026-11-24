@@ -101,6 +101,15 @@ describe('the rules of the cover, cta and step layouts (#338)', () => {
     expect(sticker).toMatch(/white-space:\s*nowrap/); // a line too wide is seen by the fit check, not wrapped away
   });
 
+  it("clamps the sticker to its column, so a line that is too wide sticks out of the sticker's box and the fit script can measure it", () => {
+    // Without a clamp the box grows with its one-line text (`align-self: flex-start`), scrollWidth equals clientWidth
+    // and the overflow is seen only as a block outside the text area, with no field to name (#338, CI F1).
+    const sticker = declarations(BASE_CSS, '.sticker');
+    expect(sticker).toMatch(/max-width:\s*100%/);
+    expect(sticker).toMatch(/min-width:\s*0/);
+    expect(sticker).toMatch(/overflow:\s*hidden/);
+  });
+
   it('has the fit script measure the call to action, the sticker and the step label', () => {
     for (const name of ['cta-line', 'sticker', 'step-label']) {
       expect(FIT_SCRIPT).toContain(`'${name}'`);
