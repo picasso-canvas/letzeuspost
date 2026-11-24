@@ -12,6 +12,8 @@ export type BenchResult = {
   /** How many browsers were started: the first, and one per restart. */
   browserStarts: number;
   memory: { samples: MemorySample[]; peakBytes?: number; finalBytes?: number };
+  /** The browser's own version string, from Playwright. */
+  browserVersion?: string;
 };
 
 // A render that starts the browser pays for Chromium's launch, once in 500 renders (§08): it is reported on its own line,
@@ -64,5 +66,6 @@ export function formatReport(result: BenchResult): string {
     `final memory      ${memory(result.memory.finalBytes)}`,
     `browser restarts  ${String(Math.max(0, result.browserStarts - 1))}`,
   );
+  if (result.browserVersion !== undefined) lines.push(`browser build     ${result.browserVersion}`);
   return lines.join('\n');
 }
