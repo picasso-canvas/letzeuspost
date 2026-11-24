@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { FIT_SCRIPT, IMAGE_BOX_MIN_SHARE } from '../fit/script.ts';
 import { BANGLA_LINE_HEIGHT_MIN } from '../fonts/manifest.ts';
 import { SIZES } from '../sizes.ts';
-import { BASE_CSS, QUOTE_TITLE_SHARE, sizeCss } from './base-css.ts';
+import {
+  BASE_CSS,
+  OFFER_PRICE_SHARE,
+  QUESTION_TITLE_SHARE,
+  QUOTE_TITLE_SHARE,
+  STAT_LABEL_SHARE,
+  STAT_NUMBER_SHARE,
+  sizeCss,
+} from './base-css.ts';
 
 // §07 and §08 on Bangla and on print-safe CSS, read off the CSS itself.
 
@@ -188,6 +196,100 @@ describe('the rules of the fact, list and quote layouts (#339)', () => {
     for (const name of ['quote', 'person', 'role', 'items']) {
       expect(FIT_SCRIPT).toContain(`${name}:`);
     }
+  });
+});
+
+describe('the rules of the stat, question and offer layouts (#340)', () => {
+  it('sets the stat number big, in the primary, on one line clamped to its column so a number too wide is measured', () => {
+    const number = declarations(BASE_CSS, '.stat-number');
+    expect(number).toContain(
+      `font-size: calc(var(--title-size) * ${String(STAT_NUMBER_SHARE)} * var(--k))`,
+    );
+    expect(number).toMatch(/color:\s*var\(--primary\)/);
+    expect(number).toMatch(/line-height:\s*var\(--lh-heading\)/);
+    expect(number).toMatch(/white-space:\s*nowrap/);
+    expect(number).toMatch(/max-width:\s*100%/);
+    expect(number).toMatch(/overflow:\s*hidden/);
+    expect(STAT_NUMBER_SHARE).toBeGreaterThan(1);
+  });
+
+  it('sets the stat label above the body size and never under the body floor', () => {
+    const label = declarations(BASE_CSS, '.stat-label');
+    expect(label).toMatch(/font-size:\s*max\(var\(--body-floor\)/);
+    expect(label).toContain(String(STAT_LABEL_SHARE));
+    expect(label).toMatch(/line-height:\s*var\(--lh-body\)/);
+    expect(label).toMatch(/overflow-wrap:\s*break-word/);
+  });
+
+  it('lets the stat number take the width it needs, up to half, in the left column of a landscape slide', () => {
+    expect(declarations(BASE_CSS, '.cols .layout-stat .col-text')).toMatch(/max-width:\s*50%/);
+  });
+
+  it('sets the question in the heading font below the title, balanced', () => {
+    const question = declarations(BASE_CSS, '.question');
+    expect(question).toMatch(/font-family:\s*var\(--font-heading\)/);
+    expect(question).toContain(String(QUESTION_TITLE_SHARE));
+    expect(question).toMatch(/line-height:\s*var\(--lh-heading\)/);
+    expect(question).toMatch(/text-wrap:\s*balance/);
+    expect(QUESTION_TITLE_SHARE).toBeLessThan(1);
+  });
+
+  it('draws options as plain rows, not buttons: no border, no background, no shadow, no cursor', () => {
+    for (const selector of ['.options', '.option', '.option-text', '.option-mark']) {
+      expect(declarations(BASE_CSS, selector)).not.toMatch(/border|box-shadow|cursor|background/);
+    }
+    expect(declarations(BASE_CSS, '.options')).toMatch(/font-size:\s*max\(var\(--body-floor\)/);
+    expect(declarations(BASE_CSS, '.options')).toMatch(/overflow-wrap:\s*break-word/);
+    expect(declarations(BASE_CSS, '.option-mark')).toMatch(/color:\s*var\(--primary\)/);
+  });
+
+  it('puts the letter on a picture in white behind a 60% black scrim, at the small-print size', () => {
+    const letter = declarations(BASE_CSS, '.option-image .option-mark');
+    expect(letter).toMatch(/color:\s*#ffffff/);
+    expect(letter).toMatch(/background:\s*rgba\(0, 0, 0, 0\.6\)/);
+    expect(letter).toMatch(/font-size:\s*28px/);
+    expect(letter).toMatch(/position:\s*absolute/);
+  });
+
+  it('lays the pictures of a question out as a grid in the image box, the last of an odd count across', () => {
+    const grid = declarations(BASE_CSS, '.option-images');
+    expect(grid).toMatch(/display:\s*grid/);
+    expect(grid).toMatch(/grid-template-columns:\s*repeat\(2/);
+    expect(declarations(BASE_CSS, '.option-image:last-child:nth-child(odd)')).toMatch(
+      /grid-column:\s*1 \/ -1/,
+    );
+    expect(declarations(BASE_CSS, '.option-image')).toMatch(/overflow:\s*hidden/);
+    expect(declarations(BASE_CSS, '.cols .option-images')).toMatch(/height:\s*calc\(/);
+  });
+
+  it('sets the badge like the sticker, in the primary; the price large, in the primary, on one line', () => {
+    const badge = declarations(BASE_CSS, '.badge');
+    expect(badge).toMatch(/overflow:\s*hidden/);
+    expect(badge).toMatch(/white-space:\s*nowrap/);
+    expect(badge).toMatch(/color:\s*var\(--primary\)/);
+    const price = declarations(BASE_CSS, '.price');
+    expect(price).toContain(String(OFFER_PRICE_SHARE));
+    expect(price).toMatch(/color:\s*var\(--primary\)/);
+    expect(price).toMatch(/white-space:\s*nowrap/);
+    expect(price).toMatch(/overflow:\s*hidden/);
+  });
+
+  it('sets the offer details like body text, which never goes under its floor', () => {
+    expect(declarations(BASE_CSS, '.details')).toMatch(/font-size:\s*max\(var\(--body-floor\)/);
+    expect(declarations(BASE_CSS, '.details')).toMatch(/text-wrap:\s*pretty/);
+  });
+
+  it('has the fit script measure every new block', () => {
+    for (const name of [
+      'stat-number',
+      'stat-label',
+      'question',
+      'options',
+      'badge',
+      'details',
+      'price',
+    ])
+      expect(FIT_SCRIPT).toContain(`'${name}'`);
   });
 });
 

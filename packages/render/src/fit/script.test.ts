@@ -19,7 +19,14 @@ type Block = {
     | 'quote'
     | 'person'
     | 'role'
-    | 'items';
+    | 'items'
+    | 'stat-number'
+    | 'stat-label'
+    | 'question'
+    | 'options'
+    | 'badge'
+    | 'details'
+    | 'price';
   /** Height at `--k` 1; a heading or body block grows and shrinks with k² (font size and line count). */
   height: number;
   /** The line height at k = 1, so `lines` is height ÷ line height. */
@@ -38,7 +45,7 @@ type Spec = {
 };
 
 /** The blocks in small print: a fixed 28 px, whatever `--k` is. */
-const FIXED: Block['name'][] = ['source', 'sticker', 'step-label', 'role'];
+const FIXED: Block['name'][] = ['source', 'sticker', 'step-label', 'role', 'badge'];
 
 const AREA_TOP = 64;
 const WIDTH = 952;
@@ -405,6 +412,55 @@ describe('the fit script: the quote, its person and role, and the list items (#3
 
   it('keeps the role at its fixed size: only k moves the quote', async () => {
     const blocks = [QUOTE, PERSON, ROLE];
+    const { reported } = await run({ blocks, area: roomFor(0.9, blocks) + 0.1 });
+    expect(reported).toEqual({ k: 0.9, fits: true, fields: [] });
+  });
+});
+
+describe('the fit script: the stat, question and offer blocks (#340)', () => {
+  type Named = { name: string; overflowPx: number; available: number; needed: number };
+  const named = (reported: unknown) => (reported as { fields: Named[] }).fields;
+
+  it('names a stat number whose line is too wide by the slide field `number`, with the width it lacks', async () => {
+    const number: Block = { name: 'stat-number', height: 200, line: 200, wide: () => 1300 };
+    const { reported } = await run({ blocks: [number, SOURCE], area: 1000 });
+    expect(reported).toMatchObject({ k: 0.85, fits: false });
+    expect(named(reported).map((f) => f.name)).toEqual(['number']);
+    expect(named(reported)[0]?.overflowPx).toBeCloseTo(1300 - 952, 1);
+  });
+
+  it('names a price or a badge whose line is too wide by `price` and `badge`', async () => {
+    const price: Block = { name: 'price', height: 80, line: 80, wide: () => 1100 };
+    const badge: Block = { name: 'badge', height: 40, line: 40, wide: () => 1000 };
+    const { reported } = await run({ blocks: [badge, TITLE, price], area: 1000 });
+    expect(named(reported).map((f) => f.name)).toEqual(['badge', 'price']);
+  });
+
+  it('shortens the label, the question, the options and the details, the text that has lines to give back', async () => {
+    const blocks: Block[] = [
+      { name: 'stat-label', height: 240, line: 60 },
+      { name: 'question', height: 300, line: 100 },
+      { name: 'options', height: 400, line: 80 },
+      { name: 'details', height: 200, line: 50 },
+    ];
+    const { reported } = await run({ blocks, area: roomFor(0.85, blocks) - 100 });
+    expect(named(reported).map((f) => f.name)).toEqual(['label', 'question', 'options', 'details']);
+    expect(named(reported).reduce((sum, f) => sum + f.overflowPx, 0)).toBeCloseTo(100, 1);
+  });
+
+  it('never asks for the number or the price to be shortened for height: one line, and not text to cut', async () => {
+    const blocks: Block[] = [
+      { name: 'stat-number', height: 200, line: 200 },
+      { name: 'price', height: 80, line: 80 },
+      { name: 'details', height: 200, line: 50 },
+    ];
+    const { reported } = await run({ blocks, area: roomFor(0.85, blocks) - 100 });
+    expect(named(reported).map((f) => f.name)).toEqual(['details']);
+  });
+
+  it('keeps the badge at its fixed size: only k moves the rest', async () => {
+    const badge: Block = { name: 'badge', height: 40, line: 40 };
+    const blocks = [badge, TITLE, BODY];
     const { reported } = await run({ blocks, area: roomFor(0.9, blocks) + 0.1 });
     expect(reported).toEqual({ k: 0.9, fits: true, fields: [] });
   });
