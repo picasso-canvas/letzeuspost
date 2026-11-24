@@ -12,6 +12,7 @@ import {
   MAX_PIXELS_SIDE,
   MAX_SCREENSHOT_BYTES,
   MAX_SCREENSHOTS,
+  MAX_SCREENSHOTS_IN_ALL,
   inflateBudget,
   readZip,
   STEP_TIME_LIMIT_MS,
@@ -328,6 +329,51 @@ describe('collectScreenshots', () => {
     expect(text).toContain(
       `s${String(MAX_SCREENSHOTS).padStart(4, '0')}.png: past the limit of ${String(MAX_SCREENSHOTS)}`,
     );
+  });
+
+  // #363: the render output is hundreds of files, and the gallery's and the end-to-end screens must not use up its room.
+  it('gives each artifact its own limit, under one limit in all', () => {
+    const out = into();
+    const many = (count: number, folder: string) =>
+      zip(
+        Array.from({ length: count }, (_, i) => ({
+          name: `${folder}/s${String(i).padStart(4, '0')}.png`,
+          data: PNG,
+        })),
+      );
+    const gh = fakeGitHub(
+      {
+        11: { artifacts: ['gallery-screenshots'] },
+        7: { artifacts: ['e2e-screenshots', 'render-output'] },
+      },
+      { 110: many(300, 'a'), 70: many(300, 'b'), 71: many(MAX_SCREENSHOTS + 1, 'c') },
+    );
+    const text = collectScreenshots(SHA, out, gh.deps);
+    expect(readdirSync(join(out, 'gallery-screenshots'))).toHaveLength(300);
+    expect(readdirSync(join(out, 'e2e-screenshots'))).toHaveLength(300);
+    const left = MAX_SCREENSHOTS_IN_ALL - 600;
+    expect(readdirSync(join(out, 'render-output'))).toHaveLength(left);
+    expect(text).toContain(
+      `s${String(left).padStart(4, '0')}.png: past the limit of ${String(left)}`,
+    );
+  });
+
+  it('keeps a full 400 of the render output when the other screens are few', () => {
+    const out = into();
+    const entries = Array.from({ length: MAX_SCREENSHOTS }, (_, i) => ({
+      name: `r${String(i).padStart(4, '0')}.png`,
+      data: PNG,
+    }));
+    const gh = fakeGitHub(
+      { 11: { artifacts: ['gallery-screenshots'] }, 7: { artifacts: ['render-output'] } },
+      {
+        110: zip(Array.from({ length: 94 }, (_, i) => ({ name: `g${String(i)}.png`, data: PNG }))),
+        70: zip(entries),
+      },
+    );
+    collectScreenshots(SHA, out, gh.deps);
+    expect(readdirSync(join(out, 'gallery-screenshots'))).toHaveLength(94);
+    expect(readdirSync(join(out, 'render-output'))).toHaveLength(MAX_SCREENSHOTS);
   });
 
   it('never fetches an artifact over the size limit, and says so', () => {
