@@ -128,6 +128,13 @@ img.photo {
   text-wrap: balance;
   overflow-wrap: break-word;
 }
+.stack .layout-quote .quote {
+  /* Stacked, the free height is shared: the quote centres in the room above the attribution, which sits at the foot,
+     so no empty band is left above the footer. Auto margins take only what is left over (0 when the text fills the
+     area), so what fits is unchanged and the fit script's measures don't move. */
+  margin-top: auto;
+  margin-bottom: auto;
+}
 .person {
   margin: 0;
   /* The attribution is a second group under the quote: its gap above is doubled, so it is set apart from the words */
