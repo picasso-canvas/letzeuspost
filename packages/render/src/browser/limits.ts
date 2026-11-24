@@ -28,12 +28,20 @@ export function formatLimit(ms: number): string {
 /** When a post started at `start` (epoch ms) must be done. */
 export const postDeadline = (start: number): number => start + RENDER_LIMITS.postMs;
 
-/** The time a slide may take: its own limit, or what is left of the post's when that is less. */
-export function slideBudget(input: { now: number; deadline?: number; slideMs: number }): {
+/**
+ * The time a slide (or the post's PDF, `what`) may take: its own limit, or what is left of the post's when that is
+ * less.
+ */
+export function slideBudget(input: {
+  now: number;
+  deadline?: number;
+  slideMs: number;
+  what?: 'slide' | 'PDF';
+}): {
   ms: number;
   reason: string;
 } {
-  const { now, deadline, slideMs } = input;
+  const { now, deadline, slideMs, what = 'slide' } = input;
   if (deadline !== undefined && deadline - now < slideMs)
     return {
       ms: Math.max(0, deadline - now),
@@ -41,7 +49,7 @@ export function slideBudget(input: { now: number; deadline?: number; slideMs: nu
     };
   return {
     ms: slideMs,
-    reason: `The slide didn’t finish rendering within ${formatLimit(slideMs)}`,
+    reason: `The ${what} didn’t finish rendering within ${formatLimit(slideMs)}`,
   };
 }
 

@@ -28,8 +28,9 @@ import {
 } from './requests.ts';
 
 // The Chromium page runner (§08 Chrome in Docker, Security, Fonts): one browser per process, a fresh context per page,
-// no network, fixed flags, limits, restarts and font checks. It returns the PNG master and what it measured; the fit
-// report, the other formats and the `render` job are built on it.
+// no network, fixed flags, limits, restarts and font checks. It has two modes behind the one request filter: the image
+// mode returns the PNG master and what it measured (the fit report, the other images and the `render` job are built on
+// it), and the print mode returns the page as a PDF (the LinkedIn PDF, `output/pdf.ts`).
 
 export type Log = (
   event: string,
@@ -50,6 +51,8 @@ export type RendererOptions = {
   limits?: Partial<RenderLimits>;
   /** Starts a render browser; `chromium.launch` with the fixed flags by default. Tests inject crashes through it. */
   launch?: () => Promise<Browser>;
+  /** Reads `/proc/<pid>/status` of one of the browser's processes, for its memory; `readFile` by default. */
+  readProcessStatus?: (pid: number) => Promise<string>;
   now?: () => number;
 };
 
@@ -85,7 +88,13 @@ export type RenderResult = {
 };
 
 export type Renderer = {
+  /** The image mode: the page's PNG master and what it measured. */
   renderPage: (input: RenderPageInput) => Promise<RenderResult>;
+  /**
+   * The print mode: the page as a PDF, each page at the size with no margins and with backgrounds, tagged, its fonts
+   * embedded (Chrome embeds the web fonts it draws with). Its limit is the slide's.
+   */
+  printPage: (input: RenderPageInput) => Promise<Uint8Array>;
   /** Closes the browser, once the renders running on it finish. */
   close: () => Promise<void>;
 };
@@ -146,24 +155,30 @@ function fontAssets(): Promise<RenderAsset[]> {
 }
 
 /** The resident memory of all the browser's processes, from `/proc`; undefined where there is none. */
-async function browserMemory(browser: Browser): Promise<number | undefined> {
+async function browserMemory(
+  browser: Browser,
+  read: (pid: number) => Promise<string>,
+): Promise<number | undefined> {
   const session = await browser.newBrowserCDPSession();
   try {
     const { processInfo } = await session.send('SystemInfo.getProcessInfo');
     return await residentBytes(
       processInfo.map((info) => info.id),
-      (pid) => readFile(`/proc/${String(pid)}/status`, 'utf8'),
+      read,
     );
   } finally {
     await session.detach().catch(() => undefined);
   }
 }
 
-/** Answers the page's requests: the page itself once, the job's assets, and nothing else. */
+/** What the request filter answered while a page loaded. */
+type Facts = { served: string[]; blocked: BlockedRequest[] };
+
+/** Answers the page's requests in either mode: the page itself once, the job's assets, and nothing else. */
 async function guard(
   context: BrowserContext,
   input: { html: string; index: AssetIndex; jobId: string; log: Log },
-  facts: { served: string[]; blocked: BlockedRequest[] },
+  facts: Facts,
 ): Promise<void> {
   let pageServed = false;
   await context.route('**/*', async (route, request) => {
@@ -234,12 +249,13 @@ async function usedFonts(context: BrowserContext, page: Page): Promise<BlockFont
   return blocks;
 }
 
-async function draw(
+/** Loads the page behind the request filter and settles it: every font it declares loaded, every image decoded. */
+async function open(
   context: BrowserContext,
-  input: { html: string; index: AssetIndex; jobId: string; size: SizeName; log: Log; ms: number },
+  input: { html: string; index: AssetIndex; jobId: string; log: Log; ms: number },
   crashed: { page: boolean },
-): Promise<RenderResult> {
-  const facts = { served: [] as string[], blocked: [] as BlockedRequest[] };
+  facts: Facts,
+): Promise<Page> {
   await guard(context, input, facts);
   const page = await context.newPage();
   page.on('crash', () => {
@@ -251,11 +267,20 @@ async function draw(
 
   const failed = fontLoadFailure(FailedFonts.parse(await page.evaluate(SETTLE)));
   if (failed !== undefined) throw new RenderFailure(failed);
+  return page;
+}
 
+/** The image mode's work on the settled page: the screenshot, the fit report and the fonts Chrome drew with. */
+async function draw(
+  context: BrowserContext,
+  page: Page,
+  size: SizeName,
+  facts: Facts,
+): Promise<RenderResult> {
   // The fit script has set `--k` by now: the screenshot is drawn at the scale it picked.
   const fit = pageFit(await page.evaluate(FIT));
 
-  const { width, height } = SIZES[input.size];
+  const { width, height } = SIZES[size];
   const png = await page.screenshot({
     type: 'png',
     clip: { x: 0, y: 0, width, height },
@@ -276,25 +301,65 @@ async function draw(
   };
 }
 
+/** The print mode's work on the settled page: the PDF, every page at the size. */
+async function print(page: Page, size: SizeName): Promise<Uint8Array> {
+  const { width, height } = SIZES[size];
+  const pdf = await page.pdf({
+    // The document's own `@page` gives each page the slide's size; these say the same for a page that has none.
+    width: `${String(width)}px`,
+    height: `${String(height)}px`,
+    preferCSSPageSize: true,
+    margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    printBackground: true,
+    tagged: true,
+    outline: false,
+  });
+  return new Uint8Array(pdf);
+}
+
+/** What a mode makes of the settled page, and how its failures read. */
+type Mode<T> = {
+  /** Named when the mode's own limit runs out. */
+  what: 'slide' | 'PDF';
+  /** The reason of a failure that isn't already a `RenderFailure`. */
+  failure: string;
+  finish: (context: BrowserContext, page: Page, size: SizeName, facts: Facts) => Promise<T>;
+};
+
+const IMAGE: Mode<RenderResult> = {
+  what: 'slide',
+  failure: 'The render browser failed on this slide',
+  finish: draw,
+};
+
+const PRINT: Mode<Uint8Array> = {
+  what: 'PDF',
+  failure: 'The render browser failed to print the PDF',
+  finish: (_, page, size) => print(page, size),
+};
+
 /** Creates the process's renderer: its browser starts on the first render. Make one per worker process. */
 export function createRenderer(options: RendererOptions): Renderer {
   const limits: RenderLimits = { ...RENDER_LIMITS, ...options.limits };
   const now = options.now ?? Date.now;
+  const readStatus =
+    options.readProcessStatus ?? ((pid: number) => readFile(`/proc/${String(pid)}/status`, 'utf8'));
   const pool = createBrowserPool<Browser>({
     launch: options.launch ?? (() => chromium.launch(LAUNCH_OPTIONS)),
     close: (browser) => browser.close(),
-    memoryBytes: browserMemory,
+    memoryBytes: (browser) => browserMemory(browser, readStatus),
     rendersPerBrowser: limits.rendersPerBrowser,
     browserMemoryBytes: limits.browserMemoryBytes,
   });
 
   /** One try in `browser`, in its own context, closed after; a browser or page that died is a `BrowserCrashed`. */
-  async function attempt(
+  async function attempt<T>(
     browser: Browser,
     input: { html: string; index: AssetIndex; jobId: string; size: SizeName },
     end: number,
     reason: string,
-  ): Promise<RenderResult> {
+    mode: Mode<T>,
+  ): Promise<T> {
     const ms = end - now();
     const crashed = { page: false };
     const state = { finished: false };
@@ -306,7 +371,9 @@ export function createRenderer(options: RendererOptions): Renderer {
         throw new RenderFailure(reason);
       }
       context = opened;
-      return draw(opened, { ...input, log: options.log, ms }, crashed);
+      const facts: Facts = { served: [], blocked: [] };
+      const page = await open(opened, { ...input, log: options.log, ms }, crashed, facts);
+      return mode.finish(opened, page, input.size, facts);
     })();
     try {
       return await withTimeout(work, ms, reason);
@@ -320,7 +387,7 @@ export function createRenderer(options: RendererOptions): Renderer {
         throw new BrowserCrashed('The render browser or its page crashed');
       }
       if (error instanceof RenderFailure) throw error;
-      throw new RenderFailure('The render browser failed on this slide', { cause: error });
+      throw new RenderFailure(mode.failure, { cause: error });
     } finally {
       state.finished = true;
       // Closing a context whose page is stuck in a loop is waited for a short while only, so the render ends near its
@@ -330,23 +397,28 @@ export function createRenderer(options: RendererOptions): Renderer {
     }
   }
 
+  /** Runs `input` in `mode`: the job's assets and the manifest fonts served, within the slide's limit. */
+  async function run<T>(input: RenderPageInput, mode: Mode<T>): Promise<T> {
+    const fonts = (await fontAssets()).filter(
+      (font) => !input.assets.some((asset) => asset.kind === 'font' && asset.key === font.key),
+    );
+    const index = assetIndex([...input.assets, ...fonts]);
+    const html = servedHtml(input.html);
+    const start = now();
+    const budget = slideBudget({
+      now: start,
+      deadline: input.deadline,
+      slideMs: limits.slideMs,
+      what: mode.what,
+    });
+    const end = start + budget.ms;
+    const page = { html, index, jobId: input.jobId, size: input.size };
+    return pool.use((browser) => attempt(browser, page, end, budget.reason, mode));
+  }
+
   return {
-    async renderPage(input) {
-      const fonts = (await fontAssets()).filter(
-        (font) => !input.assets.some((asset) => asset.kind === 'font' && asset.key === font.key),
-      );
-      const index = assetIndex([...input.assets, ...fonts]);
-      const html = servedHtml(input.html);
-      const start = now();
-      const budget = slideBudget({
-        now: start,
-        deadline: input.deadline,
-        slideMs: limits.slideMs,
-      });
-      const end = start + budget.ms;
-      const page = { html, index, jobId: input.jobId, size: input.size };
-      return pool.use((browser) => attempt(browser, page, end, budget.reason));
-    },
+    renderPage: (input) => run(input, IMAGE),
+    printPage: (input) => run(input, PRINT),
     close: () => pool.close(),
   };
 }
