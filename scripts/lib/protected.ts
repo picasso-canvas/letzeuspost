@@ -13,7 +13,7 @@ export const BUILDER_PROTECTED = [
   '**/.vscode/**',
   '**/.lzp/**',
   'tests/visual/approved/**',
-  'tests/golden/**',
+  'tests/golden/baselines/**',
   'tests/lint/**',
   '**/next.config.*',
   '**/CLAUDE.md',
