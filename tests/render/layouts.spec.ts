@@ -7,8 +7,13 @@ import type { RenderKit } from '../../packages/render/src/kit.ts';
 import {
   LONG_BODY,
   LONGEST_COVER_TITLE,
+  LONGEST_LIST_ITEMS,
   SAMPLE_COVER,
   SAMPLE_CTA,
+  SAMPLE_FACT,
+  SAMPLE_LIST,
+  SAMPLE_PUBLIC_QUOTE,
+  SAMPLE_QUOTE,
   SAMPLE_STEP,
   type Lang,
 } from '../../packages/render/src/layouts/samples.ts';
@@ -16,7 +21,7 @@ import { testBanglaPost, testKit, testPost } from '../../packages/render/src/pag
 import { SIZE_NAMES } from '../../packages/render/src/sizes.ts';
 import { renderPostSlide } from './slides.ts';
 
-// The cover, cta and step layouts in a real Chromium (#338; §07 Layouts, §08 Sizes and arrangements and The fit
+// The cover, cta, step, fact, list and quote layouts in a real Chromium (#338, #339; §07 Layouts, §08 Sizes and arrangements and The fit
 // check). These run in CI's services job, the `render` Playwright project: each layout in the Clean look at every
 // size, in English and Bangla, through the page runner and the fit script. Each drawn slide is kept as
 // `<layout>-<lang>-<size>.png` in the test's output folder, which CI uploads as the `render-output` artifact for
@@ -60,6 +65,10 @@ const SAMPLES = [
   ['cover', SAMPLE_COVER],
   ['step', SAMPLE_STEP],
   ['cta', SAMPLE_CTA],
+  ['fact', SAMPLE_FACT],
+  ['list', SAMPLE_LIST],
+  ['quote', SAMPLE_QUOTE],
+  ['quote-public', SAMPLE_PUBLIC_QUOTE],
 ] as const;
 
 /** Draws one slide in a fresh renderer, and keeps its PNG for the review. */
@@ -118,6 +127,7 @@ test.describe('the longest allowed text fits, or fails naming the field and a ta
   for (const [layout, samples] of [
     ['step', SAMPLE_STEP],
     ['cta', SAMPLE_CTA],
+    ['fact', SAMPLE_FACT],
   ] as const)
     for (const lang of ['en', 'bn'] as const)
       for (const size of SIZE_NAMES)
@@ -139,6 +149,79 @@ test.describe('the longest allowed text fits, or fails naming the field and a ta
             expect(field.targetGraphemes).toBeLessThan(field.graphemes);
           }
         });
+});
+
+test.describe('the longest quote and the longest list fit, or fail naming the field and a target', () => {
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of SIZE_NAMES) {
+      test(`quote with a long quote, ${lang}, ${size}`, async () => {
+        const slide: Slide = { ...SAMPLE_PUBLIC_QUOTE[lang], quote: LONG_BODY[lang] };
+        const { report } = await draw(postWith(lang, slide), size, `quote-longest-${lang}-${size}`);
+        if (report.status === 'pass') {
+          expect(report.fields).toEqual([]);
+          return;
+        }
+        expect(report.k).toBe(0.85);
+        expect(report.fields.length).toBeGreaterThan(0);
+        for (const field of report.fields) {
+          expect(field.field).toMatch(/^slides\[0\]\.(quote|person|role|source)$/);
+          expect(field.targetGraphemes).toBeLessThan(field.graphemes);
+        }
+      });
+
+      // §07: five items of at most eight words. A list's items are one block to the fit check, named `items`.
+      test(`list with five items of eight words, ${lang}, ${size}`, async () => {
+        const slide: Slide = {
+          ...SAMPLE_LIST[lang],
+          title: LONGEST_COVER_TITLE[lang],
+          items: LONGEST_LIST_ITEMS[lang],
+        };
+        const { report } = await draw(postWith(lang, slide), size, `list-longest-${lang}-${size}`);
+        if (report.status === 'pass') {
+          expect(report.fields).toEqual([]);
+          return;
+        }
+        expect(report.k).toBe(0.85);
+        expect(report.fields.length).toBeGreaterThan(0);
+        for (const field of report.fields) {
+          expect(field.field).toMatch(/^slides\[0\]\.(title|items)$/);
+          expect(field.targetGraphemes).toBeGreaterThanOrEqual(1);
+          expect(field.targetGraphemes).toBeLessThan(field.graphemes);
+        }
+      });
+    }
+});
+
+test.describe('a source, a person or a role that is too wide is named by its own field', () => {
+  // One word, four times over: wider than the widest column at every size, at 28 px and at body size alike
+  const TOO_WIDE: Record<Lang, string> = {
+    en: 'Supercalifragilisticexpialidociousappointmentsbookingtodayplease'.repeat(4),
+    bn: 'অনুগ্রহপূর্বকআজকেইআমাদেরসঙ্গেযোগাযোগকরেএকটিবুকিংনিশ্চিতকরুন'.repeat(4),
+  };
+
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of SIZE_NAMES) {
+      const cases: [string, Slide, string][] = [
+        ['fact', { ...SAMPLE_FACT[lang], source: TOO_WIDE[lang] }, 'source'],
+        ['quote', { ...SAMPLE_PUBLIC_QUOTE[lang], source: TOO_WIDE[lang] }, 'source'],
+        ['quote', { ...SAMPLE_QUOTE[lang], person: TOO_WIDE[lang] }, 'person'],
+        ['quote', { ...SAMPLE_QUOTE[lang], role: TOO_WIDE[lang] }, 'role'],
+      ];
+      for (const [layout, slide, field] of cases)
+        test(`${layout} with a ${field} of one long word, ${lang}, ${size}`, async () => {
+          const { report } = await draw(
+            postWith(lang, slide),
+            size,
+            `${layout}-${field}-wide-${lang}-${size}`,
+          );
+          expect(report.status).toBe('fail');
+          const named = report.fields.find((candidate) => candidate.field === `slides[0].${field}`);
+          expect(named).toBeDefined();
+          expect(named?.overflowPx).toBeGreaterThan(0);
+          expect(named?.targetGraphemes).toBeGreaterThanOrEqual(1);
+          expect(named?.targetGraphemes).toBeLessThan(named?.graphemes ?? 0);
+        });
+    }
 });
 
 test.describe('a call to action or a sticker that is too wide is named by its own field', () => {
@@ -199,6 +282,15 @@ test.describe('missing optional fields render cleanly', () => {
         const slide: Slide = { layout, kicker, title, alt, image: photo };
         const drawn = await draw(postWith(lang, slide), size, `cover-image-${lang}-${size}`);
         expect(drawn.report).toMatchObject({ status: 'pass', fields: [] });
+        expect(drawn.render.errors).toEqual([]);
+      });
+
+      test(`fact with no image, ${lang}, ${size}`, async () => {
+        const { layout, kicker, title, body, source, alt } = SAMPLE_FACT[lang];
+        const slide: Slide = { layout, kicker, title, body, source, alt };
+        const drawn = await draw(postWith(lang, slide), size, `fact-bare-${lang}-${size}`);
+        expect(drawn.report).toMatchObject({ status: 'pass', fields: [] });
+        expect(drawn.warnings).toEqual([]);
         expect(drawn.render.errors).toEqual([]);
       });
 
