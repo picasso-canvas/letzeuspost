@@ -54,6 +54,13 @@ describe('formatReport', () => {
     expect(none).toMatch(/final memory\s+not readable/);
   });
 
+  it('names the browser build when it is known, so numbers from two machines can be told apart', () => {
+    expect(text).not.toMatch(/browser build/);
+    expect(formatReport(result({ browserVersion: 'HeadlessChrome/150.0.1' }))).toMatch(
+      /browser build\s+HeadlessChrome\/150\.0\.1/,
+    );
+  });
+
   it('counts no restart for a browser that only started once', () => {
     expect(formatReport(result({ browserStarts: 1 }))).toMatch(/browser restarts\s+0/);
   });
