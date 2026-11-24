@@ -167,6 +167,15 @@ describe('the rules of the fact, list and quote layouts (#339)', () => {
     expect(declarations(BASE_CSS, '.person')).toMatch(/margin-top:\s*var\(--gap\)/);
   });
 
+  it("shares a stacked quote slide's free height: the quote centres above the attribution, which sits at the foot", () => {
+    // Auto margins take the free height only; with none left they are 0, so the fit numbers don't move. The quote's own
+    // block is not wrapped, because the fit script reads the text area's children to work out the height needed.
+    const margins = declarations(BASE_CSS, '.stack .layout-quote .quote');
+    expect(margins).toMatch(/margin-top:\s*auto/);
+    expect(margins).toMatch(/margin-bottom:\s*auto/);
+    expect(declarations(BASE_CSS, '.person')).toMatch(/margin-top:\s*var\(--gap\)/);
+  });
+
   it("gives landscape's text column more room than the picture beside it (fact), and the items more than the title (list)", () => {
     // Two equal columns were too narrow for a fact's body and source, or for a list's items, at the smallest scale
     expect(declarations(BASE_CSS, '.cols .layout-fact .col-text')).toMatch(/flex-grow:\s*3/);
