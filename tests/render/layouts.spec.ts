@@ -81,13 +81,20 @@ const SAMPLES = [
   ['offer', SAMPLE_OFFER],
 ] as const;
 
-/** Draws one slide in a fresh renderer, and keeps its PNG for the review. */
+/**
+ * Draws one slide in a fresh renderer, and keeps its PNG for the review. A slide that fails the fit check (§08: it
+ * isn't delivered, QC never passes it) is kept as `<name>-fits-not.png`, so a reviewer reading the PNGs can tell a
+ * failure the test pins from a layout defect. `file` is where the PNG went.
+ */
 async function draw(post: Post, size: SizeName, name: string) {
   const renderer = createRenderer({ log: () => undefined });
   try {
     const drawn = await renderPostSlide(renderer, post, size, ASSETS, 0, KIT);
-    await writeFile(test.info().outputPath(`${name}.png`), drawn.png);
-    return drawn;
+    const file = test
+      .info()
+      .outputPath(`${name}${drawn.report.status === 'fail' ? '-fits-not' : ''}.png`);
+    await writeFile(file, drawn.png);
+    return { ...drawn, file };
   } finally {
     await renderer.close();
   }
@@ -110,7 +117,13 @@ test.describe('typical content passes the fit check in the Clean look, at every 
         });
 });
 
-test.describe('the longest allowed text fits, or fails naming the field and a target', () => {
+test.describe('the longest cover fails the fit check, naming the field and a target, except at the pin size', () => {
+  // An 8-word title of long words over a 40-word body, with a photo, needs more than the page has even at the
+  // smallest scale (§08: 85%) at the portrait, square, story and landscape sizes. So the check must fail it, naming
+  // what to shorten, and the render is never delivered: its PNG (`cover-longest-<lang>-<size>-fits-not.png`) shows
+  // what a failure looks like, not a layout defect. Where the image meets the footer in it, the text has not fitted.
+  // At the pin size (1000 × 1500, 880 px of text) the same text fits: CI's services run on 94d172c reported `pass`
+  // for it in English and Bangla, and the other eight cases `fail`.
   for (const lang of ['en', 'bn'] as const)
     for (const size of SIZE_NAMES)
       test(`cover with an 8-word title and a long body, ${lang}, ${size}`, async () => {
@@ -119,12 +132,20 @@ test.describe('the longest allowed text fits, or fails naming the field and a ta
           title: LONGEST_COVER_TITLE[lang],
           body: LONG_BODY[lang],
         };
-        const { report } = await draw(postWith(lang, slide), size, `cover-longest-${lang}-${size}`);
-        if (report.status === 'pass') {
+        const { report, file } = await draw(
+          postWith(lang, slide),
+          size,
+          `cover-longest-${lang}-${size}`,
+        );
+        if (size === 'pin') {
+          expect(report.status).toBe('pass');
           expect(report.fields).toEqual([]);
+          expect(file).not.toMatch(/-fits-not\.png$/);
           return;
         }
-        // Not a pass: it says which text to cut and to how many graphemes, never a bare failure
+        expect(report.status).toBe('fail');
+        expect(file).toMatch(/-fits-not\.png$/);
+        // It says which text to cut and to how many graphemes, never a bare failure
         expect(report.k).toBe(0.85);
         expect(report.fields.length).toBeGreaterThan(0);
         for (const field of report.fields) {
@@ -133,7 +154,9 @@ test.describe('the longest allowed text fits, or fails naming the field and a ta
           expect(field.targetGraphemes).toBeLessThan(field.graphemes);
         }
       });
+});
 
+test.describe('the longest allowed text fits, or fails naming the field and a target', () => {
   for (const [layout, samples] of [
     ['step', SAMPLE_STEP],
     ['cta', SAMPLE_CTA],
@@ -421,12 +444,15 @@ test.describe('a stat number, an offer price or badge that is too wide is named 
       ];
       for (const [layout, slide, field] of cases)
         test(`${layout} with a ${field} of one long token, ${lang}, ${size}`, async () => {
-          const { report } = await draw(
+          // A 80-digit badge or price is wider than the page: the render is a fit failure (kept as `…-fits-not.png`,
+          // so it isn't read as a clipped layout), never delivered, and the report names the field to shorten
+          const { report, file } = await draw(
             postWith(lang, slide),
             size,
             `${layout}-${field}-wide-${lang}-${size}`,
           );
           expect(report.status).toBe('fail');
+          expect(file).toMatch(/-fits-not\.png$/);
           const named = report.fields.find((candidate) => candidate.field === `slides[0].${field}`);
           expect(named).toBeDefined();
           expect(named?.overflowPx).toBeGreaterThan(0);
