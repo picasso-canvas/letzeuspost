@@ -9,7 +9,9 @@ describe('shipRefusals', () => {
   });
 
   it('lets a builder write the golden harness, not its approved baselines (#341)', () => {
-    expect(shipRefusals([file('tests/golden/matrix.ts'), file('tests/golden/matrix.spec.ts')])).toEqual([]);
+    expect(
+      shipRefusals([file('tests/golden/matrix.ts'), file('tests/golden/matrix.spec.ts')]),
+    ).toEqual([]);
   });
 
   it('refuses protected paths at any depth and in any letter case', () => {
