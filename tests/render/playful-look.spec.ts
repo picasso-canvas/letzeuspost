@@ -7,6 +7,7 @@ import { FONT_MANIFEST } from '../../packages/render/src/fonts/library.ts';
 import type { RenderKit } from '../../packages/render/src/kit.ts';
 import { playfulTints } from '../../packages/render/src/looks/playful/contrast.ts';
 import type { Switches } from '../../packages/render/src/page/switches.ts';
+import { SAMPLE_COVER } from '../../packages/render/src/layouts/samples.ts';
 import { testBanglaPost, testKit, testPost } from '../../packages/render/src/page/test-fixtures.ts';
 import { SIZE_NAMES, SIZES } from '../../packages/render/src/sizes.ts';
 import { renderPostSlide, slidePage } from './slides.ts';
@@ -42,6 +43,12 @@ const LOGO: RenderAsset = {
   ),
 };
 
+/** The sample photo: the 1×1 PNG the other render specs use, stretched over the image box (a bare fill, no picture in it). */
+const PHOTO: RenderAsset = { ...LOGO, key: 'photo_sample_1' };
+
+/** The sizes the two states below are drawn at (#378). */
+const STATE_SIZES = ['portrait', 'square', 'story'] as const satisfies readonly SizeName[];
+
 /** The test post in the Playful look, in `lang`, with two slides so the page number is drawn too. */
 function playfulPost(lang: 'en' | 'bn', switches: Partial<Switches> = {}): Post {
   const post = lang === 'en' ? testPost() : testBanglaPost();
@@ -70,6 +77,68 @@ test.describe('a text slide in the Playful look fits', () => {
         } finally {
           await renderer.close();
         }
+      });
+});
+
+/** A cover with a real photo in the Playful look, in `lang`, twice so the page number is drawn too. */
+function playfulCoverPost(lang: 'en' | 'bn', switches: Partial<Switches> = {}): Post {
+  const post = lang === 'en' ? testPost() : testBanglaPost();
+  const slide = SAMPLE_COVER[lang];
+  return { ...post, look: { name: 'playful', switches }, slides: [slide, slide] };
+}
+
+test.describe('Playful with decorations off still fits, and is drawn without its stickers', () => {
+  // The look's third state (#378, Iris F3): the badge and the tag are off, so the slide is the text and its page alone.
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of STATE_SIZES)
+      test(`${lang}, ${size}: passes the fit check and draws no sticker`, async () => {
+        const renderer = createRenderer({ log: () => undefined });
+        try {
+          const post = playfulPost(lang, { decorations: false });
+          const drawn = await renderPostSlide(renderer, post, size, [LOGO], 0, KIT);
+          expect(drawn.report).toMatchObject({ size, slide: 1, status: 'pass', fields: [] });
+          expect(drawn.render.errors).toEqual([]);
+          expect(drawn.render.blocked).toEqual([]);
+          await writeFile(
+            test.info().outputPath(`playful-decorations-off-${lang}-${size}.png`),
+            drawn.png,
+          );
+        } finally {
+          await renderer.close();
+        }
+        const { stickers } = await computed(lang, size, { decorations: false });
+        expect(stickers.before).toBeNull();
+        expect(stickers.after).toBeNull();
+      });
+});
+
+test.describe('Playful with the print frame and a real photo', () => {
+  // The tilted print frame holds the cover's photo (#378, Iris F3): the photo is served and drawn inside the frame, and
+  // the frame is turned, at every size the stacked layouts use.
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of STATE_SIZES)
+      test(`${lang}, ${size}: the photo is in a tilted frame and the slide passes the fit check`, async () => {
+        const renderer = createRenderer({ log: () => undefined });
+        try {
+          const post = playfulCoverPost(lang, { frame: 'print' });
+          const drawn = await renderPostSlide(renderer, post, size, [LOGO, PHOTO], 0, KIT);
+          expect(drawn.report).toMatchObject({ size, slide: 1, status: 'pass', fields: [] });
+          expect(drawn.render.errors).toEqual([]);
+          expect(drawn.render.blocked).toEqual([]);
+          expect(drawn.render.served).toContain('image/photo_sample_1'); // the photo was loaded into the page
+          await writeFile(
+            test.info().outputPath(`playful-print-frame-${lang}-${size}.png`),
+            drawn.png,
+          );
+        } finally {
+          await renderer.close();
+        }
+        const frame = await printFrame(lang, size);
+        expect(frame.photos).toBe(1); // the photo is inside the frame's box
+        expect(Math.abs(frame.tilt)).toBeGreaterThanOrEqual(2);
+        expect(Math.abs(frame.tilt)).toBeLessThanOrEqual(6);
+        expect(frame.photoWidth).toBeGreaterThan(0);
+        expect(frame.photoHeight).toBeGreaterThan(0);
       });
 });
 
@@ -146,6 +215,36 @@ async function computed(
           badge: style('.slide', '::before').backgroundColor,
         },
         print: angle(getComputedStyle(frame).transform),
+      };
+    })()`);
+  } finally {
+    await context.close();
+  }
+}
+
+/** The print frame of a cover's photo as Chrome draws it: its turn, how many photos are inside it, and the photo's size. */
+async function printFrame(lang: 'en' | 'bn', size: SizeName) {
+  const context = await browser.newContext(contextOptions(size));
+  try {
+    const page = await context.newPage();
+    await page.setContent(
+      await slidePage(playfulCoverPost(lang, { frame: 'print' }), size, 0, KIT),
+    );
+    return await page.evaluate<{
+      tilt: number;
+      photos: number;
+      photoWidth: number;
+      photoHeight: number;
+    }>(`(() => {
+      const box = document.querySelector('.image-box');
+      const photos = box === null ? [] : [...box.querySelectorAll('img')];
+      const m = new DOMMatrix(box === null || getComputedStyle(box).transform === 'none' ? undefined : getComputedStyle(box).transform);
+      const [first] = photos;
+      return {
+        tilt: (Math.atan2(m.b, m.a) * 180) / Math.PI,
+        photos: photos.length,
+        photoWidth: first === undefined ? 0 : first.offsetWidth,
+        photoHeight: first === undefined ? 0 : first.offsetHeight,
       };
     })()`);
   } finally {
