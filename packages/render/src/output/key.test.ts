@@ -1,7 +1,12 @@
 import type { Post } from '@lzp/core';
 import { describe, expect, it } from 'vitest';
-import { testKit, testPost, testSlide, type TextSlide } from '../page/test-fixtures.ts';
-import { renderKey, type RenderKeyInput } from './key.ts';
+import { testKit, testPost, testSlide } from '../page/test-fixtures.ts';
+import {
+  renderKey,
+  type DocumentKeyInput,
+  type ImageKeyInput,
+  type RenderKeyInput,
+} from './key.ts';
 
 // The cache key (§08 When renders happen, and caching): a hash of the renderer version, the look version, the brand's
 // tokens and fonts, the slide content, the image assets with their crops, the size and the format. Every one of them
@@ -10,23 +15,22 @@ import { renderKey, type RenderKeyInput } from './key.ts';
 const PHOTO = { key: 'ast_9f2', sha256: 'a'.repeat(64) };
 const LOGO = { key: 'logo_light_1', sha256: 'b'.repeat(64) };
 
+type CoverSlide = Extract<Post['slides'][number], { layout: 'cover' }>;
+
 /** A cover slide with a photo, so the crop is part of the slide. */
-const cover = (overrides: Partial<Extract<Post['slides'][number], { layout: 'cover' }>> = {}) =>
-  ({
-    layout: 'cover',
-    kicker: 'Winter stories',
-    title: 'Pitha week is *back*',
-    image: { asset: 'ast_9f2', crop: [0, 120, 1080, 900], focus: 'center' },
-    alt: 'A plate of pitha',
-    ...overrides,
-  }) as const;
+const cover = (overrides: Partial<CoverSlide> = {}): CoverSlide => ({
+  layout: 'cover',
+  kicker: 'Winter stories',
+  title: 'Pitha week is *back*',
+  image: { asset: 'ast_9f2', crop: [0, 120, 1080, 900], focus: 'center' },
+  alt: 'A plate of pitha',
+  ...overrides,
+});
 
 const carousel = (slides: Post['slides'] = [cover(), testSlide()]): Post =>
   testPost(testSlide(), { kind: 'carousel', slides });
 
-function image(
-  overrides: Partial<Extract<RenderKeyInput, { format: 'jpeg' }>> = {},
-): RenderKeyInput {
+function image(overrides: Partial<ImageKeyInput> = {}): RenderKeyInput {
   return {
     rendererVersion: 1,
     lookVersion: 3,
@@ -40,7 +44,7 @@ function image(
   };
 }
 
-function pdf(overrides: Partial<Extract<RenderKeyInput, { format: 'pdf' }>> = {}): RenderKeyInput {
+function pdf(overrides: Partial<DocumentKeyInput> = {}): RenderKeyInput {
   return {
     rendererVersion: 1,
     lookVersion: 3,
@@ -158,7 +162,7 @@ describe('renderKey', () => {
     [
       'another slide’s text',
       image({
-        post: carousel([cover(), testSlide({ title: 'Something else' } as Partial<TextSlide>)]),
+        post: carousel([cover(), testSlide({ title: 'Something else' })]),
       }),
     ],
     [

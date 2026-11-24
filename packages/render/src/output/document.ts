@@ -1,5 +1,5 @@
 import type { Post } from '@lzp/core';
-import { Fragment, createElement as h } from 'react';
+import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FIT_SCRIPT } from '../fit/script.ts';
 import type { FitReport } from '../fit/report.ts';
@@ -114,17 +114,15 @@ export function buildDocument(input: DocumentInput): string {
     .join('');
   // The head's attributes and title are written by React, so they are escaped as the slide pages' are; the style and
   // the pages are already the builder's own markup.
-  const head = renderToStaticMarkup(
-    h(
-      Fragment,
-      null,
-      h('meta', { charSet: 'utf-8' }),
-      h('meta', {
-        httpEquiv: 'Content-Security-Policy',
-        content: documentPolicy(first.policy, style),
-      }),
-      h('title', null, title),
-    ),
-  );
+  const head = [
+    h('meta', { charSet: 'utf-8' }),
+    h('meta', {
+      httpEquiv: 'Content-Security-Policy',
+      content: documentPolicy(first.policy, style),
+    }),
+    h('title', null, title),
+  ]
+    .map((element) => renderToStaticMarkup(element))
+    .join('');
   return `<!DOCTYPE html><html lang="${first.lang}"><head>${head}<style>${style}</style></head><body class="${first.classes}">${body}</body></html>`;
 }

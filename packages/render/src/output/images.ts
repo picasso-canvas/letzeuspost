@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import { RenderFailure } from '../browser/limits.ts';
 
 // The image outputs (§08 Outputs), every one made from the PNG master (Chrome's lossless screenshot at 1×, in sRGB):
@@ -19,7 +19,7 @@ export const THUMBNAIL_WIDTH = 360;
 const THUMBNAIL_QUALITY = 80;
 
 /** The master as sharp reads it, once it is known to be a PNG (anything else is a bug in the caller). */
-async function fromMaster(master: Uint8Array): Promise<sharp.Sharp> {
+async function fromMaster(master: Uint8Array): Promise<Sharp> {
   const image = sharp(master);
   const { format } = await image.metadata();
   if (format !== 'png')

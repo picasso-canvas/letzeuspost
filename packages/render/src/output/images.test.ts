@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type Metadata } from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { JPEG_QUALITIES, MAX_JPEG_BYTES, toJpeg, toPng, toThumbnail } from './images.ts';
 
@@ -54,7 +54,7 @@ function iccProfile(icc: Uint8Array | undefined): { space: string; srgb: boolean
 }
 
 /** What no exported image may carry besides its colour profile (§08: no other metadata). */
-function expectNoOtherMetadata(meta: sharp.Metadata): void {
+function expectNoOtherMetadata(meta: Metadata): void {
   expect(meta.exif).toBeUndefined();
   expect(meta.xmp).toBeUndefined();
   expect(meta.iptc).toBeUndefined();
@@ -62,7 +62,7 @@ function expectNoOtherMetadata(meta: sharp.Metadata): void {
 }
 
 /** An sRGB colour profile is embedded, and the pixels are in sRGB. */
-function expectSrgb(meta: sharp.Metadata): void {
+function expectSrgb(meta: Metadata): void {
   expect(meta.space).toBe('srgb');
   expect(meta.icc).toBeDefined();
   expect(iccProfile(meta.icc)).toEqual({ space: 'RGB ', srgb: true });

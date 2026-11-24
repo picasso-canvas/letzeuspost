@@ -30,12 +30,21 @@ type Common = {
   size: SizeName;
 };
 
-/** An image (the PNG master, the JPEG, the WebP thumbnail) is one slide; the PDF is every slide, titled with the hook. */
-export type RenderKeyInput = Common &
-  (
-    | { format: Exclude<OutputFormat, 'pdf'>; /** The slide, from 0. */ slide: number }
-    | { format: 'pdf'; /** The post's hook, the PDF's title (§12). */ title: string }
-  );
+/** An image (the PNG master, the JPEG, the WebP thumbnail) is one slide. */
+export type ImageKeyInput = Common & {
+  format: Exclude<OutputFormat, 'pdf'>;
+  /** The slide, from 0. */
+  slide: number;
+};
+
+/** The PDF is every slide, titled with the hook. */
+export type DocumentKeyInput = Common & {
+  format: 'pdf';
+  /** The post's hook, the PDF's title (§12). */
+  title: string;
+};
+
+export type RenderKeyInput = ImageKeyInput | DocumentKeyInput;
 
 /** By UTF-16 code units, the same on every machine (no locale). */
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
