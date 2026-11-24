@@ -367,6 +367,13 @@ test.describe('the longest stat, question and offer text fits, or fails naming t
     ],
   ];
 
+  // Too long for its text area even at the smallest scale: a story's text area is the page less the larger overlay
+  // zones (250 px above, 384 below) and the footer, and four options of eight Bangla words under a forty-word
+  // question need about twice its height. Such a slide must fail the check, naming the question and the options with
+  // a target each: it is never delivered. The text area centres what it holds, so its failed render spills over the
+  // footer and the top margin; that overlap is what a fail looks like, not a pass that overlaps.
+  const MUST_FAIL = new Set(['question-bn-story']);
+
   for (const lang of ['en', 'bn'] as const)
     for (const size of SIZE_NAMES)
       for (const [layout, slide, fieldPattern] of cases(lang))
@@ -376,6 +383,13 @@ test.describe('the longest stat, question and offer text fits, or fails naming t
             size,
             `${layout}-longest-${lang}-${size}`,
           );
+          if (MUST_FAIL.has(`${layout}-${lang}-${size}`)) {
+            expect(report.status).toBe('fail');
+            expect(report.fields.map((field) => field.field)).toEqual([
+              'slides[0].question',
+              'slides[0].options',
+            ]);
+          }
           if (report.status === 'pass') {
             expect(report.fields).toEqual([]);
             return;
