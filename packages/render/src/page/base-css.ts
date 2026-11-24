@@ -91,6 +91,33 @@ body {
   min-width: 0;
   min-height: calc(var(--h) * ${String(IMAGE_BOX_MIN_SHARE)});
 }
+img.photo {
+  display: block;
+  object-fit: cover;
+}
+.cta-mark {
+  display: block;
+  align-self: flex-start;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+.cta-line {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: max(var(--body-floor), calc(var(--body-size) * 1.15 * var(--k)));
+  line-height: var(--lh-body);
+  overflow-wrap: break-word;
+}
+.sticker, .step-label {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+}
+.sticker {
+  align-self: flex-start;
+  white-space: nowrap;
+}
 .page-number {
   font-size: ${String(SMALL_PRINT_PX)}px;
   line-height: var(--lh-body);
