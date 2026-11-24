@@ -51,8 +51,8 @@ const PLAIN_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*\.png$/;
 export interface ScreenshotDeps {
   /** `gh` with JSON out, for the run and artifact lists. */
   gh: (args: string[]) => string;
-  /** One artifact's zip, as bytes (never unpacked on disk). */
-  fetchZip: (artifactId: number) => Buffer;
+  /** One artifact's zip, as bytes (never unpacked on disk), within `timeoutMs`: what is left of the step's limit. */
+  fetchZip: (artifactId: number, timeoutMs: number) => Buffer;
   /** The clock for the step's time limit; Date.now unless a test gives another. */
   now?: () => number;
   /** A smaller inflate budget, for tests only; the real one is MAX_INFLATED_BYTES (#216). */
@@ -381,9 +381,12 @@ export function collectScreenshots(sha: string, into: string, deps: ScreenshotDe
     }
     let zip: Buffer | null = null;
     // A download that fails once is tried again (#365): a reviewer who is given no render blocks on that commit for good.
-    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS && zip === null && !pastLimit(); attempt++) {
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS && zip === null; attempt++) {
+      // The clock is read once, so the try is given at least 1 ms: a limit of 0 would mean no limit at all (Cerberus F1).
+      const left = STEP_TIME_LIMIT_MS - (now() - started);
+      if (left <= 0) break;
       try {
-        zip = deps.fetchZip(found.artifactId);
+        zip = deps.fetchZip(found.artifactId, left);
       } catch {
         zip = null;
       }
