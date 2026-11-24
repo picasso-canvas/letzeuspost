@@ -8,20 +8,26 @@ import {
   LONG_BODY,
   LONGEST_COVER_TITLE,
   LONGEST_LIST_ITEMS,
+  LONGEST_OPTIONS,
   SAMPLE_COVER,
   SAMPLE_CTA,
   SAMPLE_FACT,
   SAMPLE_LIST,
+  SAMPLE_OFFER,
   SAMPLE_PUBLIC_QUOTE,
+  SAMPLE_QUESTION,
+  SAMPLE_QUESTION_IMAGES,
   SAMPLE_QUOTE,
+  SAMPLE_STAT,
   SAMPLE_STEP,
+  bareOffer,
   type Lang,
 } from '../../packages/render/src/layouts/samples.ts';
 import { testBanglaPost, testKit, testPost } from '../../packages/render/src/page/test-fixtures.ts';
 import { SIZE_NAMES } from '../../packages/render/src/sizes.ts';
 import { renderPostSlide } from './slides.ts';
 
-// The cover, cta, step, fact, list and quote layouts in a real Chromium (#338, #339; §07 Layouts, §08 Sizes and arrangements and The fit
+// The cover, cta, step, fact, list, quote, stat, question and offer layouts in a real Chromium (#338, #339, #340; §07 Layouts, §08 Sizes and arrangements and The fit
 // check). These run in CI's services job, the `render` Playwright project: each layout in the Clean look at every
 // size, in English and Bangla, through the page runner and the fit script. Each drawn slide is kept as
 // `<layout>-<lang>-<size>.png` in the test's output folder, which CI uploads as the `render-output` artifact for
@@ -69,6 +75,10 @@ const SAMPLES = [
   ['list', SAMPLE_LIST],
   ['quote', SAMPLE_QUOTE],
   ['quote-public', SAMPLE_PUBLIC_QUOTE],
+  ['stat', SAMPLE_STAT],
+  ['question', SAMPLE_QUESTION],
+  ['question-images', SAMPLE_QUESTION_IMAGES],
+  ['offer', SAMPLE_OFFER],
 ] as const;
 
 /** Draws one slide in a fresh renderer, and keeps its PNG for the review. */
@@ -329,6 +339,128 @@ test.describe('missing optional fields render cleanly', () => {
         } finally {
           await renderer.close();
         }
+      });
+    }
+});
+
+test.describe('the longest stat, question and offer text fits, or fails naming the field and a target', () => {
+  // A size either passes with nothing to fix, or fails at the smallest scale naming the fields to shorten
+  const cases = (lang: Lang): [string, Slide, RegExp][] => [
+    [
+      'stat',
+      { ...SAMPLE_STAT[lang], label: LONG_BODY[lang] },
+      /^slides\[0\]\.(number|label|source)$/,
+    ],
+    [
+      'question',
+      {
+        ...SAMPLE_QUESTION[lang],
+        question: LONG_BODY[lang],
+        options: LONGEST_OPTIONS[lang].map((text) => ({ text })),
+      },
+      /^slides\[0\]\.(kicker|question|options)$/,
+    ],
+    [
+      'offer',
+      { ...SAMPLE_OFFER[lang], title: LONGEST_COVER_TITLE[lang], details: LONG_BODY[lang] },
+      /^slides\[0\]\.(badge|title|details|price|cta)$/,
+    ],
+  ];
+
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of SIZE_NAMES)
+      for (const [layout, slide, fieldPattern] of cases(lang))
+        test(`${layout} with the longest text, ${lang}, ${size}`, async () => {
+          const { report } = await draw(
+            postWith(lang, slide),
+            size,
+            `${layout}-longest-${lang}-${size}`,
+          );
+          if (report.status === 'pass') {
+            expect(report.fields).toEqual([]);
+            return;
+          }
+          expect(report.k).toBe(0.85);
+          expect(report.fields.length).toBeGreaterThan(0);
+          for (const field of report.fields) {
+            expect(field.field).toMatch(fieldPattern);
+            expect(field.targetGraphemes).toBeGreaterThanOrEqual(1);
+            expect(field.targetGraphemes).toBeLessThan(field.graphemes);
+          }
+        });
+});
+
+test.describe('a stat number, an offer price or badge that is too wide is named by its own field', () => {
+  // One token, many times over: wider than the widest column at every size, even at the smallest scale
+  const TOO_WIDE: Record<Lang, string> = {
+    en: '1234567890'.repeat(8),
+    bn: '১২৩৪৫৬৭৮৯০'.repeat(8),
+  };
+
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of SIZE_NAMES) {
+      const cases: [string, Slide, string][] = [
+        ['stat', { ...SAMPLE_STAT[lang], number: TOO_WIDE[lang] }, 'number'],
+        ['stat', { ...SAMPLE_STAT[lang], source: TOO_WIDE[lang] }, 'source'],
+        ['offer', { ...SAMPLE_OFFER[lang], price: TOO_WIDE[lang] }, 'price'],
+        ['offer', { ...SAMPLE_OFFER[lang], badge: TOO_WIDE[lang] }, 'badge'],
+      ];
+      for (const [layout, slide, field] of cases)
+        test(`${layout} with a ${field} of one long token, ${lang}, ${size}`, async () => {
+          const { report } = await draw(
+            postWith(lang, slide),
+            size,
+            `${layout}-${field}-wide-${lang}-${size}`,
+          );
+          expect(report.status).toBe('fail');
+          const named = report.fields.find((candidate) => candidate.field === `slides[0].${field}`);
+          expect(named).toBeDefined();
+          expect(named?.overflowPx).toBeGreaterThan(0);
+          expect(named?.targetGraphemes).toBeGreaterThanOrEqual(1);
+          expect(named?.targetGraphemes).toBeLessThan(named?.graphemes ?? 0);
+        });
+    }
+});
+
+test.describe('stat, question and offer: missing optional fields render cleanly', () => {
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of SIZE_NAMES) {
+      test(`offer with no price and no image, ${lang}, ${size}`, async () => {
+        const drawn = await draw(
+          postWith(lang, bareOffer(lang)),
+          size,
+          `offer-bare-${lang}-${size}`,
+        );
+        expect(drawn.report).toMatchObject({ status: 'pass', fields: [] });
+        expect(drawn.warnings).toEqual([]);
+        expect(drawn.render.errors).toEqual([]);
+      });
+
+      test(`offer with an image and no price, ${lang}, ${size}`, async () => {
+        const { layout, badge, title, details, image: photo, cta, alt } = SAMPLE_OFFER[lang];
+        const slide: Slide = { layout, badge, title, details, image: photo, cta, alt };
+        const drawn = await draw(postWith(lang, slide), size, `offer-noprice-${lang}-${size}`);
+        expect(drawn.report).toMatchObject({ status: 'pass', fields: [] });
+        expect(drawn.render.errors).toEqual([]);
+      });
+
+      test(`offer with a price and no image, ${lang}, ${size}`, async () => {
+        const { layout, badge, title, details, price, cta, alt } = SAMPLE_OFFER[lang];
+        const slide: Slide = { layout, badge, title, details, price, cta, alt };
+        const drawn = await draw(postWith(lang, slide), size, `offer-noimage-${lang}-${size}`);
+        expect(drawn.report).toMatchObject({ status: 'pass', fields: [] });
+        expect(drawn.render.errors).toEqual([]);
+      });
+
+      test(`question with the fewest options (two), ${lang}, ${size}`, async () => {
+        const slide: Slide = {
+          ...SAMPLE_QUESTION[lang],
+          options: SAMPLE_QUESTION[lang].options.slice(0, 2),
+        };
+        const drawn = await draw(postWith(lang, slide), size, `question-two-${lang}-${size}`);
+        expect(drawn.report).toMatchObject({ status: 'pass', fields: [] });
+        expect(drawn.warnings).toEqual([]);
+        expect(drawn.render.errors).toEqual([]);
       });
     }
 });
