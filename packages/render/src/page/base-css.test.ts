@@ -69,6 +69,54 @@ describe('the base CSS', () => {
   });
 });
 
+describe('the rules of the cover, cta and step layouts (#338)', () => {
+  it('crops a photo to its box instead of stretching it', () => {
+    expect(declarations(BASE_CSS, 'img.photo')).toMatch(/object-fit:\s*cover/);
+  });
+
+  it('keeps the brand mark inside bounds and in its own shape', () => {
+    const mark = declarations(BASE_CSS, '.cta-mark');
+    expect(mark).toMatch(/object-fit:\s*contain/);
+    expect(mark).toMatch(/max-width:\s*100%/);
+    expect(mark).toMatch(/width:\s*auto/);
+    expect(mark).toMatch(/align-self:\s*flex-start/);
+  });
+
+  it('sizes the call to action like body text, never under the body floor, in the heading weight', () => {
+    const line = declarations(BASE_CSS, '.cta-line');
+    expect(line).toMatch(/font-size:\s*max\(var\(--body-floor\)/);
+    expect(line).toMatch(/font-weight:\s*var\(--weight-heading\)/);
+    expect(line).toMatch(/line-height:\s*var\(--lh-body\)/);
+    expect(line).toMatch(/overflow-wrap:\s*break-word/);
+  });
+
+  it("draws the sticker and the step label in ink, the colour of the small print's contrast pair, on one line", () => {
+    for (const selector of ['.sticker', '.step-label']) {
+      const rule = declarations(BASE_CSS, selector);
+      expect(rule).toMatch(/font-weight:\s*var\(--weight-heading\)/);
+      expect(rule).not.toMatch(/(^|[;\s])color:/); // a colour here would need a pair of its own
+    }
+    const sticker = declarations(BASE_CSS, '.sticker');
+    expect(sticker).toMatch(/align-self:\s*flex-start/);
+    expect(sticker).toMatch(/white-space:\s*nowrap/); // a line too wide is seen by the fit check, not wrapped away
+  });
+
+  it("clamps the sticker to its column, so a line that is too wide sticks out of the sticker's box and the fit script can measure it", () => {
+    // Without a clamp the box grows with its one-line text (`align-self: flex-start`), scrollWidth equals clientWidth
+    // and the overflow is seen only as a block outside the text area, with no field to name (#338, CI F1).
+    const sticker = declarations(BASE_CSS, '.sticker');
+    expect(sticker).toMatch(/max-width:\s*100%/);
+    expect(sticker).toMatch(/min-width:\s*0/);
+    expect(sticker).toMatch(/overflow:\s*hidden/);
+  });
+
+  it('has the fit script measure the call to action, the sticker and the step label', () => {
+    for (const name of ['cta-line', 'sticker', 'step-label']) {
+      expect(FIT_SCRIPT).toContain(`'${name}'`);
+    }
+  });
+});
+
 describe('the constants that the Bangla rules rest on', () => {
   it("are §07's: body 1.65, headings 1.3", () => {
     expect(BANGLA_LINE_HEIGHT_MIN).toEqual({ body: 1.65, heading: 1.3 });

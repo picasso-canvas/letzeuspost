@@ -1,5 +1,8 @@
 import type { Slide } from '@lzp/core';
 import { createElement as h, type ReactNode } from 'react';
+import { CoverLayout } from './cover.ts';
+import { CtaLayout } from './cta.ts';
+import { StepLayout } from './step.ts';
 import { TextLayout } from './text.ts';
 import type { LayoutProps } from './types.ts';
 
@@ -9,6 +12,12 @@ export type { LayoutProps };
 export function renderLayout(props: LayoutProps<Slide['layout']>): ReactNode {
   const { slide } = props;
   switch (slide.layout) {
+    case 'cover':
+      return h(CoverLayout, { ...props, slide });
+    case 'step':
+      return h(StepLayout, { ...props, slide });
+    case 'cta':
+      return h(CtaLayout, { ...props, slide });
     case 'text':
       return h(TextLayout, { ...props, slide });
     default:

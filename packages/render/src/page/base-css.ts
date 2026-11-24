@@ -91,6 +91,38 @@ body {
   min-width: 0;
   min-height: calc(var(--h) * ${String(IMAGE_BOX_MIN_SHARE)});
 }
+img.photo {
+  display: block;
+  object-fit: cover;
+}
+.cta-mark {
+  display: block;
+  align-self: flex-start;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+.cta-line {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: max(var(--body-floor), calc(var(--body-size) * 1.15 * var(--k)));
+  line-height: var(--lh-body);
+  overflow-wrap: break-word;
+}
+.sticker, .step-label {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+}
+.sticker {
+  /* Clamped to its column: a line wider than that sticks out of the box (overflow hidden makes scrollWidth exceed
+     clientWidth), so the fit script measures it and names the sticker. Unclamped, the box grows with its text. */
+  align-self: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
 .page-number {
   font-size: ${String(SMALL_PRINT_PX)}px;
   line-height: var(--lh-body);

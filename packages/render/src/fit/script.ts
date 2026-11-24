@@ -24,8 +24,20 @@ export const IMAGE_BOX_MIN_SHARE = 0.26;
 // A string, not a function, so the text that is hashed and served is the text that is written here.
 export const FIT_SCRIPT = `(() => {
   'use strict';
-  const TEXT_BLOCKS = ['kicker', 'title', 'body', 'source'];
-  const SHORTENABLE = ['kicker', 'title', 'body'];
+  // The blocks that are measured, by the class they carry, and the field of the slide each is the text of. The step
+  // label has none (it is made from n and of), so it is measured but never named. Small print (the source, the
+  // sticker, the step label) has a fixed size, so it is not shortened to give room back; a line too wide is named.
+  const FIELDS = {
+    kicker: 'kicker',
+    title: 'title',
+    body: 'body',
+    source: 'source',
+    'cta-line': 'cta',
+    sticker: 'sticker',
+    'step-label': null,
+  };
+  const TEXT_BLOCKS = Object.keys(FIELDS);
+  const SHORTENABLE = ['kicker', 'title', 'body', 'cta-line'];
   const STEPS_FROM = 100;
   const STEPS_TO = 85;
   const IMAGE_BOX_SHARE = ${String(IMAGE_BOX_MIN_SHARE)};
@@ -104,12 +116,13 @@ export const FIT_SCRIPT = `(() => {
       const together = sum(share.map((block) => block.box.height));
       const fixed = needed - together;
       for (const block of members) {
+        if (FIELDS[block.name] === null) continue;
         const vertical = share.includes(block) ? clamp((area.height - fixed) / together) : 1;
         const horizontal = widthOver(block) > WIDTH_SLACK ? clamp(block.clientWidth / block.scrollWidth) : 1;
         const ratio = Math.min(vertical, horizontal);
         if (ratio === 1) continue;
         named.set(block.element, {
-          name: block.name,
+          name: FIELDS[block.name],
           lines: block.lines,
           needed: round(block.box.height),
           available: round(block.box.height * ratio),
