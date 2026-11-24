@@ -1,9 +1,9 @@
 import type { Post, Slide } from '@lzp/core';
 
-// Sample content for the cover, cta, step, fact, list and quote layouts, written for the specs: a made-up physio practice ("Stillwater
-// Physio") in English and a made-up café ("Meghla Cafe") in Bangla. No real brand, no real person. Typical copy is what
-// the AI would write; the longest copy is §07's limits (a cover title of 8 words) and long words, to see what the fit
-// check does at the edge.
+// Sample content for the cover, cta, step, fact, list and quote layouts, written for the specs: a made-up physio
+// practice ("Stillwater Physio") in English and a made-up café ("Meghla Cafe") in Bangla. No real brand, no real
+// person. Typical copy is what the AI would write; the longest copy is §07's limits (a cover title of 8 words) and
+// long words, to see what the fit check does at the edge.
 
 type Of<L extends Slide['layout']> = Extract<Slide, { layout: L }>;
 export type Lang = Post['lang'];
@@ -83,8 +83,8 @@ export const SAMPLE_FACT: Record<Lang, Of<'fact'>> = {
     kicker: 'Did you know?',
     title: 'Sitting still for an hour *stiffens* your hips',
     image: photo,
-    body: 'Short breaks every 30 minutes keep your joints moving and your back far less sore by the evening.',
-    source: 'Stillwater Physio patient guide, 2026',
+    body: 'A short break every 30 minutes keeps your joints moving.',
+    source: 'Stillwater Physio guide, 2026',
     alt: 'A person standing up from a desk to stretch',
   },
   bn: {
@@ -103,10 +103,10 @@ export const SAMPLE_LIST: Record<Lang, Of<'list'>> = {
     layout: 'list',
     title: 'Four habits for a *calmer* back',
     items: [
-      'Raise your screen to eye level',
-      'Stand up every thirty minutes',
-      'Keep both feet flat on the floor',
-      'Walk for ten minutes after lunch',
+      'Screen at eye level',
+      'Stand up every half hour',
+      'Both feet flat on the floor',
+      'Ten-minute walk after lunch',
     ],
     alt: 'A checklist of four desk habits',
   },

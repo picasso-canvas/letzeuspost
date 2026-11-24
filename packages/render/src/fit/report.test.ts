@@ -140,7 +140,7 @@ describe('buildFitReport', () => {
     expect(report.fields[0]?.targetGraphemes).toBe(1);
   });
 
-  it('names a list slide\'s items by one field, counting every item\'s drawn graphemes', () => {
+  it("names a list slide's items by one field, counting every item's drawn graphemes", () => {
     const slide: Slide = {
       layout: 'list',
       title: 'Desk habits',

@@ -10,8 +10,8 @@ import { SIZES, SMALL_PRINT_PX, type SizeName } from '../sizes.ts';
 // The page is a flex column: an optional header (the logo, when it sits at the top), the text area, an optional
 // footer (the logo at the bottom, and the page number). The text area keeps to the margins, which are the safe zones.
 
-/** A quote is set at this share of the title's size: big enough to lead, small enough for a sentence (the contrast pairs read it too). */
-export const QUOTE_TITLE_SHARE = 0.8;
+/** A quote is set at this share of the title's size: big enough to lead the slide, small enough for a sentence (the contrast pairs read it too). */
+export const QUOTE_TITLE_SHARE = 0.9;
 /** List items are set a little larger than body text, since they are the slide's content. */
 const ITEM_BODY_SHARE = 1.15;
 
@@ -62,6 +62,10 @@ body {
   flex-direction: column;
   gap: var(--gap);
 }
+.cols .layout-fact .col-text { flex-grow: 3; }
+.cols .layout-fact .image-box { flex-grow: 2; }
+.cols .layout-list .col-text { flex-grow: 2; }
+.cols .layout-list .col-detail { flex-grow: 3; }
 .kicker {
   margin: 0;
   font-family: var(--font-heading);
@@ -126,6 +130,8 @@ img.photo {
 }
 .person {
   margin: 0;
+  /* The attribution is a second group under the quote: its gap above is doubled, so it is set apart from the words */
+  margin-top: var(--gap);
   font-family: var(--font-heading);
   font-weight: var(--weight-heading);
   font-size: max(var(--body-floor), calc(var(--body-size) * var(--k)));

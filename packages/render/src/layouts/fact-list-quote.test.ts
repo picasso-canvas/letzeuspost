@@ -118,7 +118,7 @@ describe('the fact layout', () => {
 
   it('labels the source in the language of the post, as small print', () => {
     expect(build(fact, 'portrait').html).toContain(
-      '<p class="source small-print">Source: Stillwater Physio patient guide, 2026</p>',
+      '<p class="source small-print">Source: Stillwater Physio guide, 2026</p>',
     );
     expect(build(SAMPLE_FACT.bn, 'portrait', 'bn').html).toContain(
       '<p class="source small-print">সূত্র: মেঘলা কাফের রান্নাঘরের খাতা, ২০২৬</p>',

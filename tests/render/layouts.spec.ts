@@ -168,18 +168,29 @@ test.describe('the longest quote and the longest list fit, or fail naming the fi
           expect(field.targetGraphemes).toBeLessThan(field.graphemes);
         }
       });
+    }
+});
 
-      // §07: five items of at most eight words. A list's items are one block to the fit check, named `items`.
-      test(`list with five items of eight words, ${lang}, ${size}`, async () => {
-        const slide: Slide = {
-          ...SAMPLE_LIST[lang],
-          title: LONGEST_COVER_TITLE[lang],
-          items: LONGEST_LIST_ITEMS[lang],
-        };
+test.describe('the longest list: five items of eight words (§07)', () => {
+  // A list's items are one block to the fit check, named `items` (`slides[0].items`). Five items of long words do not
+  // fit every size: a size either passes with nothing to fix, or fails naming the field to shorten, with a target.
+  for (const lang of ['en', 'bn'] as const)
+    test(`names the items to shorten where they do not fit, ${lang}`, async () => {
+      const slide: Slide = {
+        ...SAMPLE_LIST[lang],
+        title: LONGEST_COVER_TITLE[lang],
+        items: LONGEST_LIST_ITEMS[lang],
+      };
+      const reports = [];
+      for (const size of SIZE_NAMES) {
         const { report } = await draw(postWith(lang, slide), size, `list-longest-${lang}-${size}`);
+        reports.push(report);
+      }
+
+      for (const report of reports) {
         if (report.status === 'pass') {
           expect(report.fields).toEqual([]);
-          return;
+          continue;
         }
         expect(report.k).toBe(0.85);
         expect(report.fields.length).toBeGreaterThan(0);
@@ -188,8 +199,14 @@ test.describe('the longest quote and the longest list fit, or fail naming the fi
           expect(field.targetGraphemes).toBeGreaterThanOrEqual(1);
           expect(field.targetGraphemes).toBeLessThan(field.graphemes);
         }
-      });
-    }
+      }
+      const failed = reports.filter((report) => report.status === 'fail');
+      expect(failed.length).toBeGreaterThan(0);
+      const named = failed.flatMap((report) =>
+        report.fields.filter((field) => field.field === 'slides[0].items'),
+      );
+      expect(named.length).toBeGreaterThan(0);
+    });
 });
 
 test.describe('a source, a person or a role that is too wide is named by its own field', () => {
