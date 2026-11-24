@@ -187,3 +187,108 @@ export const LONG_BODY: Record<Lang, string> = {
   en: 'Most desk pain starts with small habits repeated for hours: a screen that sits too low, a chair that is too deep, a phone held between ear and shoulder. Change one of them this week and notice how your neck feels by the evening.',
   bn: 'ডেস্কের ব্যথা বেশির ভাগ সময় শুরু হয় ছোট ছোট অভ্যাস থেকে: স্ক্রিন খুব নিচে, চেয়ার খুব গভীর, কিংবা কাঁধ আর কানের মাঝে ফোন ধরে রাখা। এই সপ্তাহে একটি অভ্যাস বদলান, সন্ধ্যায় ঘাড়ের পার্থক্য টের পাবেন।',
 };
+
+// The stat, question and offer layouts (#340): the same made-up practice and café. A stat is a number a client could
+// check, with the source under it; a question's answers come in the comments, so its options are plain answers; an
+// offer is a launch or a deal with a date and a price the brief would have given.
+
+export const SAMPLE_STAT: Record<Lang, Of<'stat'>> = {
+  en: {
+    layout: 'stat',
+    number: '68%',
+    label: 'of desk workers feel back pain by the end of the working week',
+    source: 'Stillwater Physio client survey, 400 people, 2026',
+    alt: '68 percent of desk workers feel back pain by Friday',
+  },
+  bn: {
+    layout: 'stat',
+    number: '৬৮%',
+    label: 'অতিথি শীতের সকালে চায়ের সঙ্গে পিঠা বেছে নেন',
+    source: 'মেঘলা কাফের অতিথি জরিপ, ২০২৬',
+    alt: 'অতিথিদের ৬৮ শতাংশ শীতের সকালে পিঠা বেছে নেন',
+  },
+};
+
+export const SAMPLE_QUESTION: Record<Lang, Of<'question'>> = {
+  en: {
+    layout: 'question',
+    kicker: 'Tell us in the comments',
+    question: 'What do you do first when your back starts to ache?',
+    options: [
+      { text: 'Stretch it out' },
+      { text: 'Go for a short walk' },
+      { text: 'Carry on and hope' },
+    ],
+    alt: 'A question: what do you do first when your back aches?',
+  },
+  bn: {
+    layout: 'question',
+    kicker: 'মন্তব্যে জানান',
+    question: 'শীতের সকালে আপনার প্রথম পছন্দ কোনটি?',
+    options: [
+      { text: 'ভাপা পিঠা' },
+      { text: 'পাটিসাপটা' },
+      { text: 'চিতই পিঠা' },
+      { text: 'শুধু গরম চা' },
+    ],
+    alt: 'প্রশ্ন: শীতের সকালে আপনার প্রথম পছন্দ কোনটি?',
+  },
+};
+
+/** A question whose options are pictures: the answers are the images, picked in the comments by their place. */
+export const SAMPLE_QUESTION_IMAGES: Record<Lang, Of<'question'>> = {
+  en: {
+    layout: 'question',
+    kicker: 'Desk setup',
+    question: 'Which desk looks most like yours?',
+    options: [{ image: photo }, { image: { asset: 'mascot_1' } }],
+    alt: 'A question: which desk looks most like yours? Two pictures to choose from',
+  },
+  bn: {
+    layout: 'question',
+    kicker: 'আপনার পছন্দ',
+    question: 'কোন থালাটি আপনার সবচেয়ে ভালো লাগে?',
+    options: [
+      { image: photo },
+      { image: { asset: 'mascot_1' } },
+      { image: photo },
+      { image: { asset: 'mascot_1' } },
+    ],
+    alt: 'প্রশ্ন: কোন থালাটি আপনার সবচেয়ে ভালো লাগে? চারটি ছবি',
+  },
+};
+
+export const SAMPLE_OFFER: Record<Lang, Of<'offer'>> = {
+  en: {
+    layout: 'offer',
+    badge: 'New this month',
+    title: 'The *posture* reset package',
+    details: 'Three physio sessions and a desk check, booked together.',
+    price: '$90 instead of $120',
+    image: photo,
+    cta: 'Book by 30 April',
+    alt: 'The posture reset package: $90 instead of $120, book by 30 April',
+  },
+  bn: {
+    layout: 'offer',
+    badge: 'নতুন',
+    title: 'শীতের *পিঠা* প্যাকেজ',
+    details: 'চার রকমের পিঠা আর এক কাপ ভাপা চা, একসাথে।',
+    price: '৳৩৫০',
+    image: photo,
+    cta: 'আজই টেবিল বুক করুন',
+    alt: 'শীতের পিঠা প্যাকেজ: ৩৫০ টাকা, আজই টেবিল বুক করুন',
+  },
+};
+
+/** An offer with no price and no image: what is left when the optional fields are not given. */
+export function bareOffer(lang: Lang): Of<'offer'> {
+  const { layout, badge, title, details, cta, alt } = SAMPLE_OFFER[lang];
+  return { layout, badge, title, details, cta, alt };
+}
+
+/** Four options, each a long answer, the most a question may have (§07). */
+export const LONGEST_OPTIONS: Record<Lang, string[]> = {
+  en: LONGEST_LIST_ITEMS.en.slice(0, 4),
+  bn: LONGEST_LIST_ITEMS.bn.slice(0, 4),
+};

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { LookSchema, SIZE_NAMES, type Post } from '@lzp/core';
+import { LookSchema, SIZE_NAMES, type Post, type Slide } from '@lzp/core';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FONT_MANIFEST } from '../fonts/library.ts';
 import { SIZES } from '../sizes.ts';
@@ -67,8 +67,13 @@ describe('buildSlide: a full HTML document', () => {
   it('refuses a look that no one registered, and a layout that is not built yet', () => {
     const bold = testPost(testSlide(), { look: { name: 'bold', switches: {} } });
     expect(() => build(bold)).toThrow(/bold/);
-    const stat = { layout: 'stat', number: '3', label: 'l', source: 's', alt: 'a' } as const;
-    expect(() => buildSlide(testPost(), stat, 'portrait', testKit())).toThrow(/stat/);
+    const meme: Slide = {
+      layout: 'meme',
+      panels: [{ mascot: true, label: 'l' }],
+      text: 't',
+      alt: 'a',
+    };
+    expect(() => buildSlide(testPost(), meme, 'portrait', testKit())).toThrow(/meme/);
   });
 
   it('refuses a colour that is not hex: it would end up in CSS', () => {

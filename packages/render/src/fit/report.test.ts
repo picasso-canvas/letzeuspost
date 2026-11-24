@@ -159,6 +159,47 @@ describe('buildFitReport', () => {
     expect(FitReportSchema.safeParse(report).success).toBe(true);
   });
 
+  it("names a question slide's options by one field, counting the text options only", () => {
+    const slide: Slide = {
+      layout: 'question',
+      kicker: 'Your turn',
+      question: 'Which one?',
+      options: [
+        { text: 'The *tall* one' },
+        { image: { asset: 'photo_1' } },
+        { text: 'ক্ষত ক্ষমা' },
+      ],
+      alt: 'A question',
+    };
+    const report = buildFitReport({ ...testPost(), slides: [slide] }, 0, 'portrait', {
+      k: 0.85,
+      fits: false,
+      fields: [{ name: 'options', lines: 4, needed: 400, available: 200, overflowPx: 200 }],
+    });
+    // 'The tall one' 12 + 'ক্ষত ক্ষমা' 5 = 17; 17 × 0.5 × 0.95 = 8.07
+    expect(report.fields).toEqual([
+      { field: 'slides[0].options', lines: 4, graphemes: 17, overflowPx: 200, targetGraphemes: 8 },
+    ]);
+    expect(FitReportSchema.safeParse(report).success).toBe(true);
+  });
+
+  it('refuses options that are all pictures: there is no text to shorten', () => {
+    const slide: Slide = {
+      layout: 'question',
+      kicker: 'Your turn',
+      question: 'Which one?',
+      options: [{ image: { asset: 'photo_1' } }, { image: { asset: 'photo_2' } }],
+      alt: 'A question',
+    };
+    expect(() =>
+      buildFitReport({ ...testPost(), slides: [slide] }, 0, 'portrait', {
+        k: 0.85,
+        fits: false,
+        fields: [{ name: 'options', lines: 4, needed: 400, available: 200, overflowPx: 200 }],
+      }),
+    ).toThrow(/options/);
+  });
+
   it('refuses a field whose value is neither a text nor a list of texts', () => {
     const slide = { ...testSlide(), title: 5 };
     // a slide the schema would have refused: the report still must not report a count for it
