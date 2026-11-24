@@ -8,7 +8,7 @@ import { FIT_SCRIPT } from './script.ts';
 // run, without a browser.
 
 type Block = {
-  name: 'kicker' | 'title' | 'body' | 'source';
+  name: 'kicker' | 'title' | 'body' | 'source' | 'cta-line' | 'sticker' | 'step-label';
   /** Height at `--k` 1; a heading or body block grows and shrinks with k² (font size and line count). */
   height: number;
   /** The line height at k = 1, so `lines` is height ÷ line height. */
@@ -25,6 +25,9 @@ type Spec = {
   image?: (k: number) => number;
   pageHeight?: number;
 };
+
+/** The blocks in small print: a fixed 28 px, whatever `--k` is. */
+const FIXED: Block['name'][] = ['source', 'sticker', 'step-label'];
 
 const AREA_TOP = 64;
 const WIDTH = 952;
@@ -45,7 +48,7 @@ function fakePage(spec: Spec, gates: { font?: Promise<void>; image?: Promise<voi
   const dataset: Record<string, string> = {};
 
   const scaled = (block: Block) =>
-    block.name === 'source' ? block.height : block.height * state.k ** 2;
+    FIXED.includes(block.name) ? block.height : block.height * state.k ** 2;
   const heights = () => [
     ...(spec.image === undefined ? [] : [spec.image(state.k)]),
     ...spec.blocks.map(scaled),
@@ -87,7 +90,7 @@ function fakePage(spec: Spec, gates: { font?: Promise<void>; image?: Promise<voi
     const element = {
       classList: {
         contains: (name: string) =>
-          name === block.name || (block.name === 'source' && name === 'small-print'),
+          name === block.name || (FIXED.includes(block.name) && name === 'small-print'),
       },
       getBoundingClientRect: () => rect(topOf(index + offset), scaled(block)),
       get scrollWidth() {
@@ -299,6 +302,58 @@ describe('the fit script: no line overflows', () => {
   it('measures with overflow-wrap off (a word broken mid-word would hide a line that is too wide), then puts it back', async () => {
     const { page } = await run({ blocks: TEXT, area: roomFor(0.9) + 0.1 });
     expect(page.styleLog).toContain('overflow-wrap:normal');
+    for (const own of page.styles.values()) expect(own).toEqual({});
+  });
+});
+
+describe('the fit script: the call to action, the sticker and the step label (#338)', () => {
+  const CTA: Block = { name: 'cta-line', height: 80, line: 80 };
+  const STICKER: Block = { name: 'sticker', height: 40, line: 40 };
+  const STEP_LABEL: Block = { name: 'step-label', height: 40, line: 40 };
+  type Named = { name: string; overflowPx: number; available: number; needed: number };
+
+  it('names a call to action whose line is too wide by the slide field `cta`, with the width it lacks', async () => {
+    const wide: Block = { ...CTA, wide: () => 1200 };
+    const { reported } = await run({ blocks: [TITLE, BODY, wide], area: 1000 });
+    expect(reported).toMatchObject({ k: 0.85, fits: false });
+    const { fields } = reported as { fields: Named[] };
+    expect(fields.map((f) => f.name)).toEqual(['cta']);
+    expect(fields[0]?.overflowPx).toBeCloseTo(1200 - 952, 1);
+  });
+
+  it('names a sticker whose line is too wide by the slide field `sticker`', async () => {
+    const wide: Block = { ...STICKER, wide: () => 1100 };
+    const { reported } = await run({ blocks: [wide, KICKER, TITLE], area: 1000 });
+    expect(reported).toMatchObject({ k: 0.85, fits: false });
+    const { fields } = reported as { fields: Named[] };
+    expect(fields.map((f) => f.name)).toEqual(['sticker']);
+    expect(fields[0]?.overflowPx).toBeCloseTo(1100 - 952, 1);
+  });
+
+  it('counts the call to action among the text that can be shortened when the column is too tall', async () => {
+    const tall: Block = { name: 'cta-line', height: 240, line: 80 };
+    const blocks = [TITLE, BODY, tall];
+    const { reported } = await run({ blocks, area: roomFor(0.85, blocks) - 100 });
+    const { fields } = reported as { fields: Named[] };
+    expect(fields.map((f) => f.name)).toEqual(['title', 'body', 'cta']);
+    expect(fields.reduce((sum, f) => sum + f.overflowPx, 0)).toBeCloseTo(100, 1);
+  });
+
+  it('keeps a sticker and a step label at their fixed size: only k moves the rest', async () => {
+    const blocks = [STICKER, KICKER, TITLE, STEP_LABEL];
+    const { reported } = await run({ blocks, area: roomFor(0.9, blocks) + 0.1 });
+    expect(reported).toEqual({ k: 0.9, fits: true, fields: [] });
+  });
+
+  it('measures the step label but names no field for it (it is made from n and of, there is no text of the slide to cut)', async () => {
+    const wide: Block = { ...STEP_LABEL, wide: () => 1200 };
+    const { reported } = await run({ blocks: [wide, TITLE], area: 1000 });
+    expect(reported).toEqual({ k: 0.85, fits: false, fields: [] });
+  });
+
+  it('measures every block with overflow-wrap off, and puts it back', async () => {
+    const { page } = await run({ blocks: [STICKER, CTA, STEP_LABEL], area: 1000 });
+    expect(page.styleLog.filter((entry) => entry === 'overflow-wrap:normal')).toHaveLength(3);
     for (const own of page.styles.values()) expect(own).toEqual({});
   });
 });
