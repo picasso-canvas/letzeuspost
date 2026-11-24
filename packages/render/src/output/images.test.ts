@@ -43,7 +43,15 @@ async function noise(width: number, height: number): Promise<Uint8Array> {
 }
 
 const metadataOf = (data: Uint8Array) => sharp(data).metadata();
-const ascii = (data: Uint8Array | undefined) => Buffer.from(data ?? []).toString('latin1');
+
+/** The ICC profile's colour space (header bytes 16–19) and whether its description (UTF-16BE in an ICC v4 `mluc` tag) says sRGB. */
+function iccProfile(icc: Uint8Array | undefined): { space: string; srgb: boolean } {
+  const profile = Buffer.from(icc ?? []);
+  return {
+    space: profile.subarray(16, 20).toString('latin1'),
+    srgb: profile.includes(Buffer.from('sRGB', 'utf16le').swap16()),
+  };
+}
 
 /** What no exported image may carry besides its colour profile (§08: no other metadata). */
 function expectNoOtherMetadata(meta: sharp.Metadata): void {
@@ -57,7 +65,7 @@ function expectNoOtherMetadata(meta: sharp.Metadata): void {
 function expectSrgb(meta: sharp.Metadata): void {
   expect(meta.space).toBe('srgb');
   expect(meta.icc).toBeDefined();
-  expect(ascii(meta.icc)).toContain('sRGB');
+  expect(iccProfile(meta.icc)).toEqual({ space: 'RGB ', srgb: true });
 }
 
 describe('toJpeg', () => {
