@@ -64,16 +64,35 @@ export type PairParts = {
 export function layoutPairs(parts: PairParts, size: SizeName): LayoutPair[] {
   const scale = typeScale(size);
   const lead = parts.lead ?? 'title';
-  const share = { title: 1, quote: QUOTE_TITLE_SHARE, number: STAT_NUMBER_SHARE, question: QUESTION_TITLE_SHARE };
+  const share = {
+    title: 1,
+    quote: QUOTE_TITLE_SHARE,
+    number: STAT_NUMBER_SHARE,
+    question: QUESTION_TITLE_SHARE,
+  };
   const title = scale.title * K_MIN * share[lead];
   const floor = (px: number) => Math.max(SIZES[size].bodyFloor, px);
   const body = floor(scale.body * K_MIN);
   const option = floor(scale.body * ITEM_BODY_SHARE * K_MIN);
   return [
-    { name: lead, text: lead === 'number' ? 'primary' : 'ink', on: 'background', px: title, headline: true },
+    {
+      name: lead,
+      text: lead === 'number' ? 'primary' : 'ink',
+      on: 'background',
+      px: title,
+      headline: true,
+    },
     ...(lead === 'number'
       ? []
-      : [{ name: `${lead} highlight`, text: 'primary', on: 'background', px: title, headline: true } as const]),
+      : [
+          {
+            name: `${lead} highlight`,
+            text: 'primary',
+            on: 'background',
+            px: title,
+            headline: true,
+          } as const,
+        ]),
     ...(parts.person === true
       ? [{ name: 'person', text: 'ink', on: 'background', px: body } as const]
       : []),
@@ -95,7 +114,14 @@ export function layoutPairs(parts: PairParts, size: SizeName): LayoutPair[] {
         ]
       : []),
     ...(parts.label === true
-      ? [{ name: 'label', text: 'ink', on: 'background', px: floor(scale.body * STAT_LABEL_SHARE * K_MIN) } as const]
+      ? [
+          {
+            name: 'label',
+            text: 'ink',
+            on: 'background',
+            px: floor(scale.body * STAT_LABEL_SHARE * K_MIN),
+          } as const,
+        ]
       : []),
     ...(parts.details === true
       ? [
@@ -115,7 +141,12 @@ export function layoutPairs(parts: PairParts, size: SizeName): LayoutPair[] {
           { name: 'option', text: 'ink', on: 'background', px: option } as const,
           { name: 'option highlight', text: 'primary', on: 'background', px: option } as const,
           // The letter on a picture: white on the scrim the CSS paints behind it (`SCRIM_ALPHA`, §08)
-          { name: 'letter on picture', text: { hex: '#ffffff' }, on: { photo: true }, px: SMALL_PRINT_PX } as const,
+          {
+            name: 'letter on picture',
+            text: { hex: '#ffffff' },
+            on: { photo: true },
+            px: SMALL_PRINT_PX,
+          } as const,
         ]
       : []),
     ...(parts.cta === true
