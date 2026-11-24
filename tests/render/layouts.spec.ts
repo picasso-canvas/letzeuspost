@@ -141,6 +141,45 @@ test.describe('the longest allowed text fits, or fails naming the field and a ta
         });
 });
 
+test.describe('a call to action or a sticker that is too wide is named by its own field', () => {
+  const CTA_TOO_WIDE: Record<Lang, string> = {
+    en: 'Supercalifragilisticexpialidociousappointmentsbookingtodayplease',
+    bn: 'অনুগ্রহপূর্বকআজকেইআমাদেরসঙ্গেযোগাযোগকরেএকটিবুকিংনিশ্চিতকরুন',
+  };
+  const STICKER_TOO_WIDE: Record<Lang, string> = {
+    en: 'Limited time only: our big launch special offer ends this very Sunday at midnight, so hurry',
+    bn: 'সীমিত সময়ের জন্য আমাদের বিশেষ উদ্বোধনী ছাড় চলছে শুধু এই সপ্তাহে, তাই আজই চলে আসুন আমাদের দোকানে',
+  };
+
+  for (const lang of ['en', 'bn'] as const)
+    for (const size of SIZE_NAMES) {
+      test(`cta with a call to action of one long word, ${lang}, ${size}`, async () => {
+        const slide: Slide = { ...SAMPLE_CTA[lang], cta: CTA_TOO_WIDE[lang] };
+        const { report } = await draw(postWith(lang, slide), size, `cta-wide-${lang}-${size}`);
+        expect(report.status).toBe('fail');
+        const named = report.fields.find((field) => field.field === 'slides[0].cta');
+        expect(named).toBeDefined();
+        expect(named?.overflowPx).toBeGreaterThan(0);
+        expect(named?.targetGraphemes).toBeGreaterThanOrEqual(1);
+        expect(named?.targetGraphemes).toBeLessThan(named?.graphemes ?? 0);
+      });
+
+      test(`cover with a sticker of one long line, ${lang}, ${size}`, async () => {
+        const slide: Slide = { ...SAMPLE_COVER[lang], sticker: STICKER_TOO_WIDE[lang] };
+        const { report } = await draw(
+          postWith(lang, slide),
+          size,
+          `cover-sticker-wide-${lang}-${size}`,
+        );
+        expect(report.status).toBe('fail');
+        const named = report.fields.find((field) => field.field === 'slides[0].sticker');
+        expect(named).toBeDefined();
+        expect(named?.overflowPx).toBeGreaterThan(0);
+        expect(named?.targetGraphemes).toBeLessThan(named?.graphemes ?? 0);
+      });
+    }
+});
+
 test.describe('missing optional fields render cleanly', () => {
   for (const lang of ['en', 'bn'] as const)
     for (const size of SIZE_NAMES) {

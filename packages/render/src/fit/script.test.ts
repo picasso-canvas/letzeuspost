@@ -170,7 +170,7 @@ const TEXT = [KICKER, TITLE, BODY, SOURCE];
 
 /** The height the text needs at k, to give a text area that fits it at exactly that k and no larger one. */
 const roomFor = (k: number, blocks = TEXT, gap = 20) =>
-  blocks.reduce((sum, b) => sum + (b.name === 'source' ? b.height : b.height * k ** 2), 0) +
+  blocks.reduce((sum, b) => sum + (FIXED.includes(b.name) ? b.height : b.height * k ** 2), 0) +
   gap * (blocks.length - 1);
 
 describe('the fit script: which k it picks', () => {

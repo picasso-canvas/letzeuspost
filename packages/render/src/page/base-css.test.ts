@@ -90,11 +90,15 @@ describe('the rules of the cover, cta and step layouts (#338)', () => {
     expect(line).toMatch(/overflow-wrap:\s*break-word/);
   });
 
-  it('draws the sticker and the step label in the accent colour, on one line of the fixed small print', () => {
+  it("draws the sticker and the step label in ink, the colour of the small print's contrast pair, on one line", () => {
     for (const selector of ['.sticker', '.step-label']) {
-      expect(declarations(BASE_CSS, selector)).toMatch(/color:\s*var\(--accent\)/);
+      const rule = declarations(BASE_CSS, selector);
+      expect(rule).toMatch(/font-weight:\s*var\(--weight-heading\)/);
+      expect(rule).not.toMatch(/(^|[;\s])color:/); // a colour here would need a pair of its own
     }
-    expect(declarations(BASE_CSS, '.sticker')).toMatch(/align-self:\s*flex-start/);
+    const sticker = declarations(BASE_CSS, '.sticker');
+    expect(sticker).toMatch(/align-self:\s*flex-start/);
+    expect(sticker).toMatch(/white-space:\s*nowrap/); // a line too wide is seen by the fit check, not wrapped away
   });
 
   it('has the fit script measure the call to action, the sticker and the step label', () => {
