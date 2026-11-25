@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RenderKitSchema } from '../../../render/src/kit.ts'; // core can't depend on render (render depends on core), so only this test reaches across
+// This import crosses the package boundary on purpose. core can't depend on render (render depends on core), so no
+// production file in core imports it. A test may: it is never shipped and adds no dependency. It is the drift check:
+// whatever `toRenderKit` returns must parse with the renderer's own `RenderKitSchema`, so a change to either side
+// that breaks the other fails here.
+import { RenderKitSchema } from '../../../render/src/kit.ts';
 import { TEMPORARY_WORDMARK } from './kit.ts';
 import { toRenderKit } from './render-kit.ts';
 import { emptyKit, fullKit, item } from './test-fixtures.ts';
