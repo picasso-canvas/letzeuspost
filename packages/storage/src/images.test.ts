@@ -1,7 +1,9 @@
 // Processing an upload (§10 Processing every image, §13 Security summary, §17 crafted uploads): every fixture here is
 // built from bytes in the test, so what each one smuggles is visible: a name that lies about its type, a polyglot,
 // location and camera data in EXIF, a pixel bomb, an SVG with a script. Each must be refused or come out clean.
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 import sharp, { type Metadata } from 'sharp';
 import { describe, expect, it } from 'vitest';
@@ -409,6 +411,76 @@ describe('an SVG that reaches outside itself', () => {
     expect(set.type).toBe('svg');
     expect(set.files.original).toMatchObject({ width: 4096, height: 4096 });
   });
+});
+
+// Checking an SVG runs on the worker's own thread, so a rule that backtracks would freeze it with no time limit. Each
+// check here runs in a process of its own, timed there, and killed at `CHECK_DEADLINE_MS` (a thread can't be stopped
+// in the middle of a regex): a rule that backtracks fails the test instead of hanging it.
+const IMAGES_MODULE = fileURLToPath(new URL('./images.ts', import.meta.url));
+const CHECK_DEADLINE_MS = 4000;
+const TIMED_CHECK = `
+const { processImage } = await import(process.argv.at(-1));
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const svg = new Uint8Array(Buffer.concat(chunks));
+const start = performance.now();
+const reason = await processImage(svg).then(
+  () => 'kept',
+  (error) => error.reason ?? String(error),
+);
+process.stdout.write(JSON.stringify({ reason, ms: performance.now() - start }));
+`;
+
+/** What `processImage` says about `svg` (a refusal reason, or `kept`), and how long it took, in a process of its own. */
+function timedCheck(svg: Uint8Array): Promise<{ reason: string; ms: number }> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      process.execPath,
+      ['--input-type=module', '--eval', TIMED_CHECK, IMAGES_MODULE],
+      { timeout: CHECK_DEADLINE_MS, killSignal: 'SIGKILL' },
+      (error, stdout) => {
+        if (error === null) resolve(JSON.parse(stdout) as { reason: string; ms: number });
+        else reject(new Error(`the SVG check did not finish in ${String(CHECK_DEADLINE_MS)} ms`));
+      },
+    );
+    // A process killed before it has read the whole SVG closes its stdin; how it ended is what counts.
+    child.stdin?.on('error', () => undefined);
+    child.stdin?.end(svg);
+  });
+}
+
+describe('an SVG that is slow to check', () => {
+  it('is refused in well under a second: url( and 1 MB of whitespace, with no #', async () => {
+    const svg = svgWith(
+      `<rect width="10" height="10" style="fill: url(${' '.repeat(1_000_000)})"/>`,
+    );
+    const { reason, ms } = await timedCheck(svg);
+    expect(reason).toBe('unsafe-svg');
+    expect(ms).toBeLessThan(500);
+  }, 10_000);
+
+  it('is refused in well under a second: thousands of url( each with 1000 spaces and no #', async () => {
+    const block = `<rect width="10" height="10" style="fill: url(${' '.repeat(1000)})"/>`;
+    const svg = svgWith(block.repeat(5000));
+    const { reason, ms } = await timedCheck(svg);
+    expect(reason).toBe('unsafe-svg');
+    expect(ms).toBeLessThan(500);
+  }, 10_000);
+
+  it('is refused in well under a second for long whitespace in every other rule: encoding, href', async () => {
+    const spaces = ' '.repeat(1_000_000);
+    const svgs = [
+      // The rules look everywhere, not only in the prolog, which the sniffer reads 4 KB of.
+      svgWith(`<text>encoding${spaces}=${spaces}"UTF-7"</text>`),
+      svgWith(`<use href${spaces}=${spaces}"other.svg"/>`),
+      svgWith(`<rect width="10" height="10" style="fill: url(${spaces}'${spaces}x)"/>`),
+    ];
+    for (const svg of svgs) {
+      const { reason, ms } = await timedCheck(svg);
+      expect(reason).toBe('unsafe-svg');
+      expect(ms).toBeLessThan(500);
+    }
+  }, 20_000);
 });
 
 describe('an SVG that is slow to draw', () => {
