@@ -14,6 +14,7 @@ import {
 } from './fixtures.ts';
 import {
   isPdf,
+  MAX_PDF_BYTES,
   MAX_PDF_PAGES,
   MAX_PDF_TEXT_CHARS,
   PdfRefusedError,
@@ -67,6 +68,23 @@ describe('readPdfText', () => {
       message: 'This PDF is too long: at most 100 pages.',
     });
   });
+
+  it('refuses a PDF over 20 MB (§06) before reading any of it', async () => {
+    expect(MAX_PDF_BYTES).toBe(20 * 1024 * 1024);
+    const small = textPdf(['Menu']);
+    // A real PDF, padded past the cap with a comment after its end: only its size can refuse it.
+    const large = new Uint8Array(MAX_PDF_BYTES + 1);
+    large.set(small);
+    large.fill(0x25, small.length);
+    expect(await refusal(large)).toEqual({
+      reason: 'too-large',
+      message: 'This PDF is too large: at most 20 MB.',
+    });
+    const atTheCap = new Uint8Array(MAX_PDF_BYTES);
+    atTheCap.set(small);
+    atTheCap.fill(0x0a, small.length);
+    expect((await readPdfText(atTheCap)).text).toBe('Menu');
+  }, 30_000);
 
   it('keeps at most a million characters of text, and stops reading there', async () => {
     // 500 lines of 900 characters a page, in 1-point type so every line is on the page.
