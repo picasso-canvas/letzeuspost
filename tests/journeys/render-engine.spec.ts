@@ -147,6 +147,16 @@ type Rendered = {
   requests: { served: string[]; blocked: { url: string; type: string }[] }[];
 };
 
+/**
+ * The version of the post's look. The look is registered once a slide has been rendered (the render specs' loader
+ * imports every look).
+ */
+function lookVersionOf(post: Post): number {
+  const version = getLook(post.look.name)?.version;
+  if (version === undefined) throw new Error(`the look "${post.look.name}" is not registered`);
+  return version;
+}
+
 const sha256 = (data: Uint8Array): string => createHash('sha256').update(data).digest('hex');
 
 /** The post's slides rendered, made into every output, and the PDF printed. A fresh browser each time. */
@@ -155,19 +165,14 @@ async function renderPost(journey: Journey, { post, kit, assets }: Material): Pr
   const requests: Rendered['requests'] = [];
   const reports: FitReport[] = [];
   const keyAssets: KeyAsset[] = assets.map(({ key, data }) => ({ key, sha256: sha256(data) }));
-  let lookVersion: number | undefined;
   const keyOf = (
     format: Exclude<OutputFormat, 'pdf'>,
     size: (typeof SIZE_NAMES)[number],
     slide: number,
-  ) => {
-    // The look is registered by the time a slide has been rendered (the render specs' loader imports every look).
-    lookVersion ??= getLook(post.look.name)?.version;
-    if (lookVersion === undefined)
-      throw new Error(`the look "${post.look.name}" is not registered`);
-    return renderKey({
+  ) =>
+    renderKey({
       rendererVersion: RENDERER_VERSION,
-      lookVersion,
+      lookVersion: lookVersionOf(post),
       kit,
       post,
       assets: keyAssets,
@@ -175,7 +180,6 @@ async function renderPost(journey: Journey, { post, kit, assets }: Material): Pr
       format,
       slide,
     });
-  };
 
   const renderer = createRenderer({ log: () => undefined });
   try {
@@ -207,13 +211,10 @@ async function renderPost(journey: Journey, { post, kit, assets }: Material): Pr
       assets,
       kit,
     });
-    lookVersion ??= getLook(post.look.name)?.version;
-    if (lookVersion === undefined)
-      throw new Error(`the look "${post.look.name}" is not registered`);
     outputs.set('post.pdf', {
       key: renderKey({
         rendererVersion: RENDERER_VERSION,
-        lookVersion,
+        lookVersion: lookVersionOf(post),
         kit,
         post,
         assets: keyAssets,
@@ -229,24 +230,6 @@ async function renderPost(journey: Journey, { post, kit, assets }: Material): Pr
   return { outputs, reports, requests };
 }
 
-/**
- * A PDF's bytes without what Chrome stamps on every file: the creation and modification dates and the document id. The
- * rest, the pages and their content, is what two renders of one post must share.
- */
-function withoutStamps(pdf: Uint8Array): string {
-  return Buffer.from(pdf)
-    .toString('latin1')
-    .replace(/\/(CreationDate|ModDate)\s*\([^)]*\)/g, '/$1 ()')
-    .replace(/\/ID\s*\[[^\]]*\]/g, '/ID []');
-}
-
-/** Where two texts first differ, with a little around it, for a failure that says what changed. */
-function firstDifference(a: string, b: string): string {
-  let at = 0;
-  while (at < a.length && a[at] === b[at]) at++;
-  return `at ${String(at)}: …${JSON.stringify(a.slice(Math.max(0, at - 30), at + 30))} against …${JSON.stringify(b.slice(Math.max(0, at - 30), at + 30))}`;
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // The PDF's pages, read back by pdf.js in a viewer page of its own, at an address that exists nowhere.
 
@@ -258,7 +241,10 @@ const PDFJS = (file: string) =>
     ),
   );
 
-type PdfPages = { pages: number; each: { widthPt: number; heightPt: number }[] };
+type PdfPages = {
+  pages: number;
+  each: { widthPt: number; heightPt: number; text: string }[];
+};
 
 // Runs in the viewer. A string, so this file needs no DOM types.
 const PAGES = `(async () => {
@@ -268,8 +254,10 @@ const PAGES = `(async () => {
   const doc = await pdfjs.getDocument({ data }).promise;
   const each = [];
   for (let n = 1; n <= doc.numPages; n++) {
-    const [x0, y0, x1, y1] = (await doc.getPage(n)).view;
-    each.push({ widthPt: x1 - x0, heightPt: y1 - y0 });
+    const page = await doc.getPage(n);
+    const [x0, y0, x1, y1] = page.view;
+    const content = await page.getTextContent();
+    each.push({ widthPt: x1 - x0, heightPt: y1 - y0, text: content.items.map((item) => item.str ?? '').join(' ') });
   }
   return { pages: doc.numPages, each };
 })()`;
@@ -361,24 +349,32 @@ for (const journey of JOURNEYS) {
       journey.slides.some((slide) => 'image' in slide),
     );
 
-    // A second render of the same post, in a browser of its own: the same keys and the same bytes.
+    // A second render of the same post, in a browser of its own: the same keys, the same image bytes, the same PDF pages and text.
     const second = await renderPost(journey, input);
     expect([...second.outputs.keys()]).toEqual([...first.outputs.keys()]);
     for (const [name, output] of first.outputs) {
       const again = second.outputs.get(name);
       if (again === undefined) throw new Error(`no ${name} in the second render`);
       expect(again.key, `${name}'s cache key`).toBe(output.key);
-      if (name.endsWith('.pdf')) {
-        const [a, b] = [withoutStamps(output.bytes), withoutStamps(again.bytes)];
-        expect(a === b, `the PDF's bytes, but for Chrome's stamps: ${firstDifference(a, b)}`).toBe(
-          true,
-        );
-      } else {
+      // The PDF is compared by what it means (its pages and the text on each), not by its bytes: Chrome stamps every
+      // file with dates and an id. Every other file is compared byte for byte.
+      if (!name.endsWith('.pdf'))
         expect(Buffer.from(again.bytes).equals(Buffer.from(output.bytes)), `${name}'s bytes`).toBe(
           true,
         );
-      }
     }
+    const secondPdf = second.outputs.get('post.pdf');
+    if (secondPdf === undefined) throw new Error('no PDF in the second render');
+    const reread = await pdfPages(page, secondPdf.bytes);
+    expect(reread.pages, 'the second PDF has the same page count').toBe(read.pages);
+    expect(
+      reread.each.map((each) => each.text),
+      'the second PDF has the same text on each page',
+    ).toEqual(read.each.map((each) => each.text));
+    expect(
+      read.each.every((each) => each.text.trim() !== ''),
+      'every page has text to compare',
+    ).toBe(true);
   });
 }
 
