@@ -69,9 +69,12 @@ describe('readPdfText', () => {
   });
 
   it('keeps at most a million characters of text, and stops reading there', async () => {
-    const page = 'a'.repeat(300_000);
-    const read = await readPdfText(textPdf([page, page, page, page, 'never reached']));
+    // 500 lines of 900 characters a page, in 1-point type so every line is on the page.
+    const page = Array.from({ length: 500 }, () => 'a'.repeat(900)).join('\n');
+    const pdf = textPdf([page, page, page, 'never reached'], { size: 1 });
+    const read = await readPdfText(pdf);
     expect(read.text).toHaveLength(MAX_PDF_TEXT_CHARS);
+    expect(read.text.startsWith(`${'a'.repeat(900)}\n`)).toBe(true);
     expect(read.text).not.toContain('never reached');
   });
 
@@ -103,9 +106,12 @@ describe('readPdfText', () => {
   });
 
   describe('hostile PDFs', () => {
-    it('trusts no page count it can’t read: a tree claiming a million pages is refused at once', async () => {
+    it('counts the pages a tree holds, not the million it claims', async () => {
       const started = Date.now();
-      expect((await refusal(pageCountLiePdf())).reason).toBe('too-many-pages');
+      expect(await readPdfText(pageCountLiePdf())).toEqual({
+        pages: 1,
+        text: 'Only one page here.',
+      });
       expect(Date.now() - started).toBeLessThan(5_000);
     });
 

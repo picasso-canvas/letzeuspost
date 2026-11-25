@@ -54,19 +54,30 @@ function literal(text: string): string {
   return `(${text.replace(/[\\()]/g, (character) => `\\${character}`)})`;
 }
 
-/** A content stream that writes each line of `text` in Helvetica. */
-function textContent(text: string): Buffer {
+/**
+ * A content stream that writes each line of `text` in Helvetica at `size` points, from the top left of the page down.
+ * pdf.js leaves out text drawn off the page, so a long text needs a small size.
+ */
+function textContent(text: string, size: number): Buffer {
   const lines = text.split('\n').map((line) => `${literal(line)} Tj T*`);
-  return stream('', `BT /F1 12 Tf 14 TL 72 720 Td\n${lines.join('\n')}\nET`);
+  const leading = String(size * 1.2);
+  return stream('', `BT /F1 ${String(size)} Tf ${leading} TL 36 780 Td\n${lines.join('\n')}\nET`);
 }
 
 /**
- * A PDF with one page per entry of `pages`, each page's text in Helvetica (Latin-1 text only). `catalog` adds entries
- * to the catalog (an `/OpenAction`, `/Names`), and `extra` adds objects after the pages, numbered from there on.
+ * A PDF with one page per entry of `pages`, each page's text in Helvetica at `size` points (Latin-1 text only).
+ * `catalog` adds entries to the catalog (an `/OpenAction`, `/Names`), `extra` adds objects after the pages, numbered
+ * from there on, and `count` is the page count the page tree claims.
  */
 export function textPdf(
   pages: readonly string[],
-  { catalog = '', extra = [] as readonly Part[], trailer = '', count = pages.length } = {},
+  {
+    catalog = '',
+    extra = [] as readonly Part[],
+    trailer = '',
+    count = pages.length,
+    size = 12,
+  } = {},
 ): Uint8Array {
   // 1 catalog, 2 page tree, 3 font, then a page and its content for each page.
   const firstPage = 4;
@@ -80,7 +91,7 @@ export function textPdf(
     const content = firstPage + i * 2 + 1;
     objects.push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${String(content)} 0 R >>`,
-      textContent(text),
+      textContent(text, size),
     );
   });
   return buildPdf([...objects, ...extra], { trailer });
