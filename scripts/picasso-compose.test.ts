@@ -66,3 +66,94 @@ describe('docker/compose.picasso.yml', () => {
     expect(picasso).not.toMatch(/^\s*build:/m);
   });
 });
+
+describe("the worker's Chromium sandbox (#383)", () => {
+  type Rule = { names: string[]; action: string; includes?: { caps?: string[] } };
+  type Profile = { defaultAction: string; syscalls: Rule[] };
+  const upstream = JSON.parse(read('../docker/seccomp/moby-default.json')) as Profile;
+  const profile = JSON.parse(read('../docker/seccomp/worker-chromium.json')) as Profile;
+  // What a container with no capability may call: every ALLOW rule that doesn't wait for one.
+  const allowed = new Set(
+    profile.syscalls
+      .filter((rule) => rule.action === 'SCMP_ACT_ALLOW' && !rule.includes?.caps)
+      .flatMap((rule) => rule.names),
+  );
+
+  it('starts the worker under that profile, with no capability and no new privileges', () => {
+    const worker = service(picasso, 'worker');
+    expect(worker).toContain('seccomp=./seccomp/worker-chromium.json');
+    expect(worker).toContain('no-new-privileges:true');
+    expect(worker).toMatch(/cap_drop: \[ALL\]/);
+    expect(worker).not.toMatch(/^\s+(cap_add|privileged):|seccomp=unconfined|apparmor=unconfined/m);
+  });
+
+  it("is Docker's own default allowlist, minus ptrace, plus the three calls the sandbox makes its namespaces with", () => {
+    expect(profile.defaultAction).toBe(upstream.defaultAction);
+    expect(profile.defaultAction).toBe('SCMP_ACT_ERRNO');
+    const isPtrace = (rule: Rule) => !rule.includes?.caps && rule.names.includes('ptrace');
+    expect(upstream.syscalls.filter(isPtrace)).toHaveLength(1);
+    expect(profile.syscalls).toEqual([
+      ...upstream.syscalls.filter((rule) => !isPtrace(rule)),
+      { names: ['clone', 'unshare', 'chroot'], action: 'SCMP_ACT_ALLOW' },
+    ]);
+  });
+
+  it('lets a container with no capability make user namespaces, and nothing dangerous besides', () => {
+    for (const needed of [
+      'clone',
+      'unshare',
+      'chroot',
+      'prctl',
+      'seccomp',
+      'read',
+      'write',
+      'mmap',
+    ]) {
+      expect(allowed).toContain(needed);
+    }
+    for (const never of [
+      'ptrace',
+      'process_vm_readv',
+      'process_vm_writev',
+      'mount',
+      'umount2',
+      'pivot_root',
+      'bpf',
+      'setns',
+      'kexec_load',
+      'init_module',
+      'finit_module',
+      'perf_event_open',
+      'keyctl',
+      'userfaultfd',
+      'reboot',
+      'swapon',
+      'io_uring_setup',
+      'io_uring_enter',
+      'io_uring_register',
+      'pidfd_getfd',
+      'process_madvise',
+    ]) {
+      expect(allowed).not.toContain(never);
+    }
+  });
+
+  it('runs the image as the non-root node user, with Chromium kept where only root can write', () => {
+    const dockerfile = read('../apps/worker/Dockerfile');
+    const last = dockerfile.slice(dockerfile.lastIndexOf('\nFROM '));
+    expect(last).toMatch(/^USER node$/m);
+    expect(last).toContain('PLAYWRIGHT_BROWSERS_PATH=/ms-playwright');
+    expect(last.indexOf('install --with-deps chromium')).toBeLessThan(last.indexOf('USER node'));
+  });
+});
+
+describe('the deploy order (#383)', () => {
+  const source = read('./picasso.ts');
+  const at = (text: string) => source.indexOf(text);
+
+  it('builds the worker image, then checks its sandbox, and only then swaps any container', () => {
+    expect(at('sandboxCheckArgs(')).toBeGreaterThan(at("'apps/worker/Dockerfile'"));
+    expect(at('sandboxCheckArgs(')).toBeLessThan(at("'up', '--detach', '--wait', 'postgres'"));
+    expect(at('sandboxCheckArgs(')).toBeLessThan(at('writeFileSync(deployed, `LZP_IMAGE_TAG'));
+  });
+});

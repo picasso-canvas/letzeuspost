@@ -207,3 +207,25 @@ export function checksProblem(
 export function imageTag(commit: string): string {
   return commit.slice(0, 12).toLowerCase();
 }
+
+/**
+ * The `docker run` arguments of the sandbox check on a freshly built worker image (#383): the options the compose file
+ * gives the worker (the profile, no new privileges, no capability), and no network, which the check doesn't need.
+ */
+export function sandboxCheckArgs(tag: string, seccompProfile: string): string[] {
+  return [
+    'run',
+    '--rm',
+    '--network',
+    'none',
+    '--security-opt',
+    `seccomp=${seccompProfile}`,
+    '--security-opt',
+    'no-new-privileges:true',
+    '--cap-drop',
+    'ALL',
+    `lzp-picasso-worker:${tag}`,
+    'node',
+    'packages/render/src/browser/check-sandbox.ts',
+  ];
+}
