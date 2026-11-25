@@ -5,12 +5,19 @@
 // text chunks, comments, or whatever a polyglot hides after the image. Every output is read back to check that. An SVG
 // is only ever rasterised (to PNG); it is never stored or served as SVG.
 //
+// An SVG is a program as much as a picture, so it gets two more walls. First, it may point only inside itself. A link
+// to a `data:`, `file:` or `http:` address is refused, and so is anything that loads one: an image inside it can be a
+// pixel bomb or an XML file of its own, and a link reaches the worker's disk or network. Second, it is drawn in a
+// process of its own (`rasterise-svg.ts`) that is killed at the time limit. Every other step has sharp's time limit too.
+//
 // The set: the clean full-size file (stored at the asset's `original` key), the `1600` and `360` copies as WebP (the
 // longest side at most that size, never enlarged), the sha256 of the stored file, a perceptual hash (dHash, 64 bits)
 // for duplicates, and up to 5 dominant colours (§06: a palette of 3–5 swatches).
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import type { WorkspaceCtx } from '@lzp/db';
-import sharp, { type Metadata, type Sharp, type SharpOptions } from 'sharp';
+import sharp, { type Metadata, type Sharp } from 'sharp';
 import { assetKey, type AssetVariant } from './keys.ts';
 import type { Storage } from './storage.ts';
 
@@ -35,6 +42,8 @@ export const MAX_SIDE = 4096;
  * decoding, so a small file that claims a huge picture (a pixel bomb) never gets its memory.
  */
 export const MAX_INPUT_PIXELS = 100_000_000;
+/** How long drawing an SVG, or each step on a picture, may take before the upload is refused (§10: 5–15 s a photo). */
+export const TIME_LIMIT_SECONDS = 15;
 const FULL_QUALITY = 90;
 const COPY_QUALITY = 80;
 const MAX_COLOURS = 5;
@@ -82,12 +91,89 @@ function sniff(bytes: Buffer): ImageType | null {
 }
 
 const UNREADABLE = "This image couldn't be read. Please export it again as a JPG or PNG.";
+const UNSAFE_SVG = 'This SVG has parts that are not allowed. Please send a PNG.';
+
+// What an SVG may not hold. Anything here is refused, wherever it appears, even in a comment: a logo needs none of it.
+const SVG_REFUSED: readonly RegExp[] = [
+  // Entity expansion and outside files come in through a DOCTYPE.
+  /<!DOCTYPE|<!ENTITY/i,
+  // Another encoding than UTF-8 (UTF-7, say) would hide from these rules what the parser then reads.
+  /encoding\s*=(?!\s*["']utf-8["'])/i,
+  // Elements that load or embed another document, with any namespace prefix.
+  /<(?:[^\s<>:]+:)?(?:image|foreignObject)[\s/>]/i,
+  // A link (`href`, `xlink:href`, an `xml-stylesheet`'s) to anything but an `#id` in this file.
+  /href\s*=(?!\s*["']#)/i,
+  // A CSS `url()` to anything but an `#id`; a stylesheet import of any kind.
+  /url\((?!\s*["']?\s*#)/i,
+  /@import/i,
+  // A CSS escape can write `url(` or `@import` without those letters (`u\72 l(`).
+  /\\/,
+];
+// XML reads `&#117;` as `u`, so the rules look at the text both before and after these are read. With no DOCTYPE, only
+// the five predefined entities exist.
+const REFERENCE = /&#x([0-9a-f]+);|&#([0-9]+);|&(amp|lt|gt|quot|apos);/gi;
+const PREDEFINED: Readonly<Record<string, string>> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+function readReference(_: string, hex?: string, decimal?: string, name?: string): string {
+  if (name !== undefined) return PREDEFINED[name.toLowerCase()] ?? '';
+  const code = hex === undefined ? Number(decimal) : Number.parseInt(hex, 16);
+  // A character XML can't hold makes the file unreadable to the parser; for these rules it is no letter at all.
+  return code <= 0x10ffff ? String.fromCodePoint(code) : '�';
+}
+
+/** Refuses an SVG that isn't plain UTF-8, or that holds anything `SVG_REFUSED` lists. */
+function checkSvg(svg: Buffer): void {
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(svg);
+  } catch {
+    throw new ImageRefusedError('unsafe-svg', UNSAFE_SVG);
+  }
+  const read = text.replace(REFERENCE, readReference);
+  if (SVG_REFUSED.some((rule) => rule.test(text) || rule.test(read))) {
+    throw new ImageRefusedError('unsafe-svg', UNSAFE_SVG);
+  }
+}
+
+const RASTERISER = fileURLToPath(new URL('./rasterise-svg.ts', import.meta.url));
+// A PNG of `MAX_SIDE` × `MAX_SIDE` pixels, 4 bytes each, with room for the format's own bytes.
+const MAX_RASTER_BYTES = MAX_SIDE * MAX_SIDE * 4 + 1_000_000;
 
 /**
- * How sharp should open the upload. A raster's header is checked against `MAX_INPUT_PIXELS` first; an SVG has no
- * pixels of its own, so it is drawn at the density that makes its longest side `MAX_SIDE`, whatever size it claims.
+ * Draws a checked SVG as a PNG whose longest side is `MAX_SIDE`, whatever size it claims. This runs in a process that
+ * is killed after `seconds`, gets no environment (so no secrets), and may write at most `MAX_RASTER_BYTES`.
  */
-async function openOptions(bytes: Buffer, type: ImageType): Promise<SharpOptions> {
+function rasteriseSvg(svg: Buffer, seconds: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      process.execPath,
+      [RASTERISER, String(MAX_SIDE), String(MAX_INPUT_PIXELS)],
+      {
+        encoding: 'buffer',
+        env: {},
+        timeout: seconds * 1000,
+        killSignal: 'SIGKILL',
+        maxBuffer: MAX_RASTER_BYTES,
+      },
+      (error, png) => {
+        if (error === null) resolve(png);
+        else reject(new ImageRefusedError('unreadable', UNREADABLE));
+      },
+    );
+    // A process that fails before it has read the whole SVG closes its stdin; how it ended is what counts.
+    child.stdin?.on('error', () => undefined);
+    child.stdin?.end(svg);
+  });
+}
+
+/** Checks a picture's header against `MAX_INPUT_PIXELS` before anything is decoded. */
+async function checkHeader(bytes: Buffer, format: 'jpeg' | 'png' | 'webp'): Promise<void> {
   let header: Metadata;
   try {
     // Header only, nothing decoded yet: the pixel check below is ours, with its own message.
@@ -95,20 +181,22 @@ async function openOptions(bytes: Buffer, type: ImageType): Promise<SharpOptions
   } catch {
     throw new ImageRefusedError('unreadable', UNREADABLE);
   }
-  if (header.format !== type) throw new ImageRefusedError('unreadable', UNREADABLE);
-  const longest = Math.max(header.width, header.height);
-  if (type === 'svg') {
-    if (longest <= 0) throw new ImageRefusedError('unreadable', UNREADABLE);
-    // sharp reads an SVG at 72 dpi by default, and takes 1 to 100000.
-    return { density: Math.min(100_000, Math.max(1, (72 * MAX_SIDE) / longest)) };
-  }
+  if (header.format !== format) throw new ImageRefusedError('unreadable', UNREADABLE);
   if (header.width * header.height > MAX_INPUT_PIXELS) {
     throw new ImageRefusedError(
       'too-many-pixels',
       `This image is too large: at most ${String(MAX_INPUT_PIXELS / 1_000_000)} megapixels.`,
     );
   }
-  return {};
+}
+
+/** Opens a picture to decode: refused past `MAX_INPUT_PIXELS` or a warning, stopped after `seconds`, turned upright. */
+function open(bytes: Uint8Array, seconds: number): Sharp {
+  return sharp(bytes, {
+    limitInputPixels: MAX_INPUT_PIXELS, // the second wall, at decode time
+    failOn: 'warning',
+    autoOrient: true,
+  }).timeout({ seconds });
 }
 
 /** Encodes for storage: the upload's own format at full size, PNG for an SVG, WebP for the copies. */
@@ -154,8 +242,8 @@ async function verify(variant: string, file: ImageFile): Promise<void> {
 }
 
 /** dHash: 9×8 grey pixels, one bit per pair of neighbours in a row (is the left one darker?). */
-async function perceptualHash(file: Uint8Array): Promise<string> {
-  const grey = await sharp(file)
+async function perceptualHash(file: Uint8Array, seconds: number): Promise<string> {
+  const grey = await open(file, seconds)
     .flatten({ background: '#ffffff' })
     .greyscale()
     .resize(9, 8, { fit: 'fill' })
@@ -176,8 +264,8 @@ async function perceptualHash(file: Uint8Array): Promise<string> {
  * The most common colours: on a 64 px sample, each opaque pixel goes into one of 512 boxes (3 bits per channel), and
  * the 5 fullest boxes give their average colour, fullest first (ties by box, so the answer is stable).
  */
-async function dominantColors(file: Uint8Array): Promise<string[]> {
-  const pixels = await sharp(file)
+async function dominantColors(file: Uint8Array, seconds: number): Promise<string[]> {
+  const pixels = await open(file, seconds)
     .resize({ width: 64, height: 64, fit: 'inside', withoutEnlargement: true, kernel: 'nearest' })
     .ensureAlpha()
     .raw()
@@ -204,47 +292,64 @@ async function dominantColors(file: Uint8Array): Promise<string[]> {
 
 /**
  * Turns an upload into the set that is stored, or refuses it with an `ImageRefusedError` (a message safe to show).
- * `bytes` is the whole upload, already capped in size by `Storage.get`.
+ * `bytes` is the whole upload, already capped in size by `Storage.get`. `seconds` (a whole number, 1 to 3600) bounds
+ * drawing an SVG, and each step on the picture.
  */
-export async function processImage(bytes: Uint8Array): Promise<ImageSet> {
-  const input = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const type = sniff(input);
+export async function processImage(
+  bytes: Uint8Array,
+  { seconds = TIME_LIMIT_SECONDS }: { seconds?: number } = {},
+): Promise<ImageSet> {
+  // sharp takes 0 as "no limit", so 0 is refused here.
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 3600) {
+    throw new RangeError('seconds must be a whole number from 1 to 3600');
+  }
+  const upload = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const type = sniff(upload);
   if (type === null) {
     throw new ImageRefusedError('not-an-image', "That file isn't a JPG, PNG, WebP or SVG image.");
   }
-  // A DOCTYPE is how entity expansion and outside files get into XML; an SVG logo never needs one.
-  if (type === 'svg' && /<!DOCTYPE|<!ENTITY/i.test(input.toString('utf8'))) {
-    throw new ImageRefusedError(
-      'unsafe-svg',
-      'This SVG has parts that are not allowed. Please send a PNG.',
-    );
-  }
-  const options = await openOptions(input, type);
+  // From here on an SVG is the PNG it was drawn as, read like any other picture.
   const format = type === 'svg' ? 'png' : type;
-  let original: ImageFile;
-  try {
-    const opened = sharp(input, {
-      ...options,
-      limitInputPixels: MAX_INPUT_PIXELS, // the second wall, at decode time
-      failOn: 'warning',
-      autoOrient: true,
-    });
-    original = await toFile(encode(fitted(opened, MAX_SIDE), format, FULL_QUALITY), format);
-  } catch {
-    throw new ImageRefusedError('unreadable', UNREADABLE);
+  let picture = upload;
+  if (type === 'svg') {
+    checkSvg(upload);
+    picture = await rasteriseSvg(upload, seconds);
   }
-  // The copies come from the clean file, which is upright and sRGB already.
-  const copy = (side: number): Promise<ImageFile> =>
-    toFile(encode(fitted(sharp(original.data), side), 'webp', COPY_QUALITY), 'webp');
-  const [large, small] = await Promise.all([copy(1600), copy(360)]);
-  const files = { original, '1600': large, '360': small };
-  await Promise.all(Object.entries(files).map(([variant, file]) => verify(variant, file)));
+  await checkHeader(picture, format);
+  const drawn = await draw(picture, format, seconds).catch(() => {
+    throw new ImageRefusedError('unreadable', UNREADABLE);
+  });
+  await Promise.all(Object.entries(drawn.files).map(([variant, file]) => verify(variant, file)));
   return {
     type,
-    files,
-    sha256: createHash('sha256').update(original.data).digest('hex'),
-    perceptualHash: await perceptualHash(original.data),
-    dominantColors: await dominantColors(original.data),
+    ...drawn,
+    sha256: createHash('sha256').update(drawn.files.original.data).digest('hex'),
+  };
+}
+
+/** The clean file, its copies and its fingerprints; every step stops after `seconds`. */
+async function draw(
+  picture: Buffer,
+  format: 'jpeg' | 'png' | 'webp',
+  seconds: number,
+): Promise<Pick<ImageSet, 'files' | 'perceptualHash' | 'dominantColors'>> {
+  const original = await toFile(
+    encode(fitted(open(picture, seconds), MAX_SIDE), format, FULL_QUALITY),
+    format,
+  );
+  // The copies come from the clean file, which is upright and sRGB already.
+  const copy = (side: number): Promise<ImageFile> =>
+    toFile(encode(fitted(open(original.data, seconds), side), 'webp', COPY_QUALITY), 'webp');
+  const [large, small, hash, colours] = await Promise.all([
+    copy(1600),
+    copy(360),
+    perceptualHash(original.data, seconds),
+    dominantColors(original.data, seconds),
+  ]);
+  return {
+    files: { original, '1600': large, '360': small },
+    perceptualHash: hash,
+    dominantColors: colours,
   };
 }
 
