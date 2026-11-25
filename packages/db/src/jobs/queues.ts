@@ -2,8 +2,8 @@
 // the job runs in (`db.forWorkspace`), and the ids of what it works on. The one exception is `account-email` (#77),
 // whose row belongs to a person and carries no workspace. The handler loads everything else from the
 // database, so a retried job reads the current rows, and no post text or address ever sits in the queue's tables.
-// The handlers live in apps/worker (Q7); the ai, render, fetch and export handlers come with their features, which
-// may add ids to their payloads here, never content.
+// The handlers live in apps/worker (Q7); the ai, asset, render, fetch and export handlers come with their features,
+// which may add ids to their payloads here, never content.
 import { z } from 'zod';
 
 const id = z.uuidv7();
@@ -26,15 +26,30 @@ const retry = {
 } as const;
 
 export const queues = {
-  /** Each §09 task, one post (or a batch's plan) at a time. */
+  /**
+   * Each §09 task: one post (or a batch's plan) at a time, or one asset of a brand's library (`tagAsset`, #400), which
+   * belongs to no batch. A payload is one or the other, never both.
+   */
   ai: {
-    payload: z.strictObject({ workspaceId: id, batchId: id, postId: id.optional() }),
+    payload: z.union([
+      z.strictObject({ workspaceId: id, batchId: id, postId: id.optional() }),
+      z.strictObject({ workspaceId: id, brandId: id, assetId: id }),
+    ]),
     queue: retry,
     // §13: at most 4 posts at a time per workspace, by pg-boss's group concurrency (one group per workspace), with
     // room on the worker for another workspace's jobs while one workspace has its 4 running. The in-process limit is
     // exact in the one worker §13 runs; pg-boss's database-tracked one (groupConcurrency) takes no lock, so fetches at
     // the same moment can start a fifth. With more than one worker (not in the MVP), each would allow 4.
     work: { localGroupConcurrency: 4, localConcurrency: 8 },
+  },
+  /**
+   * An uploaded file of a brand's library (#400, §13 File storage): checked, re-encoded and copied, then marked ready.
+   * The file stays in the bucket and its description and tags in the row; the job names them by id.
+   */
+  asset: {
+    payload: z.strictObject({ workspaceId: id, brandId: id, assetId: id }),
+    queue: retry,
+    work: {},
   },
   render: {
     payload: z.strictObject({ workspaceId: id, postId: id, postVersionId: id }),
@@ -106,13 +121,23 @@ export class JobPayloadError extends Error {
   override name = 'JobPayloadError';
 }
 
+/**
+ * The fields an issue is about: the keys a payload shouldn't have, or the path of one that's wrong. A payload that
+ * fits none of a union's shapes (the ai queue's) is about the fields of every shape it was tried against.
+ */
+function fieldsOf(issue: z.core.$ZodIssue): string[] {
+  if (issue.code === 'unrecognized_keys') return issue.keys;
+  if (issue.code === 'invalid_union' && issue.errors.length > 0) {
+    return issue.errors.flat().flatMap(fieldsOf);
+  }
+  return [issue.path.join('.') || 'payload'];
+}
+
 /** The payload, if it holds exactly the queue's ids; otherwise a JobPayloadError. */
 export function checkPayload<Q extends QueueName>(name: Q, payload: unknown): Payload<Q> {
   const result = queues[name].payload.safeParse(payload);
   if (result.success) return result.data as Payload<Q>;
-  const fields = result.error.issues.flatMap((issue) =>
-    issue.code === 'unrecognized_keys' ? issue.keys : [issue.path.join('.') || 'payload'],
-  );
+  const fields = result.error.issues.flatMap(fieldsOf);
   throw new JobPayloadError(
     `${name} job refused: a payload holds ids only (check ${[...new Set(fields)].join(', ')})`,
   );

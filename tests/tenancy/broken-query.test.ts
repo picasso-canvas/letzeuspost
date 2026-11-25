@@ -8,11 +8,13 @@
 //
 // The row-level security half: the same query, filter dropped, run where the app's queries run, in A's unit of work
 // as the app role: none of B's rows come back, and none can be changed or made.
+import { randomUUIDv7 } from 'node:crypto';
 import path from 'node:path';
 import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  asset,
   brand,
   brandKitVersion,
   emailMessage,
@@ -121,10 +123,11 @@ describe('a query that drops the workspace filter: row-level security', () => {
       workspaces: await tx.select().from(workspace),
       brands: await tx.select().from(brand),
       kitVersions: await tx.select().from(brandKitVersion),
+      assets: await tx.select().from(asset),
       // And as plain SQL.
       raw: (
         await tx.execute<Row>(
-          'select workspace_id from invitation union all select workspace_id from email_message union all select workspace_id from member union all select id from workspace union all select workspace_id from brand union all select workspace_id from brand_kit_version',
+          'select workspace_id from invitation union all select workspace_id from email_message union all select workspace_id from member union all select id from workspace union all select workspace_id from brand union all select workspace_id from brand_kit_version union all select workspace_id from asset',
         )
       ).rows,
     }));
@@ -134,6 +137,7 @@ describe('a query that drops the workspace filter: row-level security', () => {
     expect(rows.emails.map((row) => row.id)).toEqual([t.a.email.id]);
     expect(rows.brands.map((row) => row.id)).toEqual([t.a.brand.id]);
     expect(rows.kitVersions.map((row) => row.id)).toEqual([t.a.brand.versionId]);
+    expect(rows.assets.map((row) => row.id)).toEqual([t.a.asset.id]);
     expect(rows.workspaces.map((row) => row.id)).toEqual([a]);
     expect(rows.members.map((row) => row.userId).sort()).toEqual([t.a.owner.id, t.both.id].sort());
     expect(rows.members.every((row) => row.workspaceId === a)).toBe(true);
@@ -159,6 +163,7 @@ describe('a query that drops the workspace filter: row-level security', () => {
   it('returns nothing, changes nothing and makes nothing when A’s unit of work names B’s rows', async () => {
     const b = t.b.ctx.workspaceId;
     const planted = `planted-${t.run}@tenancy.invalid`;
+    const plantedAsset = randomUUIDv7();
     // The broken queries, each naming B's rows, with `returning` so a row reached comes back. Whether the app role
     // holds the grant (it may not delete from email_message at all, 0003) or the policy filters the rows, the answer
     // is the same: refused, or nothing.
@@ -189,6 +194,19 @@ describe('a query that drops the workspace filter: row-level security', () => {
       text`insert into brand (workspace_id, name_en) values (${b}, ${planted}) returning id`,
       text`insert into brand_kit_version (workspace_id, brand_id, version, kit)
            values (${b}, ${t.b.brand.id}, 2, '{}'::jsonb) returning id`,
+      // Assets (#400). The app role can't move an asset to another workspace or file (no grant on those columns), so
+      // those two are refused; the rest are filtered or refused by the policy.
+      text`select id, storage_key, description from asset where workspace_id = ${b}`,
+      text`select id from asset where id = ${t.b.asset.id}`,
+      text`update asset set description = ${planted}, consent = true, status = 'ready'
+           where workspace_id = ${b} returning id`,
+      text`update asset set workspace_id = ${b} where workspace_id = ${t.a.ctx.workspaceId} returning id`,
+      text`update asset set storage_key = ${t.b.asset.storageKey} where id = ${t.a.asset.id} returning id`,
+      text`delete from asset where workspace_id = ${b} returning id`,
+      text`insert into asset (id, workspace_id, brand_id, kind, storage_key, source, description)
+           values (${plantedAsset}, ${b}, ${t.b.brand.id}, 'photo',
+                   ${`ws/${b}/brands/${t.b.brand.id}/assets/${plantedAsset}/original`}, 'own', ${planted})
+           returning id`,
     ];
     for (const statement of statements) {
       expect(REACHED_NOTHING, statement).toContainEqual(await tryInA(statement));
@@ -201,6 +219,24 @@ describe('a query that drops the workspace filter: row-level security', () => {
              values (${t.a.ctx.workspaceId}, ${t.b.brand.id}, 2, '{}'::jsonb) returning id`,
       ),
     ).toEqual({ refused: '23503' });
+    // An asset of A's that names B's brand, with the key that brand's files have: refused by the same kind of key.
+    const assetId = randomUUIDv7();
+    expect(
+      await tryInA(
+        text`insert into asset (id, workspace_id, brand_id, kind, storage_key, source, description)
+             values (${assetId}, ${t.a.ctx.workspaceId}, ${t.b.brand.id}, 'photo',
+                     ${`ws/${t.a.ctx.workspaceId}/brands/${t.b.brand.id}/assets/${assetId}/original`},
+                     'own', ${planted}) returning id`,
+      ),
+    ).toEqual({ refused: '23503' });
+    // And one of A's whose file is B's: refused by the check that holds a row to its own original (23514).
+    expect(
+      await tryInA(
+        text`insert into asset (id, workspace_id, brand_id, kind, storage_key, source, description)
+             values (${randomUUIDv7()}, ${t.a.ctx.workspaceId}, ${t.a.brand.id}, 'photo',
+                     ${t.b.asset.storageKey}, 'own', ${planted}) returning id`,
+      ),
+    ).toEqual({ refused: '23514' });
 
     // B's rows, read by the owner role (which row-level security doesn't bind), are as the fixtures made them: the
     // statements named rows that are there, and none was changed, removed or added.
@@ -222,11 +258,16 @@ describe('a query that drops the workspace filter: row-level security', () => {
         text`select id, version::int as version, kit = '{}'::jsonb as emptied from brand_kit_version
              where workspace_id = ${b} or brand_id = ${t.b.brand.id}`,
       ),
+      assets: await t.asOwner(
+        text`select id, storage_key, description, status, consent from asset
+             where workspace_id = ${b} or brand_id = ${t.b.brand.id}`,
+      ),
       planted: await t.asOwner(
         text`select id from invitation where email = ${planted}
              union all select id from email_message where to_address = ${planted}
              union all select id from workspace where name = ${planted}
-             union all select id from brand where name_en = ${planted}`,
+             union all select id from brand where name_en = ${planted}
+             union all select id from asset where description = ${planted}`,
       ),
     }).toEqual({
       invitations: [{ id: t.b.invitation.id, email: t.b.invitation.email, role: 'editor' }],
@@ -235,6 +276,15 @@ describe('a query that drops the workspace filter: row-level security', () => {
       workspaces: [{ id: b, name: t.b.name }],
       brands: [{ id: t.b.brand.id, name_en: t.b.brand.nameEn, current: 1 }],
       kitVersions: [{ id: t.b.brand.versionId, version: 1, emptied: false }],
+      assets: [
+        {
+          id: t.b.asset.id,
+          storage_key: t.b.asset.storageKey,
+          description: t.b.asset.description,
+          status: 'waiting',
+          consent: false,
+        },
+      ],
       planted: [],
     });
   });

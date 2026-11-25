@@ -5,3 +5,4 @@ export * from './schema/accounts.ts';
 export * from './schema/email-message.ts';
 export * from './schema/auth-only.ts';
 export * from './schema/brands.ts';
+export * from './schema/assets.ts';

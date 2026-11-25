@@ -454,7 +454,7 @@ describe('the ai queue runs at most 4 jobs at a time per workspace (§13)', () =
     });
 
     await jobs.work('ai', async ({ payload }) => {
-      if (payload.batchId !== batchId) return;
+      if (!('batchId' in payload) || payload.batchId !== batchId) return;
       const ws = payload.workspaceId;
       running.set(ws, (running.get(ws) ?? 0) + 1);
       most.set(ws, Math.max(most.get(ws) ?? 0, running.get(ws) ?? 0));
