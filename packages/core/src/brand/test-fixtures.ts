@@ -1,17 +1,11 @@
 // Sample brand kits for the brand tests: a Bangladeshi café with every part filled, and the same café with nothing.
-import type { BrandKit } from './kit.ts';
+import type { BrandKit, Confidence, SourceKind } from './kit.ts';
 
 /** One kit item: its value, and where it came from (a typed one unless said otherwise). */
-export function item<T>(
+export function item<const T>(
   value: T,
-  over: { source?: string; ref?: string | null; at?: string; confidence?: string } = {},
-): {
-  value: T;
-  source: string;
-  ref: string | null;
-  at: string;
-  confidence: string;
-} {
+  over: { source?: SourceKind; ref?: string | null; at?: string; confidence?: Confidence } = {},
+) {
   return {
     value,
     source: over.source ?? 'typed',
@@ -22,7 +16,7 @@ export function item<T>(
 }
 
 /** A kit with nothing in it: every part is there, no item is. */
-export const emptyKit = (): Record<string, Record<string, unknown>> => ({
+export const emptyKit = (): BrandKit => ({
   identity: {},
   voice: {},
   facts: {},
@@ -34,7 +28,11 @@ export const emptyKit = (): Record<string, Record<string, unknown>> => ({
 
 /** A kit with every part filled, as an agency's editor would save it. */
 export function fullKit(): BrandKit {
-  const website = { source: 'website', ref: 'https://golpo.example/about', confidence: 'found' };
+  const website = {
+    source: 'website',
+    ref: 'https://golpo.example/about',
+    confidence: 'found',
+  } as const;
   return {
     identity: {
       name: item('Golpo Café'),
@@ -106,5 +104,5 @@ export function fullKit(): BrandKit {
       switches: [item({ holiday: 'bd-victory-day', on: true })],
       custom: [item({ name: 'Golpo anniversary', monthDay: '03-14' })],
     },
-  } as unknown as BrandKit;
+  };
 }

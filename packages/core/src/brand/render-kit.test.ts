@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RenderKitSchema } from '../../../render/src/kit.ts'; // core can't depend on render (render depends on core), so only this test reaches across
-import { TEMPORARY_WORDMARK, toRenderKit } from './render-kit.ts';
+import { TEMPORARY_WORDMARK } from './kit.ts';
+import { toRenderKit } from './render-kit.ts';
 import { emptyKit, fullKit, item } from './test-fixtures.ts';
 
 describe('toRenderKit', () => {
@@ -28,7 +29,7 @@ describe('toRenderKit', () => {
   });
 
   it('is a valid RenderKit for an empty kit too: defaults fill what is missing', () => {
-    const renderKit = toRenderKit(emptyKit() as never);
+    const renderKit = toRenderKit(emptyKit());
     expect(RenderKitSchema.safeParse(renderKit).success).toBe(true);
     expect(renderKit.mascot).toBeUndefined();
   });

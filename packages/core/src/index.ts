@@ -18,6 +18,22 @@ export {
   type Slide,
 } from './post/index.ts';
 export {
+  BrandKitSchema,
+  CONFIDENCES,
+  ESSENTIALS,
+  essentialsMissing,
+  mergeSuggestions,
+  SOURCE_KINDS,
+  TEMPORARY_WORDMARK,
+  toRenderKit,
+  type BrandKit,
+  type Confidence,
+  type Essential,
+  type RenderKitData,
+  type SourceKind,
+  type ToRenderKitOptions,
+} from './brand/index.ts';
+export {
   parseHighlights,
   validateText,
   type HighlightSegment,

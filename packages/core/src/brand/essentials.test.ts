@@ -4,7 +4,7 @@ import { emptyKit, fullKit, item } from './test-fixtures.ts';
 
 describe('essentialsMissing', () => {
   it('says all five are missing from an empty kit, in §06 order', () => {
-    expect(essentialsMissing(emptyKit() as never)).toEqual([
+    expect(essentialsMissing(emptyKit())).toEqual([
       'name',
       'color',
       'tone',
@@ -28,7 +28,7 @@ describe('essentialsMissing', () => {
     const kit = {
       ...fullKit(),
       identity: { nameBn: item('গল্প ক্যাফে') },
-    } as never;
+    };
     expect(essentialsMissing(kit)).not.toContain('name');
   });
 
@@ -39,7 +39,7 @@ describe('essentialsMissing', () => {
     ['ink', { ink: item('#1b1b1b') }],
     ['an extra', { extras: [item('#2f6f4f')] }],
   ])('takes %s as a colour', (_which, colors) => {
-    const kit = { ...emptyKit(), identity: { colors } } as never;
+    const kit = { ...emptyKit(), identity: { colors } };
     expect(essentialsMissing(kit)).not.toContain('color');
   });
 
@@ -47,12 +47,12 @@ describe('essentialsMissing', () => {
     const kit = {
       ...emptyKit(),
       voice: { toneWords: [item('warm')], mainLanguage: { facebook: item('bn') } },
-    } as never;
+    };
     expect(essentialsMissing(kit)).toEqual(['name', 'color', 'country']);
   });
 
   it('counts an empty tone list and an empty language map as missing', () => {
-    const kit = { ...emptyKit(), voice: { toneWords: [], mainLanguage: {} } } as never;
+    const kit = { ...emptyKit(), voice: { toneWords: [], mainLanguage: {} } };
     expect(essentialsMissing(kit)).toContain('tone');
     expect(essentialsMissing(kit)).toContain('language');
   });

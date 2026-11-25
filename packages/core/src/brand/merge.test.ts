@@ -3,7 +3,7 @@ import { BrandKitSchema } from './kit.ts';
 import { mergeSuggestions } from './merge.ts';
 import { emptyKit, fullKit, item } from './test-fixtures.ts';
 
-const found = (value: string, ref: string) =>
+const found = <const Value extends string>(value: Value, ref: string) =>
   item(value, { source: 'website', ref, at: '2026-11-25T08:00:00.000Z', confidence: 'guessed' });
 
 describe('mergeSuggestions', () => {
@@ -20,7 +20,7 @@ describe('mergeSuggestions', () => {
       const kit = {
         ...emptyKit(),
         identity: { name: item('Old name', { source, confidence: 'guessed' }) },
-      } as never;
+      };
       const suggestion = found('Golpo Café', 'https://golpo.example/about');
       const merged = mergeSuggestions(kit, { identity: { name: suggestion } });
       expect(merged.identity.name).toEqual(suggestion);
@@ -29,7 +29,7 @@ describe('mergeSuggestions', () => {
 
   it('fills what is missing, in any part', () => {
     const suggestion = found('#8b2e16', 'https://golpo.example');
-    const merged = mergeSuggestions(emptyKit() as never, {
+    const merged = mergeSuggestions(emptyKit(), {
       identity: { colors: { primary: suggestion } },
       holidays: { country: found('BD', 'q3') },
     });
@@ -71,7 +71,7 @@ describe('mergeSuggestions', () => {
     const kit = {
       ...emptyKit(),
       voice: { toneWords: [item('calm', { source: 'website', ref: 'https://golpo.example' })] },
-    } as never;
+    };
     const merged = mergeSuggestions(kit, {
       voice: { toneWords: [found('warm', 'https://golpo.example/about')] },
     });
@@ -89,7 +89,7 @@ describe('mergeSuggestions', () => {
 
   it('keeps a typed item whatever the suggestion says, even a newer one with more confidence', () => {
     const typed = item('Golpo Café', { confidence: 'needs-you' });
-    const kit = { ...emptyKit(), identity: { name: typed } } as never;
+    const kit = { ...emptyKit(), identity: { name: typed } };
     const merged = mergeSuggestions(kit, {
       identity: {
         name: item('Golpo', {

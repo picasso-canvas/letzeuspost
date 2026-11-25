@@ -61,16 +61,18 @@ describe('BrandKitSchema', () => {
     });
 
     it.each([
-      ['a source that is not one of the five', item('Golpo', { source: 'guess' })],
-      ['a confidence that is not one of the three', item('Golpo', { confidence: 'sure' })],
-      ['a time that is not UTC ISO', item('Golpo', { at: '20 Nov 2026' })],
-      ['a time with no zone', item('Golpo', { at: '2026-11-20T09:30:00' })],
+      ['a source that is not one of the five', { ...item('Golpo'), source: 'guess' }],
+      ['a confidence that is not one of the three', { ...item('Golpo'), confidence: 'sure' }],
+      ['a time that is not UTC ISO', { ...item('Golpo'), at: '20 Nov 2026' }],
+      ['a time with no zone', { ...item('Golpo'), at: '2026-11-20T09:30:00' }],
     ])('refuses %s', (_what, bad) => {
       expect(BrandKitSchema.safeParse(withAt(['identity', 'name'], bad)).success).toBe(false);
     });
 
     it.each(['source', 'ref', 'at', 'confidence', 'value'])('refuses an item with no %s', (key) => {
-      const { [key]: _gone, ...rest } = item('Golpo');
+      const rest = Object.fromEntries(
+        Object.entries(item('Golpo')).filter(([name]) => name !== key),
+      );
       expect(BrandKitSchema.safeParse(withAt(['identity', 'name'], rest)).success).toBe(false);
     });
 
@@ -102,7 +104,7 @@ describe('BrandKitSchema', () => {
     });
 
     it('needs the checked-on date on a price', () => {
-      const { checkedOn: _gone, ...noDate } = { what: 'Bhapa pitha', price: '৳60', checkedOn: '' };
+      const noDate = { what: 'Bhapa pitha', price: '৳60' };
       expect(BrandKitSchema.safeParse(withAt(['facts', 'prices'], [item(noDate)])).success).toBe(
         false,
       );
