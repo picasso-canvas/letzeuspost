@@ -187,3 +187,43 @@ describe('upload links', () => {
     }
   });
 });
+
+// The worker's own reads and writes. The key is checked before any request is made, so these run offline: the endpoint
+// above has no server, and a request that got through would fail with a network error, not a StorageKeyError. That the
+// operations work on a real bucket is checked in storage.int.test.ts.
+describe("the worker's get, put, head and delete", () => {
+  const other = { workspaceId: OTHER_WORKSPACE };
+  const refused = [
+    assetKey(other, { brandId: BRAND, assetId: ASSET, variant: '1600' }),
+    renderKey(other, { hash: HASH, format: 'png' }),
+    exportKey(other, { exportId: EXPORT, name: 'a.zip' }),
+    `ws/${WORKSPACE}/../${OTHER_WORKSPACE}/renders/${HASH}.png`,
+    `ws/${WORKSPACE}/anything/x`,
+    `ws/${WORKSPACE}/brands/${BRAND}/assets/${ASSET}/original/extra`,
+    `ws/${WORKSPACE}/`,
+    `ws/${WORKSPACE}`,
+    '',
+  ];
+  const body = new Uint8Array([1, 2, 3]);
+
+  it("refuse a key in another workspace, or one that isn't a key a builder makes", async () => {
+    for (const key of refused) {
+      const name = JSON.stringify(key);
+      await expect(storage.get(ctx, key, { maxBytes: 10 }), name).rejects.toThrow(StorageKeyError);
+      await expect(storage.put(ctx, key, body, 'image/jpeg'), name).rejects.toThrow(
+        StorageKeyError,
+      );
+      await expect(storage.head(ctx, key), name).rejects.toThrow(StorageKeyError);
+      await expect(storage.delete(ctx, key), name).rejects.toThrow(StorageKeyError);
+    }
+  });
+
+  it('refuse a read with a byte cap that is not a whole number above 0', async () => {
+    const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
+    for (const maxBytes of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(storage.get(ctx, key, { maxBytes }), String(maxBytes)).rejects.toThrow(
+        RangeError,
+      );
+    }
+  });
+});
