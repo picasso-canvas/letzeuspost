@@ -26,6 +26,22 @@ export const CHROMIUM_ARGS: readonly string[] = [
   '--no-pings',
 ];
 
+/** The switches that turn a part of Chromium's sandbox off: none may be on the render browser's command line (#383). */
+export const SANDBOX_OFF_FLAGS: readonly string[] = [
+  '--no-sandbox',
+  '--disable-seccomp-filter-sandbox',
+  '--disable-namespace-sandbox',
+  '--disable-setuid-sandbox',
+  '--no-zygote',
+];
+
+/** The first sandbox-off switch on a command line, or undefined. */
+export function sandboxOffFlag(argv: readonly string[]): string | undefined {
+  return argv
+    .map((arg) => arg.split('=')[0] ?? '')
+    .find((name) => SANDBOX_OFF_FLAGS.includes(name));
+}
+
 export const LAUNCH_OPTIONS: LaunchOptions = {
   headless: true,
   // Chromium's OS sandbox (§08 Security, #350): a renderer exploit through a hostile font or image stays inside it, not

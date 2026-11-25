@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { SIZE_NAMES, SIZES } from '../sizes.ts';
-import { CHROMIUM_ARGS, contextOptions, LAUNCH_OPTIONS } from './flags.ts';
+import {
+  CHROMIUM_ARGS,
+  contextOptions,
+  LAUNCH_OPTIONS,
+  SANDBOX_OFF_FLAGS,
+  sandboxOffFlag,
+} from './flags.ts';
 
 const manifest = (path: string) =>
   JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8')) as {
@@ -70,4 +76,19 @@ describe('the fixed flags (§08 Chrome in Docker)', () => {
       expect(options.storageState).toBeUndefined();
     },
   );
+});
+
+describe('the sandbox-off switches (#383)', () => {
+  it('finds each of them on a command line, with or without a value, and nothing else', () => {
+    for (const flag of SANDBOX_OFF_FLAGS) {
+      expect(sandboxOffFlag(['chrome', flag])).toBe(flag);
+      expect(sandboxOffFlag(['chrome', `${flag}=1`])).toBe(flag);
+    }
+    expect(sandboxOffFlag(['chrome', '--hide-scrollbars', '--type=renderer'])).toBeUndefined();
+  });
+
+  it('are not among the render browser’s own arguments', () => {
+    expect(sandboxOffFlag(LAUNCH_OPTIONS.args ?? [])).toBeUndefined();
+    expect(LAUNCH_OPTIONS.chromiumSandbox).toBe(true);
+  });
 });
