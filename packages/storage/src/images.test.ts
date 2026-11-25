@@ -300,6 +300,8 @@ describe('crafted uploads', () => {
   it('a file of many XML comments and no SVG is refused at once, without the sniffer backtracking', async () => {
     const comments = Buffer.from(`<?xml version="1.0"?>${'<!-- a -->'.repeat(40)}<html>`);
     expect((await refusal(new Uint8Array(comments))).reason).toBe('not-an-image');
+    const doctypes = Buffer.from(`${'<!DOCTYPE a    >'.repeat(40)}<html>`);
+    expect((await refusal(new Uint8Array(doctypes))).reason).toBe('not-an-image');
   });
 
   it('an SVG that declares a DOCTYPE (entity expansion, outside files) is refused', async () => {
