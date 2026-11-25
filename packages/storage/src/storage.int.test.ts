@@ -1,12 +1,14 @@
-// The signed links against a real S3 server (SeaweedFS in development and CI): what the server accepts and refuses is
-// the proof that the size, the type, the lifetime and the private bucket hold. Runs in `pnpm check:services` and CI's
+// The signed links and the worker's reads and writes against a real S3 server (SeaweedFS in development and CI): what
+// the server accepts and refuses is the proof that the size, the type, the lifetime, the private bucket and the
+// workspace prefix hold. Runs in `pnpm check:services` and CI's
 // `services` job. Every key sits under a workspace id made for this run and is deleted afterwards.
 import { randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { loadEnv } from '@lzp/config';
 import { afterAll, describe, expect, it } from 'vitest';
-import { assetKey, exportKey } from './keys.ts';
+import { processImage, saveImageSet } from './images.ts';
+import { assetKey, exportKey, StorageKeyError } from './keys.ts';
 import { createStorage, type UploadLimits } from './storage.ts';
 
 const env = loadEnv('web');
@@ -194,6 +196,101 @@ describe('a signed download link', () => {
     expect(
       (await send('GET', (await alive.signDownload(ctx, key, { export: true })).url)).status,
     ).toBe(200);
+  });
+});
+
+describe("the worker's get, put, head and delete", () => {
+  /** A resized copy's key, new to this run: a key only the worker writes. */
+  function workerKey(): string {
+    const key = assetKey(ctx, { brandId: newId(), assetId: newId(), variant: '1600' });
+    made.push(key);
+    return key;
+  }
+
+  it('write a file, tell its size and type, read it back and delete it', async () => {
+    const key = workerKey();
+    const file = new Uint8Array(randomBytes(300));
+    await storage.put(ctx, key, file, 'image/jpeg');
+    expect(await storage.head(ctx, key)).toEqual({ size: 300, contentType: 'image/jpeg' });
+    expect(Buffer.from((await storage.get(ctx, key, { maxBytes: 300 })) ?? [])).toEqual(
+      Buffer.from(file),
+    );
+    await storage.delete(ctx, key);
+    expect(await storage.head(ctx, key)).toBeNull();
+    expect(await storage.get(ctx, key, { maxBytes: 300 })).toBeNull();
+  });
+
+  it('replace a file written before', async () => {
+    const key = workerKey();
+    await storage.put(ctx, key, new Uint8Array([1, 2, 3]), 'image/png');
+    await storage.put(ctx, key, new Uint8Array([4, 5]), 'image/jpeg');
+    expect(await storage.get(ctx, key, { maxBytes: 10 })).toEqual(new Uint8Array([4, 5]));
+    expect(await storage.head(ctx, key)).toEqual({ size: 2, contentType: 'image/jpeg' });
+  });
+
+  it("find nothing for a file that isn't there, and delete it without an error", async () => {
+    const key = workerKey();
+    expect(await storage.head(ctx, key)).toBeNull();
+    expect(await storage.get(ctx, key, { maxBytes: 10 })).toBeNull();
+    await expect(storage.delete(ctx, key)).resolves.toBeUndefined();
+  });
+
+  it('read a file at the byte cap and refuse one byte over it', async () => {
+    const key = newKey(); // an upload's original: the worker reads what the browser sent
+    const up = await storage.signUpload(ctx, key, { contentType: 'image/png', size: 64 }, limits);
+    await send('PUT', up.url, up.headers, randomBytes(64));
+    expect((await storage.get(ctx, key, { maxBytes: 64 }))?.length).toBe(64);
+    await expect(storage.get(ctx, key, { maxBytes: 63 })).rejects.toThrow(/too large/i);
+  });
+
+  it("never reach another workspace's file, which stays as it was", async () => {
+    const theirs = { workspaceId: newId() };
+    const key = assetKey(theirs, { brandId: newId(), assetId: newId(), variant: '360' });
+    made.push(key);
+    await cleanup.send(
+      new PutObjectCommand({ Bucket: settings.STORAGE_BUCKET, Key: key, Body: 'theirs' }),
+    );
+    await expect(storage.get(ctx, key, { maxBytes: 100 })).rejects.toThrow(StorageKeyError);
+    await expect(storage.head(ctx, key)).rejects.toThrow(StorageKeyError);
+    await expect(storage.put(ctx, key, new Uint8Array([1]), 'image/jpeg')).rejects.toThrow(
+      StorageKeyError,
+    );
+    await expect(storage.delete(ctx, key)).rejects.toThrow(StorageKeyError);
+    expect(await storage.get(theirs, key, { maxBytes: 100 })).toEqual(
+      new Uint8Array(Buffer.from('theirs')),
+    );
+  });
+});
+
+describe('an uploaded image', () => {
+  it('is read, processed and written back as its three sizes, under assetKey, never as SVG', async () => {
+    const asset = { brandId: newId(), assetId: newId() };
+    const keys = (['original', '1600', '360'] as const).map((variant) =>
+      assetKey(ctx, { ...asset, variant }),
+    );
+    made.push(...keys);
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1000"><script>alert(1)</script><rect width="2000" height="1000" fill="#ff0000"/></svg>',
+    );
+    const svgLimits: UploadLimits = { maxBytes: 1024, contentTypes: ['image/svg+xml'] };
+    const up = await storage.signUpload(
+      ctx,
+      keys[0] ?? '',
+      { contentType: 'image/svg+xml', size: svg.length },
+      svgLimits,
+    );
+    expect((await send('PUT', up.url, up.headers, svg)).status).toBe(200);
+
+    const upload = await storage.get(ctx, keys[0] ?? '', { maxBytes: svgLimits.maxBytes });
+    const set = await processImage(upload ?? new Uint8Array());
+    await saveImageSet(storage, ctx, asset, set);
+
+    const stored = await Promise.all(keys.map((key) => storage.head(ctx, key)));
+    expect(stored).toEqual([
+      { size: set.files.original.data.byteLength, contentType: 'image/png' },
+      { size: set.files['1600'].data.byteLength, contentType: 'image/webp' },
+      { size: set.files['360'].data.byteLength, contentType: 'image/webp' },
+    ]);
   });
 });
 

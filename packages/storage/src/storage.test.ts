@@ -1,9 +1,10 @@
 // Signing is offline arithmetic (SigV4 over the settings and the clock), so these tests read the links they get back:
 // what they sign, who they are for, and for how long. That a real server accepts and refuses them is checked in
 // storage.int.test.ts, against SeaweedFS.
+import { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { assetKey, exportKey, renderKey, StorageKeyError } from './keys.ts';
-import { createStorage, type UploadLimits } from './storage.ts';
+import { createStorage, UploadLimitError, type Storage, type UploadLimits } from './storage.ts';
 
 const WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8e9f';
 const OTHER_WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8ea0';
@@ -183,6 +184,95 @@ describe('upload links', () => {
     ]) {
       await expect(storage.signUpload(ctx, each, photo, limits), each).rejects.toThrow(
         StorageKeyError,
+      );
+    }
+  });
+});
+
+type RequestHandler = NonNullable<Parameters<typeof createStorage>[1]>['requestHandler'];
+
+/**
+ * A store that answers every request itself with `file` (no network), stating its real size; `reads` counts how many
+ * times its body was asked for bytes.
+ */
+function answering(file: Buffer): { storage: Storage; body: Readable; reads: () => number } {
+  let reads = 0;
+  const body = new Readable({
+    read() {
+      reads += 1;
+      this.push(file);
+      this.push(null);
+    },
+  });
+  const requestHandler: RequestHandler = {
+    handle: () =>
+      Promise.resolve({
+        response: {
+          statusCode: 200,
+          headers: { 'content-length': String(file.length), 'content-type': 'image/png' },
+          body,
+        },
+      }),
+  };
+  return { storage: createStorage(settings, { requestHandler }), body, reads: () => reads };
+}
+
+// The worker's own reads and writes. The key is checked before any request is made, so these run offline: the endpoint
+// above has no server, and a request that got through would fail with a network error, not a StorageKeyError. That the
+// operations work on a real bucket is checked in storage.int.test.ts.
+describe("the worker's get, put, head and delete", () => {
+  const other = { workspaceId: OTHER_WORKSPACE };
+  const refused = [
+    assetKey(other, { brandId: BRAND, assetId: ASSET, variant: '1600' }),
+    renderKey(other, { hash: HASH, format: 'png' }),
+    exportKey(other, { exportId: EXPORT, name: 'a.zip' }),
+    `ws/${WORKSPACE}/../${OTHER_WORKSPACE}/renders/${HASH}.png`,
+    `ws/${WORKSPACE}/anything/x`,
+    `ws/${WORKSPACE}/brands/${BRAND}/assets/${ASSET}/original/extra`,
+    `ws/${WORKSPACE}/`,
+    `ws/${WORKSPACE}`,
+    '',
+  ];
+  const body = new Uint8Array([1, 2, 3]);
+
+  it("refuse a key in another workspace, or one that isn't a key a builder makes", async () => {
+    for (const key of refused) {
+      const name = JSON.stringify(key);
+      await expect(storage.get(ctx, key, { maxBytes: 10 }), name).rejects.toThrow(StorageKeyError);
+      await expect(storage.put(ctx, key, body, 'image/jpeg'), name).rejects.toThrow(
+        StorageKeyError,
+      );
+      await expect(storage.head(ctx, key), name).rejects.toThrow(StorageKeyError);
+      await expect(storage.delete(ctx, key), name).rejects.toThrow(StorageKeyError);
+    }
+  });
+
+  it('never write a file as SVG, whatever its case or parameters: an SVG is only ever rasterised', async () => {
+    const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
+    for (const type of ['image/svg+xml', 'IMAGE/SVG+XML', 'image/svg+xml; charset=utf-8']) {
+      await expect(storage.put(ctx, key, body, type), type).rejects.toThrow(UploadLimitError);
+    }
+  });
+
+  it('read a whole file within the cap', async () => {
+    const { storage: answered } = answering(Buffer.alloc(1000, 7));
+    const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
+    expect(await answered.get(ctx, key, { maxBytes: 1000 })).toEqual(new Uint8Array(1000).fill(7));
+  });
+
+  it('refuse a file the store says is over the cap without reading any of it', async () => {
+    const { storage: answered, body, reads } = answering(Buffer.alloc(1000, 7));
+    const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
+    await expect(answered.get(ctx, key, { maxBytes: 999 })).rejects.toThrow(UploadLimitError);
+    expect(reads()).toBe(0);
+    expect(body.destroyed).toBe(true);
+  });
+
+  it('refuse a read with a byte cap that is not a whole number above 0', async () => {
+    const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
+    for (const maxBytes of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(storage.get(ctx, key, { maxBytes }), String(maxBytes)).rejects.toThrow(
+        RangeError,
       );
     }
   });

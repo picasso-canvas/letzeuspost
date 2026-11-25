@@ -8,7 +8,19 @@
 // type or another size than the one the link was made for; the size limit is enforced by never signing a size over
 // the caller's limit. (Whether R2 enforces a signed content-length the way S3 and SeaweedFS do is still to check
 // when R2 credentials exist; the worker re-checks every upload's real size and content in any case, §10.)
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+//
+// The worker reads and writes objects itself (`get`, `put`, `head`, `delete`). Each checks its key with `keyKind` before
+// any request, like signing does, so the worker too reaches only the context's workspace and only §13's key shapes.
+import { Readable } from 'node:stream';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+  S3ServiceException,
+  type S3ClientConfig,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { WorkspaceCtx } from '@lzp/db';
 import { keyKind, StorageKeyError } from './keys.ts';
@@ -67,7 +79,27 @@ export interface Storage {
     key: string,
     options?: { export?: boolean },
   ) => Promise<SignedDownload>;
+  /**
+   * The worker reads `key`; `null` when there is no such file. Refuses (`UploadLimitError`) a file over `maxBytes`
+   * without reading past the cap: an upload is untrusted until checked (§10).
+   */
+  get: (
+    ctx: WorkspaceCtx,
+    key: string,
+    options: { maxBytes: number },
+  ) => Promise<Uint8Array | null>;
+  /** The worker writes `key`, replacing any file there. */
+  put: (ctx: WorkspaceCtx, key: string, body: Uint8Array, contentType: string) => Promise<void>;
+  /** The size and type of `key`; `null` when there is no such file. */
+  head: (ctx: WorkspaceCtx, key: string) => Promise<ObjectInfo | null>;
+  /** The worker deletes `key`; deleting a file that isn't there is not an error. */
+  delete: (ctx: WorkspaceCtx, key: string) => Promise<void>;
   close: () => void;
+}
+
+export interface ObjectInfo {
+  readonly size: number;
+  readonly contentType: string | undefined;
 }
 
 const SECOND = 1000;
@@ -76,13 +108,38 @@ export const LINK_SECONDS = 15 * 60;
 /** §13, §12: an export download link lasts 7 days. */
 export const EXPORT_LINK_SECONDS = 7 * 24 * 60 * 60;
 
+/** Whether the store answered that there is no such file. */
+function isMissing(error: unknown): boolean {
+  return error instanceof S3ServiceException && error.$metadata.httpStatusCode === 404;
+}
+
+/** Reads a file's body whole, but stops and refuses it as soon as it passes `maxBytes`. */
+async function readCapped(body: unknown, maxBytes: number): Promise<Uint8Array> {
+  if (!(body instanceof Readable)) throw new Error('the file store sent no readable body');
+  const chunks: Buffer[] = [];
+  let total = 0;
+  // Leaving the loop early (the throw) destroys the stream, so nothing past the cap is read.
+  for await (const chunk of body) {
+    if (!Buffer.isBuffer(chunk)) throw new Error('the file store sent a body that is not bytes');
+    total += chunk.length;
+    if (total > maxBytes) throw new UploadLimitError('The file is too large.');
+    chunks.push(chunk);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
 export function createStorage(
   settings: StorageSettings,
-  options: { now?: () => Date } = {},
+  options: {
+    now?: () => Date;
+    /** What sends the requests; the SDK's own HTTP client unless a test answers them itself. */
+    requestHandler?: S3ClientConfig['requestHandler'];
+  } = {},
 ): Storage {
   const now = options.now ?? (() => new Date());
   const bucket = settings.STORAGE_BUCKET;
   const client = new S3Client({
+    ...(options.requestHandler === undefined ? {} : { requestHandler: options.requestHandler }),
     endpoint: settings.STORAGE_ENDPOINT,
     region: settings.STORAGE_REGION,
     credentials: {
@@ -145,6 +202,54 @@ export function createStorage(
         signingDate,
       });
       return { url, expiresAt: new Date(signingDate.getTime() + seconds * SECOND) };
+    },
+
+    async get(ctx, key, { maxBytes }) {
+      keyKind(ctx, key);
+      if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+        throw new RangeError('maxBytes must be a whole number of bytes above 0');
+      }
+      try {
+        const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        // A file the store already says is too large is refused unread; the stream cap still guards a size it hid.
+        if (response.ContentLength !== undefined && response.ContentLength > maxBytes) {
+          if (response.Body instanceof Readable) response.Body.destroy();
+          throw new UploadLimitError('The file is too large.');
+        }
+        return await readCapped(response.Body, maxBytes);
+      } catch (error) {
+        if (isMissing(error)) return null;
+        throw error;
+      }
+    },
+
+    async put(ctx, key, body, contentType) {
+      keyKind(ctx, key);
+      // §13: an SVG is only ever loaded as an image. The worker rasterises it (images.ts) and never stores one, so no
+      // signed link can serve a script from the bucket.
+      if (contentType.split(';')[0]?.trim().toLowerCase() === 'image/svg+xml') {
+        throw new UploadLimitError('An SVG is never stored as SVG.');
+      }
+      await client.send(
+        new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }),
+      );
+    },
+
+    async head(ctx, key) {
+      keyKind(ctx, key);
+      try {
+        const response = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+        if (response.ContentLength === undefined) throw new Error('the file store sent no size');
+        return { size: response.ContentLength, contentType: response.ContentType };
+      } catch (error) {
+        if (isMissing(error)) return null;
+        throw error;
+      }
+    },
+
+    async delete(ctx, key) {
+      keyKind(ctx, key);
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     },
 
     close() {
