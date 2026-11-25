@@ -19,6 +19,7 @@ import {
   PutObjectCommand,
   S3Client,
   S3ServiceException,
+  type S3ClientConfig,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { WorkspaceCtx } from '@lzp/db';
@@ -129,11 +130,16 @@ async function readCapped(body: unknown, maxBytes: number): Promise<Uint8Array> 
 
 export function createStorage(
   settings: StorageSettings,
-  options: { now?: () => Date } = {},
+  options: {
+    now?: () => Date;
+    /** What sends the requests; the SDK's own HTTP client unless a test answers them itself. */
+    requestHandler?: S3ClientConfig['requestHandler'];
+  } = {},
 ): Storage {
   const now = options.now ?? (() => new Date());
   const bucket = settings.STORAGE_BUCKET;
   const client = new S3Client({
+    ...(options.requestHandler === undefined ? {} : { requestHandler: options.requestHandler }),
     endpoint: settings.STORAGE_ENDPOINT,
     region: settings.STORAGE_REGION,
     credentials: {
