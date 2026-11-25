@@ -282,7 +282,7 @@ describe('crafted uploads', () => {
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" onload="alert(1)">
   ${SCRIPT}
   <rect width="120" height="60" fill="#ff0000"/>
-  <a href="javascript:alert(2)"><text x="10" y="30">hi</text></a>
+  <a><text x="10" y="30" onclick="alert(2)">hi</text></a>
 </svg>`;
     const set = await processImage(new Uint8Array(Buffer.from(svg)));
     expect(set.type).toBe('svg');
@@ -290,7 +290,7 @@ describe('crafted uploads', () => {
       expect(file.contentType, variant).not.toContain('svg');
       expect(['png', 'webp'], variant).toContain((await meta(file.data)).format);
       expect(contains(file.data, 'script'), variant).toBe(false);
-      expect(contains(file.data, 'javascript'), variant).toBe(false);
+      expect(contains(file.data, 'alert'), variant).toBe(false);
     }
     expect(set.files.original.contentType).toBe('image/png');
     // Drawn so its longest side is 4096 px: a vector logo is never stored too small to use (§10 resolution check).
@@ -317,6 +317,133 @@ describe('crafted uploads', () => {
 <!DOCTYPE svg [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]>
 <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>&b;</text></svg>`;
     expect((await refusal(new Uint8Array(Buffer.from(svg)))).reason).toBe('unsafe-svg');
+  });
+});
+
+/** An SVG document around `body`, 100 px square, with the xlink namespace declared. */
+function svgWith(body: string, prolog = ''): Uint8Array {
+  return new Uint8Array(
+    Buffer.from(
+      `${prolog}<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100" height="100">${body}</svg>`,
+    ),
+  );
+}
+
+const METADATA = 'http://169.254.169.254/latest/meta-data/';
+
+describe('an SVG that reaches outside itself', () => {
+  it('is refused when it embeds a data: PNG bomb, which librsvg would decode at its full size', async () => {
+    const bomb = Buffer.from(pngClaiming(40_000, 40_000)).toString('base64');
+    const svg = svgWith(`<image width="100" height="100" href="data:image/png;base64,${bomb}"/>`);
+    expect(svg.length).toBeLessThan(2000);
+    expect((await refusal(svg)).reason).toBe('unsafe-svg');
+  });
+
+  it('is refused when it embeds a data: SVG that declares entities, out of sight of the DOCTYPE check', async () => {
+    const inner = Buffer.from(
+      '<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY a "aaaa">]><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><text>&a;</text></svg>',
+    ).toString('base64');
+    const svg = svgWith(
+      `<image width="100" height="100" href="data:image/svg+xml;base64,${inner}"/>`,
+    );
+    expect(Buffer.from(svg).includes('DOCTYPE')).toBe(false);
+    expect((await refusal(svg)).reason).toBe('unsafe-svg');
+  });
+
+  it('is refused for a file: or cloud-metadata link, in any element, attribute or stylesheet', async () => {
+    const bodies = [
+      '<image width="10" height="10" href="file:///etc/passwd"/>',
+      `<image width="10" height="10" xlink:href="${METADATA}"/>`,
+      '<use xlink:href="file:///etc/hosts#a"/>',
+      `<use href="${METADATA}#a"/>`,
+      `<filter id="f"><feImage href="${METADATA}"/></filter>`,
+      `<rect width="10" height="10" fill="url(${METADATA}#a)"/>`,
+      `<rect width="10" height="10" style="fill: url('file:///etc/passwd#a')"/>`,
+      `<style>@import url(${METADATA});</style>`,
+      `<style>@import "file:///etc/passwd";</style>`,
+      `<foreignObject width="10" height="10"><p xmlns="http://www.w3.org/1999/xhtml">hi</p></foreignObject>`,
+      `<svg:image xmlns:svg="http://www.w3.org/2000/svg" width="10" height="10"/>`,
+      `<a href="javascript:alert(1)"><text>hi</text></a>`,
+    ];
+    for (const body of bodies) {
+      expect((await refusal(svgWith(body))).reason, body).toBe('unsafe-svg');
+    }
+  });
+
+  it('is refused when the link is hidden behind a character reference, a CSS escape or another encoding', async () => {
+    const svgs = [
+      svgWith('<use href="&#x66;ile:///etc/hosts#a"/>'),
+      svgWith(`<rect width="10" height="10" fill="&#117;rl(${METADATA}#a)"/>`),
+      svgWith(`<style>rect { fill: u\\72 l(${METADATA}#a) }</style><rect width="10" height="10"/>`),
+      svgWith(`<style>@\\69mport "file:///etc/passwd";</style>`),
+      svgWith(
+        '+ADw-image href+AD0AIg-file:///etc/passwd+ACI-/+AD4-',
+        '<?xml version="1.0" encoding="UTF-7"?>',
+      ),
+      new Uint8Array(
+        Buffer.concat([
+          Buffer.from(svgWith('<text>')),
+          Buffer.from([0xc0, 0xaf]),
+          Buffer.from('</text>'),
+        ]),
+      ),
+    ];
+    for (const svg of svgs) {
+      expect((await refusal(svg)).reason, Buffer.from(svg).toString('latin1')).toBe('unsafe-svg');
+    }
+  });
+
+  it('keeps a logo that only points inside itself: gradients, clips and reused shapes by #id', async () => {
+    const svg = svgWith(
+      `<defs>
+        <linearGradient id="g"><stop offset="0" stop-color="#f00"/><stop offset="1" stop-color="#00f"/></linearGradient>
+        <clipPath id="c"><circle cx="50" cy="50" r="40"/></clipPath>
+        <rect id="r" width="20" height="20"/>
+      </defs>
+      <rect width="100" height="100" fill="url(#g)" clip-path="url( '#c' )"/>
+      <use href="#r" x="10"/><use xlink:href="#r" y="60" style="fill: url(#g)"/>
+      <text x="5" y="95">R&amp;D &#169; 2026</text>`,
+      '<?xml version="1.0" encoding="utf-8"?>',
+    );
+    const set = await processImage(svg);
+    expect(set.type).toBe('svg');
+    expect(set.files.original).toMatchObject({ width: 4096, height: 4096 });
+  });
+});
+
+describe('an SVG that is slow to draw', () => {
+  it('is stopped at the time limit and refused, even when one piece of it is slow: heavy filters', async () => {
+    const blurs = [200, 201, 202, 203]
+      .map((radius) => `<feGaussianBlur stdDeviation="${String(radius)}"/>`)
+      .join('');
+    const svg = svgWith(
+      `<filter id="f" x="0" y="0" width="1" height="1"><feTurbulence baseFrequency="0.9" numOctaves="10"/>${blurs}</filter><rect width="100" height="100" filter="url(#f)"/>`,
+    );
+    expect(svg.length).toBeLessThan(1000);
+    const error = await processImage(svg, { seconds: 1 }).then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(ImageRefusedError);
+    expect((error as ImageRefusedError).reason).toBe('unreadable');
+  });
+
+  it('is stopped at the time limit and refused: a fan-out of <use>, with no DOCTYPE', async () => {
+    let defs = '<g id="g0"><rect width="1" height="1" opacity="0.5"/></g>';
+    for (let level = 1; level <= 4; level += 1) {
+      const uses = Array.from(
+        { length: 10 },
+        (_, i) => `<use href="#g${String(level - 1)}" x="${String(i % 3)}" y="${String(i % 5)}"/>`,
+      ).join('');
+      defs += `<g id="g${String(level)}">${uses}</g>`;
+    }
+    const svg = svgWith(`<defs>${defs}</defs><use href="#g4"/>`);
+    const error = await processImage(svg, { seconds: 1 }).then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(ImageRefusedError);
+    expect((error as ImageRefusedError).reason).toBe('unreadable');
   });
 });
 
