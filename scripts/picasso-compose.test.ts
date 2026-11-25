@@ -66,3 +66,56 @@ describe('docker/compose.picasso.yml', () => {
     expect(picasso).not.toMatch(/^\s*build:/m);
   });
 });
+
+describe("the worker's Chromium sandbox (#383)", () => {
+  const profile = JSON.parse(read('../docker/seccomp/worker-chromium.json')) as {
+    defaultAction: string;
+    syscalls: { names: string[]; action: string }[];
+  };
+  const refused = profile.syscalls
+    .filter((rule) => rule.action === 'SCMP_ACT_ERRNO')
+    .flatMap((rule) => rule.names);
+
+  it('starts the worker under that profile, with no capability and no new privileges', () => {
+    const worker = service(picasso, 'worker');
+    expect(worker).toContain('seccomp=./seccomp/worker-chromium.json');
+    expect(worker).toContain('no-new-privileges:true');
+    expect(worker).toMatch(/cap_drop: \[ALL\]/);
+    expect(worker).not.toMatch(/^\s+(cap_add|privileged):|seccomp=unconfined|apparmor=unconfined/m);
+  });
+
+  it("lets the sandbox make user namespaces but refuses the calls Docker's default profile refuses", () => {
+    expect(profile.defaultAction).toBe('SCMP_ACT_ALLOW');
+    for (const needed of ['clone', 'clone3', 'unshare', 'prctl', 'seccomp']) {
+      expect(refused).not.toContain(needed);
+    }
+    for (const never of [
+      'ptrace',
+      'mount',
+      'umount2',
+      'pivot_root',
+      'bpf',
+      'setns',
+      'kexec_load',
+      'init_module',
+      'finit_module',
+      'perf_event_open',
+      'keyctl',
+      'process_vm_readv',
+      'process_vm_writev',
+      'userfaultfd',
+      'reboot',
+      'swapon',
+    ]) {
+      expect(refused).toContain(never);
+    }
+  });
+
+  it('runs the image as the non-root node user, with Chromium kept where only root can write', () => {
+    const dockerfile = read('../apps/worker/Dockerfile');
+    const last = dockerfile.slice(dockerfile.lastIndexOf('\nFROM '));
+    expect(last).toMatch(/^USER node$/m);
+    expect(last).toContain('PLAYWRIGHT_BROWSERS_PATH=/ms-playwright');
+    expect(last.indexOf('install --with-deps chromium')).toBeLessThan(last.indexOf('USER node'));
+  });
+});

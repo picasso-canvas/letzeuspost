@@ -49,10 +49,34 @@ The web image holds the Next.js server-action key (Next writes it into the build
 a server needs one build per host or a key rotated at deploy.
 
 Then it builds both images from `git archive` of that commit (never from the working folder, so a local edit can't get in),
-tags them with the commit's first 12 characters, updates the instance's copy of `docker/`, starts Postgres, storage and
+tags them with the commit's first 12 characters, **runs the Chromium sandbox check in the worker image** (below; a failure
+stops the deploy before any container is swapped), updates the instance's copy of `docker/`, starts Postgres, storage and
 Mailpit, runs the migrations as the owner role, and swaps in the new web and worker containers. If a step after the
 build fails, it puts the old tag back in `deployed.env` and starts the old web and worker again. The migrations only go
 forward, so the old code must accept the migrated schema; if it doesn't, deploy a fixed commit.
+
+## The worker's Chromium sandbox
+
+The render browser (§08) runs inside the worker with Chromium's own OS sandbox on (`chromiumSandbox: true`, #350), so a
+renderer exploit through a hostile font or image stays inside it, not with the worker's rights. In the image:
+
+- The worker runs as the non-root `node` user. Chromium, pinned by `playwright-core`'s version, and the system libraries
+  it needs are installed once as root into `/ms-playwright`, which only root can write.
+- The sandbox needs unprivileged user namespaces, which Docker's default seccomp profile refuses. The worker container
+  therefore starts under `docker/seccomp/worker-chromium.json`, with `no-new-privileges` and `cap_drop: [ALL]`: no
+  capability is added, and `privileged`, `seccomp=unconfined` and `--no-sandbox` are never used (a test checks the compose
+  file; the render sandbox spec checks the browser's command line).
+- **The choice:** the profile is *allow by default, refuse a list*: the list is the one Docker's default profile refuses
+  (`ptrace`, `mount`, `bpf`, `setns`, `kexec_load`, module loading, `perf_event_open`, `keyctl`, `process_vm_*`,
+  `userfaultfd`, and so on), with `clone`, `clone3` and `unshare` left allowed because the sandbox makes its namespaces
+  with them. Docker's own default is an allowlist, which is stricter against a syscall nobody has listed; this one is
+  written by hand, with no copy of Docker's file, and is tested only for what it must allow and refuse. Chromium's own
+  seccomp filter (inside the sandbox) is the stricter layer for the renderers. Replacing it with a full allowlist is a
+  follow-up if Zeus wants that (it needs Docker's default profile as the base).
+- **The check:** `node packages/render/src/browser/check-sandbox.ts` in the image, under the same options as the
+  compose file. It fails if the worker is root, if Chromium has `--no-sandbox`, or if a renderer isn't under the sandbox's
+  seccomp filter (`Seccomp: 2`). `deploy` runs it before swapping containers. Without the profile it fails with Chromium's
+  "No usable sandbox!", which is how to tell the profile isn't applied.
 
 ## Back up
 
