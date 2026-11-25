@@ -118,7 +118,8 @@ async function readCapped(body: unknown, maxBytes: number): Promise<Uint8Array> 
   const chunks: Buffer[] = [];
   let total = 0;
   // Leaving the loop early (the throw) destroys the stream, so nothing past the cap is read.
-  for await (const chunk of body as AsyncIterable<Buffer>) {
+  for await (const chunk of body) {
+    if (!Buffer.isBuffer(chunk)) throw new Error('the file store sent a body that is not bytes');
     total += chunk.length;
     if (total > maxBytes) throw new UploadLimitError('The file is too large.');
     chunks.push(chunk);
@@ -213,6 +214,11 @@ export function createStorage(
 
     async put(ctx, key, body, contentType) {
       keyKind(ctx, key);
+      // §13: an SVG is only ever loaded as an image. The worker rasterises it (images.ts) and never stores one, so no
+      // signed link can serve a script from the bucket.
+      if (contentType.split(';')[0]?.trim().toLowerCase() === 'image/svg+xml') {
+        throw new UploadLimitError('An SVG is never stored as SVG.');
+      }
       await client.send(
         new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }),
       );

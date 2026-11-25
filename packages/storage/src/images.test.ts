@@ -160,6 +160,13 @@ async function refusal(bytes: Uint8Array): Promise<ImageRefusedError> {
   return error;
 }
 
+/** An ICC profile's readable text (its description is UTF-16 in an `mluc` tag), or '' with no profile. */
+function profileName(icc: Buffer | undefined): string {
+  return Buffer.from(icc ?? [])
+    .toString('latin1')
+    .replace(/[^ -~]/g, '');
+}
+
 async function meta(bytes: Uint8Array): Promise<Metadata> {
   return sharp(bytes).metadata();
 }
@@ -262,10 +269,11 @@ describe('crafted uploads', () => {
     expect((await refusal(pngClaiming(side, side))).reason).toBe('unreadable');
   });
 
-  it('an SVG pixel bomb is refused too', async () => {
+  it('an SVG that claims 50000 px is drawn at 4096 px at most, never at the size it claims', async () => {
     const svg =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="50000" height="50000"><rect width="10" height="10"/></svg>';
-    expect((await refusal(new Uint8Array(Buffer.from(svg)))).reason).toBe('too-many-pixels');
+      '<svg xmlns="http://www.w3.org/2000/svg" width="50000" height="25000"><rect width="10" height="10"/></svg>';
+    const set = await processImage(new Uint8Array(Buffer.from(svg)));
+    expect(set.files.original).toMatchObject({ width: 4096, height: 2048 });
   });
 
   it('an SVG with a script is rasterised: no output is SVG, and the script is gone', async () => {
@@ -285,7 +293,8 @@ describe('crafted uploads', () => {
       expect(contains(file.data, 'javascript'), variant).toBe(false);
     }
     expect(set.files.original.contentType).toBe('image/png');
-    expect(set.files.original).toMatchObject({ width: 120, height: 60 });
+    // Drawn so its longest side is 4096 px: a vector logo is never stored too small to use (§10 resolution check).
+    expect(set.files.original).toMatchObject({ width: 4096, height: 2048 });
   });
 
   it('an SVG that declares a DOCTYPE (entity expansion, outside files) is refused', async () => {
@@ -307,14 +316,15 @@ describe('every processed image', () => {
       .png()
       .toBuffer();
     expect((await meta(cmyk)).space).toBe('cmyk');
-    expect(Buffer.from((await meta(p3)).icc ?? []).includes('sRGB')).toBe(false);
+    expect(profileName((await meta(p3)).icc)).toContain('P3');
     for (const input of [cmyk, p3]) {
       const set = await processImage(new Uint8Array(input));
       for (const [variant, data] of outputs(set)) {
         const after = await meta(data);
         expect(after.space, variant).toBe('srgb');
         expect(after.channels, variant).toBe(3);
-        expect(Buffer.from(after.icc ?? []).includes('sRGB'), variant).toBe(true);
+        expect(profileName(after.icc), variant).toContain('sRGB');
+        expect(profileName(after.icc), variant).not.toContain('P3');
       }
     }
   });
@@ -433,7 +443,7 @@ describe('the copies and the fingerprints', () => {
 });
 
 describe('saving a processed set', () => {
-  it('writes each size under the key assetKey gives it, with its own type, and nowhere else', async () => {
+  it('writes each size under the key assetKey gives it, with its own type, and nowhere else; the original last', async () => {
     const writes: { key: string; contentType: string; size: number }[] = [];
     const recorder: Pick<Storage, 'put'> = {
       put: (_ctx, key, body, contentType) => {
@@ -444,7 +454,7 @@ describe('saving a processed set', () => {
     const set = await processImage(await solid(2000, 1000, 'jpeg'));
     await saveImageSet(recorder, ctx, { brandId: BRAND, assetId: ASSET }, set);
     expect(writes).toEqual(
-      (['original', '1600', '360'] as const).map((variant) => ({
+      (['1600', '360', 'original'] as const).map((variant) => ({
         key: assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant }),
         contentType: set.files[variant].contentType,
         size: set.files[variant].data.byteLength,
