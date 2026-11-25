@@ -1,0 +1,144 @@
+# Picasso's instance on Zeus's Mac (§18, #81): the same three services as docker/compose.yml plus the web and worker
+# images, as its own Compose project with its own volumes, so it never touches `pnpm dev:up`'s data. Nothing is
+# published on a host port: OrbStack serves the web app and the caught emails at https://<service>.<project>.orb.local.
+# It is run by `node scripts/picasso.ts` (deploy, seed, backup), which passes two env files:
+#   ~/letzeuspost-picasso/.env           every setting and secret, outside every checkout (never committed, never read by agents)
+#   ~/letzeuspost-picasso/deployed.env   LZP_IMAGE_TAG, the main commit the running images were built from
+# Each process gets only the settings config/env.ts lists for it (the owner role's URL reaches migrate and seed only).
+name: letzeuspost-picasso
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    # postgres:18.6-alpine (the same digest as docker/compose.yml: a test keeps the two in step)
+    image: postgres@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da026f957395
+    environment:
+      POSTGRES_USER: lzp_superuser
+      POSTGRES_PASSWORD: ${LZP_PG_SUPERUSER_PASSWORD:?set LZP_PG_SUPERUSER_PASSWORD}
+      POSTGRES_DB: letzeuspost
+      LZP_PG_OWNER_PASSWORD: ${LZP_PG_OWNER_PASSWORD:?set LZP_PG_OWNER_PASSWORD}
+      LZP_PG_APP_PASSWORD: ${LZP_PG_APP_PASSWORD:?set LZP_PG_APP_PASSWORD}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - install -m 0755 /lzp/roles.sh /docker-entrypoint-initdb.d/10-roles.sh && exec docker-entrypoint.sh postgres
+    volumes:
+      - ./postgres/roles.sh:/lzp/roles.sh:ro
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready --username lzp_superuser --dbname letzeuspost]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  storage:
+    <<: *restart
+    # chrislusf/seaweedfs:4.52
+    image: chrislusf/seaweedfs@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
+    entrypoint: [/bin/sh, /lzp/start.sh]
+    environment:
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?set STORAGE_ACCESS_KEY_ID}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?set STORAGE_SECRET_ACCESS_KEY}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?set STORAGE_BUCKET}
+    volumes:
+      - ./seaweedfs/start.sh:/lzp/start.sh:ro
+      - storage:/data
+    healthcheck:
+      test: [CMD-SHELL, test -f /tmp/lzp-ready]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  mail:
+    <<: *restart
+    # axllent/mailpit:v1.33.1
+    image: axllent/mailpit@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    labels:
+      dev.orbstack.http-port: '8025' # the caught emails' web UI; SMTP (1025) stays inside the project
+    healthcheck:
+      test: [CMD, /mailpit, readyz]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    <<: *restart
+    image: lzp-picasso-web:${LZP_IMAGE_TAG:?run it through scripts/picasso.ts}
+    depends_on:
+      postgres: { condition: service_healthy }
+      storage: { condition: service_healthy }
+      mail: { condition: service_healthy }
+    environment:
+      LZP_ENV: ${LZP_ENV:?set LZP_ENV}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:?set STORAGE_ENDPOINT}
+      STORAGE_REGION: ${STORAGE_REGION:?set STORAGE_REGION}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?set STORAGE_BUCKET}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?set STORAGE_ACCESS_KEY_ID}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?set STORAGE_SECRET_ACCESS_KEY}
+      SMTP_URL: ${SMTP_URL:?set SMTP_URL}
+      EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
+      APP_URL: ${APP_URL:?set APP_URL}
+      NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:?set NEXT_SERVER_ACTIONS_ENCRYPTION_KEY}
+      NEXT_DEPLOYMENT_ID: ${LZP_IMAGE_TAG}
+    healthcheck:
+      # Up once the server answers at all (a redirect to sign-in counts); the image has no curl.
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/', { redirect: 'manual' }).then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  worker:
+    <<: *restart
+    image: lzp-picasso-worker:${LZP_IMAGE_TAG:?run it through scripts/picasso.ts}
+    depends_on:
+      postgres: { condition: service_healthy }
+      storage: { condition: service_healthy }
+      mail: { condition: service_healthy }
+    environment:
+      LZP_ENV: ${LZP_ENV:?set LZP_ENV}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:?set STORAGE_ENDPOINT}
+      STORAGE_REGION: ${STORAGE_REGION:?set STORAGE_REGION}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:?set STORAGE_BUCKET}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?set STORAGE_ACCESS_KEY_ID}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:?set STORAGE_SECRET_ACCESS_KEY}
+      SMTP_URL: ${SMTP_URL:?set SMTP_URL}
+      EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
+      APP_URL: ${APP_URL:?set APP_URL}
+
+  # One-off commands (`docker compose run --rm migrate`): the only containers that hold the owner role's URL.
+  migrate:
+    profiles: [tools]
+    image: lzp-picasso-worker:${LZP_IMAGE_TAG:?run it through scripts/picasso.ts}
+    command: [node, packages/db/src/bin/migrate.ts]
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      LZP_ENV: ${LZP_ENV:?set LZP_ENV}
+      DATABASE_OWNER_URL: ${DATABASE_OWNER_URL:?set DATABASE_OWNER_URL}
+
+  seed:
+    profiles: [tools]
+    image: lzp-picasso-worker:${LZP_IMAGE_TAG:?run it through scripts/picasso.ts}
+    command: [node, packages/db/src/seed/studio.ts]
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      LZP_ENV: ${LZP_ENV:?set LZP_ENV}
+      DATABASE_OWNER_URL: ${DATABASE_OWNER_URL:?set DATABASE_OWNER_URL}
+
+volumes:
+  postgres:
+  storage:
