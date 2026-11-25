@@ -1,3 +1,15 @@
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
 import { parseEnvFile } from './dev-env.ts';
@@ -10,6 +22,7 @@ import {
   xmlText,
   dirProblem,
   imageTag,
+  keepDockerFolder,
   instanceDir,
   mergedHead,
   parseDeployArgs,
@@ -267,5 +280,32 @@ describe('sandboxCheckArgs', () => {
     expect(args.join(' ')).toContain('--security-opt no-new-privileges:true');
     expect(args.join(' ')).toContain('--cap-drop ALL');
     expect(args.slice(-2)).toEqual(['node', 'packages/render/src/browser/check-sandbox.ts']);
+  });
+});
+
+describe('keepDockerFolder (#396)', () => {
+  it("leaves the build's docker/ at <current>/docker, replacing an older copy and keeping modes", () => {
+    const root = mkdtempSync(join(tmpdir(), 'lzp-keep-'));
+    try {
+      const source = join(root, 'source');
+      const current = join(root, 'instance', 'current');
+      mkdirSync(join(source, 'docker', 'postgres'), { recursive: true });
+      writeFileSync(join(source, 'docker', 'compose.picasso.yml'), 'services: {}\n');
+      writeFileSync(join(source, 'docker', 'postgres', 'roles.sh'), '#!/bin/sh\n');
+      chmodSync(join(source, 'docker', 'postgres', 'roles.sh'), 0o755);
+      mkdirSync(join(current, 'docker'), { recursive: true });
+      writeFileSync(join(current, 'docker', 'gone.txt'), 'from an older deploy');
+
+      keepDockerFolder(source, current);
+
+      expect(readFileSync(join(current, 'docker', 'compose.picasso.yml'), 'utf8')).toBe(
+        'services: {}\n',
+      );
+      expect(statSync(join(current, 'docker', 'postgres', 'roles.sh')).mode & 0o111).not.toBe(0);
+      expect(existsSync(join(current, 'docker', 'gone.txt'))).toBe(false);
+      expect(existsSync(join(current, 'docker', 'docker'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

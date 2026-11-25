@@ -1,5 +1,6 @@
 // Picasso's instance on Zeus's Mac (§18, #81): the pieces of `scripts/picasso.ts` that decide something, kept apart
 // so they can be tested without Docker, GitHub or a terminal.
+import { cpSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 
@@ -228,4 +229,11 @@ export function sandboxCheckArgs(tag: string, seccompProfile: string): string[] 
     'node',
     'packages/render/src/browser/check-sandbox.ts',
   ];
+}
+
+/** The instance keeps its own copy of the build's `docker/` at `<current>/docker`, an older copy replaced (a `cp -R` of a
+ *  folder onto one that exists nests it one level deeper, which is how the first deploy found it, #396). */
+export function keepDockerFolder(source: string, current: string): void {
+  rmSync(current, { recursive: true, force: true });
+  cpSync(join(source, 'docker'), join(current, 'docker'), { recursive: true });
 }

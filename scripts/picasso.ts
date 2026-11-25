@@ -32,6 +32,7 @@ import {
   approvalProblem,
   checksProblem,
   type Comment,
+  keepDockerFolder,
   sandboxCheckArgs,
   xmlText,
   commentId,
@@ -243,10 +244,7 @@ function deploy(argv: string[]): void {
 
     // The compose file and the scripts its services mount are kept with the instance: a restart must not depend on a
     // checkout, which may be on any branch.
-    const current = join(folder, 'current');
-    rmSync(current, { recursive: true, force: true });
-    mkdirSync(join(current, 'docker'), { recursive: true });
-    run('cp', ['-R', join(source, 'docker', '.'), join(current, 'docker')]);
+    keepDockerFolder(source, join(folder, 'current'));
   } finally {
     rmSync(source, { recursive: true, force: true });
   }
