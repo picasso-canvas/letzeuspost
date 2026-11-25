@@ -297,6 +297,14 @@ describe('crafted uploads', () => {
     expect(set.files.original).toMatchObject({ width: 4096, height: 2048 });
   });
 
+  it('an SVG saved with a byte-order mark is still read as an SVG', async () => {
+    const svg = Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"/>'),
+    ]);
+    expect((await processImage(new Uint8Array(svg))).type).toBe('svg');
+  });
+
   it('a file of many XML comments and no SVG is refused at once, without the sniffer backtracking', async () => {
     const comments = Buffer.from(`<?xml version="1.0"?>${'<!-- a -->'.repeat(40)}<html>`);
     expect((await refusal(new Uint8Array(comments))).reason).toBe('not-an-image');

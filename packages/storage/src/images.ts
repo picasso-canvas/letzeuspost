@@ -10,7 +10,7 @@
 // for duplicates, and up to 5 dominant colours (§06: a palette of 3–5 swatches).
 import { createHash } from 'node:crypto';
 import type { WorkspaceCtx } from '@lzp/db';
-import sharp, { type Sharp } from 'sharp';
+import sharp, { type Metadata, type Sharp, type SharpOptions } from 'sharp';
 import { assetKey, type AssetVariant } from './keys.ts';
 import type { Storage } from './storage.ts';
 
@@ -21,11 +21,10 @@ export type RefusalReason = 'not-an-image' | 'unreadable' | 'too-many-pixels' | 
 
 export class ImageRefusedError extends Error {
   override readonly name = 'ImageRefusedError';
-  constructor(
-    readonly reason: RefusalReason,
-    message: string,
-  ) {
+  readonly reason: RefusalReason;
+  constructor(reason: RefusalReason, message: string) {
     super(message);
+    this.reason = reason;
   }
 }
 
@@ -61,12 +60,12 @@ export interface ImageSet {
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-// An SVG's root: after an optional BOM, the XML declaration, comments, a DOCTYPE and whitespace, an `<svg` element. Each
+// An SVG's root: after the XML declaration, comments, a DOCTYPE and whitespace (`\s` takes a BOM too), `<svg`. Each
 // alternative starts differently and can end in one place only (a comment at its first `-->`, a DOCTYPE's subset at
 // its first `]`), and whitespace is matched one character at a time, so there is one way to read the prolog and
 // nothing to backtrack into. It only ever sees the first 4 KB.
 const SVG_ROOT =
-  /^﻿?(?:\s|<\?xml[^>]*>|<!--(?:[^-]|-(?!->))*-->|<!DOCTYPE[^[>]*(?:\[[^\]]*\][^>]*)?>)*<svg[\s/>]/i;
+  /^(?:\s|<\?xml[^>]*>|<!--(?:[^-]|-(?!->))*-->|<!DOCTYPE[^[>]*(?:\[[^\]]*\][^>]*)?>)*<svg[\s/>]/i;
 const SVG_HEAD_BYTES = 4096;
 
 /** The type the bytes say, or `null` for anything that isn't a JPG, PNG, WebP or SVG. */
@@ -88,8 +87,8 @@ const UNREADABLE = "This image couldn't be read. Please export it again as a JPG
  * How sharp should open the upload. A raster's header is checked against `MAX_INPUT_PIXELS` first; an SVG has no
  * pixels of its own, so it is drawn at the density that makes its longest side `MAX_SIDE`, whatever size it claims.
  */
-async function openOptions(bytes: Buffer, type: ImageType): Promise<sharp.SharpOptions> {
-  let header: sharp.Metadata;
+async function openOptions(bytes: Buffer, type: ImageType): Promise<SharpOptions> {
+  let header: Metadata;
   try {
     // Header only, nothing decoded yet: the pixel check below is ours, with its own message.
     header = await sharp(bytes, { limitInputPixels: false }).metadata();
