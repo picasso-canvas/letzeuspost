@@ -14,6 +14,16 @@ export {
   type KitVersion,
   type NewBrand,
 } from './brand-kits.ts';
+// A brand's library (#400): a row per file, `waiting` until the `asset` job has processed it.
+export {
+  asset,
+  assetKinds,
+  assetSources,
+  assetStatuses,
+  type AssetKind,
+  type AssetSource,
+  type AssetStatus,
+} from './schema/assets.ts';
 // Jobs (§13, Q7): the queues and how a job sets its workspace live here; the handlers live in apps/worker.
 export {
   createJobs,
