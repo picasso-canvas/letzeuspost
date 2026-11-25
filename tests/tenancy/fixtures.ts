@@ -15,6 +15,7 @@ import { loadEnv } from '../../config/env.ts';
 import { authServer, signInBucket } from '../../packages/auth/src/index.ts';
 import { BrandKitSchema } from '../../packages/core/src/index.ts';
 import {
+  asset,
   brandKits,
   createDb,
   emailMessage,
@@ -25,6 +26,7 @@ import {
   type Db,
   type WorkspaceCtx,
 } from '../../packages/db/src/index.ts';
+import { assetKey } from '../../packages/storage/src/index.ts';
 
 /** A result row: the columns by name. */
 export type Row = Record<string, unknown>;
@@ -60,6 +62,12 @@ export interface WorkspaceRows {
   readonly email: { readonly id: string; readonly to: string };
   /** A brand, with one saved kit version (#399), made by the app's own save helper. */
   readonly brand: { readonly id: string; readonly nameEn: string; readonly versionId: string };
+  /** A photo in that brand's library (#400), still waiting to be processed, added by the app role. */
+  readonly asset: {
+    readonly id: string;
+    readonly storageKey: string;
+    readonly description: string;
+  };
 }
 
 export interface Tenancy {
@@ -158,7 +166,33 @@ export async function setUpTenancy(label: string): Promise<Tenancy> {
       publishing: {},
       holidays: {},
     });
-    return { ctx, name, owner, ...rows, brand: { id: made.id, nameEn, versionId: saved.id } };
+    // Its key is the one @lzp/storage gives the original, which the table's check holds it to.
+    const assetId = randomUUIDv7();
+    const description = `Tenancy photo ${letter} ${run}`;
+    const [added] = await app.forWorkspace(ctx).transaction((tx) =>
+      tx
+        .insert(asset)
+        .values({
+          id: assetId,
+          workspaceId: id,
+          brandId: made.id,
+          kind: 'photo',
+          storageKey: assetKey(ctx, { brandId: made.id, assetId, variant: 'original' }),
+          source: 'own',
+          description,
+          uploadedBy: owner.id,
+        })
+        .returning({ id: asset.id, storageKey: asset.storageKey }),
+    );
+    if (added === undefined) throw new Error('fixture asset not made');
+    return {
+      ctx,
+      name,
+      owner,
+      ...rows,
+      brand: { id: made.id, nameEn, versionId: saved.id },
+      asset: { ...added, description },
+    };
   };
 
   const a = await workspaceWith('a');
@@ -222,7 +256,7 @@ export async function setUpTenancy(label: string): Promise<Tenancy> {
 
   const close = async () => {
     // Deleting a workspace removes its members, invitations, outbox rows and brands with it (and a brand its kit
-    // versions); a person's sessions and account emails go with them.
+    // versions and its assets); a person's sessions and account emails go with them.
     await asOwner(
       text`delete from workspace where id in (${a.ctx.workspaceId}, ${b.ctx.workspaceId})`,
     );

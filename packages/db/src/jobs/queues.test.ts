@@ -14,15 +14,88 @@ const workspaceId = randomUUIDv7();
 const emailMessageId = randomUUIDv7();
 
 describe('the queues (§13 Jobs)', () => {
-  it("declares §13's five queues and the account emails' queue (#77)", () => {
+  it("declares §13's five queues, the account emails' queue (#77) and the asset library's (#400)", () => {
     expect([...queueNames].sort()).toEqual([
       'account-email',
       'ai',
+      'asset',
       'email',
       'export',
       'fetch',
       'render',
     ]);
+  });
+
+  describe('an uploaded asset’s processing (#400, §13 File storage)', () => {
+    const ids = { workspaceId, brandId: randomUUIDv7(), assetId: randomUUIDv7() };
+
+    it('takes the workspace, the brand and the asset, by id', () => {
+      expect(checkPayload('asset', ids)).toEqual(ids);
+    });
+
+    it.each([
+      ['a file name', { name: 'mango-lassi.jpg' }],
+      ['the storage key', { key: `ws/${workspaceId}/brands/x/assets/y/original` }],
+      ['a Bangla description', { description: 'আমের লাচ্ছি, কাচের গ্লাসে' }],
+      ['the file itself', { bytes: 'iVBORw0KGgo=' }],
+      ['a batch', { batchId: randomUUIDv7() }],
+    ])('refuses a payload carrying %s', (_, extra) => {
+      expect(() => checkPayload('asset', { ...ids, ...extra })).toThrow(JobPayloadError);
+    });
+
+    it.each([
+      ['no brand', { workspaceId, assetId: ids.assetId }],
+      ['no asset', { workspaceId, brandId: ids.brandId }],
+      ['no workspace', { brandId: ids.brandId, assetId: ids.assetId }],
+      ['text in an id', { ...ids, assetId: 'photo 1' }],
+    ])('refuses a payload with %s', (_, payload) => {
+      expect(() => checkPayload('asset', payload)).toThrow(JobPayloadError);
+    });
+  });
+
+  describe('the ai queue: a batch’s work, or an asset’s (tagAsset, §09)', () => {
+    const batch = { workspaceId, batchId: randomUUIDv7(), postId: randomUUIDv7() };
+    const asset = { workspaceId, brandId: randomUUIDv7(), assetId: randomUUIDv7() };
+
+    it('takes a batch’s work, with or without a post, as before', () => {
+      expect(checkPayload('ai', batch)).toEqual(batch);
+      expect(checkPayload('ai', { workspaceId, batchId: batch.batchId })).toEqual({
+        workspaceId,
+        batchId: batch.batchId,
+      });
+    });
+
+    it('takes an asset’s work without a batch', () => {
+      expect(checkPayload('ai', asset)).toEqual(asset);
+    });
+
+    it.each([
+      ['a description to write tags from', { description: 'A cup of tea' }],
+      ['Bangla tags', { tags: ['চা', 'সকাল'] }],
+      ['an image', { image: 'data:image/png;base64,iVBORw0KGgo=' }],
+    ])('refuses an asset’s work carrying %s', (_, extra) => {
+      expect(() => checkPayload('ai', { ...asset, ...extra })).toThrow(JobPayloadError);
+    });
+
+    it.each([
+      [
+        'a batch and an asset at once',
+        { ...batch, brandId: asset.brandId, assetId: asset.assetId },
+      ],
+      ['an asset without its brand', { workspaceId, assetId: asset.assetId }],
+      ['a brand alone', { workspaceId, brandId: asset.brandId }],
+      ['a post without its batch', { workspaceId, postId: batch.postId }],
+      ['only the workspace', { workspaceId }],
+    ])('refuses %s', (_, payload) => {
+      expect(() => checkPayload('ai', payload)).toThrow(JobPayloadError);
+    });
+
+    it('names the fields at fault, never their values', () => {
+      const refused = () =>
+        checkPayload('ai', { ...asset, description: 'নাদিয়ার ছবি', to: 'nadia@example.com' });
+      expect(refused).toThrow(/description/);
+      expect(refused).toThrow(/^(?![\s\S]*(nadia|নাদিয়া))/);
+    });
   });
 
   it('takes an account email by its id alone: it belongs to a person, not a workspace', () => {

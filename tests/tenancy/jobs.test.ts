@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
 import { createAccountEmails } from '../../packages/auth/src/index.ts';
 import {
+  asset,
   checkPayload,
   emailMessage,
   invitation,
@@ -43,6 +44,8 @@ function payloadInAWithBIds(queue: QueueName): object {
   switch (queue) {
     case 'ai':
       return { workspaceId, batchId: b(), postId: b() };
+    case 'asset':
+      return { workspaceId, brandId: t.b.brand.id, assetId: t.b.asset.id };
     case 'render':
       return { workspaceId, postId: b(), postVersionId: b() };
     case 'fetch':
@@ -64,26 +67,45 @@ async function reachOfB(db: Scoped) {
       text`select id from invitation where id = ${b.invitation.id}
        union all select id from email_message where id = ${b.email.id}
        union all select id from workspace where id = ${b.ctx.workspaceId}
-       union all select workspace_id from member where workspace_id = ${b.ctx.workspaceId}`,
+       union all select workspace_id from member where workspace_id = ${b.ctx.workspaceId}
+       union all select id from brand where id = ${b.brand.id}
+       union all select id from asset where id = ${b.asset.id}`,
     );
     const changed = await tx.execute(
       text`update email_message set status = 'failed', failure = 'tenancy' where id = ${b.email.id}`,
     );
+    // What an asset job does to its row (#400): fill it in and mark it ready.
+    const processed = await tx.execute(
+      text`update asset set status = 'ready', consent = true, description = 'tenancy' where id = ${b.asset.id}`,
+    );
     const removed = await tx.execute(text`delete from invitation where id = ${b.invitation.id}`);
-    return { read: read.rows, changed: changed.rowCount, removed: removed.rowCount };
+    const removedAsset = await tx.execute(text`delete from asset where id = ${b.asset.id}`);
+    return {
+      read: read.rows,
+      changed: changed.rowCount,
+      processed: processed.rowCount,
+      removed: removed.rowCount,
+      removedAsset: removedAsset.rowCount,
+    };
   });
 }
 
-/** B's rows as B sees them: still there, the outbox row still queued. */
+/** B's rows as B sees them: still there, the outbox row still queued, the asset still waiting. */
 async function expectBUntouched() {
   const rows = await t.app.forWorkspace(t.b.ctx).transaction(async (tx) => ({
     invitations: await tx.select({ id: invitation.id }).from(invitation),
     emails: await tx
       .select({ id: emailMessage.id, status: emailMessage.status })
       .from(emailMessage),
+    assets: await tx
+      .select({ id: asset.id, status: asset.status, description: asset.description })
+      .from(asset),
   }));
   expect(rows.invitations).toEqual([{ id: t.b.invitation.id }]);
   expect(rows.emails).toEqual([{ id: t.b.email.id, status: 'queued' }]);
+  expect(rows.assets).toEqual([
+    { id: t.b.asset.id, status: 'waiting', description: t.b.asset.description },
+  ]);
 }
 
 /** A payload carrying more than the queue's ids is refused: B's data can't ride in a job. */
@@ -114,7 +136,9 @@ async function expectRunsInA(queue: QueueName) {
   expect(await reachOfB(t.app.forWorkspace({ workspaceId: workspaceId ?? '' }))).toEqual({
     read: [],
     changed: 0,
+    processed: 0,
     removed: 0,
+    removedAsset: 0,
   });
   await expectBUntouched();
 }
@@ -127,6 +151,15 @@ tenancy('queue ai', () => {
   });
   it('runs a job of A’s with B’s ids in A, where none of B’s rows can be read or changed', () =>
     expectRunsInA('ai'));
+});
+
+tenancy('queue asset', () => {
+  it('refuses B’s data in a job, and a group not the job’s workspace', () => {
+    expectIdsOnly('asset');
+    expectGroupIsItsWorkspace('asset');
+  });
+  it('runs a job of A’s naming B’s brand and asset in A, where neither can be read or changed', () =>
+    expectRunsInA('asset'));
 });
 
 tenancy('queue render', () => {
@@ -180,7 +213,7 @@ tenancy('queue account-email', () => {
 
 it('the queues tried above are every queue packages/db has', () => {
   expect([...queueNames].sort()).toEqual(
-    ['account-email', 'ai', 'email', 'export', 'fetch', 'render'].sort(),
+    ['account-email', 'ai', 'asset', 'email', 'export', 'fetch', 'render'].sort(),
   );
 });
 
