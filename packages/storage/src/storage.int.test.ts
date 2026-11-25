@@ -7,6 +7,7 @@ import http from 'node:http';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { loadEnv } from '@lzp/config';
 import { afterAll, describe, expect, it } from 'vitest';
+import { processImage, saveImageSet } from './images.ts';
 import { assetKey, exportKey, StorageKeyError } from './keys.ts';
 import { createStorage, type UploadLimits } from './storage.ts';
 
@@ -258,6 +259,38 @@ describe("the worker's get, put, head and delete", () => {
     expect(await storage.get(theirs, key, { maxBytes: 100 })).toEqual(
       new Uint8Array(Buffer.from('theirs')),
     );
+  });
+});
+
+describe('an uploaded image', () => {
+  it('is read, processed and written back as its three sizes, under assetKey, never as SVG', async () => {
+    const asset = { brandId: newId(), assetId: newId() };
+    const keys = (['original', '1600', '360'] as const).map((variant) =>
+      assetKey(ctx, { ...asset, variant }),
+    );
+    made.push(...keys);
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1000"><script>alert(1)</script><rect width="2000" height="1000" fill="#ff0000"/></svg>',
+    );
+    const svgLimits: UploadLimits = { maxBytes: 1024, contentTypes: ['image/svg+xml'] };
+    const up = await storage.signUpload(
+      ctx,
+      keys[0] ?? '',
+      { contentType: 'image/svg+xml', size: svg.length },
+      svgLimits,
+    );
+    expect((await send('PUT', up.url, up.headers, svg)).status).toBe(200);
+
+    const upload = await storage.get(ctx, keys[0] ?? '', { maxBytes: svgLimits.maxBytes });
+    const set = await processImage(upload ?? new Uint8Array());
+    await saveImageSet(storage, ctx, asset, set);
+
+    const stored = await Promise.all(keys.map((key) => storage.head(ctx, key)));
+    expect(stored).toEqual([
+      { size: set.files.original.data.byteLength, contentType: 'image/png' },
+      { size: set.files['1600'].data.byteLength, contentType: 'image/webp' },
+      { size: set.files['360'].data.byteLength, contentType: 'image/webp' },
+    ]);
   });
 });
 

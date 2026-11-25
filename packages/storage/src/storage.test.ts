@@ -3,7 +3,7 @@
 // storage.int.test.ts, against SeaweedFS.
 import { describe, expect, it } from 'vitest';
 import { assetKey, exportKey, renderKey, StorageKeyError } from './keys.ts';
-import { createStorage, type UploadLimits } from './storage.ts';
+import { createStorage, UploadLimitError, type UploadLimits } from './storage.ts';
 
 const WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8e9f';
 const OTHER_WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8ea0';
@@ -215,6 +215,13 @@ describe("the worker's get, put, head and delete", () => {
       );
       await expect(storage.head(ctx, key), name).rejects.toThrow(StorageKeyError);
       await expect(storage.delete(ctx, key), name).rejects.toThrow(StorageKeyError);
+    }
+  });
+
+  it('never write a file as SVG, whatever its case or parameters: an SVG is only ever rasterised', async () => {
+    const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
+    for (const type of ['image/svg+xml', 'IMAGE/SVG+XML', 'image/svg+xml; charset=utf-8']) {
+      await expect(storage.put(ctx, key, body, type), type).rejects.toThrow(UploadLimitError);
     }
   });
 
