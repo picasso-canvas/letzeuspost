@@ -211,6 +211,11 @@ export function createStorage(
       }
       try {
         const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        // A file the store already says is too large is refused unread; the stream cap still guards a size it hid.
+        if (response.ContentLength !== undefined && response.ContentLength > maxBytes) {
+          if (response.Body instanceof Readable) response.Body.destroy();
+          throw new UploadLimitError('The file is too large.');
+        }
         return await readCapped(response.Body, maxBytes);
       } catch (error) {
         if (isMissing(error)) return null;
