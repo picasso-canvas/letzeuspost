@@ -153,13 +153,15 @@ describe('adding an asset', () => {
       const [row] = await add(ws.a, photoOf(ws.a, { kind }));
       expect(row?.kind).toBe(kind);
     }
+    // Values the schema's type rules out, as code that skipped it (or an older or newer app) might write them.
     for (const change of [
       { kind: 'video' },
       { kind: 'meme' },
       { source: 'stock' },
       { status: 'approved' },
-    ] as Partial<NewAsset>[]) {
-      expect(await refusal(add(ws.a, photoOf(ws.a, change))), JSON.stringify(change)).toBe(
+    ]) {
+      const row: Record<string, unknown> = { ...photoOf(ws.a), ...change };
+      expect(await refusal(add(ws.a, row as NewAsset)), JSON.stringify(change)).toBe(
         CHECK_VIOLATION,
       );
     }

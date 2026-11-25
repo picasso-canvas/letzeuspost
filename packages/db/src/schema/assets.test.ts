@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { getTableColumns, getTableName } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
+import { ASSET_KINDS, ASSET_SOURCES, ASSET_STATUSES } from '../../../core/src/brand/asset.ts';
 import { asset, assetKinds, assetSources, assetStatuses } from './assets.ts';
 
 const migration = readFileSync(
@@ -93,6 +94,10 @@ describe('the asset table', () => {
     expect(assetKinds).toEqual(['logo', 'photo', 'product', 'people', 'document', 'example']);
     expect(assetSources).toEqual(['own', 'client', 'cutout']);
     expect(assetStatuses).toEqual(['ready', 'waiting', 'rejected']);
+    // The same lists as core's rules (`isUsableInPost`) read: the table can't hold a value they don't know.
+    expect(assetKinds).toEqual(ASSET_KINDS);
+    expect(assetSources).toEqual(ASSET_SOURCES);
+    expect(assetStatuses).toEqual(ASSET_STATUSES);
     const listed = (values: readonly string[]) => values.map((v) => `'${v}'`).join(', ');
     expect(migration).toContain(`CHECK (kind in (${listed(assetKinds)}))`);
     expect(migration).toContain(`CHECK (source in (${listed(assetSources)}))`);
