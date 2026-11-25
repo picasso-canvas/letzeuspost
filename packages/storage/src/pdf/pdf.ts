@@ -5,15 +5,16 @@
 //   environment, may write at most what the text cap needs, and is killed at the time limit (15 s, Athena's reading of
 //   §10's "5–15 s a photo"), so a crafted file can't hold the worker or reach its secrets;
 // - only its text is read: no page is drawn, no font loaded, no script run, nothing fetched;
+// - at most 20 MB (§06), checked before the reader starts;
 // - at most 100 pages (Athena, #402), counted from the file's page tree before any page is read, and at most a million
 //   characters of text are kept (about 200 pages of dense text; a cap of this package's, so one file can't fill a row).
-// A PDF that can't be read, is locked, is too long, too slow, or holds no text is refused with a `PdfRefusedError`,
+// A PDF that is too large, can't be read, is locked, is too long, too slow, or holds no text is refused with a `PdfRefusedError`,
 // whose message is safe to show to the person who sent it and holds nothing of the file.
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export type PdfRefusalReason =
-  'not-a-pdf' | 'unreadable' | 'locked' | 'too-many-pages' | 'no-text' | 'too-slow';
+  'not-a-pdf' | 'too-large' | 'unreadable' | 'locked' | 'too-many-pages' | 'no-text' | 'too-slow';
 
 export class PdfRefusedError extends Error {
   override readonly name = 'PdfRefusedError';
@@ -24,6 +25,8 @@ export class PdfRefusedError extends Error {
   }
 }
 
+/** The largest PDF that is read: §06's "up to 20 MB each". */
+export const MAX_PDF_BYTES = 20 * 1024 * 1024;
 /** The most pages a PDF may have (Athena, #402). */
 export const MAX_PDF_PAGES = 100;
 /** How long reading a PDF may take before it is refused (Athena, #402). */
@@ -33,6 +36,7 @@ export const MAX_PDF_TEXT_CHARS = 1_000_000;
 
 const MESSAGES: Readonly<Record<PdfRefusalReason, string>> = {
   'not-a-pdf': "That file isn't a PDF.",
+  'too-large': 'This PDF is too large: at most 20 MB.',
   unreadable: "This PDF couldn't be read. Please save it again as a PDF and upload it.",
   locked: 'This PDF is protected by a password. Please upload a copy without one.',
   'too-many-pages': `This PDF is too long: at most ${String(MAX_PDF_PAGES)} pages.`,
@@ -125,7 +129,7 @@ function runReader(pdf: Uint8Array, seconds: number): Promise<Answer> {
 
 /**
  * The text of a PDF, its pages one after another with a blank line between them, or a `PdfRefusedError` with a message
- * safe to show. `bytes` is the whole upload, already capped in size by `Storage.get`. `seconds` (a whole number from 1
+ * safe to show. `bytes` is the whole upload, at most `MAX_PDF_BYTES`. `seconds` (a whole number from 1
  * to 60) bounds the whole read.
  */
 export async function readPdfText(
@@ -136,6 +140,7 @@ export async function readPdfText(
     throw new RangeError('seconds must be a whole number from 1 to 60');
   }
   if (!isPdf(bytes)) throw new PdfRefusedError('not-a-pdf');
+  if (bytes.byteLength > MAX_PDF_BYTES) throw new PdfRefusedError('too-large');
   const answer = await runReader(bytes, seconds);
   if ('refused' in answer) throw new PdfRefusedError(answer.refused);
   const text = answer.text.replace(CONTROL, '').toWellFormed().trim();
