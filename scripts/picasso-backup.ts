@@ -5,7 +5,16 @@
 //   node picasso-backup.ts backup         dump the database to <folder>/backups, keep 14 days
 //   node picasso-backup.ts restore-test   dump, restore into a scratch database, compare every table's rows, drop it
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -85,26 +94,33 @@ export function backup(now = new Date()): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const target = join(dir, backupName(now));
   const partial = `${target}.partial`;
-  const dump = spawnSync(
-    'docker',
-    [
-      'exec',
-      postgresContainer(),
-      'pg_dump',
-      '--username',
-      'lzp_superuser',
-      '--format',
-      'custom',
-      '--dbname',
-      DATABASE,
-    ],
-    { maxBuffer: 1024 * 1024 * 1024 },
-  );
-  if (dump.status !== 0 || dump.stdout.length === 0) {
+  // Streamed to the file, so the size of the database isn't limited by a buffer.
+  const fd = openSync(partial, 'w', 0o600);
+  let dump;
+  try {
+    dump = spawnSync(
+      'docker',
+      [
+        'exec',
+        postgresContainer(),
+        'pg_dump',
+        '--username',
+        'lzp_superuser',
+        '--format',
+        'custom',
+        '--dbname',
+        DATABASE,
+      ],
+      { stdio: ['ignore', fd, 'pipe'] },
+    );
+  } finally {
+    closeSync(fd);
+  }
+  if (dump.status !== 0 || statSync(partial).size === 0) {
+    unlinkSync(partial);
     throw new Error(`pg_dump failed: ${dump.stderr.toString().trim().slice(0, 300)}`);
   }
   // Written under another name and renamed, so a half-written dump is never taken for a backup.
-  writeFileSync(partial, dump.stdout, { mode: 0o600 });
   chmodSync(partial, 0o600);
   renameSync(partial, target);
   for (const old of backupsToDelete(readdirSync(dir), now)) unlinkSync(join(dir, old));

@@ -12,7 +12,6 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
   appendFileSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -33,6 +32,7 @@ import {
   approvalProblem,
   checksProblem,
   type Comment,
+  xmlText,
   commentId,
   dirProblem,
   imageTag,
@@ -302,19 +302,23 @@ function installBackup(): void {
   const folder = dir();
   mkdirSync(join(folder, 'bin'), { recursive: true, mode: 0o700 });
   const script = join(folder, 'bin', 'picasso-backup.ts');
-  copyFileSync(join(root, 'scripts', 'picasso-backup.ts'), script);
+  // From main, not from whatever branch this checkout is on: the nightly job runs this copy.
+  run('git', ['fetch', '--quiet', 'origin', 'main']);
+  writeFileSync(script, out('git', ['show', 'origin/main:scripts/picasso-backup.ts']), {
+    mode: 0o600,
+  });
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>com.letzeuspost.picasso-backup</string>
-  <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${script}</string><string>backup</string></array>
+  <key>ProgramArguments</key><array><string>${xmlText(process.execPath)}</string><string>${xmlText(script)}</string><string>backup</string></array>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    <key>LZP_PICASSO_DIR</key><string>${folder}</string>
+    <key>LZP_PICASSO_DIR</key><string>${xmlText(folder)}</string>
   </dict>
   <key>StartCalendarInterval</key><dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
-  <key>StandardOutPath</key><string>${join(folder, 'backup.log')}</string>
-  <key>StandardErrorPath</key><string>${join(folder, 'backup.log')}</string>
+  <key>StandardOutPath</key><string>${xmlText(join(folder, 'backup.log'))}</string>
+  <key>StandardErrorPath</key><string>${xmlText(join(folder, 'backup.log'))}</string>
 </dict></plist>
 `;
   writeFileSync(PLIST, plist);

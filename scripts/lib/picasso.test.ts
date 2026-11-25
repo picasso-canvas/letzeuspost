@@ -6,6 +6,7 @@ import {
   approvalProblem,
   checksProblem,
   commentId,
+  xmlText,
   dirProblem,
   imageTag,
   instanceDir,
@@ -189,6 +190,7 @@ describe('approvalProblem', () => {
   const comment = (over: object = {}) => ({
     body: 'Zeus decided (2026-11-25, in chat): deploy 48a3c91 to the instance.',
     created_at: '2026-11-25T09:00:00Z',
+    updated_at: '2026-11-25T09:00:00Z',
     html_url: `https://github.com/${repo}/issues/81#issuecomment-4242`,
     user: { login: 'picasso-canvas' },
     ...over,
@@ -207,15 +209,49 @@ describe('approvalProblem', () => {
     expect(check({ user: { login: 'someone' } })).toContain('not by picasso-canvas');
   });
 
-  it('refuses text that is not his decision to deploy, or names another commit', () => {
-    expect(check({ body: 'deploy 48a3c91, looks fine' })).toContain('Zeus decided');
-    expect(check({ body: 'Zeus decided: merge 48a3c91' })).toContain('Zeus decided');
-    expect(check({ body: 'Zeus decided (2026-11-25): deploy abcdef0' })).toContain(
-      'does not name the commit 48a3c91',
+  it('refuses text that is not the record of his yes to deploy, or names another commit', () => {
+    const format = 'is not a record of the form';
+    expect(check({ body: 'deploy 48a3c91, looks fine' })).toContain(format);
+    expect(check({ body: 'Zeus decided: merge 48a3c91' })).toContain(format);
+    expect(
+      check({ body: 'Zeus decided (2026-11-25, in chat): do not deploy 48a3c91 until #383 lands' }),
+    ).toContain(format);
+    expect(
+      check({ body: '> Zeus decided (2026-11-25, in chat): deploy 48a3c91\n\nQuoted by a review' }),
+    ).toContain(format);
+    expect(
+      check({ body: 'Review note, then: Zeus decided (2026-11-25, in chat): deploy 48a3c91' }),
+    ).toContain(format);
+    expect(check({ body: 'Zeus decided (2026-11-25, in chat): deploy abcdef0' })).toContain(
+      'not to the commit 48a3c91',
     );
+    expect(check({ body: 'Zeus decided (2026-11-25, in chat): deploy 48a3c9' })).toContain(format); // under 7 characters
+  });
+
+  it('accepts the commit named by more than 7 characters, and text after the record', () => {
+    expect(
+      check({
+        body: 'Zeus decided (2026-11-25, in chat): deploy 48a3c911f06d, after #392 merged.',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('refuses a comment edited after it was posted', () => {
+    expect(check({ updated_at: '2026-11-25T09:30:00Z' })).toContain('edited');
   });
 
   it('refuses a yes older than the commit', () => {
-    expect(check({ created_at: '2026-11-25T02:00:00Z' })).toContain('older than the commit');
+    expect(
+      check({ created_at: '2026-11-25T02:00:00Z', updated_at: '2026-11-25T02:00:00Z' }),
+    ).toContain('older than the commit');
+  });
+});
+
+describe('xmlText', () => {
+  it('escapes what could break out of a plist string', () => {
+    expect(xmlText(`a&b<c>"d"'e'`)).toBe('a&amp;b&lt;c&gt;&quot;d&quot;&apos;e&apos;');
+    expect(xmlText('/Users/picasso/letzeuspost-picasso')).toBe(
+      '/Users/picasso/letzeuspost-picasso',
+    );
   });
 });

@@ -31,6 +31,16 @@ export function dirProblem(dir: string, repoRoot: string, buildersDir: string): 
   return undefined;
 }
 
+/** `text` made safe to sit inside an XML element (the launchd plist). */
+export function xmlText(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
 /** The text of the instance's `.env`: every setting the four processes read, with a fresh secret for each. */
 export function picassoEnvText(randomBytes: (size: number) => Uint8Array): string {
   const secret = () => Buffer.from(randomBytes(24)).toString('hex'); // 48 hex characters: safe inside a URL
@@ -76,6 +86,7 @@ export function commentId(url: string): string | undefined {
 export interface Comment {
   body: string;
   created_at: string;
+  updated_at: string;
   html_url: string;
   user: { login: string };
 }
@@ -83,8 +94,9 @@ export interface Comment {
 /**
  * Why a comment is not the posted record of Zeus's yes to deploying `commit` (§19 #116: his decision counts as a
  * posted record, "Zeus decided (<date>, in chat): …"), or undefined when it is. It must be this repository's, by the
- * signed-in GitHub user (Athena posts it as that user), say "Zeus decided" and "deploy", name the commit (at least its
- * first 7 characters), and be newer than the commit, so an older yes never covers a newer commit.
+ * signed-in GitHub user (Athena posts it as that user), begin "Zeus decided (<date>, in chat): deploy <commit>" with the
+ * commit's first 7 or more characters, never have been edited, and be newer than the commit, so an older yes never
+ * covers a newer commit.
  */
 export function approvalProblem(
   comment: Comment,
@@ -97,11 +109,18 @@ export function approvalProblem(
     return `the comment is not in ${repo}`;
   if (comment.user.login !== login)
     return `the comment is by ${comment.user.login}, not by ${login}`;
-  if (!/zeus decided/i.test(comment.body) || !/deploy/i.test(comment.body)) {
-    return 'the comment does not say "Zeus decided" and "deploy"';
+  // The whole record format, not words somewhere in the text: "do not deploy …" or a quoted record must not count.
+  const named = /^Zeus decided \(\d{4}-\d{2}-\d{2}, in chat\): deploy ([0-9a-f]{7,40})\b/.exec(
+    comment.body.trim(),
+  )?.[1];
+  if (named === undefined) {
+    return 'the comment is not a record of the form "Zeus decided (<date>, in chat): deploy <commit> …"';
   }
-  if (!comment.body.toLowerCase().includes(commit.slice(0, 7).toLowerCase())) {
-    return `the comment does not name the commit ${commit.slice(0, 7)}`;
+  if (!commit.toLowerCase().startsWith(named)) {
+    return `the comment is a yes to ${named}, not to the commit ${commit.slice(0, 7)}`;
+  }
+  if (comment.updated_at !== comment.created_at) {
+    return 'the comment was edited after it was posted: post a new record';
   }
   if (Date.parse(comment.created_at) <= Date.parse(committedAt)) {
     return 'the comment is older than the commit, so it is not a yes to it';

@@ -42,8 +42,8 @@ It refuses unless all of these hold, checked in this order:
 3. Zeus said yes. At a terminal it asks you to type `yes` (it reads the terminal itself, so a pipe can't answer). Athena,
    who has no terminal, first posts the record of his yes as a comment on the issue ("Zeus decided (<date>, in chat):
    deploy <commit> …", §19 #116) and passes its URL as `--zeus-ok <URL>`. The script fetches it and refuses unless it is
-   in this repository, by the signed-in GitHub user, says "Zeus decided" and "deploy", names the commit, and is newer than
-   the commit. The URL goes into `deploys.log`. Nothing else skips the question.
+   in this repository, by the signed-in GitHub user, begins exactly `Zeus decided (YYYY-MM-DD, in chat): deploy <commit>`
+   (7 or more characters of the commit), was never edited, and is newer than the commit. The URL goes into `deploys.log`. Nothing else skips the question.
 
 The web image holds the Next.js server-action key (Next writes it into the build), so images stay on this Mac: a registry or
 a server needs one build per host or a key rotated at deploy.
@@ -56,7 +56,7 @@ forward, so the old code must accept the migrated schema; if it doesn't, deploy 
 
 ## Back up
 
-`node scripts/picasso.ts install-backup` copies `scripts/picasso-backup.ts` to `~/letzeuspost-picasso/bin/` and installs a
+`node scripts/picasso.ts install-backup` copies `scripts/picasso-backup.ts` from `origin/main` (not from the checked-out branch) to `~/letzeuspost-picasso/bin/` and installs a
 launchd job (`~/Library/LaunchAgents/com.letzeuspost.picasso-backup.plist`) that runs it at 03:00 every night. The copy is
 what runs, so a checkout on any branch can't change it. A Mac that is asleep at 03:00 runs the missed job when it wakes.
 Each run is a `pg_dump --format custom` into `backups/letzeuspost-<UTC time>.dump` (mode 600, written under a `.partial`
@@ -69,7 +69,7 @@ The file store (uploaded files) is not in this dump: nothing writes to it yet. I
 
 The test, any time: `node scripts/picasso.ts restore-test`. It takes a fresh dump, restores it into a scratch database
 (`lzp_restore_test`), compares the row count of every table with the live database, drops the scratch database, and fails
-loudly on any difference. First run, 2026-11-25: 24 tables, every row count equal.
+loudly on any difference. A write by the running app between the dump and the count shows as a difference: run it again. First run, 2026-11-25: 24 tables, every row count equal.
 
 For a real restore (the data is lost or damaged), with the instance's folder as `F=~/letzeuspost-picasso`:
 
@@ -87,6 +87,6 @@ restore as above.
 
 ## Not in this setup
 
-A server, a domain, Google sign-in (§18). The browser-facing address of the file store: the web app reaches it as
+A server, a domain, Google sign-in (§18). The instance runs with `LZP_ENV=development` (§14 allows it for Zeus's Mac): sign-in cookies are not marked `Secure`, and the sign-in rate limit keys on `x-forwarded-for`, which a client can set. That is acceptable only because the instance is reachable from this Mac alone (no host ports); revisit it before any other machine or a domain reaches it. The browser-facing address of the file store: the web app reaches it as
 `http://storage:8333` inside the project, which is right until a feature hands a signed file address to the browser; that
 feature's task decides how the store is shown (#81 leaves it).
