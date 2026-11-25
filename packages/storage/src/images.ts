@@ -94,6 +94,8 @@ const UNREADABLE = "This image couldn't be read. Please export it again as a JPG
 const UNSAFE_SVG = 'This SVG has parts that are not allowed. Please send a PNG.';
 
 // What an SVG may not hold. Anything here is refused, wherever it appears, even in a comment: a logo needs none of it.
+// These run on the worker's own thread, on files of up to 20 MB, so no rule may have two quantifiers that can match
+// the same characters: each has one way to read a run, and nothing to backtrack into.
 const SVG_REFUSED: readonly RegExp[] = [
   // Entity expansion and outside files come in through a DOCTYPE.
   /<!DOCTYPE|<!ENTITY/i,
@@ -103,8 +105,9 @@ const SVG_REFUSED: readonly RegExp[] = [
   /<(?:[^\s<>:]+:)?(?:image|foreignObject)[\s/>]/i,
   // A link (`href`, `xlink:href`, an `xml-stylesheet`'s) to anything but an `#id` in this file.
   /href\s*=(?!\s*["']#)/i,
-  // A CSS `url()` to anything but an `#id`; a stylesheet import of any kind.
-  /url\((?!\s*["']?\s*#)/i,
+  // A CSS `url()` to anything but an `#id`; a stylesheet import of any kind. The whitespace inside quotes is matched
+  // only after a quote, so it can't take the characters the whitespace before them took.
+  /url\((?!\s*(?:["']\s*)?#)/i,
   /@import/i,
   // A CSS escape can write `url(` or `@import` without those letters (`u\72 l(`).
   /\\/,
