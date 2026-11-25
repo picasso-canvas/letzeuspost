@@ -209,6 +209,9 @@ jobs:
         if: ${{ steps.scope.outputs.run == 'true' && hashFiles('tests/e2e/**', 'tests/journeys/**/*.spec.ts') != '' }}
         run: |
           set -euo pipefail
+          # Chromium's OS sandbox (#350): ubuntu-24.04 stops unprivileged processes from making user namespaces, which
+          # the sandbox needs. Allowed for this step's VM only; the runner is thrown away after the job.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           pnpm exec playwright install --with-deps chromium
           pnpm --filter @lzp/web build
           rm -rf "$RUNNER_TEMP/journeys-playwright"
