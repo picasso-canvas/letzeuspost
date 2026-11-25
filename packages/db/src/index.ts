@@ -5,6 +5,15 @@ export { createDb, type Db, type Scoped, type Tx, type WorkspaceCtx } from './db
 export { migrate } from './migrate.ts';
 export { invitation, member, roles, workspace } from './schema.ts';
 export { emailMessage, emailStatuses, type EmailStatus } from './schema/email-message.ts';
+// Brands and their kit versions (#399): a kit is saved only through `brandKits(db, BrandKitSchema).saveKit`.
+export { approvalModes, brand, brandKitVersion, type ApprovalMode } from './schema/brands.ts';
+export {
+  brandKits,
+  type BrandKits,
+  type KitSchema,
+  type KitVersion,
+  type NewBrand,
+} from './brand-kits.ts';
 // Jobs (§13, Q7): the queues and how a job sets its workspace live here; the handlers live in apps/worker.
 export {
   createJobs,
