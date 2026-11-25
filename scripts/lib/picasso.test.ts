@@ -6,6 +6,7 @@ import {
   approvalProblem,
   checksProblem,
   commentId,
+  sandboxCheckArgs,
   xmlText,
   dirProblem,
   imageTag,
@@ -253,5 +254,18 @@ describe('xmlText', () => {
     expect(xmlText('/Users/picasso/letzeuspost-picasso')).toBe(
       '/Users/picasso/letzeuspost-picasso',
     );
+  });
+});
+
+describe('sandboxCheckArgs', () => {
+  const args = sandboxCheckArgs('48a3c911f06d', '/tmp/x/worker-chromium.json');
+
+  it("runs the new worker image under the worker's own options, with no network", () => {
+    expect(args).toContain('lzp-picasso-worker:48a3c911f06d');
+    expect(args.join(' ')).toContain('--network none');
+    expect(args.join(' ')).toContain('--security-opt seccomp=/tmp/x/worker-chromium.json');
+    expect(args.join(' ')).toContain('--security-opt no-new-privileges:true');
+    expect(args.join(' ')).toContain('--cap-drop ALL');
+    expect(args.slice(-2)).toEqual(['node', 'packages/render/src/browser/check-sandbox.ts']);
   });
 });

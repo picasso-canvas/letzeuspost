@@ -106,6 +106,11 @@ describe("the worker's Chromium sandbox (#383)", () => {
       'userfaultfd',
       'reboot',
       'swapon',
+      'io_uring_setup',
+      'io_uring_enter',
+      'io_uring_register',
+      'pidfd_getfd',
+      'process_madvise',
     ]) {
       expect(refused).toContain(never);
     }
@@ -117,5 +122,16 @@ describe("the worker's Chromium sandbox (#383)", () => {
     expect(last).toMatch(/^USER node$/m);
     expect(last).toContain('PLAYWRIGHT_BROWSERS_PATH=/ms-playwright');
     expect(last.indexOf('install --with-deps chromium')).toBeLessThan(last.indexOf('USER node'));
+  });
+});
+
+describe('the deploy order (#383)', () => {
+  const source = read('./picasso.ts');
+  const at = (text: string) => source.indexOf(text);
+
+  it('builds the worker image, then checks its sandbox, and only then swaps any container', () => {
+    expect(at('sandboxCheckArgs(')).toBeGreaterThan(at("'apps/worker/Dockerfile'"));
+    expect(at('sandboxCheckArgs(')).toBeLessThan(at("'up', '--detach', '--wait', 'postgres'"));
+    expect(at('sandboxCheckArgs(')).toBeLessThan(at('writeFileSync(deployed, `LZP_IMAGE_TAG'));
   });
 });

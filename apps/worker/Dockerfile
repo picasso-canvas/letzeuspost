@@ -27,7 +27,8 @@ WORKDIR /repo
 COPY --from=prod --chown=node:node /repo /repo
 COPY --from=build --chown=node:node /repo/packages/email/dist /repo/packages/email/dist
 # As root, once: the system libraries Chromium needs, and the Chromium that playwright-core 1.65.0 pins, in a folder
-# only root can write to. Nothing here runs as root afterwards.
+# only root can write to. Nothing here runs as root afterwards. Trusted without a hash check (#383): the Debian packages
+# from apt (signed by Debian's keys) and the Chromium that playwright-core downloads over TLS from Playwright's CDN.
 RUN node packages/render/node_modules/playwright-core/cli.js install --with-deps chromium \
   && rm -rf /var/lib/apt/lists/*
 USER node

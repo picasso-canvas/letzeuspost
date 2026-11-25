@@ -68,15 +68,18 @@ renderer exploit through a hostile font or image stays inside it, not with the w
   file; the render sandbox spec checks the browser's command line).
 - **The choice:** the profile is *allow by default, refuse a list*: the list is the one Docker's default profile refuses
   (`ptrace`, `mount`, `bpf`, `setns`, `kexec_load`, module loading, `perf_event_open`, `keyctl`, `process_vm_*`,
-  `userfaultfd`, and so on), with `clone`, `clone3` and `unshare` left allowed because the sandbox makes its namespaces
+  `userfaultfd`, and so on) plus `io_uring_*`, `pidfd_getfd` and `process_madvise`, which Docker's default also refuses or leaves to a capability, with `clone`, `clone3` and `unshare` left allowed because the sandbox makes its namespaces
   with them. Docker's own default is an allowlist, which is stricter against a syscall nobody has listed; this one is
   written by hand, with no copy of Docker's file, and is tested only for what it must allow and refuse. Chromium's own
   seccomp filter (inside the sandbox) is the stricter layer for the renderers. Replacing it with a full allowlist is a
   follow-up if Zeus wants that (it needs Docker's default profile as the base).
 - **The check:** `node packages/render/src/browser/check-sandbox.ts` in the image, under the same options as the
-  compose file. It fails if the worker is root, if Chromium has `--no-sandbox`, or if a renderer isn't under the sandbox's
-  seccomp filter (`Seccomp: 2`). `deploy` runs it before swapping containers. Without the profile it fails with Chromium's
+  compose file (and `--network none`). It fails if the worker is root, if the browser or a renderer has a sandbox-off
+  switch (`--no-sandbox` and its kin), or if a renderer lacks the sandbox's own seccomp filter (more `Seccomp_filters`
+  than the worker's) or its own user and PID namespaces. `deploy` runs it before swapping containers. Without the profile it fails with Chromium's
   "No usable sandbox!", which is how to tell the profile isn't applied.
+- **Trusted, not hash-checked:** the Debian packages (signed by Debian's keys) and the Chromium that `playwright-core`
+  downloads over TLS from Playwright's CDN. A compromise of either reaches the worker at build time.
 
 ## Back up
 

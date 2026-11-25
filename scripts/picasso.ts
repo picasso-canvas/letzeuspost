@@ -32,6 +32,7 @@ import {
   approvalProblem,
   checksProblem,
   type Comment,
+  sandboxCheckArgs,
   xmlText,
   commentId,
   dirProblem,
@@ -238,19 +239,7 @@ function deploy(argv: string[]): void {
 
     // Chromium's sandbox must work in the image as the worker runs it (non-root, the seccomp profile, no capability),
     // or the deploy stops here, before any container is swapped (#383, §08 Security).
-    run('docker', [
-      'run',
-      '--rm',
-      '--security-opt',
-      `seccomp=${join(source, 'docker', 'seccomp', 'worker-chromium.json')}`,
-      '--security-opt',
-      'no-new-privileges:true',
-      '--cap-drop',
-      'ALL',
-      `lzp-picasso-worker:${tag}`,
-      'node',
-      'packages/render/src/browser/check-sandbox.ts',
-    ]);
+    run('docker', sandboxCheckArgs(tag, join(source, 'docker', 'seccomp', 'worker-chromium.json')));
 
     // The compose file and the scripts its services mount are kept with the instance: a restart must not depend on a
     // checkout, which may be on any branch.
