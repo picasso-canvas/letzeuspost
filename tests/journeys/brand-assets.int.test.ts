@@ -80,11 +80,11 @@ describe('the Asset library feature: an uploaded file becomes a ready asset of i
     { timeout: 120_000 },
     async () => {
       const t = await setUpTenancy('assets-journey');
-      const cleanups: (() => Promise<void>)[] = [() => t.close()];
+      const cleanups: (() => Promise<void> | void)[] = [() => t.close()];
       try {
         const web = loadEnv('web');
         const storage = createStorage(web);
-        cleanups.push(async () => {
+        cleanups.push(() => {
           storage.close();
         });
         const cookie = await t.signIn(t.a.owner);
