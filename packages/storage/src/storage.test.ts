@@ -260,6 +260,14 @@ describe("the worker's get, put, head and delete", () => {
     expect(await answered.get(ctx, key, { maxBytes: 1000 })).toEqual(new Uint8Array(1000).fill(7));
   });
 
+  it('refuse a file the store says is over the cap without reading any of it', async () => {
+    const { storage: answered, body, reads } = answering(Buffer.alloc(1000, 7));
+    const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
+    await expect(answered.get(ctx, key, { maxBytes: 999 })).rejects.toThrow(UploadLimitError);
+    expect(reads()).toBe(0);
+    expect(body.destroyed).toBe(true);
+  });
+
   it('refuse a read with a byte cap that is not a whole number above 0', async () => {
     const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
     for (const maxBytes of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
