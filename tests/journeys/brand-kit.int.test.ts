@@ -1,20 +1,21 @@
 // The Brand kit feature's journey (§19 Features, #136): a member saves a kit, a new version appears, and another
-// workspace's member can't read it. It is the feature's first task (#398), and the tables (T2) and the editor that save
-// a kit don't exist yet, so it is marked as an expected failure (`it.fails`, Vitest's `test.fail()`): CI stays green
-// while it fails, and goes red the day it passes with the mark still on. The feature's last task takes the mark off.
+// workspace's member can't read it. #398 started it marked as an expected failure (`it.fails`, Vitest's
+// `test.fail()`), before the tables existed; #399 added the tables and the save and read API, and took the mark off.
 //
-// What it calls that doesn't exist yet is the save and read API of `@lzp/db` for the `brand_kit_version` table (§13:
-// an immutable JSON snapshot per save, checked by `BrandKitSchema`). It is loaded at the point of use, so the test fails
-// there with a clear message and not at import. T2 may change a call to follow its real API (and make a brand first,
-// if its table needs one), but never weaken an assertion.
+// It calls `@lzp/db`'s `brandKits(db, BrandKitSchema)`: `createBrand` (under the Starter plan's brand limit, with
+// @lzp/core's `canAddBrand`), then `saveKit`, which checks the kit with `BrandKitSchema` and writes an immutable version
+// per Save (§13), and `kitVersions`. Who saved a version isn't recorded by the table: that is the audit log's (§13).
 //
 // Runs only in `pnpm check:services` and CI's `services` job (the `.int.test.ts` name; Postgres comes from
 // docker/compose.yml). Every workspace, person and row here is this run's (`run`), as in data.int.test.ts.
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
+import { plans } from '../../config/plans.ts';
 import { BrandKitSchema, type BrandKit } from '../../packages/core/src/index.ts';
+import { canAddBrand } from '../../packages/core/src/quotas/index.ts';
 import {
+  brandKits,
   createDb,
   member,
   migrate,
@@ -35,35 +36,6 @@ function text(strings: TemplateStringsArray, ...values: string[]): string {
     if (value !== undefined) query += `'${value.replaceAll("'", "''")}'`;
   });
   return query;
-}
-
-/** The save and read API T2 adds to `@lzp/db` (named here as the journey expects it). */
-interface BrandKitApi {
-  /** Saves the kit as a new, immutable version of the brand's kit; returns its number (1, 2, ...). */
-  saveBrandKit: (
-    db: Db,
-    ctx: WorkspaceCtx,
-    input: { brandId: string; kit: BrandKit; savedBy: string },
-  ) => Promise<{ version: number }>;
-  /** The brand's kit versions as the workspace's context sees them, oldest first. */
-  listBrandKitVersions: (
-    db: Db,
-    ctx: WorkspaceCtx,
-    brandId: string,
-  ) => Promise<{ version: number; kit: BrandKit }[]>;
-}
-
-async function loadBrandKitApi(): Promise<BrandKitApi> {
-  const exports = (await import('../../packages/db/src/index.ts')) as Record<string, unknown>;
-  if (
-    typeof exports['saveBrandKit'] !== 'function' ||
-    typeof exports['listBrandKitVersions'] !== 'function'
-  ) {
-    throw new Error(
-      '@lzp/db has no saveBrandKit and listBrandKitVersions yet: T2 (the tables) adds them',
-    );
-  }
-  return exports as unknown as BrandKitApi;
 }
 
 /** A workspace and one member (an editor), made by the owner role as data.int.test.ts makes its Owners. */
@@ -117,7 +89,7 @@ function kitOf(name: string): BrandKit {
 }
 
 describe('the Brand kit feature: a saved kit is versioned and stays in its workspace', () => {
-  it.fails(
+  it(
     'saves a kit, shows a new version, and hides it from another workspace',
     { timeout: 60_000 },
     async () => {
@@ -137,6 +109,7 @@ describe('the Brand kit feature: a saved kit is versioned and stays in its works
         const ctxA = { workspaceId: a.workspaceId };
         const ctxB = { workspaceId: b.workspaceId };
         cleanups.push(async () => {
+          // Deleting a workspace removes its brands, and a brand its kit versions.
           const clean = (ctx: WorkspaceCtx, query: string) =>
             ownerDb.forWorkspace(ctx).transaction((tx) => tx.execute(query));
           await clean(ctxA, text`delete from workspace where id = ${a.workspaceId}`);
@@ -144,32 +117,33 @@ describe('the Brand kit feature: a saved kit is versioned and stays in its works
           await clean(ctxA, text`delete from "user" where id in (${a.userId}, ${b.userId})`);
         });
 
-        const { saveBrandKit, listBrandKitVersions } = await loadBrandKitApi();
-        const brandId = randomUUIDv7();
+        const kits = brandKits(db, BrandKitSchema);
+        // A's brand, added under the Starter plan's limit.
+        const { id: brandId } = await kits.createBrand(ctxA, { nameEn: 'Golpo Café' }, (n) =>
+          canAddBrand(plans.starter, n),
+        );
 
         // A's member saves a kit, then changes it and saves again: two versions, in order.
         const first = kitOf('Golpo Café');
         const second = kitOf('Golpo Café Dhanmondi');
-        expect(await saveBrandKit(db, ctxA, { brandId, kit: first, savedBy: a.userId })).toEqual({
+        expect(await kits.saveKit(ctxA, brandId, first)).toEqual({
+          id: expect.any(String) as unknown,
           version: 1,
         });
-        expect(await saveBrandKit(db, ctxA, { brandId, kit: second, savedBy: a.userId })).toEqual({
+        expect(await kits.saveKit(ctxA, brandId, second)).toEqual({
+          id: expect.any(String) as unknown,
           version: 2,
         });
-        const versions = await listBrandKitVersions(db, ctxA, brandId);
+        const versions = await kits.kitVersions(ctxA, brandId);
         expect(versions.map((row) => row.version)).toEqual([1, 2]);
         // Each version is the kit as it was saved, and the first one was not rewritten by the second save.
         expect(versions[0]?.kit).toEqual(first);
         expect(versions[1]?.kit).toEqual(second);
 
         // B's member can't read A's versions, and can't add one to A's brand.
-        expect(await listBrandKitVersions(db, ctxB, brandId)).toEqual([]);
-        await expect(
-          saveBrandKit(db, ctxB, { brandId, kit: kitOf('Planted'), savedBy: b.userId }),
-        ).rejects.toThrow();
-        expect((await listBrandKitVersions(db, ctxA, brandId)).map((row) => row.version)).toEqual([
-          1, 2,
-        ]);
+        expect(await kits.kitVersions(ctxB, brandId)).toEqual([]);
+        await expect(kits.saveKit(ctxB, brandId, kitOf('Planted'))).rejects.toThrow();
+        expect((await kits.kitVersions(ctxA, brandId)).map((row) => row.version)).toEqual([1, 2]);
       } finally {
         for (const cleanup of cleanups.reverse()) await cleanup();
       }

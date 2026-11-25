@@ -13,7 +13,9 @@
 import { randomInt, randomUUID, randomUUIDv7 } from 'node:crypto';
 import { loadEnv } from '../../config/env.ts';
 import { authServer, signInBucket } from '../../packages/auth/src/index.ts';
+import { BrandKitSchema } from '../../packages/core/src/index.ts';
 import {
+  brandKits,
   createDb,
   emailMessage,
   installJobs,
@@ -56,6 +58,8 @@ export interface WorkspaceRows {
   readonly invitation: { readonly id: string; readonly email: string };
   /** An outbox row, queued with no job (so no worker sends it while the suite runs). */
   readonly email: { readonly id: string; readonly to: string };
+  /** A brand, with one saved kit version (#399), made by the app's own save helper. */
+  readonly brand: { readonly id: string; readonly nameEn: string; readonly versionId: string };
 }
 
 export interface Tenancy {
@@ -142,7 +146,19 @@ export async function setUpTenancy(label: string): Promise<Tenancy> {
       if (invited === undefined || queued === undefined) throw new Error('fixture rows not made');
       return { invitation: invited, email: queued };
     });
-    return { ctx, name, owner, ...rows };
+    const kits = brandKits(app, BrandKitSchema);
+    const nameEn = `Tenancy brand ${letter} ${run}`;
+    const made = await kits.createBrand(ctx, { nameEn }, () => true);
+    const saved = await kits.saveKit(ctx, made.id, {
+      identity: {},
+      voice: {},
+      facts: {},
+      look: {},
+      rules: {},
+      publishing: {},
+      holidays: {},
+    });
+    return { ctx, name, owner, ...rows, brand: { id: made.id, nameEn, versionId: saved.id } };
   };
 
   const a = await workspaceWith('a');
@@ -205,8 +221,8 @@ export async function setUpTenancy(label: string): Promise<Tenancy> {
   };
 
   const close = async () => {
-    // Deleting a workspace removes its members, invitations and outbox rows with it; a person's sessions and account
-    // emails go with them.
+    // Deleting a workspace removes its members, invitations, outbox rows and brands with it (and a brand its kit
+    // versions); a person's sessions and account emails go with them.
     await asOwner(
       text`delete from workspace where id in (${a.ctx.workspaceId}, ${b.ctx.workspaceId})`,
     );

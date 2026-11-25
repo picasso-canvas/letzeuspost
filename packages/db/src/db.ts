@@ -40,7 +40,7 @@ export const NOBODY = '00000000-0000-0000-0000-000000000000';
 const uuidv7 = z.uuidv7();
 
 /** Every id in this database is a UUIDv7 (§13); anything else is refused before it reaches Postgres. */
-export function checkedId(kind: 'workspace' | 'user', id: string): string {
+export function checkedId(kind: 'workspace' | 'user' | 'brand', id: string): string {
   if (!uuidv7.safeParse(id).success) throw new Error(`not a ${kind} id: expected a UUIDv7`);
   return id;
 }
