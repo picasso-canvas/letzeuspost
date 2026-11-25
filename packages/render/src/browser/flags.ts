@@ -28,6 +28,9 @@ export const CHROMIUM_ARGS: readonly string[] = [
 
 export const LAUNCH_OPTIONS: LaunchOptions = {
   headless: true,
+  // Chromium's OS sandbox (§08 Security, #350): a renderer exploit through a hostile font or image stays inside it, not
+  // with the worker's rights. Playwright turns it off unless asked; it needs unprivileged user namespaces on the host.
+  chromiumSandbox: true,
   args: [...CHROMIUM_ARGS],
   proxy: { server: 'http://127.0.0.1:9' },
 };
