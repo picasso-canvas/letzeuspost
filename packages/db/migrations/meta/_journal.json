@@ -50,6 +50,13 @@
       "when": 1795441680000,
       "tag": "0006_account_email_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795611245500,
+      "tag": "0007_brands",
+      "breakpoints": true
     }
   ]
 }

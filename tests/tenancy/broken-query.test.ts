@@ -13,6 +13,8 @@ import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  brand,
+  brandKitVersion,
   emailMessage,
   invitation,
   member,
@@ -117,10 +119,12 @@ describe('a query that drops the workspace filter: row-level security', () => {
       emails: await tx.select().from(emailMessage),
       members: await tx.select().from(member),
       workspaces: await tx.select().from(workspace),
+      brands: await tx.select().from(brand),
+      kitVersions: await tx.select().from(brandKitVersion),
       // And as plain SQL.
       raw: (
         await tx.execute<Row>(
-          'select workspace_id from invitation union all select workspace_id from email_message union all select workspace_id from member union all select id from workspace',
+          'select workspace_id from invitation union all select workspace_id from email_message union all select workspace_id from member union all select id from workspace union all select workspace_id from brand union all select workspace_id from brand_kit_version',
         )
       ).rows,
     }));
@@ -128,6 +132,8 @@ describe('a query that drops the workspace filter: row-level security', () => {
     // A's own rows are there: the query works, it just can't reach B.
     expect(rows.invitations.map((row) => row.id)).toEqual([t.a.invitation.id]);
     expect(rows.emails.map((row) => row.id)).toEqual([t.a.email.id]);
+    expect(rows.brands.map((row) => row.id)).toEqual([t.a.brand.id]);
+    expect(rows.kitVersions.map((row) => row.id)).toEqual([t.a.brand.versionId]);
     expect(rows.workspaces.map((row) => row.id)).toEqual([a]);
     expect(rows.members.map((row) => row.userId).sort()).toEqual([t.a.owner.id, t.both.id].sort());
     expect(rows.members.every((row) => row.workspaceId === a)).toBe(true);
@@ -172,10 +178,29 @@ describe('a query that drops the workspace filter: row-level security', () => {
            values (${b}, ${planted}, 'admin', now() + interval '1 day', ${t.a.owner.id}) returning id`,
       text`insert into email_message (workspace_id, template, to_address, data)
            values (${b}, 'email-check', ${planted}, '{}'::jsonb) returning id`,
+      // Brands and their kit versions (#399). A version can't be changed or removed in any workspace (no grant), so
+      // those two are refused; the rest are filtered or refused by the policy.
+      text`select id from brand where workspace_id = ${b}`,
+      text`select id, kit from brand_kit_version where workspace_id = ${b}`,
+      text`update brand set name_en = ${planted} where workspace_id = ${b} returning id`,
+      text`update brand_kit_version set kit = '{}'::jsonb where workspace_id = ${b} returning id`,
+      text`delete from brand where workspace_id = ${b} returning id`,
+      text`delete from brand_kit_version where workspace_id = ${b} returning id`,
+      text`insert into brand (workspace_id, name_en) values (${b}, ${planted}) returning id`,
+      text`insert into brand_kit_version (workspace_id, brand_id, version, kit)
+           values (${b}, ${t.b.brand.id}, 2, '{}'::jsonb) returning id`,
     ];
     for (const statement of statements) {
       expect(REACHED_NOTHING, statement).toContainEqual(await tryInA(statement));
     }
+    // A version of A's that names B's brand: the policy lets the row in (it is A's), and the key refuses it, because
+    // it names the brand with A's workspace and B's brand isn't in A (23503, a foreign key violation).
+    expect(
+      await tryInA(
+        text`insert into brand_kit_version (workspace_id, brand_id, version, kit)
+             values (${t.a.ctx.workspaceId}, ${t.b.brand.id}, 2, '{}'::jsonb) returning id`,
+      ),
+    ).toEqual({ refused: '23503' });
 
     // B's rows, read by the owner role (which row-level security doesn't bind), are as the fixtures made them: the
     // statements named rows that are there, and none was changed, removed or added.
@@ -190,16 +215,26 @@ describe('a query that drops the workspace filter: row-level security', () => {
         text`select user_id from member where workspace_id = ${b} order by user_id`,
       ),
       workspaces: await t.asOwner(text`select id, name from workspace where id = ${b}`),
+      brands: await t.asOwner(
+        text`select id, name_en, current_kit_version::int as current from brand where workspace_id = ${b}`,
+      ),
+      kitVersions: await t.asOwner(
+        text`select id, version::int as version, kit = '{}'::jsonb as emptied from brand_kit_version
+             where workspace_id = ${b} or brand_id = ${t.b.brand.id}`,
+      ),
       planted: await t.asOwner(
         text`select id from invitation where email = ${planted}
              union all select id from email_message where to_address = ${planted}
-             union all select id from workspace where name = ${planted}`,
+             union all select id from workspace where name = ${planted}
+             union all select id from brand where name_en = ${planted}`,
       ),
     }).toEqual({
       invitations: [{ id: t.b.invitation.id, email: t.b.invitation.email, role: 'editor' }],
       emails: [{ id: t.b.email.id, to_address: t.b.email.to }],
       members: [t.b.owner.id, t.both.id].sort().map((id) => ({ user_id: id })),
       workspaces: [{ id: b, name: t.b.name }],
+      brands: [{ id: t.b.brand.id, name_en: t.b.brand.nameEn, current: 1 }],
+      kitVersions: [{ id: t.b.brand.versionId, version: 1, emptied: false }],
       planted: [],
     });
   });
