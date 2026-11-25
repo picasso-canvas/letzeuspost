@@ -68,13 +68,16 @@ describe('docker/compose.picasso.yml', () => {
 });
 
 describe("the worker's Chromium sandbox (#383)", () => {
-  const profile = JSON.parse(read('../docker/seccomp/worker-chromium.json')) as {
-    defaultAction: string;
-    syscalls: { names: string[]; action: string }[];
-  };
-  const refused = profile.syscalls
-    .filter((rule) => rule.action === 'SCMP_ACT_ERRNO')
-    .flatMap((rule) => rule.names);
+  type Rule = { names: string[]; action: string; includes?: { caps?: string[] } };
+  type Profile = { defaultAction: string; syscalls: Rule[] };
+  const upstream = JSON.parse(read('../docker/seccomp/moby-default.json')) as Profile;
+  const profile = JSON.parse(read('../docker/seccomp/worker-chromium.json')) as Profile;
+  // What a container with no capability may call: every ALLOW rule that doesn't wait for one.
+  const allowed = new Set(
+    profile.syscalls
+      .filter((rule) => rule.action === 'SCMP_ACT_ALLOW' && !rule.includes?.caps)
+      .flatMap((rule) => rule.names),
+  );
 
   it('starts the worker under that profile, with no capability and no new privileges', () => {
     const worker = service(picasso, 'worker');
@@ -84,13 +87,34 @@ describe("the worker's Chromium sandbox (#383)", () => {
     expect(worker).not.toMatch(/^\s+(cap_add|privileged):|seccomp=unconfined|apparmor=unconfined/m);
   });
 
-  it("lets the sandbox make user namespaces but refuses the calls Docker's default profile refuses", () => {
-    expect(profile.defaultAction).toBe('SCMP_ACT_ALLOW');
-    for (const needed of ['clone', 'clone3', 'unshare', 'prctl', 'seccomp']) {
-      expect(refused).not.toContain(needed);
+  it("is Docker's own default allowlist, minus ptrace, plus the three calls the sandbox makes its namespaces with", () => {
+    expect(profile.defaultAction).toBe(upstream.defaultAction);
+    expect(profile.defaultAction).toBe('SCMP_ACT_ERRNO');
+    const isPtrace = (rule: Rule) => !rule.includes?.caps && rule.names.includes('ptrace');
+    expect(upstream.syscalls.filter(isPtrace)).toHaveLength(1);
+    expect(profile.syscalls).toEqual([
+      ...upstream.syscalls.filter((rule) => !isPtrace(rule)),
+      { names: ['clone', 'unshare', 'chroot'], action: 'SCMP_ACT_ALLOW' },
+    ]);
+  });
+
+  it('lets a container with no capability make user namespaces, and nothing dangerous besides', () => {
+    for (const needed of [
+      'clone',
+      'unshare',
+      'chroot',
+      'prctl',
+      'seccomp',
+      'read',
+      'write',
+      'mmap',
+    ]) {
+      expect(allowed).toContain(needed);
     }
     for (const never of [
       'ptrace',
+      'process_vm_readv',
+      'process_vm_writev',
       'mount',
       'umount2',
       'pivot_root',
@@ -101,8 +125,6 @@ describe("the worker's Chromium sandbox (#383)", () => {
       'finit_module',
       'perf_event_open',
       'keyctl',
-      'process_vm_readv',
-      'process_vm_writev',
       'userfaultfd',
       'reboot',
       'swapon',
@@ -112,7 +134,7 @@ describe("the worker's Chromium sandbox (#383)", () => {
       'pidfd_getfd',
       'process_madvise',
     ]) {
-      expect(refused).toContain(never);
+      expect(allowed).not.toContain(never);
     }
   });
 

@@ -66,13 +66,15 @@ renderer exploit through a hostile font or image stays inside it, not with the w
   therefore starts under `docker/seccomp/worker-chromium.json`, with `no-new-privileges` and `cap_drop: [ALL]`: no
   capability is added, and `privileged`, `seccomp=unconfined` and `--no-sandbox` are never used (a test checks the compose
   file; the render sandbox spec checks the browser's command line).
-- **The choice:** the profile is *allow by default, refuse a list*: the list is the one Docker's default profile refuses
-  (`ptrace`, `mount`, `bpf`, `setns`, `kexec_load`, module loading, `perf_event_open`, `keyctl`, `process_vm_*`,
-  `userfaultfd`, and so on) plus `io_uring_*`, `pidfd_getfd` and `process_madvise`, which Docker's default also refuses or leaves to a capability, with `clone`, `clone3` and `unshare` left allowed because the sandbox makes its namespaces
-  with them. Docker's own default is an allowlist, which is stricter against a syscall nobody has listed; this one is
-  written by hand, with no copy of Docker's file, and is tested only for what it must allow and refuse. Chromium's own
-  seccomp filter (inside the sandbox) is the stricter layer for the renderers. Replacing it with a full allowlist is a
-  follow-up if Zeus wants that (it needs Docker's default profile as the base).
+- **The profile:** `docker/seccomp/worker-chromium.json` is Docker's own default allowlist (`docker/seccomp/moby-default.json`,
+  a copy of `seccomp/default.json` from github.com/moby/profiles at commit `9ee3204`, 2026-11-10, downloaded 2026-11-25
+  with Zeus's OK), with two changes the test pins exactly: the rule that allows `ptrace` and `process_vm_*` on kernels
+  4.8 and later is removed, and one rule allows `clone`, `unshare` and `chroot` without a capability, because Chromium's
+  sandbox makes its user and PID namespaces and then chroots with them. Everything else Docker's default keeps behind a
+  capability (`mount`, `setns`, `bpf`, `perf_event_open`, `pidfd_getfd`, ...) or leaves out (`io_uring_*`,
+  `userfaultfd`, `keyctl`) stays refused here, since the worker has no capability. Chromium's own seccomp filter
+  (inside the sandbox) is the stricter layer for the renderers. To update: copy the new upstream file, rerun the
+  derivation (the test says what it must equal) and the check below.
 - **The check:** `node packages/render/src/browser/check-sandbox.ts` in the image, under the same options as the
   compose file (and `--network none`). It fails if the worker is root, if the browser or a renderer has a sandbox-off
   switch (`--no-sandbox` and its kin), or if a renderer lacks the sandbox's own seccomp filter (more `Seccomp_filters`

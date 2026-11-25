@@ -103,8 +103,8 @@ services:
     <<: *restart
     image: lzp-picasso-worker:${LZP_IMAGE_TAG:?run it through scripts/picasso.ts}
     # Chromium's own sandbox (§08 Security, #383) needs unprivileged user namespaces, which Docker's default seccomp
-    # profile refuses: this profile allows them and keeps the rest of Docker's list of refused calls. No capability is
-    # added, and none is left.
+    # profile refuses: this is Docker's default profile plus `clone`, `unshare` and `chroot` for the sandbox, and minus
+    # `ptrace` (docs/ops/picasso-instance.md). No capability is added, and none is left.
     security_opt:
       - seccomp=./seccomp/worker-chromium.json
       - no-new-privileges:true
