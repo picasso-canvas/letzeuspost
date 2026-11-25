@@ -8,7 +8,12 @@ type Record_ = Record<string, unknown>;
 const isRecord = (value: unknown): value is Record_ =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** An item is the `{ value, source, ref, at, confidence }` object every kit field is made of. */
+/**
+ * An item is the `{ value, source, ref, at, confidence }` object every kit field is made of. This reads the shape,
+ * so it depends on a schema invariant: no group (an object that holds other fields) has fields named `value`,
+ * `source` and `confidence` together, or `merge` would take the group for an item and replace it whole.
+ * `merge.test.ts` derives that check from `BrandKitSchema` and fails if a group ever does.
+ */
 const isItem = (value: unknown): value is Record_ & { source: unknown } =>
   isRecord(value) && 'value' in value && 'source' in value && 'confidence' in value;
 

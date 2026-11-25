@@ -117,3 +117,37 @@ describe('mergeSuggestions', () => {
     expect(BrandKitSchema.safeParse(merged).success).toBe(true);
   });
 });
+
+const record = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
+
+/** The field names of every object schema reachable from `schema` (through optional, array, record and union). */
+const objectKeys = (schema: unknown, seen = new Set<unknown>()): string[][] => {
+  if (seen.has(schema)) return [];
+  seen.add(schema);
+  const def = record(record(record(schema)?.['_zod'])?.['def']);
+  if (def === undefined) return [];
+  const shape = record(def['shape']);
+  const options = Array.isArray(def['options']) ? (def['options'] as unknown[]) : [];
+  const children = [def['element'], def['innerType'], def['valueType'], def['in'], ...options];
+  return [
+    ...(shape === undefined ? [] : [Object.keys(shape)]),
+    ...[...children, ...Object.values(shape ?? {})].flatMap((child) => objectKeys(child, seen)),
+  ];
+};
+
+describe('the invariant merge.ts reads items by', () => {
+  const ITEM_KEYS = ['at', 'confidence', 'ref', 'source', 'value'];
+  const shapes = objectKeys(BrandKitSchema);
+  const itemLike = shapes.filter((keys) =>
+    ['value', 'source', 'confidence'].every((k) => keys.includes(k)),
+  );
+
+  it('finds the items in the schema, so the check below looks at something', () => {
+    expect(itemLike.length).toBeGreaterThan(20);
+  });
+
+  it('holds: no group has a field set `value`, `source` and `confidence`; only items do', () => {
+    for (const keys of itemLike) expect([...keys].sort()).toEqual(ITEM_KEYS);
+  });
+});
