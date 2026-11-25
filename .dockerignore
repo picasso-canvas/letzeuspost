@@ -1,0 +1,18 @@
+# The build context for apps/web/Dockerfile and apps/worker/Dockerfile (§14): the repo's source, never its secrets,
+# git history, installed packages or build output.
+.git
+.github
+.claude
+.lzp
+**/.env
+**/.env.*
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.tsbuildinfo
+storybook-static
+playwright-report
+test-results
+tests/visual/output
+docs
