@@ -118,7 +118,7 @@ const COUNTS = `select table_schema || '.' || table_name || ' ' ||
 
 /** Restores a fresh dump into a scratch database, compares the rows of every table with the live one, drops it. */
 export function restoreTest(): string {
-  const dumpPath = backup();
+  const dumpPath = backup(); // a real backup, so it also prunes the old ones, as the nightly run does
   const id = postgresContainer();
   const psql = (db: string, sql: string) =>
     docker([

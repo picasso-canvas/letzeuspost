@@ -62,8 +62,51 @@ export function picassoEnvText(randomBytes: (size: number) => Uint8Array): strin
 export interface DeployArgs {
   /** The commit given on the command line (not yet checked against main). */
   commit: string;
-  /** Where Zeus said yes, from `--zeus-ok`; undefined means ask him at the terminal. */
+  /** The posted record of Zeus's yes (a GitHub comment URL), from `--zeus-ok`; undefined means ask him at the terminal. */
   zeusOk: string | undefined;
+}
+
+/** The id of the issue or pull request comment a URL points at, or undefined when it isn't one. */
+export function commentId(url: string): string | undefined {
+  return /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/.exec(
+    url,
+  )?.[1];
+}
+
+export interface Comment {
+  body: string;
+  created_at: string;
+  html_url: string;
+  user: { login: string };
+}
+
+/**
+ * Why a comment is not the posted record of Zeus's yes to deploying `commit` (§19 #116: his decision counts as a
+ * posted record, "Zeus decided (<date>, in chat): …"), or undefined when it is. It must be this repository's, by the
+ * signed-in GitHub user (Athena posts it as that user), say "Zeus decided" and "deploy", name the commit (at least its
+ * first 7 characters), and be newer than the commit, so an older yes never covers a newer commit.
+ */
+export function approvalProblem(
+  comment: Comment,
+  commit: string,
+  committedAt: string,
+  login: string,
+  repo: string,
+): string | undefined {
+  if (!comment.html_url.startsWith(`https://github.com/${repo}/`))
+    return `the comment is not in ${repo}`;
+  if (comment.user.login !== login)
+    return `the comment is by ${comment.user.login}, not by ${login}`;
+  if (!/zeus decided/i.test(comment.body) || !/deploy/i.test(comment.body)) {
+    return 'the comment does not say "Zeus decided" and "deploy"';
+  }
+  if (!comment.body.toLowerCase().includes(commit.slice(0, 7).toLowerCase())) {
+    return `the comment does not name the commit ${commit.slice(0, 7)}`;
+  }
+  if (Date.parse(comment.created_at) <= Date.parse(committedAt)) {
+    return 'the comment is older than the commit, so it is not a yes to it';
+  }
+  return undefined;
 }
 
 /** `deploy <commit> [--zeus-ok "<where he said it>"]`, or the reason it can't be read. */
@@ -74,11 +117,11 @@ export function parseDeployArgs(argv: readonly string[]): DeployArgs | string {
     const arg = argv[i] ?? '';
     if (arg === '--zeus-ok') {
       zeusOk = argv[++i];
-      if (zeusOk === undefined || zeusOk.trim().length < 8) {
-        return '--zeus-ok needs where Zeus said yes (his message, or a link to it), at least 8 characters.';
+      if (zeusOk === undefined || commentId(zeusOk.trim()) === undefined) {
+        return '--zeus-ok needs the posted record of his yes: the URL of an issue or pull request comment (https://github.com/<owner>/<repo>/issues/<n>#issuecomment-<id>).';
       }
     } else if (arg.startsWith('-') || commit !== undefined) {
-      return `Unexpected argument ${arg}. Usage: picasso.ts deploy <main commit> [--zeus-ok "<where Zeus said yes>"]`;
+      return `Unexpected argument ${arg}. Usage: picasso.ts deploy <main commit> [--zeus-ok <comment URL>]`;
     } else {
       commit = arg;
     }
@@ -115,9 +158,19 @@ export function mergedHead(pulls: readonly MergedPull[], commit: string): Merged
   );
 }
 
-/** Why a commit's checks aren't all green (naming each one that isn't), or undefined when they are. */
-export function checksProblem(runs: readonly CheckRun[]): string | undefined {
+/**
+ * Why a commit's checks aren't all green (naming each one that isn't), or undefined when they are. `required` is the
+ * merge gate's own list (`.github/merge-gate.json` on main): each must be among the runs, so an unrelated green check
+ * can't stand in for them.
+ */
+export function checksProblem(
+  runs: readonly CheckRun[],
+  required: readonly string[],
+): string | undefined {
   if (runs.length === 0) return 'the commit has no checks, so nothing shows it is green';
+  if (required.length === 0) return "the gate's list of required checks is empty";
+  const missing = required.filter((name) => !runs.some((run) => run.name === name));
+  if (missing.length > 0) return `these required checks never ran: ${missing.join(', ')}`;
   const bad = runs.filter(
     (run) =>
       run.status !== 'completed' ||

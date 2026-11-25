@@ -30,7 +30,10 @@ import { isEntryPoint } from './lib/entry.ts';
 import { parseEnvFile } from './lib/dev-env.ts';
 import {
   APP_URL,
+  approvalProblem,
   checksProblem,
+  type Comment,
+  commentId,
   dirProblem,
   imageTag,
   instanceDir,
@@ -83,8 +86,12 @@ function askAtTerminal(question: string): string | undefined {
   }
   writeFileSync(tty, question);
   const buffer = Buffer.alloc(256);
-  const read = readSync(tty, buffer, 0, buffer.length, null);
-  return buffer.subarray(0, read).toString('utf8').trim();
+  try {
+    const read = readSync(tty, buffer, 0, buffer.length, null);
+    return buffer.subarray(0, read).toString('utf8').trim();
+  } catch {
+    return undefined; // the terminal gave nothing to read: the same as no terminal
+  }
 }
 
 const composeArgs = (folder: string, extra: string[] = []) => [
@@ -163,19 +170,33 @@ function deploy(argv: string[]): void {
     .split('\n')
     .filter((line) => line !== '')
     .map((line) => JSON.parse(line) as CheckRun);
-  const problem = checksProblem(runs);
+  const gate = JSON.parse(out('git', ['show', 'origin/main:.github/merge-gate.json'])) as {
+    requiredChecks: string[];
+  };
+  const problem = checksProblem(runs, gate.requiredChecks);
   if (problem !== undefined)
     throw new Error(`Refusing ${commit.slice(0, 12)} (PR #${String(pull.number)}): ${problem}.`);
 
   const subject = out('git', ['log', '-1', '--format=%s', commit]);
-  let approvedBy = args.zeusOk;
-  if (approvedBy === undefined) {
+  let approvedBy: string;
+  if (args.zeusOk !== undefined) {
+    // Zeus's yes counts only as a posted record (§19 #116), checked here: a string typed on the command line isn't one.
+    const repo = out('gh', ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']);
+    const comment = JSON.parse(
+      out('gh', ['api', `repos/${repo}/issues/comments/${commentId(args.zeusOk) ?? ''}`]),
+    ) as Comment;
+    const login = out('gh', ['api', 'user', '--jq', '.login']);
+    const committedAt = out('git', ['log', '-1', '--format=%cI', commit]);
+    const refused = approvalProblem(comment, commit, committedAt, login, repo);
+    if (refused !== undefined) throw new Error(`Not deployed: ${refused}.`);
+    approvedBy = comment.html_url;
+  } else {
     const answer = askAtTerminal(
       `Deploy ${commit.slice(0, 12)} (${subject}) to Picasso's instance? Type yes: `,
     );
     if (answer === undefined) {
       throw new Error(
-        "No terminal to ask Zeus at: run this in Terminal, or pass --zeus-ok '<where he said yes>'.",
+        'No terminal to ask Zeus at: run this in Terminal, or pass --zeus-ok <the URL of the comment that records his yes>.',
       );
     }
     if (answer.toLowerCase() !== 'yes') throw new Error('Not deployed: Zeus did not say yes.');
@@ -236,7 +257,19 @@ function deploy(argv: string[]): void {
       composeArgs(folder, ['up', '--detach', '--wait', '--remove-orphans', 'web', 'worker']),
     );
   } catch (error) {
-    if (previous !== '') writeFileSync(deployed, previous, { mode: 0o600 }); // the next command starts from the old tag
+    // The migrations only go forward and a web or worker may already run the new tag, so put the old tag back and start
+    // the old images again (best effort); the instance is then on the old commit, or needs a redeploy.
+    if (previous !== '') {
+      writeFileSync(deployed, previous, { mode: 0o600 });
+      spawnSync('docker', composeArgs(folder, ['up', '--detach', '--wait', 'web', 'worker']), {
+        stdio: 'inherit',
+      });
+      console.error(
+        'The deploy failed: the previous images were started again. See the output above.',
+      );
+    } else {
+      console.error('The deploy failed on the first deploy: run it again.');
+    }
     throw error;
   }
   appendFileSync(

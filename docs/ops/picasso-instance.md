@@ -36,18 +36,23 @@ node scripts/picasso.ts deploy <main commit>
 It refuses unless all of these hold, checked in this order:
 
 1. The commit is on `origin/main` (not a branch, not a staging commit).
-2. Every check is green on the pull request that merged it. The workflows run on pull requests only, so a main commit has
+2. The merge gate's required checks (`requiredChecks` in `.github/merge-gate.json` on main) are all green on the pull request that merged it. The workflows run on pull requests only, so a main commit has
    no checks of its own; the script finds the merged PR for that commit and reads the check runs on its head (all finished,
    none failed; no merged PR, or no checks, is refused too).
 3. Zeus said yes. At a terminal it asks you to type `yes` (it reads the terminal itself, so a pipe can't answer). Athena,
-   who has no terminal, passes `--zeus-ok "<where Zeus said yes>"` only after he said it in chat, and that text goes
-   into `deploys.log`. Nothing else skips the question.
+   who has no terminal, first posts the record of his yes as a comment on the issue ("Zeus decided (<date>, in chat):
+   deploy <commit> …", §19 #116) and passes its URL as `--zeus-ok <URL>`. The script fetches it and refuses unless it is
+   in this repository, by the signed-in GitHub user, says "Zeus decided" and "deploy", names the commit, and is newer than
+   the commit. The URL goes into `deploys.log`. Nothing else skips the question.
+
+The web image holds the Next.js server-action key (Next writes it into the build), so images stay on this Mac: a registry or
+a server needs one build per host or a key rotated at deploy.
 
 Then it builds both images from `git archive` of that commit (never from the working folder, so a local edit can't get in),
 tags them with the commit's first 12 characters, updates the instance's copy of `docker/`, starts Postgres, storage and
-Mailpit, runs the migrations as the owner role, and swaps in the new web and worker containers. If a step fails the
-old tag stays in `deployed.env`; the migrations only go forward, so a rollback is a deploy of the earlier commit, which
-works as long as its code accepts the migrated schema.
+Mailpit, runs the migrations as the owner role, and swaps in the new web and worker containers. If a step after the
+build fails, it puts the old tag back in `deployed.env` and starts the old web and worker again. The migrations only go
+forward, so the old code must accept the migrated schema; if it doesn't, deploy a fixed commit.
 
 ## Back up
 

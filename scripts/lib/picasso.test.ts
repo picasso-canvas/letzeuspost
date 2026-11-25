@@ -3,7 +3,9 @@ import { loadEnv } from '../../config/env.ts';
 import { parseEnvFile } from './dev-env.ts';
 import {
   APP_URL,
+  approvalProblem,
   checksProblem,
+  commentId,
   dirProblem,
   imageTag,
   instanceDir,
@@ -66,12 +68,14 @@ describe('instanceDir and dirProblem', () => {
   });
 });
 
+const COMMENT = 'https://github.com/picasso-canvas/letzeuspost/issues/81#issuecomment-4242';
+
 describe('parseDeployArgs', () => {
   it('reads a commit, and where Zeus said yes', () => {
     expect(parseDeployArgs(['48a3c91'])).toEqual({ commit: '48a3c91', zeusOk: undefined });
-    expect(parseDeployArgs(['48a3c91', '--zeus-ok', ' in chat, 2026-11-25 '])).toEqual({
+    expect(parseDeployArgs(['48a3c91', '--zeus-ok', ` ${COMMENT} `])).toEqual({
       commit: '48a3c91',
-      zeusOk: 'in chat, 2026-11-25',
+      zeusOk: COMMENT,
     });
   });
 
@@ -81,7 +85,9 @@ describe('parseDeployArgs', () => {
       ['main'],
       ['xyz'],
       ['--zeus-ok'],
-      ['a1b2c3d', '--zeus-ok', 'yes'],
+      ['a1b2c3d', '--zeus-ok', 'in chat, today'],
+      ['a1b2c3d', '--zeus-ok', 'https://example.com/issues/1#issuecomment-5'],
+      ['a1b2c3d', '--zeus-ok', 'https://github.com/o/r/issues/1'],
       ['a1b2c3d', 'e4f5a6b'],
       ['a1b2c3d', '--force'],
     ]) {
@@ -97,21 +103,36 @@ describe('checksProblem', () => {
     conclusion,
   });
 
+  const required = ['a', 'b'];
+
   it('passes when every check finished green, skipped ones included', () => {
     expect(
-      checksProblem([run('a', 'completed', 'success'), run('b', 'completed', 'skipped')]),
+      checksProblem([run('a', 'completed', 'success'), run('b', 'completed', 'skipped')], required),
     ).toBeUndefined();
+  });
+
+  it('refuses when a check the gate requires never ran, however green the others are', () => {
+    expect(
+      checksProblem(
+        [run('a', 'completed', 'success'), run('other', 'completed', 'success')],
+        required,
+      ),
+    ).toBe('these required checks never ran: b');
+    expect(checksProblem([run('a', 'completed', 'success')], [])).toContain('empty');
   });
 
   it('names each check that failed or is still running, and refuses a commit with no checks', () => {
     expect(
-      checksProblem([
-        run('a', 'completed', 'success'),
-        run('services', 'completed', 'failure'),
-        run('c', 'in_progress', null),
-      ]),
+      checksProblem(
+        [
+          run('a', 'completed', 'success'),
+          run('services', 'completed', 'failure'),
+          run('c', 'in_progress', null),
+        ],
+        ['a'],
+      ),
     ).toBe('these checks are not green: services (failure), c (in_progress)');
-    expect(checksProblem([])).toContain('no checks');
+    expect(checksProblem([], required)).toContain('no checks');
   });
 });
 
@@ -143,5 +164,58 @@ describe('mergedHead', () => {
     expect(mergedHead([pull({ base: { ref: 'staging' } })], '48a3c911f06d')).toBeUndefined();
     expect(mergedHead([pull({})], 'deadbeef')).toBeUndefined();
     expect(mergedHead([], '48a3c911f06d')).toBeUndefined();
+  });
+});
+
+describe('commentId', () => {
+  it('reads an issue or pull request comment URL, and nothing else', () => {
+    expect(commentId(COMMENT)).toBe('4242');
+    expect(commentId('https://github.com/o/r/pull/9#issuecomment-7')).toBe('7');
+    for (const bad of [
+      '',
+      'in chat',
+      'https://github.com/o/r/issues/1',
+      'http://github.com/o/r/issues/1#issuecomment-1',
+      'https://github.com.evil.test/o/r/issues/1#issuecomment-1',
+    ]) {
+      expect(commentId(bad)).toBeUndefined();
+    }
+  });
+});
+
+describe('approvalProblem', () => {
+  const commit = '48a3c911f06d9a1b2c3d4e5f60718293a4b5c6d7';
+  const repo = 'picasso-canvas/letzeuspost';
+  const comment = (over: object = {}) => ({
+    body: 'Zeus decided (2026-11-25, in chat): deploy 48a3c91 to the instance.',
+    created_at: '2026-11-25T09:00:00Z',
+    html_url: `https://github.com/${repo}/issues/81#issuecomment-4242`,
+    user: { login: 'picasso-canvas' },
+    ...over,
+  });
+  const check = (over: object = {}) =>
+    approvalProblem(comment(over), commit, '2026-11-25T03:00:00Z', 'picasso-canvas', repo);
+
+  it('accepts the record of his yes to this commit, posted after it', () => {
+    expect(check()).toBeUndefined();
+  });
+
+  it('refuses a comment in another repository or by someone else', () => {
+    expect(
+      check({ html_url: 'https://github.com/evil/letzeuspost/issues/1#issuecomment-1' }),
+    ).toContain('not in');
+    expect(check({ user: { login: 'someone' } })).toContain('not by picasso-canvas');
+  });
+
+  it('refuses text that is not his decision to deploy, or names another commit', () => {
+    expect(check({ body: 'deploy 48a3c91, looks fine' })).toContain('Zeus decided');
+    expect(check({ body: 'Zeus decided: merge 48a3c91' })).toContain('Zeus decided');
+    expect(check({ body: 'Zeus decided (2026-11-25): deploy abcdef0' })).toContain(
+      'does not name the commit 48a3c91',
+    );
+  });
+
+  it('refuses a yes older than the commit', () => {
+    expect(check({ created_at: '2026-11-25T02:00:00Z' })).toContain('older than the commit');
   });
 });
