@@ -4,13 +4,7 @@ import { emptyKit, fullKit, item } from './test-fixtures.ts';
 
 describe('essentialsMissing', () => {
   it('says all five are missing from an empty kit, in §06 order', () => {
-    expect(essentialsMissing(emptyKit())).toEqual([
-      'name',
-      'color',
-      'tone',
-      'language',
-      'country',
-    ]);
+    expect(essentialsMissing(emptyKit())).toEqual(['name', 'color', 'tone', 'language', 'country']);
   });
 
   it('says none are missing from a full kit', () => {
