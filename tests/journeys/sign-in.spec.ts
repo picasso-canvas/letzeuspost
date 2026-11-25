@@ -70,6 +70,12 @@ test('someone with an account signs in with an emailed link', async ({
     // set, HttpOnly and SameSite=Lax (§13). A signed-in person who opens the Inbox stays there.
     const landed = await page.goto(link);
     expect(landed?.status()).toBeLessThan(400);
+    // `goto` returns when the link's own page has loaded, while the app is still sending the new session on: to the
+    // Inbox, and, for a person with no workspace yet (this account has none), on to `/`, whose redirect streams in
+    // after the page. Wait for that landing to settle, so the next `goto` doesn't race it ("Navigation to / is
+    // interrupted by another navigation to /"). The condition is the real one, the landing page, not a pause.
+    await page.waitForURL((url) => url.pathname === '/');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(new URL(page.url()).pathname).not.toBe('/sign-in');
     const sessions = sessionCookies(await context.cookies());
     expect(sessions).toHaveLength(1);
