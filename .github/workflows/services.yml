@@ -247,6 +247,9 @@ jobs:
         if: ${{ steps.scope.outputs.run == 'true' && hashFiles('tests/render/**/*.spec.ts', 'tests/golden/**/*.spec.ts') != '' }}
         run: |
           set -euo pipefail
+          # Chromium's OS sandbox (#350): ubuntu-24.04 stops unprivileged processes from making user namespaces, which
+          # the sandbox needs. Allowed for this step's VM only; the runner is thrown away after the job.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           pnpm exec playwright install --with-deps chromium
           pnpm exec playwright test --project render --project golden --pass-with-no-tests
 
