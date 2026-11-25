@@ -37,6 +37,11 @@ describe('the fixed flags (§08 Chrome in Docker)', () => {
     expect(LAUNCH_OPTIONS.headless).toBe(true);
   });
 
+  it('starts Chromium with its OS sandbox on, so Playwright adds no --no-sandbox (§08 Security, #350)', () => {
+    expect(LAUNCH_OPTIONS.chromiumSandbox).toBe(true);
+    expect(CHROMIUM_ARGS).not.toContain('--no-sandbox');
+  });
+
   it('lets WebRTC send no UDP outside the proxy, so a STUN server at an IP address can’t be reached', () => {
     expect(CHROMIUM_ARGS).toEqual(
       expect.arrayContaining([
