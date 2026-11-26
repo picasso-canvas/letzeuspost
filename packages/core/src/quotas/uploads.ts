@@ -81,10 +81,10 @@ type PlanId = (typeof PLAN_ORDER)[number];
  * (`workspace.plan` is null) is held to the smallest plan: the plan doesn't say, so #403 asks Zeus (needs-zeus).
  * A plan this list doesn't know is an error, never a guessed limit.
  */
-export function storagePlans<P extends StoragePlan>(
-  plans: Readonly<Record<PlanId, P>>,
+export function storagePlans(
+  plans: Readonly<Record<PlanId, StoragePlan>>,
   planId: string | null,
-): { plan: P; next: P | null } {
+): { plan: StoragePlan; next: StoragePlan | null } {
   const id = planId ?? PLAN_ORDER[0];
   const at = (PLAN_ORDER as readonly string[]).indexOf(id);
   const plan = PLAN_ORDER[at];
