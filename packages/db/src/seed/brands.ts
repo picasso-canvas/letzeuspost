@@ -2,19 +2,21 @@
 // through `brandKits(db, BrandKitSchema)`: `createBrand` under the plan's brand limit, then `saveKit`, which checks the
 // kit and writes it as version 1. No logo assets: they need the file store, and come in a follow-up task.
 //
-// A brand is found by its English name. One that is missing is added; one with no kit yet (a run that stopped between
-// the two steps) gets its kit; one with a kit is left as it is, so a second run changes nothing, and a kit edited in
-// the app is never overwritten. The steps are separate transactions (as in the app), so the whole run holds the seeds'
-// advisory lock on a connection of its own: two runs at once take turns and add each brand once.
+// A brand is found by its English name in the seed's workspace: the owner role isn't bound by row-level security, so
+// the lookup names the workspace itself, and another workspace's brand is never skipped or saved to. One that is
+// missing is added; one with no kit yet (a run that stopped between the two steps) gets its kit; one with a kit is left
+// as it is, so a second run changes nothing, and a kit edited in the app is never overwritten. The steps are separate
+// transactions (as in the app), so the whole run holds the seeds' advisory lock on a connection of its own: two runs at
+// once take turns and add each brand once.
 //
 // db doesn't depend on @lzp/core (brand-kits.ts takes the schema as an argument), so the seed reaches core's kit schema
 // and brand rule by path, as tests/tenancy/fixtures.ts does. It runs only in development and tests (`seed:dev`).
 import { plans } from '@lzp/config';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { BrandKitSchema } from '../../../core/src/index.ts';
 import { canAddBrand } from '../../../core/src/quotas/index.ts';
 import { brandKits } from '../brand-kits.ts';
-import { dbOnPool, openPool, type WorkspaceCtx } from '../db.ts';
+import { checkedId, dbOnPool, openPool, type WorkspaceCtx } from '../db.ts';
 import { brand } from '../schema/brands.ts';
 import type { SampleBrand } from './sample-brands.ts';
 import { SEED_LOCK } from './seed.ts';
@@ -31,6 +33,7 @@ export async function seedBrands(
   ctx: WorkspaceCtx,
   samples: readonly SampleBrand[],
 ): Promise<{ changed: boolean }> {
+  const workspaceId = checkedId('workspace', ctx.workspaceId);
   const pool = openPool(ownerUrl);
   try {
     const lock = await pool.connect();
@@ -40,15 +43,13 @@ export async function seedBrands(
       const kits = brandKits(db, BrandKitSchema);
       let changed = false;
       for (const sample of samples) {
-        const [found] = await db
-          .forWorkspace(ctx)
-          .transaction((tx) =>
-            tx
-              .select({ id: brand.id, kitVersion: brand.currentKitVersion })
-              .from(brand)
-              .where(eq(brand.nameEn, sample.nameEn))
-              .limit(1),
-          );
+        const [found] = await db.forWorkspace(ctx).transaction((tx) =>
+          tx
+            .select({ id: brand.id, kitVersion: brand.currentKitVersion })
+            .from(brand)
+            .where(and(eq(brand.workspaceId, workspaceId), eq(brand.nameEn, sample.nameEn)))
+            .limit(1),
+        );
         if (found !== undefined && found.kitVersion !== null) continue;
         const { id } =
           found ??
