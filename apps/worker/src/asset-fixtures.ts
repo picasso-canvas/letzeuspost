@@ -47,21 +47,49 @@ export function png(
 }
 
 const SIDE = 240;
-const level = (value: number): number => Math.max(0, Math.min(255, Math.round(value)));
+const BLOCKS = 10;
+const BLOCK = SIDE / BLOCKS;
 
-/** A picture of bands and waves that `seed` shifts and turns: another seed is another picture. */
-function pattern(seed: number, x: number, y: number): readonly [number, number, number] {
-  const wave = Math.sin((x * (seed + 2)) / 31 + seed) * Math.cos((y * (seed + 3)) / 23 - seed);
-  const grey = 128 + 120 * wave;
-  return [level(grey), level(255 - grey), level((x + y + seed * 40) % 256)];
+/** Numbers from 0 to 1 that `seed` alone decides (mulberry32). */
+function numbers(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-/** A photo-like picture drawn from `seed`. */
+/**
+ * A grid of coloured blocks that `seed` decides. Shrunk to the few pixels a perceptual hash looks at, the blocks stay
+ * apart, so two seeds give hashes about as different as chance makes them.
+ */
+function blocks(seed: number): readonly (readonly [number, number, number])[] {
+  const next = numbers(seed);
+  return Array.from({ length: BLOCKS * BLOCKS }, () => {
+    const grey = Math.floor(next() * 256);
+    return [grey, 255 - grey, Math.floor(next() * 256)] as const;
+  });
+}
+
+function pattern(
+  grid: readonly (readonly [number, number, number])[],
+  x: number,
+  y: number,
+): readonly [number, number, number] {
+  return grid[Math.floor(y / BLOCK) * BLOCKS + Math.floor(x / BLOCK)] ?? [0, 0, 0];
+}
+
+/** A picture drawn from `seed`: another seed is another picture. */
 export function picture(seed: number): Uint8Array {
-  return png(SIDE, SIDE, (x, y) => pattern(seed, x, y));
+  const grid = blocks(seed);
+  return png(SIDE, SIDE, (x, y) => pattern(grid, x, y));
 }
 
 /** `picture(seed)` with a small square in one corner painted white: another file, nearly the same picture. */
 export function touched(seed: number): Uint8Array {
-  return png(SIDE, SIDE, (x, y) => (x < 12 && y < 12 ? [255, 255, 255] : pattern(seed, x, y)));
+  const grid = blocks(seed);
+  return png(SIDE, SIDE, (x, y) => (x < 12 && y < 12 ? [255, 255, 255] : pattern(grid, x, y)));
 }

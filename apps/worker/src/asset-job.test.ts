@@ -305,7 +305,8 @@ describe('the asset job on a PDF', () => {
 
   it('rejects a decompression bomb: too slow or too much memory, never the worker’s', async () => {
     const asset = newAsset('document');
-    const { rows, run } = setUp(asset, bombPdf(19));
+    // A few hundred kilobytes that inflate to 1.2 GB: past the reader's memory cap.
+    const { rows, run } = setUp(asset, bombPdf(1200));
     await run();
     expect(rows.rejected).toHaveLength(1);
     expect([
