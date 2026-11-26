@@ -23,7 +23,7 @@ import {
   type TaskIssue,
 } from './lib/features.ts';
 import { REPO } from './merge-gate/collect.ts';
-import { issueFromBranch, readStagingLog } from './merge-gate/staging.ts';
+import { issueFromBranch, readStagingLog, syncStagingAndLog } from './merge-gate/staging.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 
 /** The task PRs on `staging` and not on `main`, oldest first, from the gate's squash subjects (`Title (#n)`). */
@@ -183,6 +183,10 @@ function main(argv: string[]): number {
     `staging is ${String(prs.length)} task PRs and ${String(lines)} changed lines ahead of main${openFeatures === '' ? '' : `; ${openFeatures}`}. The batch is ${verdict.due ? 'due' : 'not due'}: ${verdict.reason}.`,
   );
   if (!argv.includes('--open') || !verdict.due) return 0;
+  // The gate refuses a batch whose branch is behind main, and harness merges no longer sync staging (#446): do it now.
+  const sync = syncStagingAndLog((cmd, args) => run(cmd, args), REPO);
+  (sync.ok ? console.log : console.error)(sync.message);
+  if (!sync.ok) return 1;
   const body = batchBody(tasks);
   const open = JSON.parse(
     run('gh', [
