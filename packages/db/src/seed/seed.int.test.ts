@@ -17,6 +17,7 @@ import { sampleBrands } from './sample-brands.ts';
 import { devSeed, seedWorkspace, studioSeed, type Seed } from './seed.ts';
 
 const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('seed');
+const { DATABASE_URL: appUrl } = loadEnv('worker');
 const run = randomUUID().slice(0, 8);
 const pool = openPool(ownerUrl);
 const orm = drizzle({ client: pool });
@@ -37,6 +38,14 @@ const dev = northwind('');
 /** Workspaces of their own for a half-done run and for two runs at once. */
 const half = northwind('half-');
 const race = northwind('race-');
+/** A workspace that already has brands named like the samples, and the one the seed adds to next to it. */
+const other = northwind('other-');
+const next = northwind('next-');
+/** Workspaces at the brand limit and with room, for createBrand's count. */
+const full = northwind('full-');
+const room = northwind('room-');
+
+const starter = (brandsNow: number) => canAddBrand(plans.starter, brandsNow);
 
 /** A workspace's brands and their kit versions, as the database holds them, by name and version. */
 async function brandsOf(slug: string) {
@@ -84,7 +93,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // A workspace's brands and kit versions go with it.
-  for (const seed of [studio, dev, half, race]) {
+  for (const seed of [studio, dev, half, race, other, next, full, room]) {
     await orm.execute(sql`delete from workspace where slug = ${seed.workspace.slug}`);
     await orm.execute(sql`delete from "user" where email in ${seed.people.map((p) => p.email)}`);
   }
@@ -187,5 +196,70 @@ describe('seed:dev', () => {
     // Which run adds the workspace and which the brands is up to the locks: either may do both.
     await Promise.all([runDevSeed(ownerUrl, race), runDevSeed(ownerUrl, race)]);
     expect(await brandsOf(race.workspace.slug)).toMatchObject(sampleRows());
+  });
+
+  it("leaves another workspace's same-named brands alone: none is skipped or given a kit", async () => {
+    const { workspaceId } = await runSeed(ownerUrl, other);
+    const app = createDb(ownerUrl);
+    try {
+      const kits = brandKits(app, BrandKitSchema);
+      const [golpo, ironline] = sampleBrands();
+      if (golpo === undefined || ironline === undefined) throw new Error('two sample brands');
+      // Golpo Café with a kit (a lookup across workspaces would skip it in `next`), Ironline Studio without one (it
+      // would be given `next`'s kit).
+      const withKit = await kits.createBrand(
+        { workspaceId },
+        { nameEn: golpo.nameEn, nameBn: golpo.nameBn },
+        starter,
+      );
+      await kits.saveKit({ workspaceId }, withKit.id, golpo.kit);
+      await kits.createBrand({ workspaceId }, { nameEn: ironline.nameEn }, starter);
+    } finally {
+      await app.close();
+    }
+    const before = await brandsOf(other.workspace.slug);
+    expect(await runDevSeed(ownerUrl, next)).toEqual({ changed: true });
+    expect(await brandsOf(next.workspace.slug)).toMatchObject(sampleRows());
+    expect(await brandsOf(other.workspace.slug)).toEqual(before);
+  });
+});
+
+describe("createBrand's brand count, for the owner role the seed runs as and for the app role (#411)", () => {
+  it('counts only the workspace it adds to: an add next to a full workspace passes, and the limit holds for both roles', async () => {
+    const { workspaceId: fullId } = await runSeed(ownerUrl, full);
+    const { workspaceId: roomId } = await runSeed(ownerUrl, room);
+    const asOwner = createDb(ownerUrl);
+    const asApp = createDb(appUrl);
+    try {
+      const ownerKits = brandKits(asOwner, BrandKitSchema);
+      const appKits = brandKits(asApp, BrandKitSchema);
+      for (const nameEn of ['One', 'Two', 'Three']) {
+        await ownerKits.createBrand({ workspaceId: fullId }, { nameEn }, starter);
+      }
+      let seen = -1;
+      await ownerKits.createBrand({ workspaceId: roomId }, { nameEn: 'First' }, (brandsNow) => {
+        seen = brandsNow;
+        return starter(brandsNow);
+      });
+      expect(seen).toBe(0);
+      const refused = 'brand limit reached: this workspace has 3 brands';
+      await expect(
+        appKits.createBrand({ workspaceId: fullId }, { nameEn: 'Fourth' }, starter),
+      ).rejects.toThrow(refused);
+      await expect(
+        ownerKits.createBrand({ workspaceId: fullId }, { nameEn: 'Fourth too' }, starter),
+      ).rejects.toThrow(refused);
+    } finally {
+      await asOwner.close();
+      await asApp.close();
+    }
+    const { rows } = await orm.execute(
+      sql`select w.slug, count(b.id)::int as n from workspace w left join brand b on b.workspace_id = w.id
+          where w.slug in (${full.workspace.slug}, ${room.workspace.slug}) group by w.slug order by w.slug`,
+    );
+    expect(rows).toEqual([
+      { slug: full.workspace.slug, n: 3 },
+      { slug: room.workspace.slug, n: 1 },
+    ]);
   });
 });
