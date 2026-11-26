@@ -105,8 +105,8 @@ export function createJobs({ url, db, onError, pollingIntervalSeconds }: JobsOpt
       const data = checkPayload(queue, payload);
       const workspaceId = workspaceOf(data);
       const id = await boss.send(queue, data, {
-        // Each job belongs to its workspace's group; the ai queue's worker runs at most 4 of a group at once. An
-        // account queue's job belongs to no workspace, so to no group.
+        // Each job belongs to its workspace's group; the ai queue's worker runs at most 4 of a group at once, the
+        // asset queue's 1. An account queue's job belongs to no workspace, so to no group.
         ...(workspaceId === null ? {} : { group: { id: workspaceId } }),
         ...(options.tx === undefined ? {} : { db: fromDrizzle(options.tx, sql) }),
       });
