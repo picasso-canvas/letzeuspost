@@ -8,15 +8,18 @@ import { describe, expect, it } from 'vitest';
 import { ASSET_KINDS, ASSET_SOURCES, ASSET_STATUSES } from '../../../core/src/brand/asset.ts';
 import { asset, assetKinds, assetSources, assetStatuses } from './assets.ts';
 
-const migration = readFileSync(
-  new URL('../../migrations/0008_assets.sql', import.meta.url),
-  'utf8',
-);
+const migrationFile = (name: string) =>
+  readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8');
+const migration = migrationFile('0008_assets.sql');
+const processing = migrationFile('0009_asset_processing.sql');
 
-/** Every statement of the migration, its comments taken out. */
-const statements = migration
-  .split('--> statement-breakpoint')
-  .map((statement) => statement.replace(/^--.*$/gm, '').trim());
+/** Every statement of a migration, its comments taken out. */
+const statementsOf = (sql: string) =>
+  sql
+    .split('--> statement-breakpoint')
+    .map((statement) => statement.replace(/^--.*$/gm, '').trim())
+    .filter((statement) => statement !== '');
+const statements = statementsOf(migration);
 
 const grantsToApp = statements.filter(
   (statement) => /^GRANT\b/.test(statement) && statement.includes('TO lzp_app'),
@@ -60,6 +63,9 @@ describe('the asset table', () => {
       'uploaded_by',
       'created_at',
       'updated_at',
+      'duplicate_of',
+      'reject_reason',
+      'extracted_text',
     ]);
     const required = Object.values(getTableColumns(asset))
       .filter((column) => column.notNull)
@@ -172,6 +178,53 @@ describe('the asset table', () => {
       'created_at',
     ]) {
       expect(update).not.toContain(`"${fixed}"`);
+    }
+  });
+});
+
+describe('what the asset job adds (#402, migration 0009)', () => {
+  const added = statementsOf(processing);
+
+  it('adds the duplicate, the reason for a rejection and a PDF’s text, each empty until the job fills it in', () => {
+    const columns = getTableColumns(asset);
+    for (const column of [columns.duplicateOf, columns.rejectReason, columns.extractedText]) {
+      expect(column.notNull).toBe(false);
+      expect(column.hasDefault).toBe(false);
+    }
+    expect(columns.duplicateOf.getSQLType()).toBe('uuid');
+    expect(columns.rejectReason.getSQLType()).toBe('text');
+    expect(columns.extractedText.getSQLType()).toBe('text');
+  });
+
+  it('is expand only: three nullable columns and their grant, within the lock and statement limits', () => {
+    expect(added).toEqual([
+      "SET LOCAL lock_timeout = '5s';",
+      "SET LOCAL statement_timeout = '60s';",
+      'ALTER TABLE "asset" ADD COLUMN IF NOT EXISTS "duplicate_of" uuid, ADD COLUMN IF NOT EXISTS "reject_reason" text, ADD COLUMN IF NOT EXISTS "extracted_text" text;',
+      'GRANT UPDATE ("duplicate_of", "reject_reason", "extracted_text") ON "asset" TO lzp_app;',
+    ]);
+  });
+
+  it('gives the duplicate no key (Zeus, 2026-11-26): the job writes it only for an earlier asset of the same brand', () => {
+    expect(processing).not.toMatch(/REFERENCES|FOREIGN KEY|CONSTRAINT/i);
+    const keys = getTableConfig(asset).foreignKeys.map((key) =>
+      key.reference().columns.map((column) => column.name),
+    );
+    expect(keys.flat()).not.toContain('duplicate_of');
+  });
+
+  it('still never lets the app role move an asset to another workspace, brand, file, source or uploader', () => {
+    const grants = added.filter((statement) => /^GRANT\b/.test(statement)).join(' ');
+    for (const fixed of [
+      'id',
+      'workspace_id',
+      'brand_id',
+      'storage_key',
+      'source',
+      'uploaded_by',
+      'created_at',
+    ]) {
+      expect(grants).not.toContain(`"${fixed}"`);
     }
   });
 });
