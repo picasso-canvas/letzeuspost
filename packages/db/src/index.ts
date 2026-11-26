@@ -44,6 +44,16 @@ export {
   type OutboxEmail,
   type OutboxSkip,
 } from './jobs/email-outbox.ts';
+// The `asset` job's steps (#402): an upload processed or rejected, and marked when it looks like an earlier one.
+export {
+  ASSET_FINISH_LOCK,
+  assetProcessing,
+  DUPLICATE_MAX_BITS,
+  type AssetProcessing,
+  type AssetSkip,
+  type AssetToProcess,
+  type ProcessedFile,
+} from './jobs/asset-processing.ts';
 export {
   checkPayload,
   JobPayloadError,

@@ -274,6 +274,9 @@ importers:
       '@lzp/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@lzp/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       nodemailer:
         specifier: 10.3.1
         version: 10.3.1
@@ -418,6 +421,9 @@ importers:
       '@lzp/db':
         specifier: workspace:*
         version: link:../db
+      pdfjs-dist:
+        specifier: 6.5.438
+        version: 6.5.438
       sharp:
         specifier: 0.35.5
         version: 0.35.5(@types/node@26.6.6)

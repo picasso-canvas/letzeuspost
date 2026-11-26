@@ -49,7 +49,10 @@ export const queues = {
   asset: {
     payload: z.strictObject({ workspaceId: id, brandId: id, assetId: id }),
     queue: retry,
-    work: {},
+    // A job may read a hostile PDF for up to 15 s, its reader capped at about 1 GB (#402): one job at a time per
+    // workspace, by the same in-process group limit as the ai queue's, and two in all, so a workspace uploading many
+    // PDFs holds one reader while another workspace's upload runs in the other (Cerberus F1 on #402).
+    work: { localGroupConcurrency: 1, localConcurrency: 2 },
   },
   render: {
     payload: z.strictObject({ workspaceId: id, postId: id, postVersionId: id }),

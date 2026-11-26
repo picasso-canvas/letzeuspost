@@ -3,11 +3,12 @@
 //
 // The queues: a job is handed to its handler only through `payloadOf` (packages/db's jobs/boss.ts), which refuses a
 // payload with anything but the queue's ids and a job whose group isn't its payload's workspace, and the handler's
-// one database handle is `forWorkspace` on that workspace. The handlers: the worker's `email` and `account-email`
-// handlers (apps/worker), run here directly with the job context `createJobs` gives them, not through a queue: every
-// queue already has a services file working it (packages/db's jobs.int.test.ts, the Data journey, apps/worker's), and a
-// handler of this file's on a shared queue would take, and complete, their jobs (Argus F1 on #202). The transport and
-// the renderer are stand-ins that record what they're asked: a handler that read B's row would ask them to send it.
+// one database handle is `forWorkspace` on that workspace. The handlers: the worker's `email`, `account-email` and
+// `asset` handlers (apps/worker), run here directly with the job context `createJobs` gives them, not through a queue:
+// every queue already has a services file working it (packages/db's jobs.int.test.ts, the Data journey, apps/worker's),
+// and a handler of this file's on a shared queue would take, and complete, their jobs (Argus F1 on #202). The transport,
+// the renderer and the file store are stand-ins that record what they're asked: a handler that read B's row would ask
+// them to send it, or to read or write B's file.
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
@@ -21,7 +22,9 @@ import {
   type Payload,
   type QueueName,
   type Scoped,
+  type WorkspaceCtx,
 } from '../../packages/db/src/index.ts';
+import { picture } from '../../apps/worker/src/asset-fixtures.ts';
 import { payloadOf } from '../../packages/db/src/jobs/boss.ts';
 import { workspaceOf } from '../../packages/db/src/jobs/queues.ts';
 import { setUpTenancy, text, type Row, type Tenancy } from './fixtures.ts';
@@ -259,6 +262,49 @@ async function handlers() {
   return { emailJob: email.emailJob, accountEmailJob: account.accountEmailJob };
 }
 
+/** The parts of @lzp/storage's `Storage` the asset job uses. */
+interface Files {
+  get: (
+    ctx: WorkspaceCtx,
+    key: string,
+    options: { maxBytes: number },
+  ) => Promise<Uint8Array | null>;
+  put: (ctx: WorkspaceCtx, key: string, body: Uint8Array, contentType: string) => Promise<void>;
+}
+
+/** apps/worker's `asset` handler, loaded by URL as the email handlers are: its imports resolve in apps/worker. */
+async function assetHandler() {
+  const module = (await import(
+    new URL('../../apps/worker/src/asset-job.ts', import.meta.url).href
+  )) as {
+    assetJob: (deps: {
+      storage: Files;
+      log: Delivery['log'];
+    }) => (job: JobRun<Payload<'asset'>>) => Promise<void>;
+  };
+  return module.assetJob;
+}
+
+/**
+ * A file store in memory, holding `files` by key, that serves any key to any workspace and records each read and
+ * write: a handler that reached for B's file would get it, and show here.
+ */
+function recordingFiles(files: Map<string, Uint8Array>) {
+  const asked: string[] = [];
+  const store: Files = {
+    get: (ctx, key) => {
+      asked.push(`get ${ctx.workspaceId} ${key}`);
+      return Promise.resolve(files.get(key) ?? null);
+    },
+    put: (ctx, key, body) => {
+      asked.push(`put ${ctx.workspaceId} ${key}`);
+      files.set(key, body);
+      return Promise.resolve();
+    },
+  };
+  return { store, asked };
+}
+
 /** A delivery whose transport and renderer only record: who would have been sent what. */
 function recordingDelivery() {
   const sent: string[] = [];
@@ -327,6 +373,48 @@ describe('the worker’s handlers', () => {
       } finally {
         await accountEmails.close();
       }
+    });
+  });
+
+  tenancy('job asset', () => {
+    it('reads, writes and changes nothing of B’s for B’s asset in a job of A’s, on any try', async () => {
+      const assetJob = await assetHandler();
+      const theirs = picture(41);
+      const files = new Map([
+        [t.b.asset.storageKey, theirs],
+        [t.a.asset.storageKey, picture(42)],
+      ]);
+      const { store, asked } = recordingFiles(files);
+      const handler = assetJob({ storage: store, log: () => undefined });
+      const run = (brandId: string, assetId: string, lastAttempt: boolean) =>
+        handler({
+          jobId: randomUUID(),
+          payload: { workspaceId: t.a.ctx.workspaceId, brandId, assetId },
+          db: t.app.forWorkspace(t.a.ctx),
+          retryCount: lastAttempt ? 2 : 0,
+          lastAttempt,
+        });
+
+      // B's asset under B's brand, and under A's: on a first try and on the last, which would reject what it found.
+      for (const lastAttempt of [false, true]) {
+        await run(t.b.brand.id, t.b.asset.id, lastAttempt);
+        await run(t.a.brand.id, t.b.asset.id, lastAttempt);
+      }
+      expect(asked).toEqual([]);
+      expect(files.get(t.b.asset.storageKey)).toBe(theirs);
+      await expectBUntouched();
+
+      // The same handler does process A's own asset: the store would have been asked for B's.
+      await run(t.a.brand.id, t.a.asset.id, false);
+      const prefixA = `ws/${t.a.ctx.workspaceId}/`;
+      expect(asked[0]).toBe(`get ${t.a.ctx.workspaceId} ${t.a.asset.storageKey}`);
+      expect(asked.filter((each) => each.startsWith('put '))).toHaveLength(3);
+      expect(asked.every((each) => each.includes(` ${t.a.ctx.workspaceId} ${prefixA}`))).toBe(true);
+      const mine = await t.app
+        .forWorkspace(t.a.ctx)
+        .transaction((tx) => tx.select({ id: asset.id, status: asset.status }).from(asset));
+      expect(mine).toEqual([{ id: t.a.asset.id, status: 'ready' }]);
+      await expectBUntouched();
     });
   });
 });

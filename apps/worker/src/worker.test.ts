@@ -1,8 +1,9 @@
 // What the worker runs (§13 What runs), checked without services: startWorker registers the `email` job and, from
-// #77, the `account-email` job on packages/auth's account emails (Argus F2 on #229), and closes them on stop. The
-// queue, the database and the templates are stand-ins; account-email.int.test.ts runs the real ones.
+// #77, the `account-email` job on packages/auth's account emails (Argus F2 on #229), and from #402 the `asset` job on
+// the file store, and closes them on stop. The queue, the database, the store and the templates are stand-ins;
+// account-email.int.test.ts and asset.int.test.ts run the real ones.
 import { randomUUIDv7 } from 'node:crypto';
-import type { EmailOutbox, JobContext, JobHandler, QueueName } from '@lzp/db';
+import type { EmailOutbox, JobContext, JobHandler, QueueName, Scoped } from '@lzp/db';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const seen = vi.hoisted(() => ({
@@ -13,6 +14,8 @@ const seen = vi.hoisted(() => ({
   swept: [] as string[],
   pruned: [] as string[],
   sweepHeld: undefined as Promise<string[]> | undefined,
+  storageWith: [] as unknown[],
+  read: [] as { workspaceId: string; key: string }[],
 }));
 
 vi.mock('@lzp/db', async (importOriginal) => ({
@@ -20,6 +23,11 @@ vi.mock('@lzp/db', async (importOriginal) => ({
   SENDING_STALE_AFTER_SECONDS: (await importOriginal<typeof import('@lzp/db')>())
     .SENDING_STALE_AFTER_SECONDS,
   emailOutbox: () => ({}),
+  // The asset job's rows: one asset waiting to be processed, whatever the ids.
+  assetProcessing: () => ({
+    load: ({ brandId, assetId }: { brandId: string; assetId: string }) =>
+      Promise.resolve({ asset: { id: assetId, brandId, kind: 'image', source: 'agency' } }),
+  }),
   createDb: () => ({
     close: () => {
       seen.closed.push('db');
@@ -72,6 +80,23 @@ vi.mock('@lzp/auth', () => ({
   },
 }));
 
+vi.mock('@lzp/storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@lzp/storage')>()),
+  createStorage: (settings: unknown) => {
+    seen.storageWith.push(settings);
+    return {
+      get: (ctx: { workspaceId: string }, key: string) => {
+        seen.read.push({ workspaceId: ctx.workspaceId, key });
+        return Promise.resolve(null); // not uploaded yet
+      },
+      put: () => Promise.reject(new Error('not here')),
+      close: () => {
+        seen.closed.push('storage');
+      },
+    };
+  },
+}));
+
 vi.mock('@lzp/email', () => ({ renderTemplate: () => Promise.reject(new Error('not here')) }));
 
 const env = {
@@ -95,6 +120,8 @@ beforeEach(() => {
   seen.swept.length = 0;
   seen.pruned.length = 0;
   seen.sweepHeld = undefined;
+  seen.storageWith.length = 0;
+  seen.read.length = 0;
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true); // the worker's log lines
 });
 
@@ -104,10 +131,42 @@ afterEach(() => {
 });
 
 describe('startWorker', () => {
-  it('runs the email job and the account-email job', async () => {
+  it('runs the email job, the account-email job and the asset job', async () => {
     const { startWorker } = await import('./worker.ts');
     const worker = await startWorker(env);
-    expect([...seen.handlers.keys()]).toEqual(['email', 'account-email']);
+    expect([...seen.handlers.keys()]).toEqual(['email', 'account-email', 'asset']);
+    await worker.stop();
+  });
+
+  it("gives the asset job a file store on the worker's settings, read in the job's workspace (#402)", async () => {
+    const { startWorker } = await import('./worker.ts');
+    const { assetKey } = await import('@lzp/storage');
+    const { AssetJobError } = await import('./asset-job.ts');
+    const worker = await startWorker(env);
+    expect(seen.storageWith).toEqual([env]);
+    const ids = { workspaceId: randomUUIDv7(), brandId: randomUUIDv7(), assetId: randomUUIDv7() };
+    const handler = seen.handlers.get('asset') as JobHandler<'asset'> | undefined;
+    const unused: Scoped = {
+      transaction: () => Promise.reject(new Error('the rows are stand-ins here')),
+    };
+    const job: JobContext<'asset' & QueueName> = {
+      jobId: randomUUIDv7(),
+      payload: ids,
+      db: unused,
+      retryCount: 0,
+      lastAttempt: false,
+    };
+    // The original isn't in the store yet, so the run fails and pg-boss retries it.
+    await expect(handler?.(job)).rejects.toBeInstanceOf(AssetJobError);
+    expect(seen.read).toEqual([
+      {
+        workspaceId: ids.workspaceId,
+        key: assetKey(
+          { workspaceId: ids.workspaceId },
+          { brandId: ids.brandId, assetId: ids.assetId, variant: 'original' },
+        ),
+      },
+    ]);
     await worker.stop();
   });
 
@@ -129,11 +188,11 @@ describe('startWorker', () => {
     await worker.stop();
   });
 
-  it('closes the account emails on stop, once the jobs have stopped', async () => {
+  it('closes the account emails and the file store on stop, once the jobs have stopped', async () => {
     const { startWorker } = await import('./worker.ts');
     const worker = await startWorker(env);
     await worker.stop();
-    expect(seen.closed).toEqual(['jobs', 'account emails', 'db']);
+    expect(seen.closed).toEqual(['jobs', 'account emails', 'storage', 'db']);
   });
 
   it('sweeps the email outbox on a timer, with no queue (#210)', async () => {
@@ -144,7 +203,7 @@ describe('startWorker', () => {
     expect(seen.swept).toEqual([]);
     await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS);
     expect(seen.swept).toEqual(['email']);
-    expect([...seen.handlers.keys()]).toEqual(['email', 'account-email']);
+    expect([...seen.handlers.keys()]).toEqual(['email', 'account-email', 'asset']);
     await worker.stop();
   });
 
@@ -165,7 +224,7 @@ describe('startWorker', () => {
     expect(seen.closed).toEqual([]);
     finish([]);
     await stopping;
-    expect(seen.closed).toEqual(['jobs', 'account emails', 'db']);
+    expect(seen.closed).toEqual(['jobs', 'account emails', 'storage', 'db']);
 
     await vi.advanceTimersByTimeAsync(EMAIL_SWEEP_EVERY_MS * 3);
     expect(seen.swept).toEqual(['email']);
@@ -181,7 +240,7 @@ describe('startWorker', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(seen.pruned).toEqual(['rate_limit_hit', 'account_email']);
     await worker.stop();
-    expect(seen.closed).toEqual(['jobs', 'account emails', 'db']);
+    expect(seen.closed).toEqual(['jobs', 'account emails', 'storage', 'db']);
     await vi.advanceTimersByTimeAsync(AUTH_PRUNE_EVERY_MS * 3);
     expect(seen.pruned).toEqual(['rate_limit_hit', 'account_email']);
   });
