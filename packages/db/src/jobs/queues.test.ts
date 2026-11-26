@@ -167,6 +167,12 @@ describe('the queues (§13 Jobs)', () => {
     // (groupConcurrency) takes no lock, so workers fetching at the same moment can start a fifth.
     expect(queues.ai.work).toEqual({ localGroupConcurrency: 4, localConcurrency: 8 });
   });
+
+  it('runs one asset job at a time per workspace and two in all, so one workspace’s PDFs can’t hold up the rest', () => {
+    // Each asset job may run the hostile-PDF reader (up to 15 s, its memory capped): a workspace uploading many PDFs
+    // gets one reader, and the other runs another workspace's upload (Cerberus F1 on #402).
+    expect(queues.asset.work).toEqual({ localGroupConcurrency: 1, localConcurrency: 2 });
+  });
 });
 
 describe('sending a job', () => {
