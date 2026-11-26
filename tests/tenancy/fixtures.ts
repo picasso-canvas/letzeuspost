@@ -26,7 +26,15 @@ import {
   type Db,
   type WorkspaceCtx,
 } from '../../packages/db/src/index.ts';
+import { sampleBrands } from '../../packages/db/src/seed/sample-brands.ts';
 import { assetKey } from '../../packages/storage/src/index.ts';
+
+/** A's brand gets Golpo Café's sample kit and B's Ironline Studio's (#411): real, full kits, a different one in each. */
+function sampleKit(letter: 'a' | 'b') {
+  const sample = sampleBrands()[letter === 'a' ? 0 : 1];
+  if (sample === undefined) throw new Error('no sample brand for the fixture');
+  return sample.kit;
+}
 
 /** A result row: the columns by name. */
 export type Row = Record<string, unknown>;
@@ -60,7 +68,7 @@ export interface WorkspaceRows {
   readonly invitation: { readonly id: string; readonly email: string };
   /** An outbox row, queued with no job (so no worker sends it while the suite runs). */
   readonly email: { readonly id: string; readonly to: string };
-  /** A brand, with one saved kit version (#399), made by the app's own save helper. */
+  /** A brand, with one saved kit version (#399), a sample brand's full kit (#411), made by the app's own save helper. */
   readonly brand: { readonly id: string; readonly nameEn: string; readonly versionId: string };
   /** A photo in that brand's library (#400), still waiting to be processed, added by the app role. */
   readonly asset: {
@@ -157,15 +165,7 @@ export async function setUpTenancy(label: string): Promise<Tenancy> {
     const kits = brandKits(app, BrandKitSchema);
     const nameEn = `Tenancy brand ${letter} ${run}`;
     const made = await kits.createBrand(ctx, { nameEn }, () => true);
-    const saved = await kits.saveKit(ctx, made.id, {
-      identity: {},
-      voice: {},
-      facts: {},
-      look: {},
-      rules: {},
-      publishing: {},
-      holidays: {},
-    });
+    const saved = await kits.saveKit(ctx, made.id, sampleKit(letter));
     // Its key is the one @lzp/storage gives the original, which the table's check holds it to.
     const assetId = randomUUIDv7();
     const description = `Tenancy photo ${letter} ${run}`;
