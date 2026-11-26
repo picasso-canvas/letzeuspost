@@ -4,7 +4,7 @@ import type { NextConfig } from 'next';
 // packages export TypeScript source, so Next compiles the ones the app imports.
 const config: NextConfig = {
   output: 'standalone',
-  transpilePackages: ['@lzp/auth', '@lzp/config', '@lzp/core', '@lzp/db', '@lzp/ui'],
+  transpilePackages: ['@lzp/auth', '@lzp/config', '@lzp/core', '@lzp/db', '@lzp/storage', '@lzp/ui'],
 };
 
 export default config;
