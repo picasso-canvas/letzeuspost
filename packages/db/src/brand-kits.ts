@@ -69,7 +69,11 @@ export function brandKits<Kit>(db: Db, kitSchema: KitSchema<Kit>): BrandKits<Kit
           .from(workspace)
           .where(eq(workspace.id, workspaceId))
           .for('no key update');
-        const [counted] = await tx.select({ n: sql<number>`count(*)::int` }).from(brand);
+        // Filtered as well as RLS-bound, so the owner role (the seeds') counts this workspace's brands too.
+        const [counted] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(brand)
+          .where(eq(brand.workspaceId, workspaceId));
         const brandsNow = counted?.n ?? 0;
         if (!allowed(brandsNow)) {
           throw new Error(`brand limit reached: this workspace has ${String(brandsNow)} brands`);
