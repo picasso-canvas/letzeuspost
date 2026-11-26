@@ -39,6 +39,7 @@ import { stampPath } from '../.claude/hooks/lib/stamp.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
 import { readStagingLog, stagingRefusal } from './merge-gate/staging.ts';
+import { logCost, usageFromStream } from './lib/cost.ts';
 import {
   BUILDERS_DIR,
   dispatchRecordPath,
@@ -889,6 +890,10 @@ async function runBuilder(o: {
   // How it ended, in Athena's record: a run a usage limit stopped can be resumed (#157).
   const ending = runEnding(tail, state.frozen);
   const refused = refusedWrites(tail);
+  // What the run cost, from its final `result` event; a run stopped before one logs nothing (#448).
+  const usage = usageFromStream(tail);
+  if (usage !== null)
+    logCost({ at: new Date().toISOString(), stage: 'builder', model, issue, usage });
   const refusedRun = ending === 'failed' && refused.length > 0;
   console.log(
     `Builder ${state.frozen ? 'stopped: the freeze switch is on' : refusedRun ? 'ended with refused writes' : 'finished'} (exit ${String(code)}). Log: ${log}`,

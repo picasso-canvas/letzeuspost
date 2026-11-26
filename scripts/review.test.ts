@@ -1,6 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { reviewPrompt } from './merge-gate/meta.ts';
-import { failureReason, planReviewers, resultText, reviewerModel } from './review.ts';
+import type { CostEntry } from './lib/cost.ts';
+import {
+  failureReason,
+  planReviewers,
+  resultText,
+  reviewerModel,
+  runReviews,
+  type ReviewDeps,
+} from './review.ts';
 
 const CONFIG = { requireIris: false, uiPaths: ['packages/ui/**'] };
 
@@ -138,5 +146,79 @@ describe('failureReason', () => {
     expect(failureReason(new Error('Command failed: claude --add-dir /Users/x'))).toBe(
       'the claude command failed',
     );
+  });
+});
+
+describe('runReviews: what each run costs (#448)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const answer = (text: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      type: 'result',
+      subtype: 'success',
+      result: text,
+      session_id: 's-1',
+      total_cost_usd: 0.5,
+      num_turns: 3,
+      duration_ms: 1000,
+      usage: { input_tokens: 10, output_tokens: 20 },
+      ...extra,
+    });
+
+  function run(answers: string[]) {
+    const costs: CostEntry[] = [];
+    const queue = [...answers];
+    const deps: ReviewDeps = {
+      claude: () => queue.shift() ?? '',
+      show: () => 'agent file',
+      record: () => '',
+      write: () => undefined,
+      logCost: (entry) => costs.push(entry),
+      env: {},
+    };
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failed = runReviews(7, { bundle: '/b', outDir: '/o', refusal: null }, ['argus'], deps);
+    return { costs, failed };
+  }
+
+  it("logs a reviewer's run with its stage, PR and usage", async () => {
+    const { costs, failed } = run([answer('VERDICT: pass')]);
+    expect(await failed).toBe(0);
+    expect(costs).toHaveLength(1);
+    expect(costs[0]).toMatchObject({
+      stage: 'argus',
+      pr: 7,
+      model: 'claude-sonnet-5-5',
+      usage: { costUsd: 0.5, outputTokens: 20, turns: 3 },
+    });
+  });
+
+  it('logs the retry as well, since it was paid for', async () => {
+    const { costs, failed } = run([answer('looks fine to me'), answer('VERDICT: pass')]);
+    expect(await failed).toBe(0);
+    expect(costs).toHaveLength(2);
+  });
+
+  it('logs a run that errored, which is still a failure and records nothing', async () => {
+    const { costs, failed } = run([answer('boom', { is_error: true })]);
+    expect(await failed).toBe(1);
+    expect(costs).toHaveLength(1);
+  });
+
+  it('logs nothing for a refused bundle (no run was made)', async () => {
+    const costs: CostEntry[] = [];
+    const deps: ReviewDeps = {
+      claude: () => '',
+      show: () => 'x',
+      record: () => '',
+      write: () => undefined,
+      logCost: (entry) => costs.push(entry),
+      env: {},
+    };
+    await runReviews(7, { bundle: '/b', outDir: '/o', refusal: 'a symlink' }, ['argus'], deps);
+    expect(costs).toEqual([]);
   });
 });

@@ -21,6 +21,7 @@ import { REVIEWER_AGENTS } from './merge-gate/agents.ts';
 import { requiredReviewers, stagingReviewers, tierOf } from './merge-gate/evaluate.ts';
 import { safeName } from './lib/safe-name.ts';
 import { gatedIntoStaging, taskPrs } from './batch.ts';
+import { logCost, usageFromJson, type CostEntry } from './lib/cost.ts';
 import { reviewPrompt } from './merge-gate/meta.ts';
 import { collectScreenshots, MAX_ARTIFACT_BYTES } from './review-screenshots.ts';
 import { issueFromBranch } from './merge-gate/staging.ts';
@@ -510,6 +511,8 @@ export interface ReviewDeps {
   /** Runs record-review.ts with these arguments. */
   record: (args: string[]) => string;
   write: (path: string, text: string) => void;
+  /** Logs what a reviewer run cost (#448); it must never throw. */
+  logCost?: (entry: CostEntry) => void;
   /** Notes a review that needed a retry (#158), for the weekly report. */
   logRetry?: (entry: {
     pr: number;
@@ -611,34 +614,38 @@ export async function runReviews(
       summary = `VERDICT: block\n[blocking] .claude/agents/${agent}.md — main has no ${agent} agent file — add it before PRs need ${reviewer}`;
     } else {
       try {
-        const ask = async () =>
-          resultText(
-            await deps.claude(
-              [
-                '-p',
-                '--agent',
-                agent,
-                ...(model === null ? [] : ['--model', model]),
-                '--add-dir',
-                where.bundle,
-                '--disallowedTools',
-                'Read(**/.env*)',
-                'mcp__*',
-                '--setting-sources',
-                'project',
-                '--strict-mcp-config',
-                '--permission-mode',
-                'dontAsk',
-                '--max-turns',
-                '40',
-                '--output-format',
-                'json',
-                reviewPrompt(reviewer, where.bundle),
-              ],
-              reviewerEnv(deps.env),
-              REVIEW_TIMEOUT_MS,
-            ),
+        const ask = async () => {
+          const raw = await deps.claude(
+            [
+              '-p',
+              '--agent',
+              agent,
+              ...(model === null ? [] : ['--model', model]),
+              '--add-dir',
+              where.bundle,
+              '--disallowedTools',
+              'Read(**/.env*)',
+              'mcp__*',
+              '--setting-sources',
+              'project',
+              '--strict-mcp-config',
+              '--permission-mode',
+              'dontAsk',
+              '--max-turns',
+              '40',
+              '--output-format',
+              'json',
+              reviewPrompt(reviewer, where.bundle),
+            ],
+            reviewerEnv(deps.env),
+            REVIEW_TIMEOUT_MS,
           );
+          // Every run costs, a retry and one that errors too: logged before the answer is judged (#448).
+          const usage = usageFromJson(raw);
+          if (usage !== null)
+            deps.logCost?.({ at: new Date().toISOString(), stage: reviewer, model, pr, usage });
+          return resultText(raw);
+        };
         let out = await ask();
         if (retryWorthy(out.text, reviewer)) {
           // One fresh session; its answer is recorded as it comes, well-formed or not (#158).
@@ -782,6 +789,7 @@ async function main(argv: string[]): Promise<number> {
     write: (path, text) => {
       writeFileSync(path, text, { mode: 0o600 });
     },
+    logCost,
     logRetry: (entry) => {
       mkdirSync(join(STATE_DIR, 'logs'), { recursive: true, mode: 0o700 });
       appendFileSync(
