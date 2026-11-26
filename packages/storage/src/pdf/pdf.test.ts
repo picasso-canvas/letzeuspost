@@ -2,7 +2,6 @@
 // most 100 pages, within 15 seconds, and refused with a plain reason when it can't be read. The fixtures (./fixtures.ts)
 // are built from bytes, so what each hostile one does is visible.
 import { realpathSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -208,9 +207,7 @@ describe('the reader process', () => {
     const flags = readerFlags(MAX_READER_MEMORY_MB);
     // This package's folder, and pdf.js's own (its main file is build/pdf.mjs), as the file system has them.
     const storage = realpathSync(fileURLToPath(new URL('../../', import.meta.url)));
-    const pdfjs = realpathSync(
-      dirname(dirname(createRequire(import.meta.url).resolve('pdfjs-dist'))),
-    );
+    const pdfjs = realpathSync(dirname(dirname(fileURLToPath(import.meta.resolve('pdfjs-dist')))));
     expect(flags.filter((flag) => flag.startsWith('--'))).toEqual([
       '--permission',
       `--allow-fs-read=${storage}${sep}`,

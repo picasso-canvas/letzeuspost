@@ -15,7 +15,6 @@
 // refused with a `PdfRefusedError`, whose message is safe to show to the person who sent it and holds nothing of the file.
 import { execFile } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,9 +83,7 @@ const MAX_HEAP_MB = 512;
 // What the reader may read, as the file system names it (the permission model checks real paths): this package, which
 // holds the reader and its memory cap, and pdf.js, whose main file is `build/pdf.mjs`.
 const STORAGE_DIR = realpathSync(fileURLToPath(new URL('../../', import.meta.url)));
-const PDFJS_DIR = realpathSync(
-  dirname(dirname(createRequire(import.meta.url).resolve('pdfjs-dist'))),
-);
+const PDFJS_DIR = realpathSync(dirname(dirname(fileURLToPath(import.meta.resolve('pdfjs-dist')))));
 
 /** The reader's command line: Node's flags, the reader, and its arguments. */
 export function readerFlags(memoryMb: number): string[] {
