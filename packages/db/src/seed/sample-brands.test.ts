@@ -1,6 +1,10 @@
 // Northwind Social's 3 sample brands (#411, §17 Test data, §21, §05's mockups), checked without a database: each kit is
-// full and valid, has no logo yet (the logo assets are a follow-up task), and gives the renderer a kit it accepts.
-// seed.int.test.ts saves them on Postgres through `createBrand` and `saveKit`.
+// full and valid, has no logo in its first version, and gives the renderer a kit it accepts; each has its 3 logo files,
+// and its second version (`withLogos`, #443) names their assets and still gives the renderer a kit it accepts.
+// seed.int.test.ts saves them on Postgres through `createBrand` and `saveKit`; apps/worker's seed-dev.int.test.ts adds
+// the logos.
+import { randomUUIDv7 } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   BrandKitSchema,
@@ -12,7 +16,7 @@ import {
 // the renderer's own schema and font library, so a sample kit the renderer would refuse fails here.
 import { FONT_MANIFEST } from '../../../render/src/fonts/library.ts';
 import { RenderKitSchema } from '../../../render/src/kit.ts';
-import { sampleBrands } from './sample-brands.ts';
+import { sampleBrands, sampleLogos, withLogos } from './sample-brands.ts';
 
 /** Whether the renderer has `family` for `language`: what the render job passes to `toRenderKit`. */
 const isKnownFont = (family: string, language: 'en' | 'bn') =>
@@ -57,7 +61,7 @@ describe('sampleBrands', () => {
     ]);
   });
 
-  it('has no logo assets yet, so the renderer gets the temporary wordmark for both backgrounds', () => {
+  it('has no logo in its first version, so the renderer gets the temporary wordmark for both backgrounds', () => {
     for (const { kit } of three()) {
       expect(kit.identity.logo).toBeUndefined();
       expect(kit.identity.mark).toBeUndefined();
@@ -91,5 +95,98 @@ describe('sampleBrands', () => {
       heading: 'Baloo Da 2',
       body: 'Hind Siliguri',
     });
+  });
+});
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** Three fresh asset ids, as the asset table gives them. */
+const logoIds = () => ({ light: randomUUIDv7(), dark: randomUUIDv7(), mark: randomUUIDv7() });
+
+describe('sampleLogos (#443)', () => {
+  it('names each brand’s logo for light and for dark backgrounds and its mark, from docs/design/logos', () => {
+    const folders = ['golpo-cafe', 'ironline-studio', 'brightwell-dental'];
+    three().forEach((sample, i) => {
+      const logos = sampleLogos(sample);
+      expect(logos.map(({ role, file }) => [role, file.pathname])).toEqual(
+        [
+          ['light', 'logo-light.png'],
+          ['dark', 'logo-dark.png'],
+          ['mark', 'mark.png'],
+        ].map(([role, name]) => [
+          role,
+          expect.stringMatching(
+            new RegExp(`/docs/design/logos/sample-brands/${String(folders[i])}/${String(name)}$`),
+          ),
+        ]),
+      );
+    });
+  });
+
+  it('points at PNG files that are there, which the store accepts (it refuses SVG) and the job reads (20 MB at most)', () => {
+    for (const sample of three()) {
+      for (const { file, contentType } of sampleLogos(sample)) {
+        const bytes = readFileSync(file);
+        expect(contentType).toBe('image/png');
+        expect([...bytes.subarray(0, 8)]).toEqual(PNG_SIGNATURE);
+        expect(bytes.byteLength).toBeLessThan(20 * 1024 * 1024);
+      }
+    }
+  });
+
+  it('describes each logo of a brand differently, by the brand’s name: the seed finds its own uploads by it', () => {
+    const descriptions = three().flatMap((sample) =>
+      sampleLogos(sample).map(({ description }) => description),
+    );
+    expect(new Set(descriptions).size).toBe(9);
+    for (const sample of three()) {
+      for (const { description } of sampleLogos(sample)) {
+        expect(description).toContain(sample.nameEn);
+      }
+    }
+  });
+});
+
+describe('withLogos (#443)', () => {
+  it('fills the logo fields with the logo assets’ ids, each from its uploaded file, and changes nothing else', () => {
+    for (const { kit } of three()) {
+      const ids = logoIds();
+      const second = withLogos(kit, ids);
+      expect(BrandKitSchema.parse(second)).toEqual(second);
+      expect(second.identity.logo).toEqual({
+        light: expect.objectContaining({
+          value: ids.light,
+          source: 'file',
+          ref: 'upload:logo-light.png',
+        }),
+        dark: expect.objectContaining({
+          value: ids.dark,
+          source: 'file',
+          ref: 'upload:logo-dark.png',
+        }),
+      });
+      expect(second.identity.mark).toEqual(
+        expect.objectContaining({ value: ids.mark, source: 'file', ref: 'upload:mark.png' }),
+      );
+      const { logo: _logo, mark: _mark, ...identity } = second.identity;
+      expect({ ...second, identity }).toEqual(kit);
+    }
+  });
+
+  it('leaves the kit it was given as it was', () => {
+    const [golpo] = three();
+    if (golpo === undefined) throw new Error('no sample brand');
+    const before = structuredClone(golpo.kit);
+    withLogos(golpo.kit, logoIds());
+    expect(golpo.kit).toEqual(before);
+  });
+
+  it('gives a RenderKit the renderer accepts, with the logo for each background in place of the wordmark', () => {
+    for (const { kit } of three()) {
+      const ids = logoIds();
+      const renderKit = toRenderKit(withLogos(kit, ids), { isKnownFont });
+      expect(RenderKitSchema.safeParse(renderKit).success).toBe(true);
+      expect(renderKit.logo).toEqual({ light: ids.light, dark: ids.dark });
+    }
   });
 });
