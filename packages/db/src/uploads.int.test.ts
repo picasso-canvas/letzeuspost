@@ -4,7 +4,7 @@
 // nothing either. The job queue is a recorder here (the real one is exercised by the feature's journey,
 // tests/journeys/brand-assets.int.test.ts): what matters is that each job is written in the rows' own transaction.
 // Runs in `pnpm check:services` and CI's `services` job; every row is this run's and is removed after it.
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { loadEnv } from '@lzp/config';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -202,7 +202,7 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
   });
 
   it('refuses another workspace’s brand, or none, and adds nothing anywhere', async () => {
-    for (const brandId of [ws.b.brandId, randomUUID()]) {
+    for (const brandId of [ws.b.brandId, randomUUIDv7()]) {
       const queue = recorder();
       const result = await startUploads(
         db,

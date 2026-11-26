@@ -24,6 +24,19 @@ export {
   type AssetSource,
   type AssetStatus,
 } from './schema/assets.ts';
+// An upload round (#403): its `waiting` rows and their jobs, under the plan's storage limit.
+export {
+  startUploads,
+  type NewUpload,
+  type QuotaAnswer,
+  type SendAssetJob,
+  type StartedUploads,
+  type StorageUse,
+  type UploadRound,
+} from './uploads.ts';
+// The app role's rate limiter (#403, §13): a workspace's buckets, in `workspace_rate_limit_hit`.
+export { hitWorkspaceRateLimit, WORKSPACE_RATE_LIMIT_LOCK } from './rate-limits.ts';
+export { workspaceRateLimitHit } from './schema/rate-limits.ts';
 // Jobs (§13, Q7): the queues and how a job sets its workspace live here; the handlers live in apps/worker.
 export {
   createJobs,

@@ -71,6 +71,13 @@
       "when": 1795674354623,
       "tag": "0009_asset_processing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795684346861,
+      "tag": "0010_workspace_rate_limit",
+      "breakpoints": true
     }
   ]
 }

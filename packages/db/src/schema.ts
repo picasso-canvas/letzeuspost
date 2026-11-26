@@ -6,3 +6,4 @@ export * from './schema/email-message.ts';
 export * from './schema/auth-only.ts';
 export * from './schema/brands.ts';
 export * from './schema/assets.ts';
+export * from './schema/rate-limits.ts';
