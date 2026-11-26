@@ -3,7 +3,8 @@
 // copied by the `asset` job (§13 File storage), so a row starts `waiting`, with no hashes or size, until that job fills
 // them in; until then it can't be used (@lzp/core's `isUsableInPost`).
 //
-// Written by hand in ../../migrations/0008_assets.sql (§13 A4), like ./brands.ts. Change both together. Three rules
+// Written by hand in ../../migrations/0008_assets.sql and 0009_asset_processing.sql (§13 A4), like ./brands.ts. Change
+// them together. Three rules
 // live only there: the app role's grants (it never moves an asset to another workspace, brand, file, source or
 // uploader); that the storage key is the asset's own original, `ws/<workspace>/brands/<brand>/assets/<id>/original`
 // (§13 File storage, @lzp/storage's `assetKey`), so a row can't name another workspace's file; and that a member leaving
@@ -84,6 +85,18 @@ export const asset = pgTable(
     uploadedBy: uuid('uploaded_by'),
     createdAt: time('created_at').notNull().defaultNow(),
     updatedAt: time('updated_at').notNull().defaultNow(),
+    // Added by ../../migrations/0009_asset_processing.sql (#402); the `asset` job fills them in.
+    /**
+     * A possible duplicate (§06, §10): the earliest earlier asset of the same workspace and brand with the same sha256
+     * or a perceptual hash within 8 bits. Both are kept (Zeus, 2026-11-25). No key (Zeus, 2026-11-26): the job writes
+     * it only through an update that finds that asset in the same workspace and brand, and an id that no longer exists
+     * means no duplicate.
+     */
+    duplicateOf: uuid('duplicate_of'),
+    /** Why the job rejected the file, in plain words for the person who sent it: never the file's content or name. */
+    rejectReason: text('reject_reason'),
+    /** A PDF's text (§06: "PDFs are read as text"); empty for an image. */
+    extractedText: text('extracted_text'),
   },
   (t) => [
     // The asset's brand is in the asset's own workspace: a key to the brand alone would let a row of one workspace
