@@ -1,6 +1,7 @@
 // The seeds (#79, Q14 of 2026-11-07): `seed:studio` makes the studio's workspace, "Picasso Studio", with Zeus as its
 // only Owner and the platform-admin flag (§13 Data model, §18 Picasso first); `seed:dev` makes Northwind Social, the
-// fictional agency of §17's test data, with an owner and an editor (its 3 brands wait for M2).
+// fictional agency of §17's test data, with an owner and an editor; its 3 sample brands are added after it (brands.ts,
+// #411).
 //
 // They run as the owner role (config/env.ts's `seed` process: DATABASE_OWNER_URL), the only role that may set
 // `user.is_platform_admin` (0000_accounts.sql's grant and trigger). Zeus's address is typed in when the seed runs and
@@ -78,14 +79,18 @@ export function refuseDevSeedIn(environment: string): void {
   }
 }
 
-/** One key for both seeds' advisory lock, so two runs at once take turns. */
-const SEED_LOCK = 79;
+/** One key for the seeds' advisory lock (both seeds' workspaces, and `seed:dev`'s brands), so two runs take turns. */
+export const SEED_LOCK = 79;
 
 /**
- * Adds what `seed` describes and is missing, in one transaction, and says whether it changed anything. A workspace
- * that already has another Owner is refused, and the transaction leaves everything as it was.
+ * Adds what `seed` describes and is missing, in one transaction, and says whether it changed anything and which
+ * workspace is the seed's. A workspace that already has another Owner is refused, and the transaction leaves
+ * everything as it was.
  */
-export function seedWorkspace(orm: NodePgDatabase, seed: Seed): Promise<{ changed: boolean }> {
+export function seedWorkspace(
+  orm: NodePgDatabase,
+  seed: Seed,
+): Promise<{ changed: boolean; workspaceId: string }> {
   const [owner] = seed.people;
   if (owner?.role !== 'owner') throw new Error('seed: refused: the first person must be the Owner');
   return orm.transaction(async (tx) => {
@@ -161,6 +166,6 @@ export function seedWorkspace(orm: NodePgDatabase, seed: Seed): Promise<{ change
         `seed: refused: ${owner.name} is a member of ${seed.workspace.name} but not its Owner`,
       );
     }
-    return { changed };
+    return { changed, workspaceId: place.id };
   });
 }

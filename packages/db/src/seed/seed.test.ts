@@ -28,7 +28,7 @@ describe('studioSeed', () => {
     expect(() => studioSeed(input)).toThrow(/seed:studio/);
   });
 
-  it('stores no address in the repository: the seed files hold none but the dev sample’s', () => {
+  it('stores no address in the repository: the seed files hold none but the dev samples’', () => {
     const dir = new URL('.', import.meta.url);
     const addresses = readdirSync(dir)
       .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
@@ -36,7 +36,11 @@ describe('studioSeed', () => {
         (file) =>
           readFileSync(new URL(file, dir), 'utf8').match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [],
       );
-    expect(addresses.every((address) => address.endsWith('@northwind.invalid'))).toBe(true);
+    // Northwind's people, and the client reviewers in its sample brands' kits (#411): all on `.invalid`.
+    const samples = ['@northwind.invalid', '@golpo.invalid', '@brightwell.invalid'];
+    expect(addresses.filter((address) => !samples.some((end) => address.endsWith(end)))).toEqual(
+      [],
+    );
   });
 });
 
