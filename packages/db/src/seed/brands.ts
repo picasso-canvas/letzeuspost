@@ -32,33 +32,36 @@ export async function seedBrands(
   samples: readonly SampleBrand[],
 ): Promise<{ changed: boolean }> {
   const pool = openPool(ownerUrl);
-  const lock = await pool.connect();
   try {
-    await lock.query('select pg_advisory_lock($1)', [SEED_LOCK]);
-    const db = dbOnPool(pool);
-    const kits = brandKits(db, BrandKitSchema);
-    let changed = false;
-    for (const sample of samples) {
-      const [found] = await db
-        .forWorkspace(ctx)
-        .transaction((tx) =>
-          tx
-            .select({ id: brand.id, kitVersion: brand.currentKitVersion })
-            .from(brand)
-            .where(eq(brand.nameEn, sample.nameEn))
-            .limit(1),
-        );
-      if (found !== undefined && found.kitVersion !== null) continue;
-      const { id } =
-        found ??
-        (await kits.createBrand(ctx, { nameEn: sample.nameEn, nameBn: sample.nameBn }, allowed));
-      await kits.saveKit(ctx, id, sample.kit);
-      changed = true;
+    const lock = await pool.connect();
+    try {
+      await lock.query('select pg_advisory_lock($1)', [SEED_LOCK]);
+      const db = dbOnPool(pool);
+      const kits = brandKits(db, BrandKitSchema);
+      let changed = false;
+      for (const sample of samples) {
+        const [found] = await db
+          .forWorkspace(ctx)
+          .transaction((tx) =>
+            tx
+              .select({ id: brand.id, kitVersion: brand.currentKitVersion })
+              .from(brand)
+              .where(eq(brand.nameEn, sample.nameEn))
+              .limit(1),
+          );
+        if (found !== undefined && found.kitVersion !== null) continue;
+        const { id } =
+          found ??
+          (await kits.createBrand(ctx, { nameEn: sample.nameEn, nameBn: sample.nameBn }, allowed));
+        await kits.saveKit(ctx, id, sample.kit);
+        changed = true;
+      }
+      return { changed };
+    } finally {
+      // Closing the lock's connection ends its session, and the lock with it, whatever happened above.
+      lock.release(true);
     }
-    return { changed };
   } finally {
-    // Closing the lock's connection ends its session, and the lock with it, whatever happened above.
-    lock.release(true);
     await pool.end();
   }
 }
