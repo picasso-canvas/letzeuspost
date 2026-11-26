@@ -108,18 +108,12 @@ describe('sampleLogos (#443)', () => {
     const folders = ['golpo-cafe', 'ironline-studio', 'brightwell-dental'];
     three().forEach((sample, i) => {
       const logos = sampleLogos(sample);
-      expect(logos.map(({ role, file }) => [role, file.pathname])).toEqual(
-        [
-          ['light', 'logo-light.png'],
-          ['dark', 'logo-dark.png'],
-          ['mark', 'mark.png'],
-        ].map(([role, name]) => [
-          role,
-          expect.stringMatching(
-            new RegExp(`/docs/design/logos/sample-brands/${String(folders[i])}/${String(name)}$`),
-          ),
-        ]),
-      );
+      expect(logos.map(({ role }) => role)).toEqual(['light', 'dark', 'mark']);
+      const names = { light: 'logo-light.png', dark: 'logo-dark.png', mark: 'mark.png' };
+      for (const { role, file } of logos) {
+        const end = `/docs/design/logos/sample-brands/${String(folders[i])}/${names[role]}`;
+        expect(file.pathname.slice(-end.length)).toBe(end);
+      }
     });
   });
 
@@ -153,23 +147,24 @@ describe('withLogos (#443)', () => {
       const ids = logoIds();
       const second = withLogos(kit, ids);
       expect(BrandKitSchema.parse(second)).toEqual(second);
-      expect(second.identity.logo).toEqual({
-        light: expect.objectContaining({
-          value: ids.light,
-          source: 'file',
-          ref: 'upload:logo-light.png',
-        }),
-        dark: expect.objectContaining({
-          value: ids.dark,
-          source: 'file',
-          ref: 'upload:logo-dark.png',
-        }),
+      expect(second.identity.logo?.light).toMatchObject({
+        value: ids.light,
+        source: 'file',
+        ref: 'upload:logo-light.png',
       });
-      expect(second.identity.mark).toEqual(
-        expect.objectContaining({ value: ids.mark, source: 'file', ref: 'upload:mark.png' }),
-      );
-      const { logo: _logo, mark: _mark, ...identity } = second.identity;
-      expect({ ...second, identity }).toEqual(kit);
+      expect(second.identity.logo?.dark).toMatchObject({
+        value: ids.dark,
+        source: 'file',
+        ref: 'upload:logo-dark.png',
+      });
+      expect(second.identity.mark).toMatchObject({
+        value: ids.mark,
+        source: 'file',
+        ref: 'upload:mark.png',
+      });
+      // Everything else as it was: the first version has no logo or mark (checked above), so these put it back.
+      const { logo, mark } = kit.identity;
+      expect({ ...second, identity: { ...second.identity, logo, mark } }).toEqual(kit);
     }
   });
 
