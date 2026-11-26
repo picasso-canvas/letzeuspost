@@ -63,6 +63,20 @@ interface Refusal {
   readonly reason: string;
 }
 
+/**
+ * A run that failed and is retried (or, on the last try, has rejected the asset). Carries only a code, as the email
+ * job's `NotSentError` does: a store's or the database's message may hold the file's key or the text being saved, and
+ * pg-boss keeps what a job throws.
+ */
+export class AssetJobError extends Error {
+  override name = 'AssetJobError';
+  readonly code: string;
+  constructor(code: string) {
+    super(`asset job failed (${code})`);
+    this.code = code;
+  }
+}
+
 /** The original isn't in the bucket (yet): the upload may still be on its way, so the run is retried. */
 class NotArrivedError extends Error {
   override readonly name = 'NotArrivedError';
@@ -118,7 +132,7 @@ export function assetJob(deps: AssetJobDeps): JobHandler<'asset'> {
       } else {
         said('asset.retry', { error: code });
       }
-      throw new Error(`asset job failed (${code})`);
+      throw new AssetJobError(code);
     }
   };
 }

@@ -24,7 +24,6 @@ import {
   type WorkspaceCtx,
 } from '@lzp/db';
 import { assetKey, createStorage, type AssetVariant } from '@lzp/storage';
-import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { banglaPdf, lockedPdf, textPdf } from '../../../packages/storage/src/pdf/fixtures.ts';
 import { picture, touched } from './asset-fixtures.ts';
@@ -143,10 +142,12 @@ function jobFor(
   });
 }
 
+/** The asset's row, read in `s`'s workspace (row-level security leaves only its own rows to choose from). */
 async function rowOf(s: Space, id: string) {
-  const [row] = await db.forWorkspace(s.ctx).transaction((tx) =>
+  const rows = await db.forWorkspace(s.ctx).transaction((tx) =>
     tx
       .select({
+        id: asset.id,
         status: asset.status,
         sha256: asset.sha256,
         perceptualHash: asset.perceptualHash,
@@ -156,9 +157,9 @@ async function rowOf(s: Space, id: string) {
         extractedText: asset.extractedText,
         updatedAt: asset.updatedAt,
       })
-      .from(asset)
-      .where(eq(asset.id, id)),
+      .from(asset),
   );
+  const row = rows.find((each) => each.id === id);
   if (row === undefined) throw new Error('no such asset in this workspace');
   return row;
 }
