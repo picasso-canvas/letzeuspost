@@ -1,13 +1,19 @@
-// The seeds on Postgres (#79, Q14), in `pnpm check:services` and CI's `services` job, as the owner role, which is the
-// only role that may set the platform-admin flag. Each run's workspace has a slug of its own, so the test never meets a
-// real "Picasso Studio" in the database it runs on, and every row it makes is removed at the end.
+// The seeds on Postgres (#79, Q14, #411), in `pnpm check:services` and CI's `services` job, as the owner role, which is
+// the only role that may set the platform-admin flag. Each run's workspace has a slug of its own, so the test never
+// meets a real "Picasso Studio" or "Northwind Social" in the database it runs on, and every row it makes is removed at
+// the end.
 import { randomUUID } from 'node:crypto';
-import { loadEnv } from '@lzp/config';
+import { loadEnv, plans } from '@lzp/config';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { openPool } from '../db.ts';
+import { BrandKitSchema } from '../../../core/src/index.ts';
+import { canAddBrand } from '../../../core/src/quotas/index.ts';
+import { brandKits } from '../brand-kits.ts';
+import { createDb, openPool } from '../db.ts';
 import { migrate } from '../migrate.ts';
+import { runDevSeed, runSeed } from './run.ts';
+import { sampleBrands } from './sample-brands.ts';
 import { devSeed, seedWorkspace, studioSeed, type Seed } from './seed.ts';
 
 const { DATABASE_OWNER_URL: ownerUrl } = loadEnv('seed');
@@ -19,13 +25,42 @@ const studio: Seed = {
   ...studioSeed({ email: `zeus-${run}@seed.invalid`, name: 'Zeus' }),
   workspace: { name: 'Picasso Studio', slug: `picasso-studio-${run}` },
 };
-const dev: Seed = {
-  workspace: { name: 'Northwind Social', slug: `northwind-social-${run}` },
+/** Northwind Social with this run's slug, `tag` in its slug, and its people's addresses. */
+const northwind = (tag: string): Seed => ({
+  workspace: { name: 'Northwind Social', slug: `northwind-social-${tag}${run}` },
   people: devSeed().people.map((person) => ({
     ...person,
-    email: person.email.replace('@', `-${run}@`),
+    email: person.email.replace('@', `-${tag}${run}@`),
   })),
-};
+});
+const dev = northwind('');
+/** Workspaces of their own for a half-done run and for two runs at once. */
+const half = northwind('half-');
+const race = northwind('race-');
+
+/** A workspace's brands and their kit versions, as the database holds them, by name and version. */
+async function brandsOf(slug: string) {
+  const { rows } = await orm.execute(
+    sql`select b.id, b.name_en, b.name_bn, b.current_kit_version::int as current_kit_version, b.updated_at,
+               v.id as version_id, v.version::int as version, v.kit, v.created_at as saved_at
+        from brand b join workspace w on w.id = b.workspace_id
+        left join brand_kit_version v on v.brand_id = b.id
+        where w.slug = ${slug} order by b.name_en, v.version`,
+  );
+  return rows;
+}
+
+/** What the sample brands' rows must be: each with its names and its kit, saved once, as version 1. */
+const sampleRows = () =>
+  sampleBrands()
+    .map(({ nameEn, nameBn, kit }) => ({
+      name_en: nameEn,
+      name_bn: nameBn ?? null,
+      current_kit_version: 1,
+      version: 1,
+      kit: BrandKitSchema.parse(kit),
+    }))
+    .sort((one, other) => one.name_en.localeCompare(other.name_en));
 
 /** Everything the seed touches for one workspace: its row, its members, and its people's rows. */
 async function snapshot(seed: Seed) {
@@ -48,7 +83,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const seed of [studio, dev]) {
+  // A workspace's brands and kit versions go with it.
+  for (const seed of [studio, dev, half, race]) {
     await orm.execute(sql`delete from workspace where slug = ${seed.workspace.slug}`);
     await orm.execute(sql`delete from "user" where email in ${seed.people.map((p) => p.email)}`);
   }
@@ -57,7 +93,7 @@ afterAll(async () => {
 
 describe('seed:studio', () => {
   it('creates the workspace and Zeus’s account as its only Owner, with the platform-admin flag', async () => {
-    expect(await seedWorkspace(orm, studio)).toEqual({ changed: true });
+    expect(await seedWorkspace(orm, studio)).toMatchObject({ changed: true });
     const { workspaces, members, people } = await snapshot(studio);
     expect(workspaces).toHaveLength(1);
     expect(workspaces[0]).toMatchObject({ name: 'Picasso Studio', slug: studio.workspace.slug });
@@ -74,8 +110,18 @@ describe('seed:studio', () => {
 
   it('changes nothing on a second run', async () => {
     const before = await snapshot(studio);
-    expect(await seedWorkspace(orm, studio)).toEqual({ changed: false });
+    expect(await seedWorkspace(orm, studio)).toMatchObject({ changed: false });
     expect(await snapshot(studio)).toEqual(before);
+  });
+
+  it('stays brand-free: Picasso is created through the product (#411)', async () => {
+    // What `seed:studio` runs (studio.ts): the workspace and its Owner, and nothing else.
+    const { workspaceId } = await runSeed(ownerUrl, studio);
+    const { rows } = await orm.execute(
+      sql`select (select count(*)::int from brand where workspace_id = ${workspaceId}) as brands,
+                 (select count(*)::int from brand_kit_version where workspace_id = ${workspaceId}) as kits`,
+    );
+    expect(rows).toEqual([{ brands: 0, kits: 0 }]);
   });
 
   it('refuses a workspace that already has another Owner, and changes nothing', async () => {
@@ -97,12 +143,49 @@ describe('seed:studio', () => {
 
 describe('seed:dev', () => {
   it('creates Northwind Social with an owner and an editor, and a second run changes nothing', async () => {
-    expect(await seedWorkspace(orm, dev)).toEqual({ changed: true });
+    expect(await seedWorkspace(orm, dev)).toMatchObject({ changed: true });
     const first = await snapshot(dev);
     expect(first.workspaces[0]).toMatchObject({ name: 'Northwind Social' });
     expect(first.members.map((m) => m['role']).sort()).toEqual(['editor', 'owner']);
     expect(first.people.every((p) => p['is_platform_admin'] === false)).toBe(true);
-    expect(await seedWorkspace(orm, dev)).toEqual({ changed: false });
+    expect(await seedWorkspace(orm, dev)).toMatchObject({ changed: false });
     expect(await snapshot(dev)).toEqual(first);
+  });
+
+  it('adds Golpo Café, Ironline Studio and Brightwell Dental, each with its full kit as version 1 (#411)', async () => {
+    expect(await brandsOf(dev.workspace.slug)).toEqual([]);
+    // What `seed:dev` runs (dev.ts): the workspace was there already, its brands weren't.
+    expect(await runDevSeed(ownerUrl, dev)).toEqual({ changed: true });
+    expect(await brandsOf(dev.workspace.slug)).toMatchObject(sampleRows());
+  });
+
+  it('changes nothing on a second run: no brand, kit version or person added or changed', async () => {
+    const before = { brands: await brandsOf(dev.workspace.slug), rest: await snapshot(dev) };
+    expect(await runDevSeed(ownerUrl, dev)).toEqual({ changed: false });
+    expect({ brands: await brandsOf(dev.workspace.slug), rest: await snapshot(dev) }).toEqual(
+      before,
+    );
+  });
+
+  it('finishes a run that stopped between adding a brand and saving its kit, without a second brand', async () => {
+    const { workspaceId } = await runSeed(ownerUrl, half);
+    const app = createDb(ownerUrl);
+    try {
+      await brandKits(app, BrandKitSchema).createBrand(
+        { workspaceId },
+        { nameEn: 'Golpo Café', nameBn: 'গল্প ক্যাফে' },
+        (brandsNow) => canAddBrand(plans.starter, brandsNow),
+      );
+    } finally {
+      await app.close();
+    }
+    expect(await runDevSeed(ownerUrl, half)).toEqual({ changed: true });
+    expect(await brandsOf(half.workspace.slug)).toMatchObject(sampleRows());
+  });
+
+  it('adds each brand once when two runs go at once', async () => {
+    // Which run adds the workspace and which the brands is up to the locks: either may do both.
+    await Promise.all([runDevSeed(ownerUrl, race), runDevSeed(ownerUrl, race)]);
+    expect(await brandsOf(race.workspace.slug)).toMatchObject(sampleRows());
   });
 });
