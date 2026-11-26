@@ -1,5 +1,5 @@
 import { parseRawDiff, shipRefusals, type RawChange } from '../lib/protected.ts';
-import { readMergeLog } from './reviews.ts';
+import { logMerge, readMergeLog, STATE_DIR } from './reviews.ts';
 
 /** A command runner: stdout on success, a thrown error (with `stderr`) on failure. */
 export type Run = (cmd: string, args: string[]) => string;
@@ -97,7 +97,8 @@ export interface SyncResult {
 
 /**
  * Merges main into staging on GitHub (never the other way outside a batch PR), so builders always start from main's
- * harness. A conflict is reported for Athena to settle; dispatch refuses until staging contains main again.
+ * harness. Safe to call any time: GitHub answers 204 when staging already holds main. A conflict is reported for Athena
+ * to settle; dispatch refuses until staging contains main again.
  */
 export function syncStaging(run: Run, repo: string): SyncResult {
   try {
@@ -134,6 +135,17 @@ export function syncStaging(run: Run, repo: string): SyncResult {
   }
 }
 
+/**
+ * {@link syncStaging}, with the gate's log line written either way (a sync commit not in the log is one the gate didn't
+ * make, and the batch and the audit refuse it). Staging is synced on demand, not after every merge into main (#446):
+ * dispatch and `batch.ts --open` call this; the caller prints the message.
+ */
+export function syncStagingAndLog(run: Run, repo: string, stateDir = STATE_DIR): SyncResult {
+  const result = syncStaging(run, repo);
+  logMerge({ at: new Date().toISOString(), ...result.entry }, stateDir);
+  return result;
+}
+
 /** The `git fetch` of staging dispatch, the batch and the weekly report all use. */
 const FETCH_STAGING = [
   '-c',
@@ -156,7 +168,7 @@ export function stagingRefusal(run: Run, log: readonly StagingLogEntry[]): strin
   try {
     run('git', ['merge-base', '--is-ancestor', 'origin/main', 'origin/staging']);
   } catch {
-    return "Refused: staging doesn't contain main (the merge gate merges main into staging after each merge into main; settle that first).";
+    return "Refused: staging doesn't contain main (dispatch merges main into staging before it looks; a sync that failed has to be settled first).";
   }
   const problems = stagingProblems(
     parseRawDiff(

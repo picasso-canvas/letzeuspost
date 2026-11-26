@@ -2,8 +2,9 @@
 // The merge gate (§19): Athena merges only through this script. Usage:
 //   node scripts/merge-gate.ts <pr> [--dry-run]
 // It runs from a clean checkout of `main` that matches `origin/main`, so a PR can't change the gate that judges it.
-// It merges builder PRs into `staging`, and the batch PR from `staging` or Athena's harness PRs into `main`; after every
-// merge into `main` it merges `main` into `staging` on GitHub, so builders always start from main's harness (§19).
+// It merges builder PRs into `staging`, and the batch PR from `staging` or Athena's harness PRs into `main`. After a
+// batch it merges `main` into `staging` on GitHub (a fast-forward); after a harness PR it doesn't: dispatch and
+// `batch.ts --open` merge `main` into `staging` when they need it, so builders still start from main's harness (§19, #446).
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -19,7 +20,7 @@ import {
   issueFromBranch,
   mergeArgs,
   readStagingLog,
-  syncStaging,
+  syncStagingAndLog as syncStagingLogged,
   unreadMergeCommitNote,
 } from './merge-gate/staging.ts';
 
@@ -66,11 +67,10 @@ function readJourneyReport(runId: number): Record<string, string> | null {
   }
 }
 
-/** After a merge into main, main is merged into staging (staging.ts), logged either way; false when it needs settling. */
+/** After a batch, main is merged into staging (staging.ts), logged either way; false when it needs settling. */
 function syncStagingAndLog(): boolean {
-  const result = syncStaging(run, REPO);
+  const result = syncStagingLogged(run, REPO);
   (result.ok ? console.log : console.error)(result.message);
-  logMerge({ at: new Date().toISOString(), ...result.entry });
   return result.ok;
 }
 
@@ -161,8 +161,13 @@ function main(argv: string[], pr: number): number {
     `Merged through the merge gate (tier ${result.tier}; reviews ${entry.reviewers.join(', ')}).`,
   ]);
   logMerge({ ...entry, result: 'merged' });
-  // The merge stands either way; a failed sync makes the gate exit non-zero so it gets settled before dispatch.
-  const synced = facts.baseRef !== 'main' || syncStagingAndLog();
+  // The merge stands either way; a failed sync makes the gate exit non-zero so it gets settled before dispatch. A
+  // harness merge leaves staging behind main on purpose: dispatch and the batch sync it when they need it (#446).
+  const synced = kindOf(facts) !== 'batch' || syncStagingAndLog();
+  if (kindOf(facts) === 'main')
+    console.log(
+      'staging is not synced yet: dispatch and the batch merge main into it when needed.',
+    );
   try {
     const merged = run('gh', [
       'pr',

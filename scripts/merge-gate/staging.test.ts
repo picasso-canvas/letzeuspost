@@ -10,6 +10,7 @@ import {
   stagingProblems,
   stagingRefusal,
   syncStaging,
+  syncStagingAndLog,
   toStagingLogEntry,
   unreadMergeCommitNote,
   ungatedStagingCommits,
@@ -162,6 +163,37 @@ describe('syncStaging', () => {
   });
 });
 
+describe('syncStagingAndLog (#446)', () => {
+  const stateDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lzp-sync-'));
+    onTestFinished(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+    return dir;
+  };
+
+  it("writes the merge commit it made to the gate's log, so the batch and the audit count it as the gate's", () => {
+    const dir = stateDir();
+    const { run } = fakeRun({ 'api -X POST': JSON.stringify({ sha: sha('a') }) });
+    expect(syncStagingAndLog(run, 'o/r', dir).ok).toBe(true);
+    expect(readStagingLog(dir)).toEqual([{ result: 'staging-sync', mergeCommit: sha('a') }]);
+  });
+
+  it('logs a failed sync as no sync, and says so', () => {
+    const dir = stateDir();
+    const result = syncStagingAndLog(fakeRun({}, ['api -X POST']).run, 'o/r', dir);
+    expect(result.ok).toBe(false);
+    expect(readStagingLog(dir)).toEqual([{ result: 'staging-sync-failed' }]);
+  });
+
+  it('is safe to repeat: an already synced staging (204) adds a log line with no commit', () => {
+    const dir = stateDir();
+    const { run } = fakeRun({});
+    expect(syncStagingAndLog(run, 'o/r', dir).message).toBe('staging already contains main.');
+    expect(ungatedStagingCommits([sha('1')], readStagingLog(dir))).toEqual([sha('1')]);
+  });
+});
+
 describe('stagingRefusal', () => {
   const log = [{ result: 'merge-commit', base: 'staging', mergeCommit: sha('1') }];
   const answers = { 'log --first-parent': `${sha('1')}\n` };
@@ -175,7 +207,7 @@ describe('stagingRefusal', () => {
   it("refuses staging that doesn't contain main, before looking at anything else", () => {
     const { run, calls } = fakeRun(answers, ['merge-base --is-ancestor']);
     expect(stagingRefusal(run, log)).toBe(
-      "Refused: staging doesn't contain main (the merge gate merges main into staging after each merge into main; settle that first).",
+      "Refused: staging doesn't contain main (dispatch merges main into staging before it looks; a sync that failed has to be settled first).",
     );
     expect(calls.some((c) => c.includes('diff --raw'))).toBe(false);
   });

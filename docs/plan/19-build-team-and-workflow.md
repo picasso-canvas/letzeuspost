@@ -121,8 +121,10 @@ Reviewers never review their own work and always start from a fresh context. The
    Zeus makes an exception on the record. At most 3 rounds, then `needs-zeus` with a summary. The card moves to In
    review, and stays there until its batch merges.
 7. **Merge gate.** Athena runs `scripts/merge-gate.ts <pr>` from `main`. It checks every item in
-   [the merge gate](#the-merge-gate) and only then squash-merges. After every merge into `main` it merges `main` into
-   `staging`, so builders always start from main's harness. **Builders can't merge.** Only `main` is ever deployed
+   [the merge gate](#the-merge-gate) and only then squash-merges. After a batch it merges `main` into `staging` (a
+   fast-forward); after a harness PR it doesn't. `dispatch.ts` and `batch.ts --open` merge `main` into `staging` when
+   they run, so builders still start from main's harness and the batch PR is never behind `main` (Zeus, 2026-11-26,
+   [#445](https://github.com/picasso-canvas/letzeuspost/issues/445): one sync per use, not one per harness merge). **Builders can't merge.** Only `main` is ever deployed
    (Picasso's instance included), so code that hasn't had its batch review never runs outside a sandbox or CI.
 8. **Done.** The batch PR closes its tasks' issues when it merges into `main`; the board's built-in workflow then moves their cards to Done. Athena removes each builder's clone.
 9. **Failures.** A red check gets up to 3 fix attempts; after that, `blocked` plus a comment saying what's wrong.

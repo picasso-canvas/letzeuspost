@@ -38,7 +38,7 @@ import { readRegularFile } from './lib/safe-read.ts';
 import { stampPath } from '../.claude/hooks/lib/stamp.ts';
 import { REPO } from './merge-gate/collect.ts';
 import { STATE_DIR } from './merge-gate/reviews.ts';
-import { readStagingLog, stagingRefusal } from './merge-gate/staging.ts';
+import { readStagingLog, stagingRefusal, syncStagingAndLog } from './merge-gate/staging.ts';
 import {
   BUILDERS_DIR,
   dispatchRecordPath,
@@ -549,6 +549,12 @@ async function main(argv: string[]): Promise<number> {
   }
 
   // Builders work on staging (Zeus, 2026-11-07): it must contain current main and hold only gated work (staging.ts).
+  // The gate no longer merges main into staging after a harness merge (#446), so do it here; a dry run only looks.
+  if (!args.dryRun) {
+    const sync = syncStagingAndLog(run, REPO);
+    (sync.ok ? console.log : console.error)(sync.message);
+    if (!sync.ok) return 1;
+  }
   const stagingRefused = stagingRefusal(run, readStagingLog());
   if (stagingRefused !== null) {
     console.error(stagingRefused);
