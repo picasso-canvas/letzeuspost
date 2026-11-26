@@ -1,6 +1,10 @@
 // Reading an uploaded PDF (§06 Reading uploaded files: "PDFs are read as text"; #402): its text only, never drawn, at
 // most 100 pages, within 15 seconds, and refused with a plain reason when it can't be read. The fixtures (./fixtures.ts)
 // are built from bytes, so what each hostile one does is visible.
+import { realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   banglaPdf,
@@ -9,6 +13,7 @@ import {
   lockedPdf,
   loopingPdf,
   pageCountLiePdf,
+  postScriptFunctionPdf,
   scriptedPdf,
   textPdf,
 } from './fixtures.ts';
@@ -17,7 +22,10 @@ import {
   MAX_PDF_BYTES,
   MAX_PDF_PAGES,
   MAX_PDF_TEXT_CHARS,
+  MAX_READER_MEMORY_MB,
+  PDF_TIME_LIMIT_SECONDS,
   PdfRefusedError,
+  readerFlags,
   readPdfText,
   type PdfRefusalReason,
 } from './pdf.ts';
@@ -25,7 +33,7 @@ import {
 /** The reason `readPdfText` refused the file with; fails the test if it read it. */
 async function refusal(
   pdf: Uint8Array,
-  options?: { seconds?: number },
+  options?: { seconds?: number; memoryMb?: number },
 ): Promise<{ reason: PdfRefusalReason; message: string }> {
   try {
     await readPdfText(pdf, options);
@@ -159,5 +167,58 @@ describe('readPdfText', () => {
         await expect(readPdfText(pdf, { seconds })).rejects.toThrow(RangeError);
       }
     });
+
+    it('caps the memory the reader holds, buffers included: content inflating to 1.2 GB is refused long before the time limit', async () => {
+      expect(MAX_READER_MEMORY_MB).toBe(1024);
+      const bomb = bombPdf(1200);
+      const started = Date.now();
+      // The full 15 seconds: only the memory cap can stop it this soon.
+      expect(await refusal(bomb, { seconds: PDF_TIME_LIMIT_SECONDS })).toEqual({
+        reason: 'too-much-memory',
+        message: 'This PDF needs too much memory to read. Please save it again as a simpler PDF.',
+      });
+      expect(Date.now() - started).toBeLessThan(8_000);
+    }, 60_000);
+
+    it('takes a memory cap of whole megabytes from 1 to 4096 only', async () => {
+      const pdf = textPdf(['Menu']);
+      for (const memoryMb of [0, 0.5, 4097, Number.NaN]) {
+        await expect(readPdfText(pdf, { memoryMb })).rejects.toThrow(RangeError);
+      }
+    });
+
+    it('carries on when the reader ends before it has taken the whole PDF in (its broken pipe is not an error)', async () => {
+      // A 1 MB cap ends the reader before it reads its input, so writing 20 MB to it breaks the pipe mid-write.
+      const pdf = new Uint8Array(MAX_PDF_BYTES).fill(0x0a);
+      pdf.set(textPdf(['Menu']));
+      expect((await refusal(pdf, { memoryMb: 1 })).reason).toBe('too-much-memory');
+    }, 30_000);
+
+    it('reads a PDF holding PostScript (Type 4) functions as its text only', async () => {
+      expect(await readPdfText(postScriptFunctionPdf('Spot colour price list'))).toEqual({
+        pages: 1,
+        text: 'Spot colour price list',
+      });
+    });
+  });
+});
+
+describe('the reader process', () => {
+  it('may read only its own code and pdf.js, start no process, write no file and compile no string', () => {
+    const flags = readerFlags(MAX_READER_MEMORY_MB);
+    // This package's folder, and pdf.js's own (its main file is build/pdf.mjs), as the file system has them.
+    const storage = realpathSync(fileURLToPath(new URL('../../', import.meta.url)));
+    const pdfjs = realpathSync(
+      dirname(dirname(createRequire(import.meta.url).resolve('pdfjs-dist'))),
+    );
+    expect(flags.filter((flag) => flag.startsWith('--'))).toEqual([
+      '--permission',
+      `--allow-fs-read=${storage}${sep}`,
+      `--allow-fs-read=${pdfjs}${sep}`,
+      // The memory cap is a thread of the reader's own (./memory-cap.ts).
+      '--allow-worker',
+      '--disallow-code-generation-from-strings',
+      '--max-old-space-size=512',
+    ]);
   });
 });

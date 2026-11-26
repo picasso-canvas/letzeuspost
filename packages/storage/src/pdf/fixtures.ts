@@ -1,6 +1,7 @@
 // PDFs for the tests (§06 Reading uploaded files, §17 crafted uploads), built from bytes here so what each one carries is
-// visible: plain text, a page count that lies, a page tree and a cross-reference that loop, a content stream that
-// inflates to hundreds of megabytes, a password, a script and an attached file. Only tests import this file.
+// visible: plain text, a page count that lies, a page tree and a cross-reference that loop, content that inflates to
+// hundreds of megabytes or more, a password, a script and an attached file, a PostScript function. Only tests import
+// this file.
 import { deflateSync } from 'node:zlib';
 
 type Part = string | Uint8Array;
@@ -58,16 +59,20 @@ function literal(text: string): string {
  * A content stream that writes each line of `text` in Helvetica at `size` points, from the top left of the page down.
  * pdf.js leaves out text drawn off the page, so a long text needs a small size.
  */
-function textContent(text: string, size: number): Buffer {
+function textContent(text: string, size: number, before: string): Buffer {
   const lines = text.split('\n').map((line) => `${literal(line)} Tj T*`);
   const leading = String(size * 1.2);
-  return stream('', `BT /F1 ${String(size)} Tf ${leading} TL 36 780 Td\n${lines.join('\n')}\nET`);
+  return stream(
+    '',
+    `${before}\nBT /F1 ${String(size)} Tf ${leading} TL 36 780 Td\n${lines.join('\n')}\nET`,
+  );
 }
 
 /**
  * A PDF with one page per entry of `pages`, each page's text in Helvetica at `size` points (Latin-1 text only).
  * `catalog` adds entries to the catalog (an `/OpenAction`, `/Names`), `extra` adds objects after the pages, numbered
- * from there on, and `count` is the page count the page tree claims.
+ * from there on, and `count` is the page count the page tree claims. `resources` adds entries to each page's
+ * resources, and `before` adds commands to each page's content, before its text.
  */
 export function textPdf(
   pages: readonly string[],
@@ -77,6 +82,8 @@ export function textPdf(
     trailer = '',
     count = pages.length,
     size = 12,
+    resources = '',
+    before = '',
   } = {},
 ): Uint8Array {
   // 1 catalog, 2 page tree, 3 font, then a page and its content for each page.
@@ -90,8 +97,8 @@ export function textPdf(
   pages.forEach((text, i) => {
     const content = firstPage + i * 2 + 1;
     objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${String(content)} 0 R >>`,
-      textContent(text, size),
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> ${resources} >> /Contents ${String(content)} 0 R >>`,
+      textContent(text, size, before),
     );
   });
   return buildPdf([...objects, ...extra], { trailer });
@@ -160,18 +167,52 @@ export function loopingPdf(): Uint8Array {
 }
 
 /**
- * A decompression bomb: one page whose content stream is a few hundred kilobytes of Flate data that inflates to
- * `megabytes` of drawing commands, and no text.
+ * A decompression bomb: one page whose content, a few hundred kilobytes of Flate data in streams of at most 100 MB
+ * each, inflates to about `megabytes` of drawing commands, and no text. pdf.js reads a page's streams as one, so the
+ * page is as large as all of them; building it in pieces keeps the test's own memory small.
  */
 export function bombPdf(megabytes: number): Uint8Array {
   const line = Buffer.from('0 0 m 1 1 l S\n', 'latin1');
-  const content = Buffer.alloc(megabytes * 1024 * 1024, line);
+  const piece = 100;
+  const sizes = Array.from({ length: Math.ceil(megabytes / piece) }, (_, i) =>
+    Math.min(piece, megabytes - i * piece),
+  );
+  // Each piece is whole lines, so the streams join into commands; equal pieces are deflated once.
+  const deflated = new Map<number, Buffer>();
+  const streams = sizes.map((size) => {
+    let data = deflated.get(size);
+    if (data === undefined) {
+      const length = Math.floor((size * 1024 * 1024) / line.length) * line.length;
+      data = deflateSync(Buffer.alloc(length, line), { level: 9 });
+      deflated.set(size, data);
+    }
+    return stream('/Filter /FlateDecode', data);
+  });
+  const contents = streams.map((_, i) => `${String(4 + i)} 0 R`).join(' ');
   return buildPdf([
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>',
-    stream('/Filter /FlateDecode', deflateSync(content, { level: 9 })),
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents [${contents}] >>`,
+    ...streams,
   ]);
+}
+
+/**
+ * Text drawn in a spot colour whose tint is a Type 4 (PostScript calculator) function, and a shading that is one too:
+ * the kind of function a viewer once compiled to JavaScript (CVE-2024-4367's class). Reading text never runs it.
+ */
+export function postScriptFunctionPdf(text: string): Uint8Array {
+  const tint = nextObject(1);
+  return textPdf([text], {
+    extra: [
+      stream(
+        '/FunctionType 4 /Domain [0 1] /Range [0 1 0 1 0 1]',
+        '{ dup 0.5 mul exch dup 0.25 mul exch pop 1 exch sub }',
+      ),
+    ],
+    resources: `/ColorSpace << /CS0 [/Separation /Spot /DeviceRGB ${String(tint)} 0 R] >> /Shading << /Sh0 << /ShadingType 2 /ColorSpace /DeviceRGB /Coords [0 0 612 0] /Function ${String(tint)} 0 R >> >>`,
+    before: '/CS0 cs 1 scn /Sh0 sh',
+  });
 }
 
 /** Encrypted for a user password nobody gave us: the standard security handler, revision 2, with made-up keys. */
