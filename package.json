@@ -17,7 +17,8 @@
     "licence-check": "node scripts/licence-check.mjs",
     "tokens": "design.md export --format css-tailwind DESIGN.md | node packages/ui/src/tokens/generate.ts && prettier --write --log-level warn packages/ui/src/tokens/theme.css packages/ui/src/tokens/dark.css",
     "design:lint": "node scripts/design-lint.mjs",
-    "dev:up": "node scripts/dev-up.ts"
+    "dev:up": "node scripts/dev-up.ts",
+    "seed:dev": "node apps/worker/src/seed-dev.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

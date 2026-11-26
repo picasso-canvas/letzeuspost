@@ -173,7 +173,8 @@ export const processSettings = {
   fetcher: ['LZP_ENV'],
   // The owner role, which the app never holds.
   migrate: ['LZP_ENV', 'DATABASE_OWNER_URL'],
-  seed: ['LZP_ENV', 'DATABASE_OWNER_URL'],
+  // The owner role, and the file store for `seed:dev`'s sample logos, put in the bucket as an upload puts them (#443).
+  seed: ['LZP_ENV', 'DATABASE_OWNER_URL', ...FILE_STORE],
 } as const satisfies Record<string, readonly SettingName[]>;
 
 export type ProcessName = keyof typeof processSettings;
