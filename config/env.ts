@@ -67,13 +67,13 @@ export const settings = {
   },
   DATABASE_OWNER_URL: {
     group: 'Database',
-    note: 'Postgres as the owner role, which the app never holds',
+    note: "Postgres as the owner role (never the app's)",
     expects: POSTGRES_URL,
     schema: postgresUrl,
   },
   STORAGE_ENDPOINT: {
     group: 'File store',
-    note: "The file store's S3 API (SeaweedFS in development)",
+    note: "The file store's S3 API (SeaweedFS locally)",
     expects: 'an https:// URL (http:// in development and ci)',
     schema: url(['http:', 'https:'], () => true),
   },
@@ -174,6 +174,8 @@ export const processSettings = {
   // The owner role, which the app never holds.
   migrate: ['LZP_ENV', 'DATABASE_OWNER_URL'],
   seed: ['LZP_ENV', 'DATABASE_OWNER_URL'],
+  // `seed:dev` with its sample logos: the owner role, and the file store to put them in as an upload does (#443).
+  'seed-dev': ['LZP_ENV', 'DATABASE_OWNER_URL', ...FILE_STORE],
 } as const satisfies Record<string, readonly SettingName[]>;
 
 export type ProcessName = keyof typeof processSettings;

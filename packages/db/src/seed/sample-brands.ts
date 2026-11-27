@@ -4,17 +4,61 @@
 // agency would save them, each item with its source (§06). Fictional: web addresses are on `.example` and email
 // addresses on `.invalid`, which reach no one.
 //
-// No logo, mark or mascot yet: those are stored assets, which need the file store and come in a follow-up task. Until
-// then `toRenderKit` gives the renderer the temporary wordmark (§06 Missing pieces). A font the renderer doesn't have yet
-// (Anton and Manrope come with the Bold look, §08) is kept in the kit; `toRenderKit` gives the renderer the look's
-// default instead.
+// The kit's first version has no logo or mark: those are stored assets. `seed:dev` uploads each brand's logo files
+// (`sampleLogos`, #443) and saves a second version that names them (`withLogos`); until the first version is replaced,
+// `toRenderKit` gives the renderer the temporary wordmark (§06 Missing pieces). No mascot: the samples have none. A font
+// the renderer doesn't have yet (Anton and Manrope come with the Bold look, §08) is kept in the kit; `toRenderKit` gives
+// the renderer the look's default instead.
 import type { BrandKit, Confidence, SourceKind } from '../../../core/src/index.ts';
 
-/** A sample brand: its names and its kit, as the agency would save it. */
+/** A sample brand: its names, its kit as the agency would save it, and its folder in docs/design/logos/sample-brands. */
 export interface SampleBrand {
   readonly nameEn: string;
   readonly nameBn?: string;
   readonly kit: BrandKit;
+  readonly logoFolder: string;
+}
+
+/** The kit's logo fields: the logo for light and for dark backgrounds (`identity.logo`), and the mark alone. */
+export const LOGO_ROLES = ['light', 'dark', 'mark'] as const;
+export type LogoRole = (typeof LOGO_ROLES)[number];
+
+/** A logo file the seed uploads for a brand, and how it is described in the brand's library. */
+export interface SampleLogo {
+  readonly role: LogoRole;
+  readonly file: URL;
+  readonly contentType: 'image/png';
+  readonly description: string;
+}
+
+/**
+ * The PNGs, not the SVGs beside them: the store never keeps an SVG (@lzp/storage), and an upload is the file a person
+ * picks. Each folder has all three (docs/design/logos/README.md).
+ */
+const LOGO_FILES: Readonly<Record<LogoRole, string>> = {
+  light: 'logo-light.png',
+  dark: 'logo-dark.png',
+  mark: 'mark.png',
+};
+
+const LOGOS = new URL('../../../../docs/design/logos/sample-brands/', import.meta.url);
+
+/**
+ * A brand's 3 logo files, in LOGO_ROLES' order. Each description names the brand and the logo, so it differs from the
+ * brand's other logos: the seed finds an upload of its own by it (logos.ts).
+ */
+export function sampleLogos(sample: SampleBrand): SampleLogo[] {
+  const what: Readonly<Record<LogoRole, string>> = {
+    light: 'logo, for light backgrounds',
+    dark: 'logo, for dark backgrounds',
+    mark: 'mark, the symbol alone',
+  };
+  return LOGO_ROLES.map((role) => ({
+    role,
+    file: new URL(`${sample.logoFolder}/${LOGO_FILES[role]}`, LOGOS),
+    contentType: 'image/png',
+    description: `${sample.nameEn} ${what[role]}`,
+  }));
 }
 
 /** When every sample item was recorded: fixed, so each run saves the same kit. */
@@ -320,8 +364,25 @@ function brightwellDental(): BrandKit {
 /** The 3 sample brands, in the order the mockups list them; a fresh copy on every call. */
 export function sampleBrands(): SampleBrand[] {
   return [
-    { nameEn: 'Golpo Café', nameBn: 'গল্প ক্যাফে', kit: golpoCafe() },
-    { nameEn: 'Ironline Studio', kit: ironlineStudio() },
-    { nameEn: 'Brightwell Dental', kit: brightwellDental() },
+    { nameEn: 'Golpo Café', nameBn: 'গল্প ক্যাফে', kit: golpoCafe(), logoFolder: 'golpo-cafe' },
+    { nameEn: 'Ironline Studio', kit: ironlineStudio(), logoFolder: 'ironline-studio' },
+    { nameEn: 'Brightwell Dental', kit: brightwellDental(), logoFolder: 'brightwell-dental' },
   ];
+}
+
+/**
+ * `kit` with its logo fields naming the brand's logo assets by id, each item recorded as from its uploaded file: the
+ * kit's second version (#443). `kit` itself is left as it was.
+ */
+export function withLogos(kit: BrandKit, ids: Readonly<Record<LogoRole, string>>): BrandKit {
+  const uploaded = (role: LogoRole) =>
+    item(ids[role], { source: 'file', ref: `upload:${LOGO_FILES[role]}` });
+  return {
+    ...kit,
+    identity: {
+      ...kit.identity,
+      logo: { light: uploaded('light'), dark: uploaded('dark') },
+      mark: uploaded('mark'),
+    },
+  };
 }

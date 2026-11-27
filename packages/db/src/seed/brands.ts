@@ -1,6 +1,8 @@
 // `seed:dev`'s brands (#411, §17 Test data): Northwind Social's 3 sample brands, saved the way the app saves a brand,
 // through `brandKits(db, BrandKitSchema)`: `createBrand` under the plan's brand limit, then `saveKit`, which checks the
-// kit and writes it as version 1. No logo assets: they need the file store, and come in a follow-up task.
+// kit and writes it as version 1. With `logos` (apps/worker's `seed:dev`, #443), each brand still at that version 1
+// then gets its logo assets and a second version that names them (logos.ts); without it (this package's own entry,
+// dev.ts), the brands keep version 1 until a run with `logos` gives them theirs.
 //
 // A brand is found by its English name in the seed's workspace: the owner role isn't bound by row-level security, so
 // the lookup names the workspace itself, and another workspace's brand is never skipped or saved to. One that is
@@ -18,6 +20,7 @@ import { canAddBrand } from '../../../core/src/quotas/index.ts';
 import { brandKits } from '../brand-kits.ts';
 import { checkedId, dbOnPool, openPool, type WorkspaceCtx } from '../db.ts';
 import { brand } from '../schema/brands.ts';
+import { seedBrandLogos, type SeedLogos } from './logos.ts';
 import type { SampleBrand } from './sample-brands.ts';
 import { SEED_LOCK } from './seed.ts';
 
@@ -27,11 +30,15 @@ import { SEED_LOCK } from './seed.ts';
  */
 const allowed = (brandsNow: number) => canAddBrand(plans.starter, brandsNow);
 
-/** Adds what is missing of `samples` to the workspace, and says whether it changed anything. */
+/**
+ * Adds what is missing of `samples` to the workspace, with their logos when `logos` says how to add them, and says
+ * whether it changed anything.
+ */
 export async function seedBrands(
   ownerUrl: string,
   ctx: WorkspaceCtx,
   samples: readonly SampleBrand[],
+  logos?: SeedLogos,
 ): Promise<{ changed: boolean }> {
   const workspaceId = checkedId('workspace', ctx.workspaceId);
   const pool = openPool(ownerUrl);
@@ -50,12 +57,27 @@ export async function seedBrands(
             .where(and(eq(brand.workspaceId, workspaceId), eq(brand.nameEn, sample.nameEn)))
             .limit(1),
         );
-        if (found !== undefined && found.kitVersion !== null) continue;
-        const { id } =
-          found ??
-          (await kits.createBrand(ctx, { nameEn: sample.nameEn, nameBn: sample.nameBn }, allowed));
-        await kits.saveKit(ctx, id, sample.kit);
-        changed = true;
+        let target: { id: string; kitVersion: number };
+        if (found !== undefined && found.kitVersion !== null) {
+          target = { id: found.id, kitVersion: found.kitVersion };
+        } else {
+          const { id } =
+            found ??
+            (await kits.createBrand(
+              ctx,
+              { nameEn: sample.nameEn, nameBn: sample.nameBn },
+              allowed,
+            ));
+          const { version } = await kits.saveKit(ctx, id, sample.kit);
+          target = { id, kitVersion: version };
+          changed = true;
+        }
+        if (
+          logos !== undefined &&
+          (await seedBrandLogos(db, kits, ctx, { ...target, sample }, logos))
+        ) {
+          changed = true;
+        }
       }
       return { changed };
     } finally {
