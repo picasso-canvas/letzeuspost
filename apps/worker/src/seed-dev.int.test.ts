@@ -5,9 +5,9 @@
 // leave each logo added once. The seed marks nothing ready: another services file's worker may take these jobs, so a
 // row may be processed only once its job has left `created`.
 //
-// It runs as `seed:dev` does (seed-dev.ts): the owner role and the file store, config/env.ts's `seed` process. Each
-// run's workspaces have slugs and people of their own, so it never meets a real Northwind Social; their files, jobs,
-// workspaces and people are removed at the end.
+// It runs as `seed:dev` does (seed-dev.ts): the owner role and the file store, config/env.ts's `seed-dev` process.
+// Each run's workspaces have slugs and people of their own, so it never meets a real Northwind Social; their files,
+// jobs, workspaces and people are removed at the end.
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { loadEnv } from '@lzp/config';
@@ -27,7 +27,7 @@ import { FONT_MANIFEST } from '../../../packages/render/src/fonts/library.ts';
 import { RenderKitSchema } from '../../../packages/render/src/kit.ts';
 import { addLogoAsUploaded } from './seed-logos.ts';
 
-const env = loadEnv('seed');
+const env = loadEnv('seed-dev');
 const ownerUrl = env.DATABASE_OWNER_URL;
 const run = randomUUID().slice(0, 8);
 const storage = createStorage(env);

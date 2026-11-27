@@ -2,8 +2,8 @@
 // editor, its 3 sample brands with full kits (#411), and their logos (#443): each logo file put in the bucket and added
 // to its brand's library as an upload adds it (seed-logos.ts), and each kit's second version naming them. The worker's
 // `asset` job then processes them like any upload; nothing here marks one ready. Refused in production. Runs as
-// config/env.ts's `seed` process: the owner role (DATABASE_OWNER_URL) and the file store, nothing else. A second run
-// changes nothing.
+// config/env.ts's `seed-dev` process: the owner role (DATABASE_OWNER_URL) and the file store, nothing else. A second
+// run changes nothing.
 //
 // The entry lives in apps/worker, beside @lzp/storage, which packages/db can't import (storage depends on db); the
 // brands and kits are still packages/db's seed, reached by path as the worker's tests reach other packages' sources.
@@ -15,7 +15,7 @@ import { sampleBrands } from '../../../packages/db/src/seed/sample-brands.ts';
 import { devSeed, refuseDevSeedIn } from '../../../packages/db/src/seed/seed.ts';
 import { addLogoAsUploaded } from './seed-logos.ts';
 
-const env = loadEnv('seed');
+const env = loadEnv('seed-dev');
 refuseDevSeedIn(env.LZP_ENV);
 const seed = devSeed();
 const storage = createStorage(env);
