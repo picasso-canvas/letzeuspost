@@ -3,11 +3,12 @@
 // in the same transaction; a round past the plan's storage adds nothing; a brand of another workspace (or none) adds
 // nothing either. The job queue is a recorder here (the real one is exercised by the feature's journey,
 // tests/journeys/brand-assets.int.test.ts): what matters is that each job is written in the rows' own transaction.
-// Runs in `pnpm check:services` and CI's `services` job; every row is this run's and is removed after it.
+// Runs in `pnpm check:services` and CI's `services` job; every row is this run's, and each test's assets are removed
+// after it.
 import { randomUUID, randomUUIDv7 } from 'node:crypto';
 import { loadEnv } from '@lzp/config';
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db, type Tx } from './db.ts';
 import type { Payload } from './jobs/queues.ts';
 import { migrate } from './migrate.ts';
@@ -60,6 +61,11 @@ beforeAll(async () => {
   db = createDb(appUrl);
 }, 60_000);
 
+// Every test starts with no assets in either workspace: a test that fails part-way leaves nothing for the next one.
+afterEach(async () => {
+  await owner.query('delete from asset where workspace_id = any($1)', [[ws.a.id, ws.b.id]]);
+});
+
 afterAll(async () => {
   await db.close();
   await owner.query('delete from workspace where id = any($1)', [[ws.a.id, ws.b.id]]);
@@ -82,11 +88,15 @@ function recorder(fail = false) {
 
 const allow = () => ({ ok: true }) as const;
 
-/** The rows the owner role (which row-level security doesn't bind) finds for a brand. */
+/**
+ * The rows the owner role (which row-level security doesn't bind) finds for a brand, in `id` order: a round's rows share
+ * their transaction's `created_at`, and `randomUUIDv7()` isn't monotonic within a millisecond, so no other order is
+ * the files' own.
+ */
 async function rowsOf(space: Space, brandId = space.brandId) {
   const { rows } = await owner.query<Record<string, unknown>>(
     `select id, workspace_id, brand_id, kind, storage_key, status, source, uploaded_by, size_bytes::int as size
-       from asset where workspace_id = $1 and brand_id = $2 order by created_at, id`,
+       from asset where workspace_id = $1 and brand_id = $2 order by id`,
     [space.id, brandId],
   );
   return rows;
@@ -111,9 +121,9 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
     );
     if (!('started' in started)) throw new Error(`refused: ${JSON.stringify(started)}`);
     expect(started.started).toHaveLength(2);
-    const rows = await rowsOf(ws.a);
-    expect(rows).toEqual(
-      started.started.map(({ assetId }, at) => ({
+    // Each started upload is its file's (the route signs each link for that file): the same index in the round.
+    const expected = started.started
+      .map(({ assetId }, at) => ({
         id: assetId,
         workspace_id: ws.a.id,
         brand_id: ws.a.brandId,
@@ -123,8 +133,9 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
         source: 'own',
         uploaded_by: ws.a.memberId,
         size: at === 0 ? 1000 : 2000,
-      })),
-    );
+      }))
+      .sort((one, other) => (one.id < other.id ? -1 : 1));
+    expect(await rowsOf(ws.a)).toEqual(expected);
     expect(queue.sent.map(({ payload }) => payload)).toEqual(
       started.started.map(({ assetId }) => ({
         workspaceId: ws.a.id,
@@ -133,7 +144,6 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
       })),
     );
     expect(queue.sent.every(({ tx }) => typeof tx.execute === 'function')).toBe(true);
-    await owner.query('delete from asset where brand_id = $1', [ws.a.brandId]);
   });
 
   it('adds no row when a job can’t be queued: the rows and their jobs go together', async () => {
@@ -182,7 +192,6 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
     expect(refused).toEqual({ refused: 'storage', message: 'The Scale plan has 200 GB.' });
     expect(queue.sent).toEqual([]);
     expect(await rowsOf(ws.a)).toHaveLength(2);
-    await owner.query('delete from asset where brand_id = $1', [ws.a.brandId]);
   });
 
   it('gives a workspace without a plan null, and counts only its own storage', async () => {
@@ -198,7 +207,6 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
       },
     );
     expect(asked).toEqual([{ plan: null, usedBytes: 0, addingBytes: 5 }]);
-    await owner.query('delete from asset where brand_id = $1', [ws.b.brandId]);
   });
 
   it('refuses another workspace’s brand, or none, and adds nothing anywhere', async () => {
@@ -242,7 +250,6 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
     expect(results.filter((result) => 'refused' in result)).toEqual([
       { refused: 'storage', message: 'full' },
     ]);
-    await owner.query('delete from asset where brand_id = $1', [ws.a.brandId]);
   });
 
   it('refuses a round that is no round: no files, or a size that is no size', async () => {
