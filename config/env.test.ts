@@ -52,7 +52,8 @@ const expected: Record<ProcessName, readonly string[]> = {
   // Nothing else: its token arrives in M2.
   fetcher: ['LZP_ENV'],
   migrate: ['LZP_ENV', 'DATABASE_OWNER_URL'],
-  seed: ['LZP_ENV', 'DATABASE_OWNER_URL'],
+  // The owner role, and the file store for `seed:dev`'s sample logos (#443).
+  seed: ['LZP_ENV', 'DATABASE_OWNER_URL', ...FILE_STORE],
 };
 const processes = Object.keys(expected) as ProcessName[];
 
@@ -232,9 +233,13 @@ describe('the app and file-store addresses are https:// outside development and 
   });
 
   it.each(
-    ['staging', 'production'].flatMap((environment) =>
-      readers.flatMap((name) => ADDRESSES.map((setting) => [environment, name, setting] as const)),
-    ),
+    ['staging', 'production'].flatMap((environment) => [
+      ...readers.flatMap((name) =>
+        ADDRESSES.map((setting) => [environment, name, setting] as const),
+      ),
+      // seed holds the file store but not the app's address (#443).
+      [environment, 'seed', 'STORAGE_ENDPOINT'] as const,
+    ]),
   )(
     'in %s, %s refuses an http:// %s, naming it but not its value',
     (environment, name, setting) => {
@@ -253,12 +258,10 @@ describe('the app and file-store addresses are https:// outside development and 
   it('leaves the processes without these addresses alone in production', () => {
     const source = { ...valid, LZP_ENV: 'production' };
     expect(loadEnv('fetcher', source)).toEqual({ LZP_ENV: 'production' });
-    for (const name of ['migrate', 'seed'] as const) {
-      expect(loadEnv(name, source)).toEqual({
-        LZP_ENV: 'production',
-        DATABASE_OWNER_URL: valid.DATABASE_OWNER_URL,
-      });
-    }
+    expect(loadEnv('migrate', source)).toEqual({
+      LZP_ENV: 'production',
+      DATABASE_OWNER_URL: valid.DATABASE_OWNER_URL,
+    });
   });
 
   it('refuses http:// however its scheme is written', () => {
