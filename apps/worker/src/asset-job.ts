@@ -10,7 +10,13 @@
 //   4. mark it processed (packages/db's `finish`, one conditional update, which also marks a possible duplicate), or
 //      rejected with the refusal's plain message.
 // A file that isn't there yet, or a store or database that fails, fails the run and pg-boss retries it; on the last
-// try the asset is rejected with a plain reason, so it never waits for ever.
+// try the asset is rejected with a plain reason. Its upload link has stopped working by then (5 minutes, against the
+// asset queue's 7 or more before the last try), so no file lands after the row is rejected (Cerberus F2 on #439).
+//
+// A rejected asset no longer counts against the plan's storage (packages/db's `startUploads`), so its files leave the
+// bucket first: the original and both copies are deleted, and only then is the row rejected (Zeus's decision 1(a),
+// 2026-11-28, on #403; Cerberus F1 on #439). When a delete fails, the row stays waiting, and counting, and the run is
+// retried; on the last try it then stays so, holding its storage, rather than free what the bucket still holds.
 //
 // The log, and every error this job throws, name the asset by id and the outcome by code: never the file's content,
 // text, name or key, nor the reason shown to its sender (§13 Security summary).
@@ -34,9 +40,13 @@ import {
   readPdfText,
   saveImageSet,
   UploadLimitError,
+  type AssetVariant,
   type Storage,
 } from '@lzp/storage';
 import type { Log } from './log.ts';
+
+/** Every file an asset may have in the bucket, its original last. */
+const FILES = ['1600', '360', 'original'] as const satisfies readonly AssetVariant[];
 
 /** The largest file read: §06's "up to 20 MB each". */
 export const MAX_FILE_BYTES = MAX_PDF_BYTES;
@@ -50,8 +60,8 @@ const PDF_NOT_DOCUMENT =
 const NOT_A_DOCUMENT = "That file isn't a PDF or a JPG, PNG, WebP or SVG image.";
 
 export interface AssetJobDeps {
-  /** The bucket: the original is read from it and the picture's files written to it. */
-  readonly storage: Pick<Storage, 'get' | 'put'>;
+  /** The bucket: the original is read from it, the picture's files written to it, and a rejected asset's deleted. */
+  readonly storage: Pick<Storage, 'get' | 'put' | 'delete'>;
   readonly log: Log;
   /** The asset rows of the job's workspace; packages/db's by default. */
   readonly processing?: (db: Scoped) => AssetProcessing;
@@ -100,6 +110,17 @@ export function assetJob(deps: AssetJobDeps): JobHandler<'asset'> {
       deps.log(event, { jobId, assetId: payload.assetId, ...fields });
     };
 
+    /** Deletes every file of the asset, then rejects its row; false when another run had moved the row first. */
+    const reject = async (target: AssetToProcess, reason: string): Promise<boolean> => {
+      for (const variant of FILES) {
+        await deps.storage.delete(
+          ctx,
+          assetKey(ctx, { brandId: target.brandId, assetId: target.id, variant }),
+        );
+      }
+      return rows.reject(target.id, reason);
+    };
+
     let loaded: AssetToProcess | undefined;
     try {
       const found = await rows.load({ brandId: payload.brandId, assetId: payload.assetId });
@@ -110,7 +131,7 @@ export function assetJob(deps: AssetJobDeps): JobHandler<'asset'> {
       loaded = found.asset;
       const outcome = await processFile(deps.storage, ctx, loaded);
       if ('refused' in outcome) {
-        const rejected = await rows.reject(loaded.id, outcome.reason);
+        const rejected = await reject(loaded, outcome.reason);
         said(rejected ? 'asset.rejected' : 'asset.skipped', {
           reason: rejected ? outcome.refused : 'processed',
         });
@@ -127,7 +148,8 @@ export function assetJob(deps: AssetJobDeps): JobHandler<'asset'> {
       const code = codeOf(error);
       if (lastAttempt && loaded !== undefined) {
         const reason = code === 'missing' ? NEVER_ARRIVED : FAILED;
-        const rejected = await rows.reject(loaded.id, reason).catch(() => false);
+        // A delete or the update failing again leaves the row waiting: it keeps counting while its bytes may be stored.
+        const rejected = await reject(loaded, reason).catch(() => false);
         said(rejected ? 'asset.rejected' : 'asset.failed', { reason: code, error: code });
       } else {
         said('asset.retry', { error: code });

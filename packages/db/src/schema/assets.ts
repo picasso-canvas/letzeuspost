@@ -61,7 +61,10 @@ export const asset = pgTable(
     sha256: text('sha256'),
     /** For finding duplicates (§10), in lowercase hex; empty until processed. */
     perceptualHash: text('perceptual_hash'),
-    /** What the file takes in storage, which counts against the plan (§02); empty until processed. */
+    /**
+     * What the file takes in storage, which counts against the plan (§02). An upload starts with the size its signed
+     * link allows (`startUploads`, #403), so a file on its way counts; processing sets the size of what it stored.
+     */
     sizeBytes: bigint('size_bytes', { mode: 'number' }),
     /** The AI's description (`tagAsset`, §09), which the editor can change. */
     description: text('description'),

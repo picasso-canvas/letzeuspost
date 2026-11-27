@@ -7,6 +7,7 @@ import {
   JobPayloadError,
   queueNames,
   queues,
+  shortestRetryWindowSeconds,
   workspaceQueueNames,
 } from './queues.ts';
 
@@ -160,6 +161,26 @@ describe('the queues (§13 Jobs)', () => {
     expect(retryDelay).toBeGreaterThan(0);
     expect(retryBackoff).toBe(true);
     expect(retryDelayMax).toBeGreaterThanOrEqual(retryDelay);
+  });
+
+  it('waits 60 s, then 2 and 4 minutes or more, before an asset job’s three retries (Zeus, 2026-11-28, on #403)', () => {
+    // The asset job rejects a file that never arrived on its last try; its upload link (@lzp/storage's
+    // UPLOAD_LINK_SECONDS, 5 minutes) must be gone by then, or a file PUT after the rejection would stay uncounted.
+    expect(queues.asset.queue).toEqual({
+      retryLimit: 3,
+      retryDelay: 60,
+      retryBackoff: true,
+      retryDelayMax: 600,
+      expireInSeconds: 15 * 60,
+    });
+    expect(shortestRetryWindowSeconds('asset')).toBe(60 + 120 + 240);
+  });
+
+  it('keeps the other queues’ retries as they were: 30 s, with backoff, 3 retries', () => {
+    for (const name of queueNames.filter((each) => each !== 'asset')) {
+      expect(queues[name].queue, name).toMatchObject({ retryLimit: 3, retryDelay: 30 });
+    }
+    expect(shortestRetryWindowSeconds('email')).toBe(30 + 60 + 120);
   });
 
   it('runs at most 4 ai jobs at a time per workspace, with room for another workspace', () => {

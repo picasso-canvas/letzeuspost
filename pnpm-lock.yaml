@@ -231,6 +231,9 @@ importers:
       '@lzp/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@lzp/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@lzp/ui':
         specifier: workspace:*
         version: link:../../packages/ui

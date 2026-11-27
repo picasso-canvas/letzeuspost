@@ -9,7 +9,8 @@ import { z } from 'zod';
 const id = z.uuidv7();
 
 /**
- * Bounded retries with backoff (§13), the same for every queue until a feature's section gives its own numbers. With
+ * Bounded retries with backoff (§13), the same for every queue but the asset queue (below), until a feature's section
+ * gives its own numbers. With
  * pg-boss's backoff the waits are about 30-60 s, 1-2 min and 2-4 min: a job that keeps failing stops after 4 tries,
  * within the 15 minutes after which §14's monitoring calls a job stuck. A run still going after `expireInSeconds`
  * (pg-boss's default, 15 minutes, written out because the email outbox relies on it) is failed and retried, which is
@@ -17,13 +18,42 @@ const id = z.uuidv7();
  * rest of its 15 minutes from the run's start (until pg-boss's next monitor pass finds it expired), then its retry
  * delay, 30 s or more (Argus F4 on #197). A run that fails instead of dying is retried after the delay alone.
  */
-const retry = {
+const retry: Retry = {
   retryLimit: 3,
   retryDelay: 30,
   retryBackoff: true,
   retryDelayMax: 600,
   expireInSeconds: 15 * 60,
-} as const;
+};
+
+/** A queue's retries, as pg-boss's `createQueue` takes them. */
+interface Retry {
+  readonly retryLimit: number;
+  readonly retryDelay: number;
+  readonly retryBackoff: boolean;
+  readonly retryDelayMax: number;
+  readonly expireInSeconds: number;
+}
+
+/**
+ * The asset queue's own (Zeus, 2026-11-28, on #403): the same backoff and 3 retries, from 60 s. Its last try, which
+ * rejects a file that never arrived, starts 60 + 120 + 240 = 420 s or more after the first: after the file's 5-minute
+ * upload link (@lzp/storage's UPLOAD_LINK_SECONDS) has stopped working, so nothing can land once the row is rejected
+ * (Cerberus F2 on #439). The waits are at most 2, 4 and 8 minutes, 14 in all, so a job that keeps failing fast still
+ * stops within the 15 minutes after which §14's monitoring calls it stuck.
+ */
+const assetRetry: Retry = { ...retry, retryDelay: 60 };
+
+/**
+ * The shortest time from a queue's first try to its last, in seconds: pg-boss's backoff waits at least
+ * `retryDelay × 2^n` before retry n + 1 (at most `retryDelayMax`), and each run takes some time on top.
+ */
+export function shortestRetryWindowSeconds(name: QueueName): number {
+  const { retryLimit, retryDelay, retryDelayMax } = queues[name].queue;
+  let total = 0;
+  for (let n = 0; n < retryLimit; n += 1) total += Math.min(retryDelayMax, retryDelay * 2 ** n);
+  return total;
+}
 
 export const queues = {
   /**
@@ -48,7 +78,7 @@ export const queues = {
    */
   asset: {
     payload: z.strictObject({ workspaceId: id, brandId: id, assetId: id }),
-    queue: retry,
+    queue: assetRetry,
     // A job may read a hostile PDF for up to 15 s, its reader capped at about 1 GB (#402): one job at a time per
     // workspace, by the same in-process group limit as the ai queue's, and two in all, so a workspace uploading many
     // PDFs holds one reader while another workspace's upload runs in the other (Cerberus F1 on #402).
@@ -90,7 +120,7 @@ export const queues = {
   string,
   {
     payload: z.ZodType<object>;
-    queue: typeof retry;
+    queue: Retry;
     work: { localGroupConcurrency?: number; localConcurrency?: number };
   }
 >;

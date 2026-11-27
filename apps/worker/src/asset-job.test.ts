@@ -3,7 +3,9 @@
 // by hash within a brand, a client's photo left waiting) are packages/db's, checked on Postgres in ./asset.int.test.ts.
 import { createHash, randomUUIDv7 } from 'node:crypto';
 import type { AssetProcessing, AssetToProcess, JobContext, ProcessedFile, Scoped } from '@lzp/db';
-import { assetKey, UploadLimitError, type Storage } from '@lzp/storage';
+import { shortestRetryWindowSeconds } from '@lzp/db';
+import { assetKey, UploadLimitError, type AssetVariant, type Storage } from '@lzp/storage';
+import { UPLOAD_LINK_SECONDS } from '@lzp/storage/signer';
 import { describe, expect, it } from 'vitest';
 import {
   banglaPdf,
@@ -30,13 +32,17 @@ interface Put {
   size: number;
 }
 
-/** A bucket in memory: `get` caps the size as the real one does, and every write is recorded. */
-function fakeBucket(files: Record<string, Uint8Array> = {}) {
+/**
+ * A bucket in memory: `get` caps the size as the real one does, and every write is recorded. Each delete, and each
+ * row the rows reject, goes into `order`, so a test sees which came first.
+ */
+function fakeBucket(files: Record<string, Uint8Array>, order: string[]) {
   const stored = new Map(Object.entries(files));
   const puts: Put[] = [];
   const gets: string[] = [];
   let failure: Error | undefined;
-  const storage: Pick<Storage, 'get' | 'put'> = {
+  let deleteFailure: Error | undefined;
+  const storage: Pick<Storage, 'get' | 'put' | 'delete'> = {
     get: (_ctx, key, { maxBytes }) => {
       gets.push(key);
       if (failure !== undefined) return Promise.reject(failure);
@@ -52,6 +58,12 @@ function fakeBucket(files: Record<string, Uint8Array> = {}) {
       stored.set(key, body);
       return Promise.resolve();
     },
+    delete: (_ctx, key) => {
+      if (deleteFailure !== undefined) return Promise.reject(deleteFailure);
+      order.push(`delete ${key}`);
+      stored.delete(key);
+      return Promise.resolve();
+    },
   };
   return {
     storage,
@@ -62,11 +74,15 @@ function fakeBucket(files: Record<string, Uint8Array> = {}) {
     breakWith: (error: Error) => {
       failure = error;
     },
+    /** Every delete fails. */
+    breakDeletesWith: (error: Error) => {
+      deleteFailure = error;
+    },
   };
 }
 
 /** One asset row in memory, moved only from waiting and unprocessed, as packages/db's conditional updates move it. */
-function fakeRows(asset: AssetToProcess) {
+function fakeRows(asset: AssetToProcess, order: string[]) {
   let state: 'waiting' | 'processed' | 'rejected' = 'waiting';
   const finished: ProcessedFile[] = [];
   const rejected: string[] = [];
@@ -90,6 +106,7 @@ function fakeRows(asset: AssetToProcess) {
       if (assetId !== asset.id || state !== 'waiting') return Promise.resolve(false);
       state = 'rejected';
       rejected.push(reason);
+      order.push('reject');
       return Promise.resolve(true);
     },
   };
@@ -109,13 +126,21 @@ function newAsset(kind: AssetToProcess['kind'] = 'photo'): AssetToProcess {
   return { id: randomUUIDv7(), brandId: randomUUIDv7(), kind, source: 'own' };
 }
 
-const originalOf = (asset: AssetToProcess) =>
-  assetKey(ctx, { brandId: asset.brandId, assetId: asset.id, variant: 'original' });
+const keyOf = (asset: AssetToProcess, variant: AssetVariant) =>
+  assetKey(ctx, { brandId: asset.brandId, assetId: asset.id, variant });
+const originalOf = (asset: AssetToProcess) => keyOf(asset, 'original');
+
+/** What a rejected asset's run must do, in this order: its three files deleted, then its row rejected. */
+const deletedThenRejected = (asset: AssetToProcess) => [
+  ...(['1600', '360', 'original'] as const).map((variant) => `delete ${keyOf(asset, variant)}`),
+  'reject',
+];
 
 /** The handler on `asset`, with `upload` at its original's key, and every log line recorded. */
 function setUp(asset: AssetToProcess, upload?: Uint8Array) {
-  const bucket = fakeBucket(upload === undefined ? {} : { [originalOf(asset)]: upload });
-  const rows = fakeRows(asset);
+  const order: string[] = [];
+  const bucket = fakeBucket(upload === undefined ? {} : { [originalOf(asset)]: upload }, order);
+  const rows = fakeRows(asset, order);
   const lines: { event: string; fields: LogFields }[] = [];
   const handler = assetJob({
     storage: bucket.storage,
@@ -136,7 +161,7 @@ function setUp(asset: AssetToProcess, upload?: Uint8Array) {
       lastAttempt: false,
       ...change,
     });
-  return { bucket, rows, lines, run };
+  return { bucket, rows, lines, run, order };
 }
 
 /** The error a run was refused with. */
@@ -343,6 +368,84 @@ describe('the asset job when the file or the store fails', () => {
 
     await failureOf(run({ lastAttempt: true }));
     expect(rows.rejected).toEqual([FAILED]);
+  });
+});
+
+describe('a rejected asset’s files (Cerberus F1 on #439, Zeus’s decision 1(a), 2026-11-28)', () => {
+  // A rejected row no longer counts against the plan's storage (packages/db's startUploads), so its bytes go first.
+  it('deletes a refused file’s original and copies before it rejects the row, and keeps nothing of it', async () => {
+    const asset = newAsset();
+    const { bucket, rows, run, order } = setUp(asset, Buffer.from(SECRET_TEXT));
+    await run();
+    expect(rows.rejected).toEqual(["That file isn't a JPG, PNG, WebP or SVG image."]);
+    expect(order).toEqual(deletedThenRejected(asset));
+    expect([...bucket.stored.keys()]).toEqual([]);
+  });
+
+  it.each([
+    ['too large', () => new Uint8Array(MAX_FILE_BYTES + 1), 'photo'],
+    ['a PDF given as a picture', () => textPdf([SECRET_TEXT]), 'photo'],
+    ['a locked PDF', () => lockedPdf(), 'document'],
+  ] as const)('deletes a file refused as %s before rejecting it', async (_name, file, kind) => {
+    const asset = newAsset(kind);
+    const { bucket, rows, run, order } = setUp(asset, file());
+    await run();
+    expect(rows.rejected).toHaveLength(1);
+    expect(order).toEqual(deletedThenRejected(asset));
+    expect(bucket.stored.size).toBe(0);
+  });
+
+  it('deletes the file’s keys on the last try of a file that never arrived, in case it lands late', async () => {
+    const asset = newAsset();
+    const { rows, run, order } = setUp(asset);
+    await failureOf(run({ lastAttempt: true }));
+    expect(rows.rejected).toEqual(['The file never arrived. Please upload it again.']);
+    expect(order).toEqual(deletedThenRejected(asset));
+  });
+
+  it('deletes what the store holds on the last try of a run the store kept failing', async () => {
+    const asset = newAsset();
+    const { bucket, rows, run, order } = setUp(asset, picture(10));
+    bucket.breakWith(new Error('read ECONNRESET'));
+    await failureOf(run({ lastAttempt: true }));
+    expect(rows.rejected).toEqual([FAILED]);
+    expect(order).toEqual(deletedThenRejected(asset));
+    expect(bucket.stored.size).toBe(0);
+  });
+
+  it('keeps a refused file waiting, and counting, while its files can’t be deleted: the run fails and is retried', async () => {
+    const asset = newAsset();
+    const { bucket, rows, run, lines } = setUp(asset, Buffer.from(SECRET_TEXT));
+    const broken = new Error(`AccessDenied for ${originalOf(asset)}`);
+    broken.name = 'AccessDenied';
+    bucket.breakDeletesWith(broken);
+
+    expect((await failureOf(run())).message).toBe('asset job failed (AccessDenied)');
+    expect(rows.state()).toBe('waiting');
+    expect(bucket.stored.has(originalOf(asset))).toBe(true);
+
+    // Even on the last try: a row that still holds its bytes never stops counting.
+    await failureOf(run({ lastAttempt: true }));
+    expect(rows.state()).toBe('waiting');
+    expect(rows.rejected).toEqual([]);
+    expect(lines.at(-1)).toEqual({
+      event: 'asset.failed',
+      fields: expect.objectContaining({ error: 'AccessDenied' }) as unknown,
+    });
+  });
+
+  it('deletes nothing of a file it processed', async () => {
+    const asset = newAsset();
+    const { bucket, rows, run, order } = setUp(asset, picture(15));
+    await run();
+    expect(rows.state()).toBe('processed');
+    expect(order).toEqual([]);
+    expect(bucket.stored.size).toBe(3);
+  });
+
+  it('gives up on a missing file only after its upload link has stopped working (Cerberus F2 on #439)', () => {
+    // The shortest wait from the job's first run to its last: a file PUT after that can no longer reach the bucket.
+    expect(shortestRetryWindowSeconds('asset')).toBeGreaterThan(UPLOAD_LINK_SECONDS);
   });
 });
 
