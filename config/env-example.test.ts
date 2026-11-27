@@ -30,7 +30,7 @@ describe('env.example', () => {
   });
 
   it('says which processes read each setting', () => {
-    expect(noteFor('DATABASE_OWNER_URL')).toMatch(/Read by migrate, seed\.$/);
+    expect(noteFor('DATABASE_OWNER_URL')).toMatch(/Read by migrate, seed, seed-dev\.$/);
     expect(noteFor('AUTH_SECRET')).toMatch(/Read by web\.$/);
     expect(noteFor('DATABASE_URL')).toMatch(/Read by web, worker\.$/);
   });

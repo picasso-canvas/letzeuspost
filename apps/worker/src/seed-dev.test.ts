@@ -1,6 +1,6 @@
 // `seed:dev`'s entry (#443): it lives in apps/worker, beside @lzp/storage, which packages/db can't import (storage
-// depends on db), and the repository's `seed:dev` runs it. The seed process holds the owner role's URL and the file
-// store's settings, and none of another process's other settings (§13 What runs, §14 Secrets).
+// depends on db), and the repository's `seed:dev` runs it. config/env.ts's `seed-dev` process holds the owner role's
+// URL and the file store's settings, and none of another process's other settings (§13 What runs, §14 Secrets).
 import { readFileSync } from 'node:fs';
 import { loadEnv } from '@lzp/config';
 import { describe, expect, it } from 'vitest';
@@ -15,7 +15,7 @@ describe('seed:dev (#443)', () => {
   it('runs apps/worker’s seed entry from the repository root, on plain Node as the worker runs', () => {
     expect(root.scripts?.['seed:dev']).toBe('node apps/worker/src/seed-dev.ts');
     expect(readFileSync(new URL('seed-dev.ts', import.meta.url), 'utf8')).toContain(
-      "loadEnv('seed')",
+      "loadEnv('seed-dev')",
     );
   });
 
@@ -36,6 +36,6 @@ describe('seed:dev (#443)', () => {
       AUTH_SECRET: 'a'.repeat(32),
       APP_URL: 'http://localhost:3000',
     };
-    expect(loadEnv('seed', { ...seed, ...others })).toEqual(seed);
+    expect(loadEnv('seed-dev', { ...seed, ...others })).toEqual(seed);
   });
 });
