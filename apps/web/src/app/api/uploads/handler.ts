@@ -132,6 +132,15 @@ async function readRound(
   return parsed.data;
 }
 
+/**
+ * What a failure is logged as: its name only, when it is a plain word. A driver's or a store's message may hold a key, a
+ * host or a password.
+ */
+export function errorName(error: unknown): string {
+  const name = error instanceof Error ? error.name : 'unknown';
+  return /^[A-Za-z]{1,64}$/.test(name) ? name : 'unknown';
+}
+
 export function createUploadsHandler(deps: UploadsDeps): (request: Request) => Promise<Response> {
   const log =
     deps.log ??
@@ -192,9 +201,7 @@ export function createUploadsHandler(deps: UploadsDeps): (request: Request) => P
       );
       return answer(200, { uploads });
     } catch (error) {
-      // The name only: a driver's or a store's message may hold a key, a host or a password.
-      const name = error instanceof Error ? error.name : 'unknown';
-      log('uploads.failed', { step, error: /^[A-Za-z]{1,64}$/.test(name) ? name : 'unknown' });
+      log('uploads.failed', { step, error: errorName(error) });
       return refuse(500, 'The upload couldn’t be started. Please try again.');
     }
   };
