@@ -89,7 +89,7 @@ describe('storagePlans(plans, planId)', () => {
     expect(storagePlans(plans, 'scale')).toEqual({ plan: plans.scale, next: null });
   });
 
-  it('holds a workspace that has no plan yet to the smallest one (needs-zeus on #403)', () => {
+  it('holds a workspace that has no plan yet to the smallest one (Zeus, 2026-11-26, on #403)', () => {
     expect(storagePlans(plans, null)).toEqual({ plan: plans.starter, next: plans.agency });
   });
 

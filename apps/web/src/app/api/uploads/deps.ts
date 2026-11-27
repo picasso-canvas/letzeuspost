@@ -62,10 +62,10 @@ export interface UploadsServices {
   /** Queues an `asset` job in the rows' own transaction. */
   readonly send: SendAssetJob;
   readonly storage: UploadSigner;
-  readonly log?: UploadsDeps['log'];
 }
 
-export function uploadsDeps({ appOrigin, db, send, storage, log }: UploadsServices): UploadsDeps {
+/** The handler's dependencies on these handles; failures are logged by the handler's own default (a step and a code). */
+export function uploadsDeps({ appOrigin, db, send, storage }: UploadsServices): UploadsDeps {
   return {
     appOrigin,
     guard: (headers, action) => guard().check(headers, action),
@@ -86,6 +86,5 @@ export function uploadsDeps({ appOrigin, db, send, storage, log }: UploadsServic
         maxBytes: MAX_UPLOAD_BYTES,
         contentTypes: UPLOAD_TYPES,
       }),
-    ...(log === undefined ? {} : { log }),
   };
 }
