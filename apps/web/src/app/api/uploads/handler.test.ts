@@ -2,10 +2,15 @@
 // §02 Running out, and limits; §15's matrix, `edit-brands`), with the database, the guard, the limiter and the signer
 // as fakes and the real upload rules of @lzp/core. tests/tenancy/uploads.test.ts runs it on the real ones.
 import type { Guarded } from '@lzp/auth';
+import { checkUploadRound } from '@lzp/core';
 import type { StartedUploads, UploadRound, WorkspaceCtx } from '@lzp/db';
 import { describe, expect, it } from 'vitest';
-import { checkUploadRound } from '../../../../../../packages/core/src/quotas/uploads.ts';
-import { createUploadsHandler, UPLOAD_ROUNDS_PER_WINDOW, type UploadsDeps } from './handler.ts';
+import {
+  createUploadsHandler,
+  UPLOAD_ROUNDS_PER_WINDOW,
+  UPLOAD_WINDOW_SECONDS,
+  type UploadsDeps,
+} from './handler.ts';
 
 const APP = 'https://app.letzeuspost.test';
 const WS = '01900000-0000-7000-8000-000000000001';
@@ -229,13 +234,16 @@ describe('POST /api/uploads', () => {
     }
   });
 
+  it('allows a member 20 rounds a minute (Zeus, 2026-11-26, on #403)', () => {
+    expect([UPLOAD_ROUNDS_PER_WINDOW, UPLOAD_WINDOW_SECONDS]).toEqual([20, 60]);
+  });
+
   it('refuses past the rate limit, before anything is added', async () => {
     const { handler, steps } = harness({ rateLimit: () => Promise.resolve(false) });
     const response = await handler(post({ brandId: BRAND, files: [photo] }));
     expect(response.status).toBe(429);
     expect(response.headers.get('retry-after')).toMatch(/^\d+$/);
     expect(steps).toEqual(['guard:edit-brands:session=opaque']);
-    expect(UPLOAD_ROUNDS_PER_WINDOW).toBeGreaterThan(0);
   });
 
   it('answers 404 for a brand the workspace doesn’t have, and signs nothing', async () => {
