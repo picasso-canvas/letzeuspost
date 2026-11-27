@@ -14,6 +14,7 @@ export {
   createStorage,
   EXPORT_LINK_SECONDS,
   LINK_SECONDS,
+  UPLOAD_LINK_SECONDS,
   UploadLimitError,
   type ObjectInfo,
   type SignedDownload,

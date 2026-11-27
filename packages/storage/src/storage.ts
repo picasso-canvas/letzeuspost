@@ -1,6 +1,6 @@
 // The file store client (§13 File storage): an S3 client for SeaweedFS in development and R2 in production, which only
 // ever makes signed links. The browser never gets the keys, only a link for one file in one workspace that stops
-// working soon: 15 minutes, or 7 days for an export download (§12). Signing needs no network, so it's fast and tested
+// working soon: 5 minutes for an upload, 15 for a download, or 7 days for an export download (§12). Signing needs no network, so it's fast and tested
 // offline; the clock is injected so tests can sign in the past.
 //
 // Uploads are signed PUT links, not browser POST forms (S3's presigned POST): R2 takes presigned PUTs but not POST
@@ -103,8 +103,14 @@ export interface ObjectInfo {
 }
 
 const SECOND = 1000;
-/** §13: downloads last 15 minutes; an upload link follows the same rule. */
+/** §13: a download link lasts 15 minutes. */
 export const LINK_SECONDS = 15 * 60;
+/**
+ * An upload link lasts 5 minutes (Zeus, 2026-11-28, on #403): it stops working before the asset job's last try
+ * (packages/db's asset queue, at least 7 minutes after its first), so no file can land after the job rejected it as
+ * never arrived, where nothing would count or delete it (Cerberus F2 on #439).
+ */
+export const UPLOAD_LINK_SECONDS = 5 * 60;
 /** §13, §12: an export download link lasts 7 days. */
 export const EXPORT_LINK_SECONDS = 7 * 24 * 60 * 60;
 
@@ -175,7 +181,7 @@ export function createStorage(
           ContentLength: upload.size,
         }),
         {
-          expiresIn: LINK_SECONDS,
+          expiresIn: UPLOAD_LINK_SECONDS,
           signingDate,
           // Signed headers are enforced by the store: another type or size makes the signature fail.
           signableHeaders: new Set(['content-type', 'content-length']),
@@ -185,7 +191,7 @@ export function createStorage(
         method: 'PUT',
         url,
         headers: { 'content-type': upload.contentType, 'content-length': String(upload.size) },
-        expiresAt: new Date(signingDate.getTime() + LINK_SECONDS * SECOND),
+        expiresAt: new Date(signingDate.getTime() + UPLOAD_LINK_SECONDS * SECOND),
       };
     },
 

@@ -12,7 +12,7 @@
 //   4. the member's rate limit, in Postgres, as the app role (`hitWorkspaceRateLimit`);
 //   5. the round's limits (@lzp/core's `checkUploadRound`): types, 20 MB each, 30 files;
 //   6. the rows and their jobs, with the plan's storage limit checked under the workspace's lock (`startUploads`);
-//   7. a signed link per file (@lzp/storage's `signUpload`, 15 minutes).
+//   7. a signed link per file (@lzp/storage's `signUpload`, 5 minutes: gone before the asset job gives up on a file).
 // Every dependency is passed in (route.ts wires the real ones), so the steps are tested on fakes and on the real
 // services (tests/tenancy/uploads.test.ts). Answers never carry an error's own text; the log names a step and a code.
 import type { Guarded } from '@lzp/auth';

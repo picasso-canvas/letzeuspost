@@ -71,6 +71,7 @@ export {
   checkPayload,
   JobPayloadError,
   queueNames,
+  shortestRetryWindowSeconds,
   type Payload,
   type QueueName,
 } from './jobs/queues.ts';
