@@ -10,20 +10,17 @@
 //
 // One difference from the app: the `asset` job is recorded, not queued, so no worker of another services file picks
 // up a file that never arrives (packages/db's uploads.int.test.ts checks that the jobs go in the rows' own transaction;
-// the feature's journey runs the real queue). The modules are loaded by URL, as routes.test.ts loads apps/web's: the
-// root's typecheck reads no apps/web dependency.
-//
-// It isn't a `tenancy('route POST /api/uploads', …)` block yet: apps/web serves no /api/uploads (route.ts) until
-// @lzp/storage type-checks in apps/web (#403's PR, needs-zeus), and the inventory refuses a block for a route the app
-// doesn't have. The route's block is this file's tests, moved under it with route.ts.
+// the feature's journey runs the real queue through route.ts). The modules are loaded by URL, as routes.test.ts loads
+// apps/web's: the root's typecheck reads no apps/web dependency.
 import { randomUUIDv7 } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
 import { guard } from '../../packages/auth/src/index.ts';
 import { GB } from '../../packages/core/src/index.ts';
 import { member, type Db, type Payload, type SendAssetJob } from '../../packages/db/src/index.ts';
 import { assetKey, createStorage, type Storage } from '../../packages/storage/src/index.ts';
 import { headersWith, setUpTenancy, text, type Person, type Tenancy } from './fixtures.ts';
+import { tenancy } from './tenancy.ts';
 
 /** The parts of apps/web's handler.ts and deps.ts this file uses. */
 interface HandlerModule {
@@ -142,7 +139,8 @@ const newAssetsOf = async (brandId: string, fixture: string) =>
     (row) => row.id !== fixture,
   );
 
-describe('POST /api/uploads, on the real guard, database and signer', () => {
+// On the real guard, database and signer.
+tenancy('route POST /api/uploads', () => {
   it('starts a round for A’s Owner in A’s brand: a waiting row in A, its job named in A, a link under A’s key', async () => {
     const response = await handler(ask(cookies.a, t.a.brand.id));
     expect(response.status).toBe(200);
