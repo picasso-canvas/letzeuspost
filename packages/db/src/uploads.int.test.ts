@@ -10,6 +10,7 @@ import { loadEnv } from '@lzp/config';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, type Db, type Tx } from './db.ts';
+import { assetProcessing } from './jobs/asset-processing.ts';
 import type { Payload } from './jobs/queues.ts';
 import { migrate } from './migrate.ts';
 import { startUploads, type StorageUse } from './uploads.ts';
@@ -193,6 +194,56 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
     expect(refused).toEqual({ refused: 'storage', message: 'The Scale plan has 200 GB.' });
     expect(queue.sent).toEqual([]);
     expect(await rowsOf(ws.a)).toHaveLength(2);
+  });
+
+  /** One round of `files` sizes in workspace a; what the quota was asked, and the started uploads. */
+  async function roundOf(...sizes: number[]) {
+    const asked: StorageUse[] = [];
+    const result = await startUploads(
+      db,
+      recorder().send,
+      ctx(ws.a),
+      {
+        brandId: ws.a.brandId,
+        uploadedBy: ws.a.memberId,
+        files: sizes.map((sizeBytes) => ({ kind: 'photo' as const, sizeBytes })),
+      },
+      (use) => {
+        asked.push(use);
+        return { ok: true };
+      },
+    );
+    if (!('started' in result)) throw new Error(`refused: ${JSON.stringify(result)}`);
+    return { asked, started: result.started };
+  }
+
+  /** What the asset job does to a row it rejects (packages/db's `reject`, in the row's workspace). */
+  const rejectAsJob = (assetId: string, reason: string) =>
+    assetProcessing(db.forWorkspace(ctx(ws.a))).reject(assetId, reason);
+
+  it('counts a waiting file until the job rejects it as never arrived, then no longer (Cerberus F1, F2)', async () => {
+    const first = await roundOf(700);
+    const [declared] = first.started;
+    if (declared === undefined) throw new Error('no upload started');
+    // Still waiting, inside the job's retry window: its declared size counts.
+    expect((await roundOf(1)).asked).toEqual([{ plan: 'agency', usedBytes: 700, addingBytes: 1 }]);
+    // The job's last try finds no original and rejects the row (apps/worker's asset job, NEVER_ARRIVED).
+    expect(
+      await rejectAsJob(declared.assetId, 'The file never arrived. Please upload it again.'),
+    ).toBe(true);
+    // The next round counts only the file still waiting (1 byte), not the one that never arrived.
+    expect((await roundOf(2)).asked).toEqual([{ plan: 'agency', usedBytes: 1, addingBytes: 2 }]);
+  });
+
+  it('stops counting a file that arrived and was rejected for another reason too', async () => {
+    const first = await roundOf(400, 300);
+    const [badType] = first.started;
+    if (badType === undefined) throw new Error('no upload started');
+    expect(
+      await rejectAsJob(badType.assetId, "That file isn't a PDF or a JPG, PNG, WebP or SVG image."),
+    ).toBe(true);
+    // The rejected file (400) no longer counts; the one still waiting (300) does.
+    expect((await roundOf(5)).asked).toEqual([{ plan: 'agency', usedBytes: 300, addingBytes: 5 }]);
   });
 
   it('gives a workspace without a plan null, and counts only its own storage', async () => {
