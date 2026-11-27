@@ -1,55 +1,46 @@
 // The upload route's handler on the real services (#403, §13 Keeping workspaces apart, The app's API, File storage;
-// §15's matrix, `edit-brands`): the real guard and sessions, the app role's database with its row-level security, the
-// app role's rate limiter, @lzp/core's upload rules and storage limit with config/plans.ts, and the real signer. The
-// guard runs first: no session, a Viewer, and another workspace's member are refused, and nothing is added; a brand of
-// another workspace is never found; a round past the plan's storage is refused with the next-plan message.
+// §15's matrix, `edit-brands`): apps/web's own `uploadsDeps` (deps.ts), so the real guard and sessions, the app role's
+// database with its row-level security, the app role's rate limiter, @lzp/core's upload rules and storage limit with
+// config/plans.ts, and the real signer. The guard runs first: no session, a Viewer, and another workspace's member are
+// refused, and nothing is added; a brand of another workspace is never found; a round past the plan's storage is
+// refused with the next-plan message.
 //
-// The handler is wired here as apps/web's route.ts will wire it, with one difference: the `asset` job is recorded, not
-// queued, so no worker of another services file picks up a file that never arrives (packages/db's uploads.int.test.ts
-// checks that the jobs go in the rows' own transaction; the feature's journey runs the real queue). It is loaded by
-// URL, as routes.test.ts loads apps/web's modules: the root's typecheck reads no apps/web dependency.
+// A member is signed in, then opens the app (`guard().open`, as a signed-in page does), which gives the session its
+// workspace: the route works in the session's workspace and never takes one from the request.
+//
+// One difference from the app: the `asset` job is recorded, not queued, so no worker of another services file picks
+// up a file that never arrives (packages/db's uploads.int.test.ts checks that the jobs go in the rows' own transaction;
+// the feature's journey runs the real queue). The modules are loaded by URL, as routes.test.ts loads apps/web's: the
+// root's typecheck reads no apps/web dependency.
+//
+// It isn't a `tenancy('route POST /api/uploads', …)` block yet: apps/web serves no /api/uploads (route.ts) until
+// @lzp/storage type-checks in apps/web (#403's PR, needs-zeus), and the inventory refuses a block for a route the app
+// doesn't have. The route's block is this file's tests, moved under it with route.ts.
 import { randomUUIDv7 } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/env.ts';
-import { plans } from '../../config/plans.ts';
 import { guard } from '../../packages/auth/src/index.ts';
-import {
-  checkStorage,
-  checkUploadRound,
-  GB,
-  MAX_UPLOAD_BYTES,
-  storagePlans,
-  UPLOAD_TYPES,
-} from '../../packages/core/src/quotas/uploads.ts';
-import {
-  hitWorkspaceRateLimit,
-  member,
-  startUploads,
-  type Payload,
-  type StartedUploads,
-  type UploadRound,
-  type WorkspaceCtx,
-} from '../../packages/db/src/index.ts';
+import { GB } from '../../packages/core/src/index.ts';
+import { member, type Db, type Payload, type SendAssetJob } from '../../packages/db/src/index.ts';
 import { assetKey, createStorage, type Storage } from '../../packages/storage/src/index.ts';
 import { headersWith, setUpTenancy, text, type Person, type Tenancy } from './fixtures.ts';
 
-/** The parts of apps/web's handler module this file uses. */
+/** The parts of apps/web's handler.ts and deps.ts this file uses. */
 interface HandlerModule {
-  createUploadsHandler: (deps: {
-    appOrigin: string;
-    guard: (headers: Headers, action: 'edit-brands') => Promise<unknown>;
-    rateLimit: (ctx: WorkspaceCtx, userId: string) => Promise<boolean>;
-    checkRound: typeof checkUploadRound;
-    start: (ctx: WorkspaceCtx, round: UploadRound) => Promise<StartedUploads>;
-    sign: (
-      ctx: WorkspaceCtx,
-      key: string,
-      upload: { contentType: string; size: number },
-    ) => Promise<unknown>;
-  }) => (request: Request) => Promise<Response>;
+  createUploadsHandler: (deps: unknown) => (request: Request) => Promise<Response>;
   UPLOAD_ROUNDS_PER_WINDOW: number;
-  UPLOAD_WINDOW_SECONDS: number;
 }
+interface DepsModule {
+  uploadsDeps: (services: {
+    appOrigin: string;
+    db: Db;
+    send: SendAssetJob;
+    storage: Pick<Storage, 'signUpload'>;
+  }) => unknown;
+}
+
+const load = async <T>(file: string): Promise<T> =>
+  (await import(new URL(`../../apps/web/src/app/api/uploads/${file}`, import.meta.url).href)) as T;
 
 interface Answer {
   uploads?: { assetId: string; upload: { method: string; url: string } }[];
@@ -60,67 +51,69 @@ const web = loadEnv('web');
 let t: Tenancy;
 let storage: Storage;
 let handler: (request: Request) => Promise<Response>;
-let limits: Pick<HandlerModule, 'UPLOAD_ROUNDS_PER_WINDOW'>;
+let roundsPerWindow: number;
 /** The jobs the handler queued, each with the workspace it named. */
 const queued: Payload<'asset'>[] = [];
-/** A Viewer of A, and the session cookies of A's Owner and Viewer and of B's Owner. */
-let viewer: Person;
-const cookies = { a: '', viewer: '', b: '' };
+/** Session cookies, each opened in its workspace: A's Owner and Viewer, B's Owner, and an Editor of B for the limit. */
+const cookies = { a: '', viewer: '', b: '', limited: '' };
+
+/** A person of this run, made a member of `ws` with `role` by the app role, in the workspace's own unit of work. */
+async function memberOf(
+  ws: Tenancy['a'],
+  name: string,
+  role: 'viewer' | 'editor',
+): Promise<Person> {
+  const email = `uploads-${name}-${t.run}@tenancy.invalid`;
+  const [row] = await t.asOwner(
+    text`insert into "user" (name, email) values (${`Tenancy ${name} ${t.run}`}, ${email}) returning id`,
+  );
+  const person = { id: String(row?.id), email };
+  await t.app
+    .forWorkspace(ws.ctx)
+    .transaction((tx) =>
+      tx.insert(member).values({ workspaceId: ws.ctx.workspaceId, userId: person.id, role }),
+    );
+  return person;
+}
+
+/** Signs `person` in and opens the app, as the first signed-in page does: the session's workspace is then `ws`. */
+async function signedInto(person: Person, ws: Tenancy['a']): Promise<string> {
+  const cookie = await t.signIn(person);
+  const opened = await guard().open(headersWith(cookie));
+  if (!opened.ok || opened.workspace.id !== ws.ctx.workspaceId) {
+    throw new Error('the session didn’t open in the member’s workspace');
+  }
+  return cookie;
+}
 
 beforeAll(async () => {
-  const module = (await import(
-    new URL('../../apps/web/src/app/api/uploads/handler.ts', import.meta.url).href
-  )) as HandlerModule;
-  limits = module;
+  const [handlerModule, depsModule] = await Promise.all([
+    load<HandlerModule>('handler.ts'),
+    load<DepsModule>('deps.ts'),
+  ]);
+  roundsPerWindow = handlerModule.UPLOAD_ROUNDS_PER_WINDOW;
   t = await setUpTenancy('uploads');
   storage = createStorage(web);
-  handler = module.createUploadsHandler({
-    appOrigin: web.APP_URL,
-    guard: (headers, action) => guard().check(headers, action),
-    rateLimit: (ctx, userId) =>
-      hitWorkspaceRateLimit(
-        t.app,
-        ctx,
-        `uploads:${userId}`,
-        module.UPLOAD_ROUNDS_PER_WINDOW,
-        module.UPLOAD_WINDOW_SECONDS,
-      ),
-    checkRound: checkUploadRound,
-    start: (ctx, round) =>
-      startUploads(
-        t.app,
-        (payload) => {
-          queued.push(payload);
-          return Promise.resolve(randomUUIDv7());
-        },
-        ctx,
-        round,
-        ({ plan, usedBytes, addingBytes }) =>
-          checkStorage({ ...storagePlans(plans, plan), usedBytes, addingBytes }),
-      ),
-    sign: (ctx, key, upload) =>
-      storage.signUpload(ctx, key, upload, {
-        maxBytes: MAX_UPLOAD_BYTES,
-        contentTypes: [...UPLOAD_TYPES],
-      }),
-  });
-
-  // A Viewer of A: a member who may see A's brands but not add to them (§15).
-  const email = `uploads-viewer-${t.run}@tenancy.invalid`;
-  const [row] = await t.asOwner(
-    text`insert into "user" (name, email) values (${`Tenancy viewer ${t.run}`}, ${email}) returning id`,
+  handler = handlerModule.createUploadsHandler(
+    depsModule.uploadsDeps({
+      appOrigin: web.APP_URL,
+      db: t.app,
+      send: (payload) => {
+        queued.push(payload);
+        return Promise.resolve(randomUUIDv7());
+      },
+      storage,
+    }),
   );
-  viewer = { id: String(row?.id), email };
-  await t.app
-    .forWorkspace(t.a.ctx)
-    .transaction((tx) =>
-      tx
-        .insert(member)
-        .values({ workspaceId: t.a.ctx.workspaceId, userId: viewer.id, role: 'viewer' }),
-    );
-  cookies.a = await t.signIn(t.a.owner);
-  cookies.viewer = await t.signIn(viewer);
-  cookies.b = await t.signIn(t.b.owner);
+
+  // A Viewer of A (§15: sees A's brands, can't add to them), and an Editor of B whose limit nothing else spends.
+  // The users' emails end like the fixture's, so `close` removes them too.
+  const viewer = await memberOf(t.a, 'viewer', 'viewer');
+  const limited = await memberOf(t.b, 'limited', 'editor');
+  cookies.a = await signedInto(t.a.owner, t.a);
+  cookies.viewer = await signedInto(viewer, t.a);
+  cookies.b = await signedInto(t.b.owner, t.b);
+  cookies.limited = await signedInto(limited, t.b);
 }, 60_000);
 
 afterAll(async () => {
@@ -163,7 +156,7 @@ describe('POST /api/uploads, on the real guard, database and signer', () => {
     expect(upload.url).toContain(key);
     expect(
       await t.asOwner(
-        text`select workspace_id, status, source, uploaded_by, storage_key from asset where id = ${assetId}`,
+        text`select workspace_id, status, source, uploaded_by, storage_key, size_bytes::text as size_bytes from asset where id = ${assetId}`,
       ),
     ).toEqual([
       {
@@ -172,6 +165,8 @@ describe('POST /api/uploads, on the real guard, database and signer', () => {
         source: 'own',
         uploaded_by: t.a.owner.id,
         storage_key: key,
+        // The size the link is signed for, which the plan's storage counts until the job reads the file.
+        size_bytes: '1000',
       },
     ]);
     expect(queued.at(-1)).toEqual({
@@ -194,6 +189,8 @@ describe('POST /api/uploads, on the real guard, database and signer', () => {
     const before = queued.length;
     const response = await handler(ask(cookies.viewer, t.a.brand.id));
     expect(response.status).toBe(403);
+    // Refused for the role, in A: not for a missing workspace.
+    expect(((await response.json()) as Answer).error).toBe('Your role can’t add files to a brand.');
     expect(queued).toHaveLength(before);
     expect(await newAssetsOf(t.a.brand.id, t.a.asset.id)).toEqual([]);
   });
@@ -216,7 +213,8 @@ describe('POST /api/uploads, on the real guard, database and signer', () => {
   });
 
   it('refuses a round past the plan’s storage with the next-plan message, and adds nothing', async () => {
-    // A has no plan set (billing sets it), so it is held to Starter's 10 GB; a file of A's already takes all of it.
+    // A has no plan set (billing sets it), so it is held to Starter's 10 GB (Zeus, 2026-11-26, on #403); a file of
+    // A's already takes all of it.
     const full = randomUUIDv7();
     const key = assetKey(t.a.ctx, { brandId: t.a.brand.id, assetId: full, variant: 'original' });
     await t.asOwner(
@@ -237,16 +235,24 @@ describe('POST /api/uploads, on the real guard, database and signer', () => {
     }
   });
 
-  it('rate limits a member’s rounds in Postgres, as the app role: the next round past the limit is refused', async () => {
+  it('rate limits a member’s rounds in Postgres, as the app role: the round past 20 a minute is refused', async () => {
     // Each refused GIF round still counts (the limit comes before the round's rules), and adds nothing.
+    expect(roundsPerWindow).toBe(20);
     const gif = [{ ...photo, contentType: 'image/gif' }];
-    for (let n = 0; n < limits.UPLOAD_ROUNDS_PER_WINDOW; n += 1) {
-      expect((await handler(ask(cookies.b, t.b.brand.id, gif))).status, String(n)).toBe(400);
+    for (let n = 1; n <= roundsPerWindow; n += 1) {
+      const response = await handler(ask(cookies.limited, t.b.brand.id, gif));
+      expect(response.status, `round ${String(n)}`).toBe(400);
     }
-    const refused = await handler(ask(cookies.b, t.b.brand.id));
+    const refused = await handler(ask(cookies.limited, t.b.brand.id));
     expect(refused.status).toBe(429);
-    // B's limit is B's Owner's alone: A's Owner, in A, still uploads.
-    const other = await handler(ask(cookies.a, t.a.brand.id));
+    expect(refused.headers.get('retry-after')).toBe('60');
+    expect(
+      await t.asOwner(
+        text`select id from asset where workspace_id = ${t.b.ctx.workspaceId} and id <> ${t.b.asset.id}`,
+      ),
+    ).toEqual([]);
+    // The limit is that member's alone: B's Owner, in the same workspace, still uploads.
+    const other = await handler(ask(cookies.b, t.b.brand.id));
     expect(other.status).toBe(200);
   });
 });
