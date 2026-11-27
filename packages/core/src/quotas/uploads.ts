@@ -78,7 +78,7 @@ type PlanId = (typeof PLAN_ORDER)[number];
 
 /**
  * A workspace's plan and the one above it (none above the largest). A workspace whose plan billing hasn't set yet
- * (`workspace.plan` is null) is held to the smallest plan: the plan doesn't say, so #403 asks Zeus (needs-zeus).
+ * (`workspace.plan` is null) is held to the smallest plan, Starter's 10 GB (Zeus, 2026-11-26, on #403).
  * A plan this list doesn't know is an error, never a guessed limit.
  */
 export function storagePlans(
