@@ -15,6 +15,7 @@ import {
   hitWorkspaceRateLimit,
   startUploads,
   type Db,
+  type Jobs,
   type QuotaAnswer,
   type SendAssetJob,
   type StorageUse,
@@ -29,8 +30,8 @@ import {
 } from './handler.ts';
 
 /**
- * The file store's signer: the part of @lzp/storage's `Storage` the route uses, which a `createStorage(…)` is. Named
- * here, not imported: apps/web doesn't type-check @lzp/storage's source yet (#403's PR, needs-zeus).
+ * The file store's signer: the part of @lzp/storage's `Storage` the route uses, which a `createStorage(…)` from
+ * `@lzp/storage/signer` is (route.ts), and a test's fake can be.
  */
 export interface UploadSigner {
   readonly signUpload: (
@@ -52,6 +53,22 @@ export function storageQuota(use: StorageUse): QuotaAnswer {
     usedBytes: use.usedBytes,
     addingBytes: use.addingBytes,
   });
+}
+
+/**
+ * The `asset` queue's sender, for the rows' own transaction. pg-boss starts on the first round, once, so a web process
+ * that never uploads never connects to it; a start that failed fails its round and is tried again on the next.
+ */
+export function assetJobSender(jobs: Pick<Jobs, 'start' | 'send'>): SendAssetJob {
+  let started: Promise<void> | undefined;
+  return async (payload, options) => {
+    started ??= jobs.start().catch((error: unknown) => {
+      started = undefined;
+      throw error;
+    });
+    await started;
+    return jobs.send('asset', payload, options);
+  };
 }
 
 export interface UploadsServices {
