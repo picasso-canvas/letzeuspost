@@ -165,7 +165,8 @@ describe('startUploads(db, send, ctx, round, quota)', () => {
   it('gives the quota the plan and what the workspace already stores, and adds nothing when it refuses', async () => {
     await owner.query(
       `insert into asset (id, workspace_id, brand_id, kind, storage_key, source, size_bytes)
-       select g, $1, $2, 'photo', 'ws/' || $1 || '/brands/' || $2 || '/assets/' || g || '/original', 'own', 500
+       select g, $1::uuid, $2::uuid, 'photo',
+              'ws/' || $1::text || '/brands/' || $2::text || '/assets/' || g::text || '/original', 'own', 500
          from (select uuidv7() as g from generate_series(1, 2)) ids`,
       [ws.a.id, ws.a.brandId],
     );
