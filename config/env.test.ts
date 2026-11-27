@@ -53,6 +53,8 @@ const expected: Record<ProcessName, readonly string[]> = {
   fetcher: ['LZP_ENV'],
   migrate: ['LZP_ENV', 'DATABASE_OWNER_URL'],
   seed: ['LZP_ENV', 'DATABASE_OWNER_URL'],
+  // `seed:dev` with its sample logos: the owner role and the file store (#443).
+  'seed-dev': ['LZP_ENV', 'DATABASE_OWNER_URL', ...FILE_STORE],
 };
 const processes = Object.keys(expected) as ProcessName[];
 
@@ -232,9 +234,13 @@ describe('the app and file-store addresses are https:// outside development and 
   });
 
   it.each(
-    ['staging', 'production'].flatMap((environment) =>
-      readers.flatMap((name) => ADDRESSES.map((setting) => [environment, name, setting] as const)),
-    ),
+    ['staging', 'production'].flatMap((environment) => [
+      ...readers.flatMap((name) =>
+        ADDRESSES.map((setting) => [environment, name, setting] as const),
+      ),
+      // seed-dev holds the file store but not the app's address (#443).
+      [environment, 'seed-dev', 'STORAGE_ENDPOINT'] as const,
+    ]),
   )(
     'in %s, %s refuses an http:// %s, naming it but not its value',
     (environment, name, setting) => {
@@ -259,6 +265,18 @@ describe('the app and file-store addresses are https:// outside development and 
         DATABASE_OWNER_URL: valid.DATABASE_OWNER_URL,
       });
     }
+  });
+
+  // Picasso's `seed` container (docker/compose.picasso.yml) passes only these two, for `seed:studio` (#443, Cerberus F1).
+  it('starts seed with only what Picasso’s seed container passes, and refuses seed-dev without the file store', () => {
+    const container = {
+      LZP_ENV: 'production',
+      DATABASE_OWNER_URL: 'postgres://lzp_owner@db.internal:5432/letzeuspost',
+    };
+    expect(loadEnv('seed', container)).toEqual(container);
+    const { message } = thrownBy(() => loadEnv('seed-dev', container));
+    for (const setting of FILE_STORE) expect(message).toContain(`${setting} is missing`);
+    expect(message).not.toContain('DATABASE_OWNER_URL');
   });
 
   it('refuses http:// however its scheme is written', () => {

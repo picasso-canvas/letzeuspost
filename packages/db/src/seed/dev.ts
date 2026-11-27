@@ -1,5 +1,7 @@
 // `pnpm --filter @lzp/db seed:dev`: Northwind Social, the sample agency for development and tests (#79, Q14, §17), with
-// its owner and an editor, and its 3 sample brands with full kits (#411). Refused in production. Runs as the owner role
+// its owner and an editor, and its 3 sample brands with full kits (#411), without their logos: those need the file
+// store, which this package can't reach (@lzp/storage depends on it). The repository's `pnpm seed:dev` runs
+// apps/worker/src/seed-dev.ts, which adds them too (#443). Refused in production. Runs as the owner role
 // (DATABASE_OWNER_URL, config/env.ts's `seed` process). A second run changes nothing.
 import { loadEnv } from '@lzp/config';
 import { runDevSeed } from './run.ts';

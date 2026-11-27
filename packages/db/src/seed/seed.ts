@@ -83,14 +83,14 @@ export function refuseDevSeedIn(environment: string): void {
 export const SEED_LOCK = 79;
 
 /**
- * Adds what `seed` describes and is missing, in one transaction, and says whether it changed anything and which
- * workspace is the seed's. A workspace that already has another Owner is refused, and the transaction leaves
+ * Adds what `seed` describes and is missing, in one transaction, and says whether it changed anything, which
+ * workspace is the seed's and who its Owner is (the user the sample logos are uploaded by, #443). A workspace that already has another Owner is refused, and the transaction leaves
  * everything as it was.
  */
 export function seedWorkspace(
   orm: NodePgDatabase,
   seed: Seed,
-): Promise<{ changed: boolean; workspaceId: string }> {
+): Promise<{ changed: boolean; workspaceId: string; ownerId: string }> {
   const [owner] = seed.people;
   if (owner?.role !== 'owner') throw new Error('seed: refused: the first person must be the Owner');
   return orm.transaction(async (tx) => {
@@ -166,6 +166,6 @@ export function seedWorkspace(
         `seed: refused: ${owner.name} is a member of ${seed.workspace.name} but not its Owner`,
       );
     }
-    return { changed, workspaceId: place.id };
+    return { changed, workspaceId: place.id, ownerId };
   });
 }
