@@ -1,22 +1,18 @@
 // The Asset library feature's journey (§19 Features; §06 Asset library, §10, §13 File storage): a member uploads a
 // file, it goes straight to the bucket through a signed link, the worker's `asset` job checks and processes it, and it
-// becomes a ready asset of the member's brand, usable in a post, that another workspace can't see. It was written with
-// the feature's first task (#400), before the route and the processing, so it is marked as an expected failure
-// (`it.fails`, Vitest's `test.fail()`): CI stays green while it fails, and goes red the day it passes with the mark
-// still on.
+// becomes a ready asset of the member's brand that another workspace can't see. It was written with the feature's
+// first task (#400), before the route and the processing, and marked as an expected failure until #403 added
+// apps/web's `/api/uploads` route.ts (§13 Routes: signed upload links).
 //
-// What it still waits for (#403's PR, needs-zeus): apps/web's `/api/uploads` route.ts (§13 Routes: signed upload
-// links), loaded at the point of use, so the test fails there with a clear message and not at import; and the photo's
-// people check (`peoplePresent`, which only the tagging sets), without which no photo is usable in a post. The calls
-// follow the route's real API (handler.ts: a round of files, a link per file); a later task may change a call again to
-// follow it, but never weaken an assertion.
+// Whether the photo is usable in a post isn't checked here: that needs its people check (`peoplePresent`), which only
+// the tagging (`tagAsset`, #405) sets (Zeus, 2026-11-27, on #403). The calls follow the route's real API (handler.ts:
+// a round of files, a link per file); a later task may change a call again to follow it, but never weaken an assertion.
 //
 // Runs only in `pnpm check:services` and CI's `services` job (the `.int.test.ts` name; Postgres and the file store
 // come from docker/compose.yml). The workspaces, people and rows are this run's, from the tenancy suite's fixtures.
 import { describe, expect, it } from 'vitest';
 import { loadEnv, type Env } from '../../config/env.ts';
 import { guard } from '../../packages/auth/src/index.ts';
-import { isUsableInPost } from '../../packages/core/src/brand/asset.ts';
 import { asset } from '../../packages/db/src/index.ts';
 import { assetKey, createStorage } from '../../packages/storage/src/index.ts';
 import { encodePng } from '../golden/png.ts';
@@ -56,12 +52,9 @@ function askToUpload(url: string, cookie: string, brandId: string, size: number)
 
 async function loadUploadsRoute(): Promise<UploadsRoute> {
   const url = new URL('../../apps/web/src/app/api/uploads/route.ts', import.meta.url).href;
-  // Missing today: the import itself fails ("Cannot find module"), which is the expected failure.
   const route = (await import(url)) as Partial<UploadsRoute>;
   if (typeof route.POST !== 'function') {
-    throw new Error(
-      'apps/web has no /api/uploads route yet: the Asset library’s last task adds it',
-    );
+    throw new Error('apps/web has no /api/uploads route');
   }
   return route as UploadsRoute;
 }
@@ -92,7 +85,7 @@ async function until(check: () => Promise<boolean>, seconds: number): Promise<bo
 }
 
 describe('the Asset library feature: an uploaded file becomes a ready asset of its brand', () => {
-  it.fails(
+  it(
     'uploads a photo through a signed link, processes it, and keeps it in its workspace',
     { timeout: 120_000 },
     async () => {
@@ -157,9 +150,6 @@ describe('the Asset library feature: an uploaded file becomes a ready asset of i
         expect(row?.sha256).toMatch(/^[0-9a-f]{64}$/);
         expect(row?.perceptualHash).toMatch(/^[0-9a-f]{16,64}$/);
         expect(row?.sizeBytes).toBeGreaterThan(0);
-        // A gradient has no people in it: once the tagging says so, it can go in a post.
-        expect(row?.peoplePresent).toBe(false);
-        expect(row !== undefined && isUsableInPost(row)).toBe(true);
 
         // The original and its two copies are in the bucket, under A's brand.
         for (const variant of ['original', '1600', '360'] as const) {
