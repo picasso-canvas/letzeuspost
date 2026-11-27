@@ -4,7 +4,13 @@
 import { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { assetKey, exportKey, renderKey, StorageKeyError } from './keys.ts';
-import { createStorage, UploadLimitError, type Storage, type UploadLimits } from './storage.ts';
+import {
+  createStorage,
+  UPLOAD_LINK_SECONDS,
+  UploadLimitError,
+  type Storage,
+  type UploadLimits,
+} from './storage.ts';
 
 const WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8e9f';
 const OTHER_WORKSPACE = '019a5c3e-7b1a-7c2d-8e3f-4a5b6c7d8ea0';
@@ -106,12 +112,13 @@ describe('upload links', () => {
   const key = assetKey(ctx, { brandId: BRAND, assetId: ASSET, variant: 'original' });
   const photo = { contentType: 'image/png', size: 1234 } as const;
 
-  it('are PUT links for this key, good for 15 minutes', async () => {
+  it('are PUT links for this key, good for 5 minutes: gone before the asset job gives up on the file (Zeus, 2026-11-28, on #403)', async () => {
     const link = await storage.signUpload(ctx, key, photo, limits);
     expect(link.method).toBe('PUT');
     expect(new URL(link.url).pathname).toBe(`/${settings.STORAGE_BUCKET}/${key}`);
-    expect(lifetime(link.url).expires).toBe(15 * 60);
-    expect(link.expiresAt).toEqual(new Date('2026-11-10T09:45:00.000Z'));
+    expect(lifetime(link.url).expires).toBe(5 * 60);
+    expect(link.expiresAt).toEqual(new Date('2026-11-10T09:35:00.000Z'));
+    expect(UPLOAD_LINK_SECONDS).toBe(5 * 60);
   });
 
   it('sign the type and the exact size, and say which headers the browser must send', async () => {

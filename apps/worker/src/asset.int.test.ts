@@ -2,8 +2,9 @@
 // job (#402, §06 Reading uploaded files and Asset library, §10 Processing every image, §13 Jobs and File storage): an
 // upload becomes a ready asset with its sizes in the bucket, or a rejected one with a plain reason; running the job
 // again, or after a run that died before its last write, changes nothing more; duplicates are found by sha256 and by
-// perceptual hash within a brand, the newer marked and both kept; a client's photo waits for the agency; and a job of
-// one workspace naming another's asset reaches nothing of it.
+// perceptual hash within a brand, the newer marked and both kept; a client's photo waits for the agency; a rejected
+// file leaves the bucket as it stops counting against the plan's storage; and a job of one workspace naming another's
+// asset reaches nothing of it.
 //
 // The handler runs here directly, with the job context `createJobs` gives it, not through the queue: another services
 // file's worker could take this file's jobs (as tests/tenancy/jobs.test.ts explains). Every workspace, row and file is
@@ -16,6 +17,7 @@ import {
   brand,
   createDb,
   migrate,
+  startUploads,
   workspace,
   type AssetKind,
   type AssetSource,
@@ -43,6 +45,8 @@ interface Space {
 let db: Db;
 let a: Space;
 let b: Space;
+/** Only the rejected-file tests upload here, so what it stores moves only with them. */
+let c: Space;
 const made: { ctx: WorkspaceCtx; key: string }[] = [];
 
 const VARIANTS = ['original', '1600', '360'] as const satisfies readonly AssetVariant[];
@@ -73,11 +77,12 @@ beforeAll(async () => {
   db = createDb(env.DATABASE_URL);
   a = await space('a');
   b = await space('b');
+  c = await space('c');
 }, 60_000);
 
 afterAll(async () => {
   for (const { ctx, key } of made) await storage.delete(ctx, key);
-  for (const each of [a, b]) {
+  for (const each of [a, b, c]) {
     await db.forWorkspace(each.ctx).transaction(async (tx) => {
       await tx.delete(workspace); // row-level security: only this run's workspace; its brands and assets go with it
     });
@@ -100,7 +105,8 @@ async function upload(
     kind = 'photo',
     source = 'own',
     brandId = s.brandId,
-  }: { kind?: AssetKind; source?: AssetSource; brandId?: string } = {},
+    sizeBytes,
+  }: { kind?: AssetKind; source?: AssetSource; brandId?: string; sizeBytes?: number } = {},
 ): Promise<{ id: string; brandId: string }> {
   const id = randomUUIDv7();
   for (const variant of VARIANTS) made.push({ ctx: s.ctx, key: keyOf(s, brandId, id, variant) });
@@ -112,6 +118,7 @@ async function upload(
       kind,
       source,
       storageKey: keyOf(s, brandId, id, 'original'),
+      ...(sizeBytes === undefined ? {} : { sizeBytes }),
     }),
   );
   const isPdf = Buffer.from(file.subarray(0, 5)).toString('latin1') === '%PDF-';
@@ -357,6 +364,80 @@ describe('duplicates (§06, §10; Zeus, 2026-11-25: both are kept)', { timeout: 
     expect((await rowOf(a, rejected.id)).duplicateOf).toBeNull();
   });
 });
+
+describe(
+  'a rejected file (Cerberus F1 on #439, Zeus’s decision 1(a), 2026-11-28)',
+  { timeout: 60_000 },
+  () => {
+    /** What the workspace stores as the upload route's quota is told it (packages/db's startUploads); adds nothing. */
+    async function usedBytes(s: Space): Promise<number> {
+      let seen: number | undefined;
+      const answer = await startUploads(
+        db,
+        () => Promise.reject(new Error('no job is queued here')),
+        s.ctx,
+        {
+          brandId: s.brandId,
+          uploadedBy: randomUUIDv7(),
+          files: [{ kind: 'photo', sizeBytes: 1 }],
+        },
+        (use) => {
+          seen = use.usedBytes;
+          return { ok: false, message: 'only measuring' };
+        },
+      );
+      if (seen === undefined || !('refused' in answer)) throw new Error('the quota was not asked');
+      return seen;
+    }
+
+    it('leaves the bucket and stops counting: a file that arrived and was refused as no PDF or picture', async () => {
+      const before = await usedBytes(c);
+      const junk = Buffer.from(`not a picture ${run}`.repeat(1000));
+      const file = await upload(c, junk, { kind: 'document', sizeBytes: junk.byteLength });
+      expect(await storage.head(c.ctx, keyOf(c, file.brandId, file.id, 'original'))).toEqual({
+        size: junk.byteLength,
+        contentType: 'image/png',
+      });
+      expect(await usedBytes(c)).toBe(before + junk.byteLength);
+
+      await jobFor(c, file);
+      expect(await rowOf(c, file.id)).toMatchObject({
+        status: 'rejected',
+        rejectReason: "That file isn't a PDF or a JPG, PNG, WebP or SVG image.",
+      });
+      expect(await filesOf(c, file)).toEqual([null, null, null]);
+      expect(await usedBytes(c)).toBe(before);
+    });
+
+    it('leaves no key behind for a file that never arrived, rejected on the last try', async () => {
+      const before = await usedBytes(c);
+      const id = randomUUIDv7();
+      for (const variant of VARIANTS) {
+        made.push({ ctx: c.ctx, key: keyOf(c, c.brandId, id, variant) });
+      }
+      await db.forWorkspace(c.ctx).transaction((tx) =>
+        tx.insert(asset).values({
+          id,
+          workspaceId: c.ctx.workspaceId,
+          brandId: c.brandId,
+          kind: 'photo',
+          source: 'own',
+          storageKey: keyOf(c, c.brandId, id, 'original'),
+          sizeBytes: 4096,
+        }),
+      );
+      expect(await usedBytes(c)).toBe(before + 4096);
+
+      const missing = { id, brandId: c.brandId };
+      await expect(jobFor(c, missing, { retryCount: 3, lastAttempt: true })).rejects.toThrow(
+        'asset job failed (missing)',
+      );
+      expect((await rowOf(c, id)).status).toBe('rejected');
+      expect(await filesOf(c, missing)).toEqual([null, null, null]);
+      expect(await usedBytes(c)).toBe(before);
+    });
+  },
+);
 
 describe('another workspace’s asset', { timeout: 60_000 }, () => {
   it('is out of reach of a job of A’s that names it: its row and its file stay as they were', async () => {
