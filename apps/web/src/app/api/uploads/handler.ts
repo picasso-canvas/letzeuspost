@@ -20,7 +20,10 @@ import type { Action } from '@lzp/core';
 import { assetKinds, type StartedUploads, type UploadRound, type WorkspaceCtx } from '@lzp/db';
 import { z } from 'zod';
 
-/** A member's upload rounds allowed per window: generous for a person, a wall for a loop (#403's PR says why). */
+/**
+ * A member's upload rounds allowed per window: generous for a person, a wall for a loop. 20 rounds per member per
+ * 60 seconds, confirmed by Zeus (2026-11-26, on #403).
+ */
 export const UPLOAD_ROUNDS_PER_WINDOW = 20;
 export const UPLOAD_WINDOW_SECONDS = 60;
 /** The largest body read: 30 files of the round's shape fit many times over. */

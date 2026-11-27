@@ -2,9 +2,10 @@
 // carries. The guard, the rate limiter and the rows run on the real services in tests/tenancy/uploads.test.ts.
 import { GB, MAX_UPLOAD_BYTES, UPLOAD_TYPES } from '@lzp/core';
 import type { Db } from '@lzp/db';
-import type { Storage, UploadLimits, UploadRequest } from '@lzp/storage';
 import { describe, expect, it } from 'vitest';
-import { storageQuota, uploadsDeps } from './deps.ts';
+import { storageQuota, uploadsDeps, type UploadSigner } from './deps.ts';
+
+type Asked = Parameters<UploadSigner['signUpload']>;
 
 const WS = { workspaceId: '01900000-0000-7000-8000-000000000001' };
 
@@ -45,15 +46,14 @@ describe('storageQuota(use)', () => {
 
 describe('uploadsDeps(…).sign', () => {
   it('signs each link for §06’s types and 20 MB, to the key and workspace it was given', async () => {
-    const asked: { ctx: unknown; key: string; upload: UploadRequest; limits: UploadLimits }[] = [];
-    const storage: Pick<Storage, 'signUpload'> = {
+    const asked: { ctx: Asked[0]; key: string; upload: Asked[2]; limits: Asked[3] }[] = [];
+    const storage: UploadSigner = {
       signUpload: (ctx, key, upload, limits) => {
         asked.push({ ctx, key, upload, limits });
         return Promise.resolve({
           method: 'PUT',
           url: `https://files.test/${key}`,
           headers: { 'content-type': upload.contentType, 'content-length': String(upload.size) },
-          expiresAt: new Date(0),
         });
       },
     };
