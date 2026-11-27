@@ -1,19 +1,21 @@
 // The Asset library feature's journey (§19 Features; §06 Asset library, §10, §13 File storage): a member uploads a
 // file, it goes straight to the bucket through a signed link, the worker's `asset` job checks and processes it, and it
-// becomes a ready asset of the member's brand, usable in a post, that another workspace can't see. It is the feature's
-// first task (#400): the table and the queue are here, but the upload route and the processing aren't, so it is marked
-// as an expected failure (`it.fails`, Vitest's `test.fail()`): CI stays green while it fails, and goes red the day it
-// passes with the mark still on. The feature's last task (the upload route) takes the mark off.
+// becomes a ready asset of the member's brand, usable in a post, that another workspace can't see. It was written with
+// the feature's first task (#400), before the route and the processing, so it is marked as an expected failure
+// (`it.fails`, Vitest's `test.fail()`): CI stays green while it fails, and goes red the day it passes with the mark
+// still on.
 //
-// What it calls that doesn't exist yet is apps/web's `/api/uploads` route (§13 Routes: signed upload links), loaded at
-// the point of use, so the test fails there with a clear message and not at import, and the worker's `asset` handler.
-// The route's request and answer are named here as the journey expects them; a later task may change a call to follow
-// its real API (a confirm step after the upload, another field name), but never weaken an assertion.
+// What it still waits for (#403's PR, needs-zeus): apps/web's `/api/uploads` route.ts (§13 Routes: signed upload
+// links), loaded at the point of use, so the test fails there with a clear message and not at import; and the photo's
+// people check (`peoplePresent`, which only the tagging sets), without which no photo is usable in a post. The calls
+// follow the route's real API (handler.ts: a round of files, a link per file); a later task may change a call again to
+// follow it, but never weaken an assertion.
 //
 // Runs only in `pnpm check:services` and CI's `services` job (the `.int.test.ts` name; Postgres and the file store
 // come from docker/compose.yml). The workspaces, people and rows are this run's, from the tenancy suite's fixtures.
 import { describe, expect, it } from 'vitest';
 import { loadEnv, type Env } from '../../config/env.ts';
+import { guard } from '../../packages/auth/src/index.ts';
 import { isUsableInPost } from '../../packages/core/src/brand/asset.ts';
 import { asset } from '../../packages/db/src/index.ts';
 import { assetKey, createStorage } from '../../packages/storage/src/index.ts';
@@ -31,10 +33,25 @@ interface UploadsRoute {
   POST: (request: Request) => Promise<Response>;
 }
 
-/** What the route answers: the new asset's id and the signed link to put the file to (@lzp/storage's SignedUpload). */
+/** What the route answers: per file of the round, the new asset's id and the signed link to put it to. */
 interface UploadAnswer {
-  assetId: string;
-  upload: { method: 'PUT'; url: string; headers: Record<string, string> };
+  uploads: {
+    assetId: string;
+    upload: { method: 'PUT'; url: string; headers: Record<string, string> };
+  }[];
+}
+
+/** A round of one file of A's brand, as the browser asks for it with `cookie`'s session. */
+function askToUpload(url: string, cookie: string, brandId: string, size: number): Request {
+  return new Request(url, {
+    method: 'POST',
+    headers: {
+      ...Object.fromEntries(headersWith(cookie)),
+      'content-type': 'application/json',
+      origin: new URL(url).origin,
+    },
+    body: JSON.stringify({ brandId, files: [{ kind: 'photo', contentType: 'image/png', size }] }),
+  });
 }
 
 async function loadUploadsRoute(): Promise<UploadsRoute> {
@@ -87,29 +104,23 @@ describe('the Asset library feature: an uploaded file becomes a ready asset of i
         cleanups.push(() => {
           storage.close();
         });
+        const uploadsUrl = `${web.APP_URL}/api/uploads`;
+        // Signed in, then the app opens (as its first page does), which gives the session its workspace: A.
         const cookie = await t.signIn(t.a.owner);
+        expect((await guard().open(headersWith(cookie))).ok).toBe(true);
         const file = photo();
 
         // 1. The member asks for an upload link for a photo of A's brand: a new asset, waiting, with its own key.
         const route = await loadUploadsRoute();
         const asked = await route.POST(
-          new Request(`${web.APP_URL}/api/uploads`, {
-            method: 'POST',
-            headers: {
-              ...Object.fromEntries(headersWith(cookie)),
-              'content-type': 'application/json',
-              origin: web.APP_URL,
-            },
-            body: JSON.stringify({
-              brandId: t.a.brand.id,
-              kind: 'photo',
-              contentType: 'image/png',
-              size: file.byteLength,
-            }),
-          }),
+          askToUpload(uploadsUrl, cookie, t.a.brand.id, file.byteLength),
         );
         expect(asked.status).toBe(200);
-        const { assetId, upload } = (await asked.json()) as UploadAnswer;
+        const { uploads } = (await asked.json()) as UploadAnswer;
+        expect(uploads).toHaveLength(1);
+        const [first] = uploads;
+        if (first === undefined) throw new Error('no upload in the answer');
+        const { assetId, upload } = first;
         const key = assetKey(t.a.ctx, { brandId: t.a.brand.id, assetId, variant: 'original' });
 
         // 2. The browser puts the file straight to the bucket, with the headers the link was signed for.
@@ -165,21 +176,9 @@ describe('the Asset library feature: an uploaded file becomes a ready asset of i
           .transaction((tx) => tx.select({ id: asset.id }).from(asset));
         expect(inB).toEqual([{ id: t.b.asset.id }]);
         const cookieB = await t.signIn(t.b.owner);
+        expect((await guard().open(headersWith(cookieB))).ok).toBe(true);
         const crossed = await route.POST(
-          new Request(`${web.APP_URL}/api/uploads`, {
-            method: 'POST',
-            headers: {
-              ...Object.fromEntries(headersWith(cookieB)),
-              'content-type': 'application/json',
-              origin: web.APP_URL,
-            },
-            body: JSON.stringify({
-              brandId: t.a.brand.id,
-              kind: 'photo',
-              contentType: 'image/png',
-              size: file.byteLength,
-            }),
-          }),
+          askToUpload(uploadsUrl, cookieB, t.a.brand.id, file.byteLength),
         );
         expect([403, 404]).toContain(crossed.status);
         expect(
