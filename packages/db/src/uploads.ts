@@ -7,10 +7,12 @@
 // The storage limit is checked here, with the workspace's row locked, so two rounds at once can't both pass it (as
 // `createBrand` does for brands). The rule and its "next plan" message are @lzp/core's `checkStorage` with the plan
 // from config/plans.ts, which this package doesn't depend on: the app passes them in (`quota`). What a workspace
-// stores is the sum of its assets' sizes. A new row holds the size the browser declared (the signed link allows that
-// size and no other), so files still on their way count; the job replaces it with the processed files' size.
+// stores is the sum of its assets' sizes, rejected ones left out. A new row holds the size the browser declared (the
+// signed link allows that size and no other), so files still on their way count; the job replaces it with the
+// processed files' size, or rejects the row, which then no longer counts: a file that never arrived, or arrived and
+// was refused, holds none of the plan's storage (Cerberus F1 on #439).
 import { randomUUIDv7 } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { eq, ne, sql } from 'drizzle-orm';
 import { checkedId, type Db, type Tx, type WorkspaceCtx } from './db.ts';
 import type { Payload } from './jobs/queues.ts';
 import { workspace } from './schema/accounts.ts';
@@ -90,7 +92,8 @@ export async function startUploads(
 
     const [stored] = await tx
       .select({ bytes: sql<string>`coalesce(sum(${asset.sizeBytes}), 0)::text` })
-      .from(asset);
+      .from(asset)
+      .where(ne(asset.status, 'rejected'));
     const usedBytes = Number(stored?.bytes ?? '0');
     const answer = quota({ plan: space.plan, usedBytes, addingBytes });
     if (!answer.ok) return { refused: 'storage', message: answer.message } as const;
