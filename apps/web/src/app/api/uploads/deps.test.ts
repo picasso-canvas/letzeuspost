@@ -1,9 +1,10 @@
-// The upload route's real dependencies (#403): the storage limit from config/plans.ts, and the limits each signed link
-// carries. The guard, the rate limiter and the rows run on the real services in tests/tenancy/uploads.test.ts.
+// The upload route's real dependencies (#403): the storage limit from config/plans.ts, the limits each signed link
+// carries, and the `asset` queue's sender. The guard, the rate limiter and the rows run on the real services in
+// tests/tenancy/uploads.test.ts.
 import { GB, MAX_UPLOAD_BYTES, UPLOAD_TYPES } from '@lzp/core';
-import type { Db } from '@lzp/db';
+import type { Db, Jobs, Tx } from '@lzp/db';
 import { describe, expect, it } from 'vitest';
-import { storageQuota, uploadsDeps, type UploadSigner } from './deps.ts';
+import { assetJobSender, storageQuota, uploadsDeps, type UploadSigner } from './deps.ts';
 
 type Asked = Parameters<UploadSigner['signUpload']>;
 
@@ -74,5 +75,57 @@ describe('uploadsDeps(…).sign', () => {
       },
     ]);
     expect(MAX_UPLOAD_BYTES).toBe(20 * 1024 * 1024);
+  });
+});
+
+describe('assetJobSender(jobs)', () => {
+  const payload = { workspaceId: WS.workspaceId, brandId: WS.workspaceId, assetId: WS.workspaceId };
+  const tx = {} as Tx;
+
+  /** A queue that counts its starts, fails the first `failures` of them, and records what it was sent. */
+  function fakeJobs(failures = 0) {
+    const calls = { starts: 0, sent: [] as { queue: string; payload: unknown; tx: unknown }[] };
+    const jobs: Pick<Jobs, 'start' | 'send'> = {
+      start: () => {
+        calls.starts += 1;
+        return calls.starts <= failures
+          ? Promise.reject(new Error('Postgres is down'))
+          : Promise.resolve();
+      },
+      send: (queue, sent, options) => {
+        calls.sent.push({ queue, payload: sent, tx: options?.tx });
+        return Promise.resolve(`job-${String(calls.sent.length)}`);
+      },
+    };
+    return { calls, jobs };
+  }
+
+  it('starts the queue on the first round only, then queues each job on `asset` in the rows’ transaction', async () => {
+    const { calls, jobs } = fakeJobs();
+    const send = assetJobSender(jobs);
+    expect(calls.starts).toBe(0);
+    expect(await send(payload, { tx })).toBe('job-1');
+    expect(await send(payload, { tx })).toBe('job-2');
+    expect(calls.starts).toBe(1);
+    expect(calls.sent).toEqual([
+      { queue: 'asset', payload, tx },
+      { queue: 'asset', payload, tx },
+    ]);
+  });
+
+  it('starts once for rounds that come together', async () => {
+    const { calls, jobs } = fakeJobs();
+    const send = assetJobSender(jobs);
+    await Promise.all([send(payload, { tx }), send(payload, { tx })]);
+    expect(calls.starts).toBe(1);
+  });
+
+  it('fails a round whose queue couldn’t start, sends nothing, and tries to start again on the next', async () => {
+    const { calls, jobs } = fakeJobs(1);
+    const send = assetJobSender(jobs);
+    await expect(send(payload, { tx })).rejects.toThrow('Postgres is down');
+    expect(calls.sent).toEqual([]);
+    expect(await send(payload, { tx })).toBe('job-1');
+    expect(calls.starts).toBe(2);
   });
 });
